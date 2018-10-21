@@ -29,6 +29,7 @@ code {
   background-color: rgba(0, 0, 0, 0.02);
 }
 
+
 .wrapper {
   overflow: hidden;
   position: relative;
@@ -91,12 +92,16 @@ code {
 }
 
 .content {
-  max-width: 700px;
+  max-width: 900px;
   margin: 40px auto 10px;
   padding: 0 15px;
   font-size: 16px;
-  line-height: 1.7;
+  line-height: 1.4;
   color: #333;
+}
+
+.content pre code {
+  line-height: 1.2;
 }
 
 .article-title {
@@ -269,7 +274,7 @@ code {
 
   .content {
     font-size: 19px;
-    line-height: 1.8;
+    line-height: 1.4;
   }
 
   .highlight {
@@ -318,4 +323,21 @@ code {
   .article-content a {
     box-shadow: none;
   }
+}
+/* My Customizations */
+
+body pre, body code.hljs {
+  background-color: #FAFAFA;
+  white-space: pre-wrap;    /* Wrap long lines */
+  /*border-radius: 3px;*/
+}
+code {font-size: 85%;}
+pre {
+  border: 2px solid #EEE;
+}
+body pre + pre:not([class]) code.hljs  {
+  background-color: #EEE;
+}
+body pre + pre:not([class]) {
+  margin-top: -19px;
 }
