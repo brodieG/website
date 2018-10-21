@@ -5,16 +5,16 @@ date: 2014-04-18
 
 
 
-<div id="overview" class="section level1">
-<h1>Overview</h1>
+<div id="overview" class="section level2">
+<h2>Overview</h2>
 <p>In this post I will compare the use and performance of <code>dplyr</code> and <code>data.table</code> for the purposes of “split apply combine” style analysis, with some comparisons to base R methods.</p>
 <p>Skip to the bottom of the post if you’re just interested in the benchmarks.</p>
 <p>Both packages offer similar functionality for “split apply combine style” analysis. Both packages also offer additional functionality (e.g. indexed merges for <code>data.table</code>, SQL data base interface for <code>dplyr</code>), but I will focus only on split apply combine analysis in this post.</p>
 <p>Performance is comparable across packages, though <code>data.table</code> pulls ahead when there is a large number of groups in the data, particularly when using aggregating computations (e.g. one row per group) with low overhead functions (e.g. <code>mean</code>). If the computations you are using are slow, there will be little difference between the packages, mostly because the bulk of execution time will be the computation, not the manipulation to split / re-group the data.</p>
 <p><strong>NOTE</strong>: R 3.1 may well affect the results of these tests, presumably to the benefit of <code>dplyr</code>. I will try to re-run them on that version in the not too distant future.</p>
 </div>
-<div id="split-apply-combine-analysis" class="section level1">
-<h1>Split Apply Combine Analysis</h1>
+<div id="split-apply-combine-analysis" class="section level2">
+<h2>Split Apply Combine Analysis</h2>
 <p>Data often contains sub-groups that are distinguishable based on one or more (usually) categorical variables. For example, the <code>iris</code> R built-in data set has a <code>Species</code> variable that allows you to separate the data into groups by species. A common analysis for this type of data with groups is to run a computation on each group. This type of analysis is known as “Split-Apply-Combine” due to a common pattern in R code that involves <strong>split</strong>ting the data set into the groups of interest, <strong>apply</strong>ing a function to each group, and re<strong>combin</strong>ing the summarized pieces into a new data set. A simple example with the <code>iris</code> data set:</p>
 <pre class="r"><code>stack(                                          # COMBINE - many ways to do this
   lapply(                                       # APPLY
@@ -25,8 +25,8 @@ date: 2014-04-18
 ## 1  5.006     setosa
 ## 2  5.936 versicolor
 ## 3  6.588  virginica</code></pre>
-<div id="implementations-in-base-r" class="section level2">
-<h2>Implementations in Base R</h2>
+<div id="implementations-in-base-r" class="section level3">
+<h3>Implementations in Base R</h3>
 <p>Base R provides some functions that facilitate this type of analysis:</p>
 <pre class="r"><code>tapply(iris$Sepal.Length, iris$Species, mean)</code></pre>
 <pre><code>##     setosa versicolor  virginica 
@@ -43,24 +43,24 @@ date: 2014-04-18
 <li>Both <code>tapply</code> and <code>aggregate</code> are simplest to use when the user function returns one value per group; both will still work if the function return multiple values, but additional manipulation is often required to get the desired result</li>
 </ul>
 </div>
-<div id="third-party-packages" class="section level2">
-<h2>Third party packages</h2>
-<div id="plyr" class="section level3">
-<h3>plyr</h3>
+<div id="third-party-packages" class="section level3">
+<h3>Third party packages</h3>
+<div id="plyr" class="section level4">
+<h4>plyr</h4>
 <p>Very popular 3rd party Split Apply Combine packages. Unfortunately due to R inefficiencies with data frames it performs slowly with large data sets with many groups. As a result, we will not review <code>plyr</code> here.</p>
 </div>
-<div id="dplyr" class="section level3">
-<h3>dplyr</h3>
+<div id="dplyr" class="section level4">
+<h4>dplyr</h4>
 <p>An optimized version of <code>plyr</code> targeted more specifically to data frame like structures. In addition to being faster than <code>plyr</code>, <code>dplyr</code> introduces a new data manipulation grammar that can be used consistently across a wide variety of data frame like objects (e.g. data base tables, <code>data.table</code>s).</p>
 </div>
-<div id="data.table" class="section level3">
-<h3>data.table</h3>
+<div id="data.table" class="section level4">
+<h4>data.table</h4>
 <p><code>data.table</code> extends data frames into indexed table objects that can perform highly optimized Split Apply Combine (stricly speaking there is no actual splitting for efficiency reasons, but the calculation result is the same) as well as indexed merges. <strong>Disclosure</strong>: I am a long time <code>data.table</code> user so I naturally tend to be biased towards it, but I have run the tests in this posts as objectively as possible except for those items that are a matter of personal preference.</p>
 </div>
 </div>
 </div>
-<div id="syntax-and-grammar" class="section level1">
-<h1>Syntax and Grammar</h1>
+<div id="syntax-and-grammar" class="section level2">
+<h2>Syntax and Grammar</h2>
 <p>Both <code>plyr</code> and <code>dplyr</code> can operate directly on a <code>data.frame</code>. For use with <code>data.table</code> we must first convert the <code>data.frame</code> to <code>data.table</code>. For illustration purposes, we will use:</p>
 <pre class="r"><code>iris.dt &lt;- data.table(iris)</code></pre>
 <p>Here we will quickly review the basic syntax for common computations with the <code>iris</code> data set.</p>
@@ -109,25 +109,25 @@ iris.dt[, lapply(.SD, mean),
   by=eval(col.to.grp.by)]</code></pre>
 <p>So this can be done, but it takes a bit of effort and quickly gets complicated if you are trying to do more interesting computations. Explaining what’s going on here is a topic for another post. Note that the <code>dplyr</code> example doesn’t work with the current version (see <a href="http://stackoverflow.com/questions/22644804/how-can-i-use-dplyr-to-apply-a-function-to-all-non-group-by-columns">discussion on SO</a>).</p>
 </div>
-<div id="parting-thoughts-on-syntax-grammar" class="section level2">
-<h2>Parting Thoughts on Syntax / Grammar</h2>
+<div id="parting-thoughts-on-syntax-grammar" class="section level3">
+<h3>Parting Thoughts on Syntax / Grammar</h3>
 <p>As noted earlier <code>data.table</code> favors succint syntax whereas <code>dplyr</code> favors a grammar that more closely follows common language constructs. Which approach is better is ultimately a matter of personal preference. Interestingly both <code>dplyr</code> and <code>data.table</code> depart from the base R paradigms in their own ways. <code>data.table</code>’s syntax is much closer to base R functions, but it gleefully employs side effects to achieve it’s efficiency objectives. <code>dplyr</code>’s grammar is completely different to base R, but it does adhere to the no side effects philosophy.</p>
 </div>
 </div>
-<div id="functionality" class="section level1">
-<h1>Functionality</h1>
+<div id="functionality" class="section level2">
+<h2>Functionality</h2>
 <p>As of this writing, the only noteworthy difference in the context of split apply combine analysis I’ve noticed (outside of the <code>summarise_each</code> issue noted earlier) is that <code>dplyr</code> does not allow arbitrary sized group results. The results must either be 1 row per group when using <code>summarise</code> or the same number of rows as the original group when using <code>mutate</code>, and the number of columns must be explicitly specified.</p>
 <p><code>data.table</code> allows arbitrary numbers of rows and columns (the latter provided each group has the same number of columns). <code>dplyr</code> will potentially add this <a href="https://github.com/hadley/dplyr/issues/154">feature in the future as documented on <code>github</code></a>.</p>
 </div>
-<div id="benchmarks" class="section level1">
-<h1>Benchmarks</h1>
-<div id="dimensions" class="section level2">
-<h2>Dimensions</h2>
+<div id="benchmarks" class="section level2">
+<h2>Benchmarks</h2>
+<div id="dimensions" class="section level3">
+<h3>Dimensions</h3>
 <p>We will test how the following factors affect performance:</p>
 <table>
 <colgroup>
-<col width="70%" />
-<col width="29%" />
+<col width="50%" />
+<col width="50%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -159,8 +159,8 @@ iris.dt[, lapply(.SD, mean),
 </tbody>
 </table>
 </div>
-<div id="data" class="section level2">
-<h2>Data</h2>
+<div id="data" class="section level3">
+<h3>Data</h3>
 <p>The data set was structured to contain on single factor grouping column under the assumption that grouping by multiple columns is unlikely to be a big driver of performance. The data columns are all numeric. I did not test other data types mostly because numeric columns are the common use case and I was running into waay too many permutations already. Here is an example data frame:</p>
 <pre class="r"><code>DF</code></pre>
 <pre><code>&#39;data.frame&#39;: 10000 obs. of  4 variables:
@@ -171,8 +171,8 @@ iris.dt[, lapply(.SD, mean),
 <p>The <code>G.10</code> column is the one we will group by. The <code>V.#</code> columns are random uniform in <code>c(0, 1)</code>. Data frames will change in size/dimensions as described in the “Dimensions” section above, but will otherwise look pretty much like this one. Here we show that in this example the groups are on average of size 10 rows, but do vary in size.</p>
 <p>It turns out that having every group the same size or having them varying in size as shown above has very little impact on performance, so I’m only showing results for the unequal size tests.</p>
 </div>
-<div id="procedure" class="section level2">
-<h2>Procedure</h2>
+<div id="procedure" class="section level3">
+<h3>Procedure</h3>
 <p>I pre-generated all the combinations of data as described above, and then ran five iterations of each test for both <code>dplyr</code> and <code>data.table</code>, discarding the slowest of the five tests. Tests were timed with <code>system.time</code> and the values I report are the “elapsed” times.</p>
 <p>The computations chosen (<code>mean</code> and <code>rev</code>) are purposefully simple low overhead functions to ensure that the bulk of the execution is related to the splitting and grouping of the data sets and not evaluating the user functions. These are the command I used (one column versions):</p>
 <pre class="r"><code># Aggregating
@@ -187,8 +187,8 @@ data.table(df.sub)[, res:=rev(V.1), by=X]</code></pre>
 <p>The bulk of the tests were run on Mac OS 10.8 with R 3.0.2, <code>dplyr</code> 0.1.3, and <code>data.table</code> 1.9.2 (the vs. base tests were run on a different machine).</p>
 <p>You can look at the full <a href="/images/benchcode.R">data generation and benchmarking code</a> if you wish.</p>
 </div>
-<div id="results" class="section level2">
-<h2>Results</h2>
+<div id="results" class="section level3">
+<h3>Results</h3>
 <p>The short of it is that <code>dplyr</code> and <code>data.table</code> perform comparably for all data frame sizes unless you have a very large number of groups. If you do have high group numbers then <code>data.table</code> can be substantially faster, particularly when using computations that lead to one row per group in the result. With fewer groups <code>dplyr</code> is slightly faster.</p>
 <p>The following chart summarizes the results on data frames with one column of data. Please note that the X axis in the plots is <code>log10</code>. The facet rows each correspond to a particular data frame size. The columns distinguish between an aggregating operation (left, using <code>mean</code>) and non-aggregating one (right, using <code>rev</code>). Higher values mean slower performance. Each point represents one test run, and the lines connect the means of the four preserved test runs.</p>
 <div class="figure">
@@ -202,8 +202,8 @@ data.table(df.sub)[, res:=rev(V.1), by=X]</code></pre>
 <p class="caption">testing more columns</p>
 </div>
 </div>
-<div id="vs.-base" class="section level2">
-<h2>Vs. Base</h2>
+<div id="vs.-base" class="section level3">
+<h3>Vs. Base</h3>
 <p>I also ran some tests for base, focusing only on the 1MM row data frame with 100K groups (note these tests were run on a different machine, though same package versions). Here are the commands I compared:</p>
 <pre class="r"><code># Aggregating
 
@@ -224,13 +224,13 @@ And the results:</code></pre>
 <p>Suprisingly for non-aggregating tasks base performs remarkably well.</p>
 </div>
 </div>
-<div id="conclusions" class="section level1">
-<h1>Conclusions</h1>
+<div id="conclusions" class="section level2">
+<h2>Conclusions</h2>
 <p>As I’ve noted previously I’m currently a <code>data.table</code> user, and based on these tests I will continue to be a <code>data.table</code> user, particularly because I am already familiar with the syntax. Under some circumstances <code>data.table</code> is definitely faster than <code>dplyr</code>, but those circumstances are narrow enough that they needn’t be the determining factor when chosing a tool to perform split apply combine style analysis.</p>
 <p>Both packages work very well and offer substantial advantages over base R functionality. You will be well served with either. If you find one of them is not able to perform the task you are trying to do, it’s probably worth your time to see if the other can do it (please comment here if you do run into that situation).</p>
 </div>
-<div id="related-links" class="section level1">
-<h1>Related Links</h1>
+<div id="related-links" class="section level2">
+<h2>Related Links</h2>
 <ul>
 <li><a href="http://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">The SO Post that started this for me</a></li>
 <li><a href="http://arunsrinivasan.github.io/dplyr_benchmark/">Official data.table Benchmarks</a></li>
