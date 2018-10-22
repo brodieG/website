@@ -341,3 +341,7 @@ body pre + pre:not([class]) code.hljs  {
 body pre + pre:not([class]) {
   margin-top: -19px;
 }
+
+div.footnotes {
+  font-size: .8em;
+}
