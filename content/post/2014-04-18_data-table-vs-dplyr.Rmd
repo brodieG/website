@@ -1,9 +1,13 @@
 ---
 title: "data.table vs. dplyr in Split Apply Combine Style Analysis"
+author: Brodie Gaslam
 date: 2014-04-18
+slug: datatable-vs-dplyr-in-split-apply-comgine
+categories: [r]
+tags: [data.table, dplyr]
 ---
 
-## Overview
+# Overview
 
 In this post I will compare the use and performance of `dplyr` and `data.table` for the purposes of "split apply combine" style analysis, with some comparisons to base R methods.
 
@@ -15,7 +19,7 @@ Performance is comparable across packages, though `data.table` pulls ahead when 
 
 **NOTE**: R 3.1 may well affect the results of these tests, presumably to the benefit of `dplyr`.  I will try to re-run them on that version in the not too distant future.
 
-## Split Apply Combine Analysis
+# Split Apply Combine Analysis
 
 Data often contains sub-groups that are distinguishable based on one or more (usually) categorical variables.  For example, the `iris` R built-in data set has a `Species` variable that allows you to separate the data into groups by species.  A common analysis for this type of data with groups is to run a computation on each group.  This type of analysis  is known as "Split-Apply-Combine" due to a common pattern in R code that involves **split**ting the data set into the groups of interest, **apply**ing a function to each group, and re**combin**ing the summarized pieces into a new data set.  A simple example with the `iris` data set:
 
@@ -27,7 +31,7 @@ stack(                                          # COMBINE - many ways to do this
 ) )
 ```
 
-### Implementations in Base R
+## Implementations in Base R
 
 Base R provides some functions that facilitate this type of analysis:
 
@@ -41,21 +45,21 @@ I will not get into much detail about what is going on here other than two highl
  * `aggregate` applies the same function to every column
  * Both `tapply` and `aggregate` are simplest to use when the user function returns one value per group; both will still work if the function return multiple values, but additional manipulation is often required to get the desired result
 
-### Third party packages
+## Third party packages
 
-#### plyr
+### plyr
 
 Very popular 3rd party Split Apply Combine packages.  Unfortunately due to R inefficiencies with data frames it performs slowly with large data sets with many groups.  As a result, we will not review `plyr` here.
 
-#### dplyr
+### dplyr
 
 An optimized version of `plyr` targeted more specifically to data frame like structures.  In addition to being faster than `plyr`, `dplyr` introduces a new data manipulation grammar that can be used consistently across a wide variety of data frame like objects (e.g. data base tables, `data.table`s).
 
-#### data.table
+### data.table
 
 `data.table` extends data frames into indexed table objects that can perform highly optimized Split Apply Combine (stricly speaking there is no actual splitting for efficiency reasons, but the calculation result is the same) as well as indexed merges.    **Disclosure**: I am a long time `data.table` user so I naturally tend to be biased towards it, but I have run the tests in this posts as objectively as possible except for those items that are a matter of personal preference.
 
-## Syntax and Grammar
+# Syntax and Grammar
 
 Both `plyr` and `dplyr` can operate directly on a `data.frame`.  For use with `data.table` we must first convert the `data.frame` to `data.table`.  For illustration purposes, we will use:
 
@@ -65,7 +69,7 @@ iris.dt <- data.table(iris)
 
 Here we will quickly review the basic syntax for common computations with the `iris` data set.
 
-### Subset
+## Subset
 
 ```{r eval=FALSE}
 iris %>% filter(Species=="setosa")   # dplyr
@@ -73,7 +77,7 @@ iris.dt[Species=="setosa"]           # data.table
 ```
 Both `dplyr` and `data.table` interpret variable names in the context of the data, much like `subset`.
 
-### Modify Column
+## Modify Column
 
 ```{r eval=FALSE}
 iris %>% mutate(Petal.Width=Petal.Width / 2.54) # dplyr
@@ -82,7 +86,7 @@ iris.dt[, Petal.Width:=Petal.Width / 2.54]      # data.table
 
 One major difference between the two packages is that `data.table` can modify objects by reference.  This is against the general R philosophy of avoiding side effects, but does have the advantage of being faster as it skips a memory re-allocation.  For example, in this case we modified the `iris.dt` object.</td>
 
-### Grouping
+## Grouping
 
 The philosophical differences between the two packages become more apparent with this task:
 ```{r eval=FALSE}
@@ -105,7 +109,7 @@ iris.dt[, Sepal.Length / mean(Sepal.Length),
 ```
 Here you can see that both `dplyr` and `data.table` support chaining, but in somewhat different ways. `dplyr` can keep chaining with `%>%`, and `data.table` can chain `[.data.table`.  The main difference is that `dplyr` chains for every operation, whereas `[.data.table` only needs to chain if you need to compute on the result of the `by` operation.
 
-### Indirect Variable Specification
+## Indirect Variable Specification
 
 Both `dplyr` and `data.table` are designed to primarily work by users specifying the variable names they want to compute on.  Sometimes it is desirable to set-up computations that will operate without direct knowledge of the variable names.  In this example, we attempt to group by a column specified in a variable and compute the mean of all other columns:
 
@@ -123,19 +127,19 @@ iris.dt[, lapply(.SD, mean),
 
 So this can be done, but it takes a bit of effort and quickly gets complicated if you are trying to do more interesting computations.  Explaining what's going on here is a topic for another post.  Note that the `dplyr` example doesn't work with the current version (see <a href="http://stackoverflow.com/questions/22644804/how-can-i-use-dplyr-to-apply-a-function-to-all-non-group-by-columns">discussion on SO</a>).
 
-### Parting Thoughts on Syntax / Grammar
+## Parting Thoughts on Syntax / Grammar
 
 As noted earlier `data.table` favors succint syntax whereas `dplyr` favors a grammar that more closely follows common language constructs.  Which approach is better is ultimately a matter of personal preference.  Interestingly both `dplyr` and `data.table` depart from the base R paradigms in their own ways.  `data.table`'s syntax is much closer to base R functions, but it gleefully employs side effects to achieve it's efficiency objectives.  `dplyr`'s grammar is completely different to base R, but it does adhere to the no side effects philosophy.
 
-## Functionality
+# Functionality
 
 As of this writing, the only noteworthy difference in the context of split apply combine analysis I've noticed (outside of the `summarise_each` issue noted earlier) is that `dplyr` does not allow arbitrary sized group results.  The results must either be 1 row per group when using `summarise` or the same number of rows as the original group when using `mutate`, and the number of columns must be explicitly specified.
 
 `data.table` allows arbitrary numbers of rows and columns (the latter provided each group has the same number of columns).  `dplyr` will potentially add this [feature in the future as documented on `github`](https://github.com/hadley/dplyr/issues/154).
 
-## Benchmarks
+# Benchmarks
 
-### Dimensions
+## Dimensions
 
 We will test how the following factors affect performance:
 
@@ -147,7 +151,7 @@ We will test how the following factors affect performance:
 | Group size constancy            | tested with group sizes exactly as above as well as group sizes on average as above but for any given group random normally distributed with SD == 0.2 mean group size |
 | Operation Type                  | Aggregating (using `mean`), Non-aggregating (using `rev`) |
  
-### Data
+## Data
 
 The data set was structured to contain on single factor grouping column under the assumption that grouping by multiple columns is unlikely to be a big driver of performance.  The data columns are all numeric.  I did not test other data types mostly because numeric columns are the common use case and I was running into waay too many permutations already.  Here is an example data frame:
 
@@ -165,7 +169,7 @@ DF
 
 It turns out that having every group the same size or having them varying in size as shown above has very little impact on performance, so I'm only showing results for the unequal size tests.
 
-### Procedure
+## Procedure
 
 I pre-generated all the combinations of data as described above, and then ran five iterations of each test for both `dplyr` and `data.table`, discarding the slowest of the five tests.  Tests were timed with `system.time` and the values I report are the "elapsed" times.
 
@@ -186,7 +190,7 @@ The bulk of the tests were run on Mac OS 10.8 with R 3.0.2, `dplyr` 0.1.3, and `
 
 You can look at the full [data generation and benchmarking code](/images/benchcode.R) if you wish.
 
-### Results
+## Results
 
 The short of it is that `dplyr` and `data.table` perform comparably for all data frame sizes unless you have a very large number of groups.  If you do have high group numbers then `data.table` can be substantially faster, particularly when using computations that lead to one row per group in the result.  With fewer groups `dplyr` is slightly faster.
 
@@ -200,7 +204,7 @@ Adding columns seems to have very little effect on the grouping computation, but
 
 ![testing more columns](/images/onecolthreecol.PNG)
 
-### Vs. Base
+## Vs. Base
 
 I also ran some tests for base, focusing only on the 1MM row data frame with 100K groups (note these tests were run on a different machine, though same package versions).  Here are the commands I compared:
 
@@ -223,13 +227,13 @@ And the results:
 
 Suprisingly for non-aggregating tasks base performs remarkably well.
 
-## Conclusions
+# Conclusions
 
 As I've noted previously I'm currently a `data.table` user, and based on these tests I will continue to be a `data.table` user, particularly because I am already familiar with the syntax.  Under some circumstances `data.table` is definitely faster than `dplyr`, but those circumstances are narrow enough that they needn't be the determining factor when chosing a tool to perform split apply combine style analysis.
 
 Both packages work very well and offer substantial advantages over base R functionality.  You will be well served with either.  If you find one of them is not able to perform the task you are trying to do, it's probably worth your time to see if the other can do it (please comment here if you do run into that situation).
 
-## Related Links
+# Related Links
 
 * [The SO Post that started this for me](http://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly)
 * [Official data.table Benchmarks](http://arunsrinivasan.github.io/dplyr_benchmark/)
