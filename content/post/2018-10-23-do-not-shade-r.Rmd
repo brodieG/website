@@ -1,0 +1,261 @@
+---
+title: Do Not Shade R
+author: ~
+date: '2018-10-23'
+slug: do-not-shade-r
+draft: true
+categories: [r]
+tags: [optimization,visualization]
+---
+
+# Sorry, I got Sucked In
+
+Over the past few months I've been resisting the urge to get distracted by the
+pretty awesome work that [@tylermorganwall](https://twitter.com/tylermorganwall)
+has been doing with his [rayshader
+package](https://github.com/tylermorganwall/rayshader).  His [blog
+post](http://www.tylermw.com/throwing-shade/) introducing the topic is visually
+stunning, accessible, and pedagogically effective.  So for the past few months
+I've been admiring the lively reliefs that cropped up on twitter and leaving at
+that.
+
+But then others picked on the rayshading algorithm to make a point about the
+incorrigible slowness of R.  All my resolve to stay out of it evaporated.  Cool
+graphics and an insult on R's good name was simply too much.  And it is also
+untrue.  R  is not that slow.  This beautiful picture was rendered in ~15
+seconds with base R code on a single core on a 2.5 year old macbook:
+
+<img src='/images/do-not-shade-shadows-single.png' style='width: 75%; max-width: 800px'>
+
+# Okay, so R *can* be Slow
+
+The benchmarks that sucked me into this are from [Wolf Vollprecht's Next Journal
+article](https://nextjournal.com/wolfv/how-fast-is-r-with-fastr-pythran):
+
+![](/images/how-fast-is-r-benchmarks.png)
+
+R function calls are expensive, so any time you have nested R loops calling lots
+of R functions, you will have a slow program, typically two orders of magnitude
+slower than compiled code.  This lines up with what the benchmarks above.  And
+in this case the original R implementation has this in it:
+
+```{r eval=FALSE}
+for (i in 1:nrow(heightmap)) {
+  for (j in 1:ncol(heightmap)) {
+    for (anglei in anglebreaks) {
+      for (k in 1:maxdistance) {
+        # does ray hit obstacle?
+} } } }
+```
+
+`heightmap` is an elevation matrix.  With the built-in `volcano` 87x61 matrix,
+this would require up to 13 million calls to the ray-shading routine.  The image
+we open the post with requires up to 700 million calls.  The most trivial R
+primitive function evaluations take ~100ns and closer to ~500ns for
+non-primitive ones.  The math is harsh: we're looking at up to 70 - 350 seconds
+per operation our ray shading algorithm requires.
+
+# Ray Shading in Base R
+
+But R is not meant to be used that way.  There are hundreds of R functions and
+operators that implicitly loop through vector objects without invoking an R
+function for each element.  You can write fast R code most of the time if you
+take advantage of those functions.
+
+First, let's load the data used to generate the shaded map at the top of the
+blog post.  It was taken from [Tyler Morgan
+Wall's](http://tylermw.com/data/dem_01.tif.zip) ["Making Beautiful
+Maps"](http://www.tylermw.com/making-beautiful-maps/) blog post):
+
+```{r eval=FALSE}
+eltif <- raster::raster("~/Downloads/dem_01.tif")
+eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+elmat2 <- elmat1[, rev(seq_len(ncol(elmat1)))]  # rev columns for rayshader
+str(elmat1)   # 2MB matrix
+```
+```
+ num [1:550, 1:505] 750 751 750 749 749 755 762 768 769 767 ...
+```
+
+We can now compare the original `for` loop R code, the vectorized version we
+wrote for this blogpost, and the C++ version from the `rayshader` package.
+Additionally, We timed Julia with the same data using the code from the [Wolf
+Vollprecht's Next Journal
+article](https://nextjournal.com/wolfv/how-fast-is-r-with-fastr-pythran).
+
+```{r eval=FALSE}
+sun <- 45                         # sunangle
+els <- seq(-90, 90, length=25)    # elevations
+
+t.for <- system.time(sh.for <- ray_shade1(elmat1, els, sun))
+t.vec <- system.time(sh.vec <- ray_shade2(elmat1, els, sun))
+t.cpp <- system.time(
+  sh.cpp <- rayshader::ray_shade(elmat2, els, sun, lambert=FALSE)
+)
+```
+```{r eval=FALSE, echo=FALSE}
+types <- c('for', 'vectorized', 'cpp', 'julia')
+time.dat <- data.frame(
+  type=factor(types, levels=types),
+  time.ratio=
+    t.for['elapsed'] /
+    c(t.for['elapsed'], t.vec['elapsed'], t.cpp['elapsed'],  7.4495)
+)
+library(ggplot2)
+ggplot(time.dat, aes(type, y=time.ratio)) + geom_col()
+```
+
+Comparing the times we get:
+
+<img src='/images/do-not-shade-bench2' style='width: 75%; max-width: 1000px'>
+
+The vectorized version of the code is 40-50x faster than the original for loop
+version.  The Julia version is another ~2x faster.  I cannot reproduce the 300x
+speedup from Wolf's article, although I did observe a 160x speedup for the
+smaller volcano elevation map.  It seems Julia's advantage is not as marked with
+a more realistic file size.  Still, 2x is nothing to sneeze at, but a far cry
+from the 300x that go us started on this blog post.  I did notice that Julia's
+benchmarks are using a 32bit float instead of the 64bit ones used by R, but
+changing that only have a moderate (~15%) effect on performance.
+
+One surprising element in all this is how slow the C++ version from the
+`rayshader` package runs.  I would have expected to run neck and neck with the
+Julia version.  Turns out that this slowness is caused by [checking for user
+interrupts too
+frequently](https://github.com/tylermorganwall/rayshader/pull/18).  I imagine
+that the next version (>0.5.1) of `rayshader::ray_shade` will be closer to the
+Julia one.
+
+And to confirm we're actually doing the same thing:
+
+```{r echo=FALSE, eval=FALSE}
+dims <- lapply(dim(sh.cpp), seq_len)
+df <- rbind(
+   cbind(do.call(expand.grid, dims), z=c(sh.cpp), type='cpp'),
+   cbind(do.call(expand.grid, dims), z=c(sh.vec), type='vec'),
+   cbind(do.call(expand.grid, dims), z=c(sh.for), type='for')
+)
+df$type <- factor(df$type, levels=c('for', 'vec', 'cpp'))
+plot_attr <- list(
+  geom_raster(),
+  scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE),
+  ylab(NULL), xlab(NULL),
+  scale_x_continuous(expand=c(0,0)),
+  scale_y_continuous(expand=c(0,0)),
+  theme(axis.text=element_text(size=6))
+)
+ggplot(df, aes(x=Var1, y=Var2, fill=z)) +
+  facet_wrap(~type) + plot_attr
+ggplot(subset(df, type='vec'), aes(x=Var1, y=Var2, fill=z)) + plot_attr
+
+```
+<img
+  src='/images/do-not-shade-shadows.png'
+  style='width: 90%; max-width: 1000px'
+  alt='Mountain landscape shaded with three methods'
+>
+
+We are not showing the Julia output, but visual inspection showed it to be the
+same.  The various R versions shown here are not exactly identical, partly due
+to numeric precision issues, partly because the original R algorithm and the C++
+treat the boundary of the plot differently.
+
+# How Do We Write Fast R Code?
+
+## Minimize R-Level Loops
+
+As a rule of thumb: if you have an algorithm that iterates over items, and the
+result of computing each item is independent of the others, you should be able
+to write a reasonably fast R solution so long as you do not rely on R-level
+loops.  This includes the typical `for` loops, but also loops carried out via
+the `*ply` family of functions.  In some cases it is okay to use R-level loops
+for the outer loop, so long as the inner loops call internally vectorized code.
+
+As with everything there are exceptions to this rule of thumb.  In some cases
+the memory cost of avoiding the for loop is high enough that the for loop ends
+up faster.  This is not the case here.
+
+To internally vectorize `ray_shade2` we had to:
+
+1. Change the bilinear interpolation function to vectorize internally.
+2. Manipulate the data so that the interpolation function can operate on it
+   once.
+
+## Part 1: Ensure Inner Function Internally Vectorized
+
+In our case the key inner function is the bilinear interpolation:
+
+```{r eval=FALSE}
+faster_bilinear <- function (Z, x0, y0){
+  i = floor(x0)
+  j = floor(y0)
+  XT = (x0 - i)
+  YT = (y0 - j)
+  result = (1 - YT) * (1 - XT) * Z[i, j]
+  nx = nrow(Z)
+  ny = ncol(Z)
+  if(i + 1 <= nx){
+    result = result + (1-YT) * XT * Z[i + 1, j]
+  }
+  if(j + 1 <= ny){
+    result = result + YT * (1-XT) * Z[i, j + 1]
+  }
+  if(i + 1 <= nx && j + 1 <= ny){
+    result = result + YT * XT * Z[i + 1, j + 1]
+  }
+  result
+}
+```
+
+`Z` is the elevation matrix, and `x0` and `y0` are the coordinates to
+interpolate.
+
+In order to avoid the complexity of the boundary corner cases, we
+recognize that the code above is implicitly treating "off-grid" values as zero,
+so we can just enlarge our elevation matrix to add zero rows and columns:
+
+```{r eval=FALSE}
+Z2 <- matrix(0, nrow=nrow(Z) + 1L, ncol=ncol(Z) + 1L)
+Z2[-nrow(Z2), -ncol(Z2)] <- Z
+```
+
+`Z2` has an extra row and column of zero on the edges.  We can then replicate
+the result calculation without the `if` statements.  We use the array
+indexing (e.g. `Z2[cbind(i,j]`) to retrieve the Z values at each coordinate
+around each of the points we are interpolating:
+
+```{r eval=FALSE}
+result <- ((1-YT)) * ((1-XT)) * Z2[cbind(i,    j)]    +
+          ((1-YT)) * (XT)     * Z2[cbind(1+1L, j)]    +
+          (YT)     * ((1-XT)) * Z2[cbind(i,    j+1L)] +
+          (YT)     * (XT)     * Z2[cbind(1+1L, j+1L)]
+```
+
+We glossed over some of the changes, but the [resulting function]() can now loop
+through input coordinates internally in C instead of needing to be called for
+each set of coordinates.  One trade-off here is that we need to make a copy of
+the matrix which requires an additional memory allocation, but the trade-off is
+worth it.
+
+## Part 2: Restructure Data to Take Use Internal Vectorization
+
+To recap the actual ray trace function can be simplified to:
+
+```{r eval=FALSE}
+  cossun <- cos(sunangle)
+  sinsun <- sin(sunangle)
+  for (i in 1:nrow(heightmap)) {
+    for (j in 1:ncol(heightmap)) {
+      for (anglei in anglebreaks) {
+        for (k in 1:maxdistance) {
+          interp.height <- faster_bilinear(heightmap, i * cossun, j * sinsun)
+          if(interp.height > anglei * k) {
+            # ... darken coordinate i,j
+            break
+} } } } }
+```
+
+So there is one "ray" for each `anglei` in `anglebreaks`
+
+
