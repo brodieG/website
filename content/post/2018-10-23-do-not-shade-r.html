@@ -85,7 +85,7 @@ version. The Julia version is another ~2x faster. I did observe a 160x speedup
 for the smaller volcano elevation map with Julia, but it seems Julia’s advantage
 is not as marked with a more realistic file size. I did notice that Julia’s
 benchmarks are using a 32bit float instead of the 64bit ones used by R, but
-changing that only have a moderate (~15%) effect on performance.</p>
+changing that only has a moderate (~15%) effect on performance.</p>
 <p>One surprising element in all this is how slow the C++ version from the
 <code>rayshader</code> package runs. I would have expected to run neck and neck with the
 Julia version. Turns out that this slowness is caused by <a href="https://github.com/tylermorganwall/rayshader/pull/18">checking for user
@@ -134,9 +134,9 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )</code></pre>
 <pre><code>Unit: microseconds
-                   expr   min    lq   mean median    uq   max neval
- v.sum.1 &lt;- sum_loop(v) 465.9 562.8 3414.3  601.4 659.0 28720    10
-      v.sum.2 &lt;- sum(v)  13.7  15.3   27.2   19.3  21.4   101    10</code></pre>
+                   expr   min    lq   mean median    uq     max neval
+ v.sum.1 &lt;- sum_loop(v) 417.3 421.6 3365.7  450.2 688.6 29025.2    10
+      v.sum.2 &lt;- sum(v)  14.3  18.5   24.7   20.7  31.2    39.4    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -240,6 +240,10 @@ rbind(path.id, path.offsets)</code></pre>
 <pre><code>             [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
 path.id         1    1    1    2    2    3    3    4    4
 path.offsets    0    1    2    0    1    0    1    0    1</code></pre>
+<p>Each ray in <a href="#fig5">figure 5</a> is represented by a <code>path.id</code> in this vector. The
+<code>path.offsets</code> values represent each step along the path. In our toy example
+only the ray starting at (1,1) is length three; all the others are length two.</p>
+<p>Then it is just a matter of using some trig to compute the ray path coordinates:</p>
 <pre class="r"><code>path.x &lt;- coords.init[path.id, &#39;x&#39;] + path.offsets * sinsun
 path.y &lt;- coords.init[path.id, &#39;y&#39;] + path.offsets * cossun
 
@@ -265,6 +269,8 @@ each step along the path, instead of up to 25 times (once for each elevation).
 If the C++ function were re-written to do the same, it could be faster, although
 whether it is or not will depend on how often it gets to stop early under the
 existing structure.</p>
+<p>Additionally, we do not technically have to compute the offset 0 values, but we
+left them in here for simplicity.</p>
 </div>
 </div>
 <div id="conclusions" class="section level1">

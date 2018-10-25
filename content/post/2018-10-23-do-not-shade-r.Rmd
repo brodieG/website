@@ -106,7 +106,7 @@ version.  The Julia version is another ~2x faster.  I did observe a 160x speedup
 for the smaller volcano elevation map with Julia, but it seems Julia's advantage
 is not as marked with a more realistic file size.  I did notice that Julia's
 benchmarks are using a 32bit float instead of the 64bit ones used by R, but
-changing that only have a moderate (~15%) effect on performance.
+changing that only has a moderate (~15%) effect on performance.
 
 One surprising element in all this is how slow the C++ version from the
 `rayshader` package runs.  I would have expected to run neck and neck with the
@@ -342,7 +342,15 @@ path.id <- rep(seq_len(nrow(coords.init)), path.lengths)
 path.offsets <- sequence(path.lengths) - 1
 
 rbind(path.id, path.offsets)
+```
 
+Each ray in [figure 5](#fig5) is represented by a `path.id` in this vector.  The
+`path.offsets` values represent each step along the path.  In our toy example
+only the ray starting at (1,1) is length three; all the others are length two.
+
+Then it is just a matter of using some trig to compute the ray path coordinates:
+
+```{r}
 path.x <- coords.init[path.id, 'x'] + path.offsets * sinsun
 path.y <- coords.init[path.id, 'y'] + path.offsets * cossun
 
@@ -373,6 +381,9 @@ each step along the path, instead of up to 25 times (once for each elevation).
 If the C++ function were re-written to do the same, it could be faster, although
 whether it is or not will depend on how often it gets to stop early under the
 existing structure.
+
+Additionally, we do not technically have to compute the offset 0 values, but we
+left them in here for simplicity.
 
 # Conclusions
 
