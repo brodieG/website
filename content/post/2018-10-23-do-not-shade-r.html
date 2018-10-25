@@ -129,13 +129,13 @@ v.sum.1 &lt;- 0
 microbenchmark::microbenchmark(times=10,
   v.sum.1 &lt;- sum_loop(v),
   v.sum.2 &lt;- sum(v)
-)
-Unit: microseconds
-                   expr   min    lq   mean median     uq     max neval
- v.sum.1 &lt;- sum_loop(v) 429.8 609.6 3982.0  800.0 1029.6 32876.3    10
-      v.sum.2 &lt;- sum(v)  15.2  18.8   23.2   21.7   24.9    41.2    10
-v.sum.1 == v.sum.2
-[1] TRUE</code></pre>
+)</code></pre>
+<pre><code>Unit: microseconds
+                   expr   min    lq   mean median    uq   max neval
+ v.sum.1 &lt;- sum_loop(v) 412.4 421.2 3426.4  441.9 547.5 29366    10
+      v.sum.2 &lt;- sum(v)  14.2  14.4   16.3   15.8  18.6    19    10</code></pre>
+<pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
+<pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
 <p>To internally vectorize <code>ray_shade2</code> we had to:</p>
 <ol style="list-style-type: decimal">
@@ -234,16 +234,15 @@ path.lengths &lt;- c(3, 2, 2, 2)            # you need to calculate these
 path.id &lt;- rep(seq_len(nrow(coords.init)), path.lengths)
 path.offsets &lt;- sequence(path.lengths) - 1
 
-rbind(path.id, path.offsets)
-             [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
+rbind(path.id, path.offsets)</code></pre>
+<pre><code>             [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
 path.id         1    1    1    2    2    3    3    4    4
-path.offsets    0    1    2    0    1    0    1    0    1
-
-path.x &lt;- coords.init[path.id, &#39;x&#39;] + path.offsets * sinsun
+path.offsets    0    1    2    0    1    0    1    0    1</code></pre>
+<pre class="r"><code>path.x &lt;- coords.init[path.id, &#39;x&#39;] + path.offsets * sinsun
 path.y &lt;- coords.init[path.id, &#39;y&#39;] + path.offsets * cossun
 
-rbind(path.id, path.x=path.x, path.y=path.y) + 1e-6
-        [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
+rbind(path.id, path.x=path.x, path.y=path.y) + 1e-6</code></pre>
+<pre><code>        [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
 path.id    1 1.00 1.00    2 2.00    3 3.00    4 4.00
 path.x     1 1.77 2.53    2 2.77    1 1.77    2 2.77
 path.y     1 1.64 2.29    1 1.64    2 2.64    2 2.64</code></pre>

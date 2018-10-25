@@ -10,7 +10,6 @@ tags: [optimization,visualization]
 ```{r echo=FALSE}
 options(digits=3)
 knitr::opts_chunk$set(
-  collapse = TRUE,
   comment = ""
 )
 ```
