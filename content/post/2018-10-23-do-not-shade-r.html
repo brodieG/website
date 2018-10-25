@@ -29,6 +29,9 @@ on R’s good name is simply too much for me to ignore.</p>
 ></p>
 <p>It took ~15 seconds on my system. <code>rayshader::ray_shade</code>, which is written in
 C++, takes over 20 seconds to do the same.</p>
+<p>This post is not about whether <code>rayshader</code> should be written in pure R
+(it should not be); it is just a case study on how to write reasonably fast
+pure-R code to solve a problem that on its face does not seem well suited to R.</p>
 </div>
 <div id="r-can-be-slow" class="section level1">
 <h1>R <em>Can</em> be Slow</h1>
@@ -131,22 +134,23 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )</code></pre>
 <pre><code>Unit: microseconds
-                   expr   min    lq   mean median    uq     max neval
- v.sum.1 &lt;- sum_loop(v) 442.8 524.8 3862.4  661.2 692.0 33185.0    10
-      v.sum.2 &lt;- sum(v)  14.3  19.8   26.5   21.2  31.2    45.4    10</code></pre>
+                   expr   min    lq   mean median    uq   max neval
+ v.sum.1 &lt;- sum_loop(v) 465.9 562.8 3414.3  601.4 659.0 28720    10
+      v.sum.2 &lt;- sum(v)  13.7  15.3   27.2   19.3  21.4   101    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
 <p>To internally vectorize <code>ray_shade2</code> we had to:</p>
 <ol style="list-style-type: decimal">
-<li>Change the bilinear interpolation function to vectorize internally.</li>
+<li>Change the inner function to vectorize internally.</li>
 <li>Manipulate the data so that the interpolation function can operate on it
 once.</li>
 </ol>
 </div>
 <div id="part-1-internally-vectorize-inner-function" class="section level2">
 <h2>Part 1: Internally Vectorize Inner Function</h2>
-<p>In our case the key inner function is the bilinear interpolation:</p>
+<p>In our case the key inner function is the bilinear interpolation used to
+interpolate relief height along our “shade-rays”:</p>
 <pre class="r"><code>faster_bilinear &lt;- function (Z, x0, y0){
   i = floor(x0)
   j = floor(y0)
@@ -265,18 +269,14 @@ existing structure.</p>
 </div>
 <div id="conclusions" class="section level1">
 <h1>Conclusions</h1>
-<p>R will never be as fast as compiled code, but you can get close in most cases
+<p>R will rarely be as fast as compiled code, but you can get close in most cases
 with some thought and care. That you have to be careful to produce fast R code
-is definitely a limitation of the language. It is offset by the thousands of
+is definitely a limitation of the language. It is offset by the hundreds of
 packages that already solve most slow-in-R problems with compiled code.
 Additionally, it is fairly easy to identify and replace bottle necks with
 compiled code. For example, for this case we could take the vectorized
 <code>ray_shade2</code> function and replace just the <code>faster_bilinear2</code> function with a
 compiled code function.</p>
-<p>The point of this blog post is not to say that <code>rayshader</code> should have been
-written in pure R. It is just intended as an illustration that R can be made to
-do things reasonably quickly, even things that at first blush seem like they
-should be written in compiled code.</p>
 <p>One final note: the algorithm here is interpolating the height maps between
 <em>pixels</em>. We also implement a simplified version that just uses the height of
 the nearest pixel in <code>shadow::ray_shade3</code>. It looks just as good and runs

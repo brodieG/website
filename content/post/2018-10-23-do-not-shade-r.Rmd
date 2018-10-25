@@ -39,6 +39,10 @@ on R's good name is simply too much for me to ignore.
 It took ~15 seconds on my system.  `rayshader::ray_shade`, which is written in
 C++, takes over 20 seconds to do the same.
 
+This post is not about whether `rayshader` should be written in pure R
+(it should not be); it is just a case study on how to write reasonably fast
+pure-R code to solve a problem that on its face does not seem well suited to R.
+
 # R *Can* be Slow
 
 The benchmarks that sucked me into this are from [Wolf Vollprecht's Next Journal
@@ -165,13 +169,14 @@ The one-to-two orders of magnitude difference in timing is typical.
 
 To internally vectorize `ray_shade2` we had to:
 
-1. Change the bilinear interpolation function to vectorize internally.
+1. Change the inner function to vectorize internally.
 2. Manipulate the data so that the interpolation function can operate on it
    once.
 
 ## Part 1: Internally Vectorize Inner Function
 
-In our case the key inner function is the bilinear interpolation:
+In our case the key inner function is the bilinear interpolation used to
+interpolate relief height along our "shade-rays":
 
 ```{r eval=FALSE}
 faster_bilinear <- function (Z, x0, y0){
@@ -371,19 +376,14 @@ existing structure.
 
 # Conclusions
 
-R will never be as fast as compiled code, but you can get close in most cases
+R will rarely be as fast as compiled code, but you can get close in most cases
 with some thought and care.  That you have to be careful to produce fast R code
-is definitely a limitation of the language.  It is offset by the thousands of
+is definitely a limitation of the language.  It is offset by the hundreds of
 packages that already solve most slow-in-R problems with compiled code.
 Additionally, it is fairly easy to identify and replace bottle necks with
 compiled code.  For example, for this case we could take the vectorized
 `ray_shade2` function and replace just the `faster_bilinear2` function with a
 compiled code function.
-
-The point of this blog post is not to say that `rayshader` should have been
-written in pure R.  It is just intended as an illustration that R can be made to
-do things reasonably quickly, even things that at first blush seem like they
-should be written in compiled code.
 
 One final note: the algorithm here is interpolating the height maps between
 _pixels_.  We also implement a simplified version that just uses the height of
