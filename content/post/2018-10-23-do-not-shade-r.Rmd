@@ -303,7 +303,7 @@ We want the coordinates of the dots along each of the colored arrows, and we
 want them all in two vectors, one for the x coordinates, and one for the y
 coordinates.  These should look as follows:
 
-```{r echo=FALSE, results='asis'}
+```{r echo=FALSE}
 id.clr <- c("204", "70", "37", "141")
 df2 <- within(df2, {
   x.chr <- sprintf("\033[48;5;%sm%s\033[m", id.clr[id], format(round(x, 2)))
@@ -313,7 +313,13 @@ coords <- with(df2, c(
   paste0("path.x <- c(", paste0(x.chr, collapse=","), ")"),
   paste0("path.y <- c(", paste0(y.chr, collapse=","), ")")
 ) )
-writeLines(c("<pre>", fansi::sgr_to_html(coords), "</pre>"))
+```
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+    "<pre><code>", paste0(fansi::sgr_to_html(coords), collapse="\n"),
+    "</code></pre>"
+) )
 ```
 
 Creating these vectors is not completely trivial, but essentially it boils down
@@ -381,7 +387,7 @@ should be written in compiled code.
 
 One final note: the algorithm here is interpolating the height maps between
 _pixels_.  We also implement a simplified version that just uses the height of
-the nearest pixel in `shadow::ray_shade3`.  It looks just as good and runs 
+the nearest pixel in `shadow::ray_shade3`.  It looks just as good and runs
 twice as fast.
 
 # Appendix

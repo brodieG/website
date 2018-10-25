@@ -131,9 +131,9 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )</code></pre>
 <pre><code>Unit: microseconds
-                   expr   min    lq   mean median    uq   max neval
- v.sum.1 &lt;- sum_loop(v) 412.4 421.2 3426.4  441.9 547.5 29366    10
-      v.sum.2 &lt;- sum(v)  14.2  14.4   16.3   15.8  18.6    19    10</code></pre>
+                   expr   min    lq   mean median    uq     max neval
+ v.sum.1 &lt;- sum_loop(v) 442.8 524.8 3862.4  661.2 692.0 33185.0    10
+      v.sum.2 &lt;- sum(v)  14.3  19.8   26.5   21.2  31.2    45.4    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -218,10 +218,8 @@ degrees (figure 5):</p>
 <p>We want the coordinates of the dots along each of the colored arrows, and we
 want them all in two vectors, one for the x coordinates, and one for the y
 coordinates. These should look as follows:</p>
-<pre>
-path.x <- c(<span style='background-color: #FF5F87;'>1.00</span><span>,</span><span style='background-color: #FF5F87;'>1.77</span><span>,</span><span style='background-color: #FF5F87;'>2.53</span><span>,</span><span style='background-color: #5FAF00;'>2.00</span><span>,</span><span style='background-color: #5FAF00;'>2.77</span><span>,</span><span style='background-color: #00AFAF;'>1.00</span><span>,</span><span style='background-color: #00AFAF;'>1.77</span><span>,</span><span style='background-color: #AF87FF;'>2.00</span><span>,</span><span style='background-color: #AF87FF;'>2.77</span><span>)</span>
-path.y <- c(<span style='background-color: #FF5F87;'>1.00</span><span>,</span><span style='background-color: #FF5F87;'>1.64</span><span>,</span><span style='background-color: #FF5F87;'>2.29</span><span>,</span><span style='background-color: #5FAF00;'>1.00</span><span>,</span><span style='background-color: #5FAF00;'>1.64</span><span>,</span><span style='background-color: #00AFAF;'>2.00</span><span>,</span><span style='background-color: #00AFAF;'>2.64</span><span>,</span><span style='background-color: #AF87FF;'>2.00</span><span>,</span><span style='background-color: #AF87FF;'>2.64</span><span>)</span>
-</pre>
+<pre><code>path.x <- c(<span style='background-color: #FF5F87;'>1.00</span><span>,</span><span style='background-color: #FF5F87;'>1.77</span><span>,</span><span style='background-color: #FF5F87;'>2.53</span><span>,</span><span style='background-color: #5FAF00;'>2.00</span><span>,</span><span style='background-color: #5FAF00;'>2.77</span><span>,</span><span style='background-color: #00AFAF;'>1.00</span><span>,</span><span style='background-color: #00AFAF;'>1.77</span><span>,</span><span style='background-color: #AF87FF;'>2.00</span><span>,</span><span style='background-color: #AF87FF;'>2.77</span><span>)</span>
+path.y <- c(<span style='background-color: #FF5F87;'>1.00</span><span>,</span><span style='background-color: #FF5F87;'>1.64</span><span>,</span><span style='background-color: #FF5F87;'>2.29</span><span>,</span><span style='background-color: #5FAF00;'>1.00</span><span>,</span><span style='background-color: #5FAF00;'>1.64</span><span>,</span><span style='background-color: #00AFAF;'>2.00</span><span>,</span><span style='background-color: #00AFAF;'>2.64</span><span>,</span><span style='background-color: #AF87FF;'>2.00</span><span>,</span><span style='background-color: #AF87FF;'>2.64</span><span>)</span></code></pre>
 <p>Creating these vectors is not completely trivial, but essentially it boils down
 to the following steps:</p>
 <pre class="r"><code>sunazimuth &lt;- 50 / 180 * pi
