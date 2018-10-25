@@ -28,7 +28,7 @@ But then others picked on the rayshading algorithm to make a point about the
 incorrigible slowness of R, and the combination of cool graphics and an insult
 on R's good name is simply too much for me to ignore.
 
-**R is not that slow!**. Figure 1 below was rendered with a pure-R ray-shader:
+**R is not that slow!** Figure 1 below was rendered with a pure-R ray-shader:
 
 <a name='fig1'></a>
 <img
@@ -67,7 +67,7 @@ for (i in 1:nrow(heightmap)) {      # for every x-coord
 } } } }
 ```
 
-`heightmap` is an elevation matrix.  [Figure one](#fig1) is 550 x 505
+`heightmap` is an elevation matrix.  In [figure one](#fig1) it is 550 x 505
 pixels, so with 25 elevations and 100 step paths this requires up
 to 700 million calls of the innermost routine.  The most trivial R primitive
 function evaluations take ~100ns and closer to ~500ns for non-primitive ones.
@@ -374,6 +374,11 @@ Additionally, it is fairly easy to identify and replace bottle necks with
 compiled code.  For example, for this case we could take the vectorized
 `ray_shade2` function and replace just the `faster_bilinear2` function with a
 compiled code function.
+
+The point of this blog post is not to say that `rayshader` should have been
+written in pure R.  It is just intended as an illustration that R can be made to
+do things reasonably quickly, even things that at first blush seem like they
+should be written in compiled code.
 
 One final note: the algorithm here is interpolating the height maps between
 _pixels_.  We also implement a simplified version that just uses the height of

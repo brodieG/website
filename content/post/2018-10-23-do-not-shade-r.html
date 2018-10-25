@@ -20,7 +20,7 @@ lively reliefs that cropped up on twitter and left it at that.</p>
 <p>But then others picked on the rayshading algorithm to make a point about the
 incorrigible slowness of R, and the combination of cool graphics and an insult
 on R’s good name is simply too much for me to ignore.</p>
-<p><strong>R is not that slow!</strong>. Figure 1 below was rendered with a pure-R ray-shader:</p>
+<p><strong>R is not that slow!</strong> Figure 1 below was rendered with a pure-R ray-shader:</p>
 <p><a name='fig1'></a>
 <img
   src='/images/do-not-shade-shadows-single.png'
@@ -50,7 +50,7 @@ quadruple nested loop in it:</p>
       for (k in 1:maxdistance) {    # for each step in the path
         # does ray hit obstacle?
 } } } }</code></pre>
-<p><code>heightmap</code> is an elevation matrix. <a href="#fig1">Figure one</a> is 550 x 505
+<p><code>heightmap</code> is an elevation matrix. In <a href="#fig1">figure one</a> it is 550 x 505
 pixels, so with 25 elevations and 100 step paths this requires up
 to 700 million calls of the innermost routine. The most trivial R primitive
 function evaluations take ~100ns and closer to ~500ns for non-primitive ones.
@@ -131,9 +131,9 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )
 Unit: microseconds
-                   expr   min    lq   mean median    uq     max neval
- v.sum.1 &lt;- sum_loop(v) 418.0 419.6 3500.5  474.1 739.0 30257.9    10
-      v.sum.2 &lt;- sum(v)  14.4  15.9   23.7   18.1  20.4    62.7    10
+                   expr   min    lq   mean median     uq     max neval
+ v.sum.1 &lt;- sum_loop(v) 429.8 609.6 3982.0  800.0 1029.6 32876.3    10
+      v.sum.2 &lt;- sum(v)  15.2  18.8   23.2   21.7   24.9    41.2    10
 v.sum.1 == v.sum.2
 [1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -276,6 +276,10 @@ Additionally, it is fairly easy to identify and replace bottle necks with
 compiled code. For example, for this case we could take the vectorized
 <code>ray_shade2</code> function and replace just the <code>faster_bilinear2</code> function with a
 compiled code function.</p>
+<p>The point of this blog post is not to say that <code>rayshader</code> should have been
+written in pure R. It is just intended as an illustration that R can be made to
+do things reasonably quickly, even things that at first blush seem like they
+should be written in compiled code.</p>
 <p>One final note: the algorithm here is interpolating the height maps between
 <em>pixels</em>. We also implement a simplified version that just uses the height of
 the nearest pixel in <code>shadow::ray_shade3</code>. It looks just as good and runs
