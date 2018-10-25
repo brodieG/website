@@ -134,9 +134,9 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )</code></pre>
 <pre><code>Unit: microseconds
-                   expr   min    lq   mean median    uq     max neval
- v.sum.1 &lt;- sum_loop(v) 417.3 421.6 3365.7  450.2 688.6 29025.2    10
-      v.sum.2 &lt;- sum(v)  14.3  18.5   24.7   20.7  31.2    39.4    10</code></pre>
+                   expr   min    lq   mean median     uq   max neval
+ v.sum.1 &lt;- sum_loop(v) 676.4 684.4 5182.2  745.6 1206.7 43453    10
+      v.sum.2 &lt;- sum(v)  17.7  18.8   41.2   20.7   23.7   224    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -292,30 +292,11 @@ twice as fast.</p>
 <h1>Appendix</h1>
 <p>Code used in this blog post follows. It is in the order it needs to be run in to
 function, not in the order in which it is used by the post.</p>
-<p>Code to generate <a href="#fig3">figure 3</a>:</p>
+<p>Code to load mountain elevation data:</p>
 <pre class="r"><code># File originally from http://tylermw.com/data/dem_01.tif.zip
 eltif &lt;- raster::raster(&quot;~/Downloads/dem_01.tif&quot;)
 eldat &lt;- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-elmat1 &lt;- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
-dims &lt;- lapply(dim(sh.cpp), seq_len)
-df &lt;- rbind(
-   cbind(do.call(expand.grid, dims), z=c(sh.cpp), type=&#39;cpp&#39;),
-   cbind(do.call(expand.grid, dims), z=c(sh.vec), type=&#39;vec&#39;),
-   cbind(do.call(expand.grid, dims), z=c(sh.for), type=&#39;for&#39;)
-)
-df$type &lt;- factor(df$type, levels=c(&#39;for&#39;, &#39;vec&#39;, &#39;cpp&#39;))
-plot_attr &lt;- list(
-  geom_raster(),
-  scale_fill_gradient(low=&#39;#333333&#39;, high=&#39;#ffffff&#39;, guide=FALSE),
-  ylab(NULL), xlab(NULL),
-  scale_x_continuous(expand=c(0,0)),
-  scale_y_continuous(expand=c(0,0)),
-  theme(axis.text=element_text(size=6))
-)
-ggplot(df, aes(x=Var1, y=Var2, fill=z)) +
-  facet_wrap(~type) + plot_attr</code></pre>
-<p>Code to generate <a href="#fig1">figure 1</a>:</p>
-<pre class="r"><code>ggplot(subset(df, type=&#39;vec&#39;), aes(x=Var1, y=Var2, fill=z)) + plot_attr</code></pre>
+elmat1 &lt;- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))</code></pre>
 <p>Code to generate <a href="#fig2">figure 2</a>:</p>
 <pre class="r"><code>sun &lt;- 45                         # sunangle
 els &lt;- seq(-90, 90, length=25)    # elevations
@@ -335,6 +316,26 @@ time.dat &lt;- data.frame(
     c(t.for[&#39;elapsed&#39;], t.vec[&#39;elapsed&#39;], t.cpp[&#39;elapsed&#39;],  7.4495)
 )
 ggplot(time.dat, aes(type, y=time.ratio)) + geom_col()</code></pre>
+<p>Code to generate <a href="#fig3">figure 3</a>:</p>
+<pre class="r"><code>dims &lt;- lapply(dim(sh.cpp), seq_len)
+df &lt;- rbind(
+   cbind(do.call(expand.grid, dims), z=c(sh.cpp), type=&#39;cpp&#39;),
+   cbind(do.call(expand.grid, dims), z=c(sh.vec), type=&#39;vec&#39;),
+   cbind(do.call(expand.grid, dims), z=c(sh.for), type=&#39;for&#39;)
+)
+df$type &lt;- factor(df$type, levels=c(&#39;for&#39;, &#39;vec&#39;, &#39;cpp&#39;))
+plot_attr &lt;- list(
+  geom_raster(),
+  scale_fill_gradient(low=&#39;#333333&#39;, high=&#39;#ffffff&#39;, guide=FALSE),
+  ylab(NULL), xlab(NULL),
+  scale_x_continuous(expand=c(0,0)),
+  scale_y_continuous(expand=c(0,0)),
+  theme(axis.text=element_text(size=6))
+)
+ggplot(df, aes(x=Var1, y=Var2, fill=z)) +
+  facet_wrap(~type) + plot_attr</code></pre>
+<p>Code to generate <a href="#fig1">figure 1</a>:</p>
+<pre class="r"><code>ggplot(subset(df, type=&#39;vec&#39;), aes(x=Var1, y=Var2, fill=z)) + plot_attr</code></pre>
 <p>Code to generate <a href="#fig5">figure 5</a>.</p>
 <pre class="r"><code>df1 &lt;- expand.grid(x=1:4, y=1:4)
 angle &lt;- 50 / 180 * pi

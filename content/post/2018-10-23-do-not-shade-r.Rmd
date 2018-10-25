@@ -406,13 +406,41 @@ twice as fast.
 Code used in this blog post follows.  It is in the order it needs to be run in to
 function, not in the order in which it is used by the post.
 
-Code to generate [figure 3](#fig3):
+Code to load mountain elevation data:
 
 ```{r eval=FALSE}
 # File originally from http://tylermw.com/data/dem_01.tif.zip
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+```
+
+Code to generate [figure 2](#fig2):
+
+```{r eval=FALSE}
+sun <- 45                         # sunangle
+els <- seq(-90, 90, length=25)    # elevations
+elmat2 <- elmat1[, rev(seq_len(ncol(elmat1)))]  # rev columns for rayshader
+
+t.for <- system.time(sh.for <- shadow::ray_shade1(elmat1, els, sun))
+t.vec <- system.time(sh.vec <- shadow::ray_shade2(elmat1, els, sun))
+t.cpp <- system.time(
+  sh.cpp <- rayshader::ray_shade(elmat2, els, sun, lambert=FALSE)
+)
+# We compute the Julia time separately
+types <- c('for', 'vectorized', 'cpp', 'julia')
+time.dat <- data.frame(
+  type=factor(types, levels=types),
+  time.ratio=
+    t.for['elapsed'] /
+    c(t.for['elapsed'], t.vec['elapsed'], t.cpp['elapsed'],  7.4495)
+)
+ggplot(time.dat, aes(type, y=time.ratio)) + geom_col()
+```
+
+Code to generate [figure 3](#fig3):
+
+```{r eval=FALSE}
 dims <- lapply(dim(sh.cpp), seq_len)
 df <- rbind(
    cbind(do.call(expand.grid, dims), z=c(sh.cpp), type='cpp'),
@@ -438,28 +466,6 @@ Code to generate [figure 1](#fig1):
 ggplot(subset(df, type='vec'), aes(x=Var1, y=Var2, fill=z)) + plot_attr
 ```
 
-Code to generate [figure 2](#fig2):
-
-```{r eval=FALSE}
-sun <- 45                         # sunangle
-els <- seq(-90, 90, length=25)    # elevations
-elmat2 <- elmat1[, rev(seq_len(ncol(elmat1)))]  # rev columns for rayshader
-
-t.for <- system.time(sh.for <- shadow::ray_shade1(elmat1, els, sun))
-t.vec <- system.time(sh.vec <- shadow::ray_shade2(elmat1, els, sun))
-t.cpp <- system.time(
-  sh.cpp <- rayshader::ray_shade(elmat2, els, sun, lambert=FALSE)
-)
-# We compute the Julia time separately
-types <- c('for', 'vectorized', 'cpp', 'julia')
-time.dat <- data.frame(
-  type=factor(types, levels=types),
-  time.ratio=
-    t.for['elapsed'] /
-    c(t.for['elapsed'], t.vec['elapsed'], t.cpp['elapsed'],  7.4495)
-)
-ggplot(time.dat, aes(type, y=time.ratio)) + geom_col()
-```
 
 Code to generate [figure 5](#fig5).
 
