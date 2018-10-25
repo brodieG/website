@@ -3,7 +3,6 @@ title: Do Not Shade R
 author: ~
 date: '2018-10-23'
 slug: do-not-shade-r
-draft: true
 categories: [r]
 tags: [optimization,visualization]
 ---
@@ -51,8 +50,8 @@ quadruple nested loop in it:</p>
       for (k in 1:maxdistance) {    # for each step in the path
         # does ray hit obstacle?
 } } } }</code></pre>
-<p><code>heightmap</code> is an elevation matrix. The image we open the post is 550 x 505
-pixels, so with 25 elevations and 100 long paths this requires up
+<p><code>heightmap</code> is an elevation matrix. <a href="#fig1">Figure one</a> is 550 x 505
+pixels, so with 25 elevations and 100 step paths this requires up
 to 700 million calls of the innermost routine. The most trivial R primitive
 function evaluations take ~100ns and closer to ~500ns for non-primitive ones.
 The math is harsh: we’re looking at up to 70 - 350 seconds per operation used
@@ -91,7 +90,11 @@ interrupts too
 frequently</a>. I imagine
 that the next version (&gt;0.5.1) of <code>rayshader::ray_shade</code> will be closer to the
 Julia one.</p>
-<p>And to confirm we’re actually doing the same thing:</p>
+<p>Compiled code will almost always be faster than pure R code, but in
+many cases you can get close enough in pure R that it is not worth the hassle to
+switch to compiled code, or to a language that is not as stable and well
+supported as R.</p>
+<p>And to confirm we are actually doing the same thing:</p>
 <p><a name='fig4'></a>
 <img
   src='/images/do-not-shade-shadows.png'
@@ -128,12 +131,12 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )
 Unit: microseconds
-                   expr   min    lq   mean median    uq   max neval
- v.sum.1 &lt;- sum_loop(v) 412.0 417.3 3153.5  421.8 536.7 26632    10
-      v.sum.2 &lt;- sum(v)  14.2  14.3   20.9   16.1  18.6    55    10
+                   expr   min    lq   mean median    uq     max neval
+ v.sum.1 &lt;- sum_loop(v) 418.0 419.6 3500.5  474.1 739.0 30257.9    10
+      v.sum.2 &lt;- sum(v)  14.4  15.9   23.7   18.1  20.4    62.7    10
 v.sum.1 == v.sum.2
 [1] TRUE</code></pre>
-<p>The two orders of magnitude difference in timing is typical.</p>
+<p>The one-to-two orders of magnitude difference in timing is typical.</p>
 <p>To internally vectorize <code>ray_shade2</code> we had to:</p>
 <ol style="list-style-type: decimal">
 <li>Change the bilinear interpolation function to vectorize internally.</li>
