@@ -1,0 +1,75 @@
+---
+title: Hacky Stereography
+author: ~
+date: '2018-10-26'
+slug: hacky-stereography
+categories: []
+tags: []
+---
+
+```{r}
+eltif <- raster::raster("~/Downloads/dem_01.tif")
+elmat1 <- matrix(
+  raster::extract(eltif,raster::extent(eltif),buffer=10000),
+  nrow=ncol(eltif),ncol=nrow(eltif)
+)
+sun <- 45
+els <- seq(-90, 90, length=25)
+shadow <- shadow::ray_shade2(elmat1, sunangle=sun, anglebreaks=els, maxsearch=100)
+
+shift_shadow <- function(heightmap, shadow, tilt) {
+  stopifnot(identical(dim(heightmap), dim(shadow)))
+  y.shift <- tan(tilt) * heightmap + row(heightmap)
+  y.new <- apply(y.shift, 2, function(x) findInterval(x, seq_along(x)))
+  y.new[y.new == 0] <- 1
+  matrix(
+    shadow[
+      cbind(c(y.new), rep(seq_len(ncol(shadow)), each=nrow(shadow)))
+    ],
+    nrow(shadow)
+  )
+}
+## Shift shadows
+
+tilts <- c(2, -2)/180*pi
+shadows.s <- lapply(tilts, shift_shadow, heightmap=elmat1, shadow=shadow)
+
+## Compute middle of map location
+
+mid.x <- round(nrow(elmat1) / 2)
+mid.y <- round(ncol(elmat1) / 2)
+mid.tilts <- round(elmat1[mid.x, mid.y] * tan(tilts))
+
+lapply(shadows.s, function(x) which(x == max(x), arr.ind=TRUE)[1,])
+
+library(ggplot2)
+plot_attr <- list(
+  scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE),
+  ylab(NULL), xlab(NULL),
+  scale_x_continuous(expand=c(0,0)),
+  scale_y_continuous(expand=c(0,0)),
+  theme(
+    axis.text=element_text(size=6),
+    panel.spacing = unit(0, "npc"))
+)
+
+dims <- lapply(dim(shadow), seq_len)
+shadow.df <- rbind(
+  cbind(do.call(expand.grid, dims), z=c(shadows.s[[1]]), type='right'),
+  cbind(do.call(expand.grid, dims), z=c(shadows.s[[2]]), type='left')
+)
+
+shadows.df[shadows.df$type == 'right']$fill <- 
+  shadows.df[shadows.df$type == 'right']
+
+ggplot(xx.df, aes(x=Var1, y=Var2, fill=z)) +
+  geom_raster() +
+  plot_attr + facet_wrap(~type) +
+  geom_point(
+    data=data.frame(x=mid.x+mid.tilts, y=mid.y, type=c('left', 'right')),
+    aes(x, y, fill=NULL), shape=24, color='red'
+  )
+
+
+
+```
