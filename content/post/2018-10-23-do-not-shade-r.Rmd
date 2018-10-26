@@ -221,7 +221,7 @@ result <- ((1-YT)) * ((1-XT)) * Z2[cbind(i,    j)]    +
           (YT)     * (XT)     * Z2[cbind(1+1L, j+1L)]
 ```
 
-We use array indexing of our `heightmap` (e.g. `Z2[cbind(i,j]`) to retrieve the
+We use array indexing of our `heightmap` (e.g. `Z2[cbind(i,j)]`) to retrieve the
 Z values at each coordinate around each of the points we are interpolating.
 Since the R arithmetic operators are internally vectorized, we can compute
 interpolated heights for multiple coordinates with a single un-looped R
