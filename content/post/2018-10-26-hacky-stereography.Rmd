@@ -7,7 +7,8 @@ categories: []
 tags: []
 ---
 
-```{r}
+```{r plot-settings echo=FALSE}
+library(ggplot2)
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 elmat1 <- matrix(
   raster::extract(eltif,raster::extent(eltif),buffer=10000),
@@ -15,33 +16,7 @@ elmat1 <- matrix(
 )
 sun <- 45
 els <- seq(-90, 90, length=25)
-shadow <- shadow::ray_shade2(elmat1, sunangle=sun, anglebreaks=els, maxsearch=100)
-
-shift_shadow <- function(heightmap, shadow, tilt) {
-  stopifnot(identical(dim(heightmap), dim(shadow)))
-  y.shift <- tan(tilt) * heightmap + row(heightmap)
-  y.new <- apply(y.shift, 2, function(x) findInterval(x, seq_along(x)))
-  y.new[y.new == 0] <- 1
-  matrix(
-    shadow[
-      cbind(c(y.new), rep(seq_len(ncol(shadow)), each=nrow(shadow)))
-    ],
-    nrow(shadow)
-  )
-}
-## Shift shadows
-
-tilts <- c(2, -2)/180*pi
-shadows.s <- lapply(tilts, shift_shadow, heightmap=elmat1, shadow=shadow)
-
-## Compute middle of map location
-
-mid.x <- round(nrow(elmat1) / 2)
-mid.y <- round(ncol(elmat1) / 2)
-mid.tilts <- round(elmat1[mid.x, mid.y] * tan(tilts))
-
-lapply(shadows.s, function(x) which(x == max(x), arr.ind=TRUE)[1,])
-
+shadow <- rayshader::ray_shade(elmat1, els, sun)
 library(ggplot2)
 plot_attr <- list(
   scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE),
@@ -53,23 +28,214 @@ plot_attr <- list(
     panel.spacing = unit(0, "npc"))
 )
 
-dims <- lapply(dim(shadow), seq_len)
-shadow.df <- rbind(
-  cbind(do.call(expand.grid, dims), z=c(shadows.s[[1]]), type='right'),
-  cbind(do.call(expand.grid, dims), z=c(shadows.s[[2]]), type='left')
+```
+# Cool, but Not Eye Popping
+
+As we saw in our previous blog post, you can do some pretty cool things with
+`rayshader`:
+
+It is so beautiful it looks _almost_ 3D.  So why not actually make it 3D?  We
+have the elevation data after all.
+
+I imagine there is probably a package out there that does this already, but if I
+used that I wouldn't have an excuse to procrastinate.  So instead I'm going to
+home brew 3D images of this height map.
+
+# Step 1: Tilt the Elevation Data
+
+We're going to tilt the map to the left and to the right by two degrees.  I just
+picked an angle that seemed reasonable, and given that a true human stereoscopic
+view of mountains is physically impossible I'm not going to worry too much about
+doing this correctly.
+
+Additionally, our tilt is going to be lazy.  As in,
+really-wrong-but-not-wrong-enough-to-ruin-everything lazy.
+We are only going to shift heights along the x-axis in proportion to the
+heights, instead of rotating the entire plane.  We do this with the
+`shift_shadow` function:
+
+```{r}
+## we assume a min height of zero in el map
+obs.alt <- 5 * max(elmat1)
+eye.sep <- max(elmat1)
+rot.ang <- atan((eye.sep / 2) / obs.alt)
+nr <- nrow(elmat1)
+nc <- ncol(elmat1)
+
+rot_mx <- function(a) {
+  matrix(
+    c(
+       cos(a),      0,     sin(a),
+            0,      1,          0,
+      -sin(a),      0,     cos(a)
+    ),
+    byrow=TRUE,
+    nrow=3,
+    dimnames=list(c('x', 'y', 'z'), NULL)
+) }
+## Convert heightmap to individual coordinates, and reset y coordinates so that
+## the zero point is around each eye position
+
+h.c <- cbind(x=c(row(elmat1)), y=c(col(elmat1)), z=c(elmat1))
+h.c[,'x'] <- h.c[,'x'] - diff(range(h.c[,'x'])) / 2 - eye.sep / 2
+
+## Tilt the plane (note, this does not do any perspective adjustments; we'll
+## consider whether we need to do this later.
+
+h.c.r <- h.c %*% rot_mx(rot.ang)
+
+## Define the mesh on a tile by tile basis.  This would be easy to do if we
+## still had the matrix in the original wide format, but since it is in long
+## format we need to resort to some arithmetic.
+##
+## The third dimension of the resulting array represents which corner of the
+## tile mesh the data corresponds to (in order: top left, top right, bot left,
+## bot right)
+
+mesh <- c(
+  # drop last row, last col
+  h.c.r[-c(seq_len(nc) * nr, seq_len(nr) + nr * (nc - 1L)),],
+  # drop last row, first col
+  h.c.r[-c(seq_len(nc) * nr, seq_len(nr)),],
+  # drop first row, last col
+  h.c.r[-c((seq_len(nc) - 1L) * nr + 1L, seq_len(nr) + nr * (nc - 1L)), ],
+  # drop first row, first col
+  h.c.r[-c((seq_len(nc) - 1L) * nr + 1L, seq_len(nr)), ]
+)
+dim(mesh) <- c(c(length(mesh) / 12L), 3L, 4L)
+dimnames(mesh) <- list(NULL, NULL, c('TL', 'TR', 'BL', 'BR'))
+
+## For each tile in the mesh, determine the set of integer x,y coordinates that
+## could potentially fit in the mesh-tile.  In this special case we know that
+## there can be at most one x integer coordinate per mesh-tile since rotation
+## about the y-axis can only decrease the separation of the original x
+## coordinates.
+
+mesh.int <- cbind(
+  id=seq_len(dim(mesh)[1]),
+  xmin=ceiling(pmin(mesh[,1L, 'TL'], mesh[, 1L, 'BL'])),
+  xmax=floor(pmax(mesh[,1L, 'TR'], mesh[, 1L, 'BR'])),
+  ymin=ceiling(pmin(mesh[, 2L, 'TL'], mesh[, 2L, 'TR'])),
+  ymax=floor(pmax(mesh[, 2L, 'BL'], mesh[, 2L, 'BR']))
 )
 
-shadows.df[shadows.df$type == 'right']$fill <- 
-  shadows.df[shadows.df$type == 'right']
 
-ggplot(xx.df, aes(x=Var1, y=Var2, fill=z)) +
+
+
+## Compute integer coordinates possibly bounded by each square in the mesh
+## resulting from rotation transformation.  So transform the data so that we
+## have the four coordinates side by side?
+
+
+
+
+
+
+```{r}
+mx <- matrix(0, 5, 5)
+rot.ang <- 45 / 180 * pi
+mx.c <- cbind(x=c(row(mx) - 3L), y=c(col(mx)), z=c(mx))
+mx.c.r <- mx.c %*% t(rot_mx(rot.ang))
+
+df.c <- as.data.frame(mx.c)
+df.c.r <- as.data.frame(mx.c.r)
+names(df.c.r) <- names(df.c) <- c('x', 'y', 'z')
+library(ggplot2)
+
+ggplot(mapping=aes(x, y, size=z)) +
+  geom_point(data=df.c, color='black') +
+  geom_point(data=df.c.r, color='red')
+
+
+```
+
+```{r}
+shift_shadow <- function(tilt, heightmap, shadow) {
+  stopifnot(identical(dim(heightmap), dim(shadow)))
+  ## determine new x-coordinates for each elevation; make them monotonically
+  ## increasing
+  x.sh <- apply(tan(tilt) * heightmap + row(heightmap), 2, cummax)
+  ## determine range of new x coordinates
+  x.sh.range <- c(floor(min(x.sh)), ceiling(max(x.sh)))
+  x.new <- seq(from=x.sh.range[1], to=x.sh.range[2], by=1L)
+  ## for each new x coordinate, find an interval from shifted range that
+  ## contains them
+  x.ref <- apply(x.sh, 2, function(x) findInterval(x.new, x))
+  x.ref[x.ref == 0L] <- 1L
+  ## Lookup the heights from original shadow matrix, but with new x-coordintes
+  matrix(
+    shadow[cbind(c(x.ref), rep(seq_len(ncol(x.ref)), each=nrow(x.ref)))],
+    nrow(x.ref)
+  )
+}
+```
+The one tricky bit is:
+
+This because
+without changing any heights.
+
+We
+will also re-interpolate
+
+There is probably some correct way to
+figure out what the angle should be
+
+
+tilt my entire elevation map to the right and to the left to create a
+stereoscopic view of the mountain.
+
+two degrees to the left, and to the right:
+
+
+
+
+```{r}
+## Shift shadows
+
+tilts <- 1 * rev((c(left=1,right=-1))/180*pi)
+sh.s <- sapply(tilts, shift_shadow, elmat1, shadow, simplify=FALSE)
+
+## Compute middle of map location
+
+mid.x <- round(nrow(elmat1) / 2)
+mid.y <- round(ncol(elmat1) / 2)
+mid.tilts <- round(elmat1[mid.x, mid.y] * tan(tilts))
+
+## long
+
+tolong <- function(x, id)
+  cbind(do.call(expand.grid, lapply(dim(x), seq_len)), z=c(x), id=id)
+sh.long <- do.call(rbind, unname(Map(tolong, sh.s, names(sh.s))))
+sh.long$id <- relevel(sh.long$id, 'left')
+
+## color version
+
+sh.df.1 <- sh.long
+shadow.offset <- 10
+sh.df.1$r <- ifelse(sh.df.1$id == 'right', sh.df.1$z, 0)
+sh.df.1$g <- ifelse(sh.df.1$id == 'left', sh.df.1$z, 0)
+sh.df.1$b <- 0
+sh.df.1$Var1 <- ifelse(
+  sh.df.1$id == 'right', sh.df.1$Var1 + shadow.offset, sh.df.1$Var1
+)
+library(data.table)
+setDT(sh.df.1)
+sdf <- sh.df.1[, .(r=sum(r), g=sum(g), b=sum(b)), .(Var1, Var2)]
+sdf$fill <- rgb(sdf[, c('r', 'g', 'b')])
+
+ggplot(sdf, aes(x=Var1, y=Var2)) +
+  geom_raster(fill=sdf$fill) +
+  plot_attr
+
+sh.df.2 <- sh.long
+ggplot(sh.df.2, aes(x=Var1, y=Var2, fill=z)) +
   geom_raster() +
-  plot_attr + facet_wrap(~type) +
+  plot_attr + facet_wrap(~id)
+  +
   geom_point(
-    data=data.frame(x=mid.x+mid.tilts, y=mid.y, type=c('left', 'right')),
+    data=data.frame(x=mid.x+mid.tilts, y=mid.y, id=c('left', 'right')),
     aes(x, y, fill=NULL), shape=24, color='red'
   )
-
 
 
 ```
