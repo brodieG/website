@@ -55,9 +55,11 @@ heights, instead of rotating the entire plane.  We do this with the
 `shift_shadow` function:
 
 ```{r}
-## we assume a min height of zero in el map
-obs.alt <- 5 * max(elmat1)
-eye.sep <- max(elmat1) / 5
+## We start with a matrix of elevations
+
+mx <- elmat1
+obs.alt <- 5 * max(mx)
+eye.sep <- max(mx)
 rot.ang <- atan((eye.sep / 2) / obs.alt)
 
 rot_mx <- function(a) {
@@ -71,24 +73,57 @@ rot_mx <- function(a) {
     nrow=3,
     dimnames=list(c('x', 'y', 'z'), NULL)
 ) }
-## Convert heightmap to individual coordinates, and reset y coordinates so that
-## the zero point is around each eye position
+## Convert elevation matrix to long format,  and reset x coordinates so that
+## the origin is directly below each eye position
 
-mat <- elmat1
-mat <- matrix(0, nrow=nr, ncol=nc)
-h.c <- cbind(x=c(row(mat)), y=c(col(mat)), z=c(mat))
-h.c[,'x'] <- h.c[,'x'] - diff(range(h.c[,'x'])) / 2 - eye.sep / 2
+mx.l <- cbind(x=c(row(mx)), y=c(col(mx)), z=c(mx))
+mx.l[,'x'] <- mx.l[,'x'] - diff(range(mx.l[,'x'])) / 2 - eye.sep / 2
 
-## Tilt the plane (note, this does not do any perspective adjustments; we'll
-## consider whether we need to do this later.
+## Rotate along y axis for parallax effect (note, this does not do any
+## perspective adjustments; we'll  consider whether we need to do this later).
 
-h.c.r <- h.c %*% t(rot_mx(rot.ang))
+mx.l.r <- mx.l %*% t(rot_mx(rot.ang))
 
 ## It is possible that after rotation order along the x-axis has changed due to
-## height differences, so we need to get the cummmax per row.  Also do it by
-## col, but it really shouldn't matter there
+## height differences, so we need to get the cummmax per row.
 
-h.c.r[,1L] <- ave(h.c.r[,1L], c(col(mat)), FUN=cummax)
+mx.l.r[,1L] <- ave(mx.l.r[,1L], c(col(mx)), FUN=cummax)
+
+## We need to remap our data onto an integer x-y grid for display.  This is
+## relatively easy because our rotation does not affect the y values.  Start
+## by defining our integer grid x values.
+
+x.rng <- seq(from=floor(min(mx.l.r[,'x'])), to=ceiling(max(mx.l.r[,'x'])))
+
+## For each column in our elevation map, find which rotated x coordinates our
+## grided values fall in
+
+x.grid <- apply(matrix(mx.l.r[,'x'], nrow=nr), 2, findInterval, x=x.rng)
+
+x.grid <- findInterval(x.rng, mx.l.r[,'x'])
+x.grid[x.grid == 0L] <- 1L
+
+## Interpolate the shadows from the original values onto our gridded x values
+## `pmin` to deal with grid values to the 'left' of leftmost defined x value
+
+x.offset <- pmin((x - x.lo), 0) / (x.lo - x.hi)
+shadow.interp <- x.offset * z.hi + (1 - x.offset) * z.lo
+
+(x.hi - pmin(x, x.lo)) * (x.lo - x.hi) * z.lo
+
+mx.l.r.g <- apply(m.l.r, 
+
+In order to to remap our data into a grid, we're going to find what interval
+
+## in the rotated data each our grid x-coordinates is in.
+
+ggplot(as.data.frame(h.c.r), aes(x=x, y=y, color=z)) +
+  geom_point() +
+  scale_color_gradient(low='#333333', high='#ffffff', guide=FALSE)
+
+
+
+
 h.c.r[,2L] <- ave(h.c.r[,2L], c(row(mat)), FUN=cummax)
 
 ## Define the mesh on a tile by tile basis.  This would be easy to do if we
@@ -120,10 +155,11 @@ dimnames(mesh) <- list(NULL, NULL, c('TL', 'TR', 'BL', 'BR'))
 mesh.int <- cbind(
   id=seq_len(dim(mesh)[1]),
   xmin=ceiling(pmin(mesh[,1L,1L], mesh[,1L,2L], mesh[,1L,3L], mesh[,1L,4L])),
-  ymin=ceiling(pmin(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L])),
   xmax=floor(pmax(mesh[,1L,1L], mesh[,1L,2L], mesh[,1L,3L], mesh[,1L,4L])),
+  ymin=ceiling(pmin(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L])),
   ymax=floor(pmax(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L]))
 )
+
 
 
 
