@@ -57,10 +57,8 @@ heights, instead of rotating the entire plane.  We do this with the
 ```{r}
 ## we assume a min height of zero in el map
 obs.alt <- 5 * max(elmat1)
-eye.sep <- max(elmat1)
+eye.sep <- max(elmat1) / 5
 rot.ang <- atan((eye.sep / 2) / obs.alt)
-nr <- nrow(elmat1)
-nc <- ncol(elmat1)
 
 rot_mx <- function(a) {
   matrix(
@@ -76,13 +74,22 @@ rot_mx <- function(a) {
 ## Convert heightmap to individual coordinates, and reset y coordinates so that
 ## the zero point is around each eye position
 
-h.c <- cbind(x=c(row(elmat1)), y=c(col(elmat1)), z=c(elmat1))
+mat <- elmat1
+mat <- matrix(0, nrow=nr, ncol=nc)
+h.c <- cbind(x=c(row(mat)), y=c(col(mat)), z=c(mat))
 h.c[,'x'] <- h.c[,'x'] - diff(range(h.c[,'x'])) / 2 - eye.sep / 2
 
 ## Tilt the plane (note, this does not do any perspective adjustments; we'll
 ## consider whether we need to do this later.
 
-h.c.r <- h.c %*% rot_mx(rot.ang)
+h.c.r <- h.c %*% t(rot_mx(rot.ang))
+
+## It is possible that after rotation order along the x-axis has changed due to
+## height differences, so we need to get the cummmax per row.  Also do it by
+## col, but it really shouldn't matter there
+
+h.c.r[,1L] <- ave(h.c.r[,1L], c(col(mat)), FUN=cummax)
+h.c.r[,2L] <- ave(h.c.r[,2L], c(row(mat)), FUN=cummax)
 
 ## Define the mesh on a tile by tile basis.  This would be easy to do if we
 ## still had the matrix in the original wide format, but since it is in long
@@ -102,21 +109,20 @@ mesh <- c(
   # drop first row, first col
   h.c.r[-c((seq_len(nc) - 1L) * nr + 1L, seq_len(nr)), ]
 )
+## track ids for top-left for debugging purposes
+mesh.id <- matrix(seq_len(length(mat)), nrow=nr)[-nr, -nc]
 dim(mesh) <- c(c(length(mesh) / 12L), 3L, 4L)
 dimnames(mesh) <- list(NULL, NULL, c('TL', 'TR', 'BL', 'BR'))
 
 ## For each tile in the mesh, determine the set of integer x,y coordinates that
-## could potentially fit in the mesh-tile.  In this special case we know that
-## there can be at most one x integer coordinate per mesh-tile since rotation
-## about the y-axis can only decrease the separation of the original x
-## coordinates.
+## could potentially fit in the mesh-tile.
 
 mesh.int <- cbind(
   id=seq_len(dim(mesh)[1]),
-  xmin=ceiling(pmin(mesh[,1L, 'TL'], mesh[, 1L, 'BL'])),
-  xmax=floor(pmax(mesh[,1L, 'TR'], mesh[, 1L, 'BR'])),
-  ymin=ceiling(pmin(mesh[, 2L, 'TL'], mesh[, 2L, 'TR'])),
-  ymax=floor(pmax(mesh[, 2L, 'BL'], mesh[, 2L, 'BR']))
+  xmin=ceiling(pmin(mesh[,1L,1L], mesh[,1L,2L], mesh[,1L,3L], mesh[,1L,4L])),
+  ymin=ceiling(pmin(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L])),
+  xmax=floor(pmax(mesh[,1L,1L], mesh[,1L,2L], mesh[,1L,3L], mesh[,1L,4L])),
+  ymax=floor(pmax(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L]))
 )
 
 
