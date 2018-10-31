@@ -7,6 +7,58 @@ categories: []
 tags: []
 ---
 
+```{r}
+eltif <- raster::raster("~/Downloads/dem_01.tif")
+elmat1 <- matrix(
+  raster::extract(eltif,raster::extent(eltif),buffer=10000),
+  nrow=ncol(eltif),ncol=nrow(eltif)
+)
+mx <- elmat1
+sun <- 135
+els <- seq(-90, 90, length=25)
+shadow <- rayshader::ray_shade(mx, els, sun, lambert=FALSE)
+shadow <- shadow[, rev(seq_len(ncol(shadow)))]
+
+# rescale shadow to be a little lighter
+
+sh.scale <- .15
+sh.s <- (sh.scale + shadow) / (1 + sh.scale)
+
+obs.alt <- 5 * max(mx)
+eye.sep <- max(mx)
+
+library(rgl)
+width <- 400
+height <- 300
+angle <- 4
+mfrow3d(2, 1)
+fp <- c(floor(nrow(mx)/2), floor(ncol(mx)/2))
+fp[3] <- mx[fp[1], fp[2]] + .05 * diff(range(mx))
+
+par3d(windowRect=c(0,0,2 * width, height))
+par3d(viewport=c(0,0,width, height))
+
+persp_elev <- function(elevation, sh)
+  persp3d(
+    seq_len(nrow(elevation)), seq_len(ncol(elevation)), c(elevation),
+    color=rgb(c(sh), c(sh), c(sh)), lit=FALSE,
+    xlab="", ylab="", zlab="", box=FALSE, axes=FALSE
+  )
+
+persp_elev(mx, sh.s)
+rgl.spheres(x=fp[1], y=fp[2], z=fp[3], color='red', r=20)
+aspect3d(1.5, 1.5, .75)
+view3d(-angle, 0, zoom=0.70)
+
+next3d()
+par3d(viewport=c(.55*width,0,width,height))
+persp_elev(mx, sh.s)
+rgl.spheres(x=fp[1], y=fp[2], z=fp[3], color='red', r=20)
+aspect3d(1.5, 1.5, .75)
+view3d(angle, 0, zoom=0.70)
+```
+
+
 ```{r plot-settings echo=FALSE}
 library(ggplot2)
 eltif <- raster::raster("~/Downloads/dem_01.tif")
