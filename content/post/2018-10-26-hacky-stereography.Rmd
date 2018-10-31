@@ -14,9 +14,6 @@ elmat1 <- matrix(
   raster::extract(eltif,raster::extent(eltif),buffer=10000),
   nrow=ncol(eltif),ncol=nrow(eltif)
 )
-sun <- 45
-els <- seq(-90, 90, length=25)
-shadow <- rayshader::ray_shade(elmat1, els, sun)
 library(ggplot2)
 plot_attr <- list(
   scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE),
@@ -55,72 +52,131 @@ heights, instead of rotating the entire plane.  We do this with the
 `shift_shadow` function:
 
 ```{r}
-## We start with a matrix of elevations
+## We start with a matrix of elevations, and compute shadows
 
 mx <- elmat1
+sun <- 135
+els <- seq(-90, 90, length=25)
+shadow <- rayshader::ray_shade(mx, els, sun, lambert=FALSE)
+
 obs.alt <- 5 * max(mx)
 eye.sep <- max(mx)
-rot.ang <- atan((eye.sep / 2) / obs.alt)
 
-rot_mx <- function(a) {
-  matrix(
-    c(
-       cos(a),      0,     sin(a),
-            0,      1,          0,
-      -sin(a),      0,     cos(a)
-    ),
-    byrow=TRUE,
-    nrow=3,
-    dimnames=list(c('x', 'y', 'z'), NULL)
-) }
-## Convert elevation matrix to long format,  and reset x coordinates so that
-## the origin is directly below each eye position
+## Simulate Parallax From Binocular Vision
+##
+## We wrote this to generate stereoscopic images of heightmaps, so the z-axis
+## data is considered elevation, and x and y surface locations.
 
-mx.l <- cbind(x=c(row(mx)), y=c(col(mx)), z=c(mx))
-mx.l[,'x'] <- mx.l[,'x'] - diff(range(mx.l[,'x'])) / 2 - eye.sep / 2
+binocular_parallax <- function(
+  mx, texture, dist, x.shift,
+  focal.point=c(
+    x=floor((nrow(mx) + 1) / 2), y=floor((ncol(mx) + 1) / 2), z=min(mx)
+) ) {
+  stopifnot(identical(dim(mx), dim(texture)))
+  rot_mx <- function(a) {
+    matrix(
+      c(
+         cos(a),      0,     sin(a),
+              0,      1,          0,
+        -sin(a),      0,     cos(a)
+      ),
+      byrow=TRUE,
+      nrow=3
+  ) }
+  ## Convert elevation matrix to long format,  and reset x coordinates so that
+  ## the origin is directly below each eye position
 
-## Rotate along y axis for parallax effect (note, this does not do any
-## perspective adjustments; we'll  consider whether we need to do this later).
+  mx.l <- cbind(x=c(row(mx)), y=c(col(mx)), z=c(mx))
+  mx.l[,'x'] <- mx.l[,'x'] - focal.point['x'] - x.shift
 
-mx.l.r <- mx.l %*% t(rot_mx(rot.ang))
+  ## Rotate along y axis for parallax effect (note, this does not do any
+  ## perspective adjustments; we'll  consider whether we need to do this later).
 
-## It is possible that after rotation order along the x-axis has changed due to
-## height differences, so we need to get the cummmax per row.
+  rot.ang <- atan(-x.shift / dist)
+  mx.l.r <- mx.l %*% t(rot_mx(rot.ang))
+  dimnames(mx.l.r) <- dimnames(mx.l)
 
-mx.l.r[,1L] <- ave(mx.l.r[,1L], c(col(mx)), FUN=cummax)
+  ## also adjust and rotate the focal point
 
-## We need to remap our data onto an integer x-y grid for display.  This is
-## relatively easy because our rotation does not affect the y values.  Start
-## by defining our integer grid x values.
+  focal.point['x'] <- -x.shift
+  focal.point.r <- c(t(focal.point) %*% t(rot_mx(rot.ang)))
+  names(focal.point.r) <- names(focal.point)
 
-x.rng <- seq(from=floor(min(mx.l.r[,'x'])), to=ceiling(max(mx.l.r[,'x'])))
+  ## It is possible that after rotation order along the x-axis has changed due
+  ## to ## height differences, so we need to get the cummmax per row.
 
-## For each column in our elevation map, find which rotated x coordinates our
-## grided values fall in
+  mx.l.r[,1L] <- ave(mx.l.r[,1L], c(col(mx)), FUN=cummax)
 
-x.grid <- apply(matrix(mx.l.r[,'x'], nrow=nr), 2, findInterval, x=x.rng)
+  ## We need to remap our data onto an integer x-y grid for display.  This is
+  ## relatively easy because our rotation does not affect the y values.  Start
+  ## by defining our integer grid x values.
 
-x.grid <- findInterval(x.rng, mx.l.r[,'x'])
-x.grid[x.grid == 0L] <- 1L
+  x.rng <- seq(from=floor(min(mx.l.r[,'x'])), to=ceiling(max(mx.l.r[,'x'])))
 
-## Interpolate the shadows from the original values onto our gridded x values
-## `pmin` to deal with grid values to the 'left' of leftmost defined x value
+  ## For each column in our elevation map, find which rotated x coordinates our
+  ## grided values fall in
 
-x.offset <- pmin((x - x.lo), 0) / (x.lo - x.hi)
-shadow.interp <- x.offset * z.hi + (1 - x.offset) * z.lo
+  x.grid <- apply(matrix(mx.l.r[,'x'], nrow=nr), 2, findInterval, x=x.rng)
+  x.grid[x.grid == 0L] <- 1L
 
-(x.hi - pmin(x, x.lo)) * (x.lo - x.hi) * z.lo
+  ## Interpolate the shadows from the original values onto our gridded x values
+  ## `pmax` to deal with grid values to the 'left' of leftmost defined x value
 
-mx.l.r.g <- apply(m.l.r, 
+  x.grid.rng <- x.rng[c(x.grid)]
 
-In order to to remap our data into a grid, we're going to find what interval
+  x.grid.lo <- x.grid
+  x.grid.hi <- pmin(x.grid + 1L, max(x.grid))
 
-## in the rotated data each our grid x-coordinates is in.
+  x.lo <- mx.l.r[x.grid.lo, 'x']
+  x.hi <- mx.l.r[x.grid.hi, 'x']
 
-ggplot(as.data.frame(h.c.r), aes(x=x, y=y, color=z)) +
-  geom_point() +
-  scale_color_gradient(low='#333333', high='#ffffff', guide=FALSE)
+  z.lo <- shadow[cbind(c(x.grid.lo), c(col(x.grid)))]
+  z.hi <- shadow[cbind(c(x.grid.hi), c(col(x.grid)))]
 
+  x.diff <- x.hi - x.lo
+  x.offset <- pmax((x.grid.rng - x.lo), 0) / x.diff
+  x.offset[is.na(x.offset) | !is.finite(x.offset) | round(x.diff, 5) == 0] <- 1
+  z <- x.offset * z.hi + (1 - x.offset) * z.lo
+
+  df <- data.frame(x=rep(x.rng, ncol(x.grid)), y=c(col(x.grid)), z=c(z))
+  attr(df, 'focal.point') <- focal.point.r
+  df
+}
+dist <- 5 * diff(range(mat))
+sep <- dist / 40
+l <- binocular_parallax(mat, shadow, dist, -sep)
+r <- binocular_parallax(mat, shadow, dist, sep)
+
+df <- rbind(transform(l, eye='left'), transform(r, eye='right'))
+df.focus <- as.data.frame(
+  rbind(attr(l, 'focal.point')[1:2], attr(r, 'focal.point')[1:2])
+)
+df.focus$eye <- c('left', 'right')
+ggplot(df, aes(x=x, y=y)) +
+  geom_raster(aes(fill=z)) +
+  facet_wrap(~eye, scales='free_x') +
+  geom_point(data=df.focus, shape=24, color='red') +
+  plot_attr
+
+df <- rbind(transform(l, eye='left'), transform(r, eye='right'))
+shadow.offset <- 250
+df$r <- ifelse(df$eye == 'right', df$z, 0)
+df$g <- ifelse(df$eye == 'left', df$z, 0)
+df$b <- 0
+df$x <- ifelse(df$eye == 'right', df$x + shadow.offset, df$x)
+library(data.table)
+setDT(df)
+sdf <- df[, .(r=sum(r), g=sum(g), b=sum(b)), .(x, y)]
+sdf$fill <- rgb(sdf[, c('r', 'g', 'b')])
+
+ggplot(sdf, aes(x=x, y=y)) +
+  geom_raster(fill=sdf$fill) +
+  plot_attr
+
+df <- data.frame(x=c(row(shadow)), y=c(col(shadow)), z=c(shadow))
+ggplot(df, aes(x=x, y=y, fill=z)) +
+  geom_raster() +
+  scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE)
 
 
 
