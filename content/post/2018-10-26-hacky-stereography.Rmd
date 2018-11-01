@@ -66,18 +66,56 @@ ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
 ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
 XR <- rotationMatrix(  40 / 180 * pi, 1, 0, 0)
 
-open3d()
-par3d(windowRect=c(0,0,height,height))
-par3d(viewport=c(0,0,height,height))
-persp_elev(mx, sh.s)
-rgl.viewpoint(userMatrix=t(XR) %*% t(ZRl), type='modelviewpoint')
+width <- height <- 550
 
-open3d()
-par3d(windowRect=c(0,0,height,height))
-par3d(viewport=c(0,0,height,height))
-# par3d(viewport=c(offset*width,0,width,height))
+par3d(windowRect=c(0,0,width,height))
+par3d(viewport=c(0,0,width,height))
+persp_elev(mx, sh.s)
+
+umx <- t(XR) %*% t(ZRl)
+umx[4,4] <- 1
+rgl.viewpoint(userMatrix=umx, type='modelviewpoint', zoom=.7)
+snapshot3d('persp-left.png')
+
 persp_elev(mx, sh.s)
 rgl.viewpoint(userMatrix=t(XR) %*% t(ZRr), type='modelviewpoint')
+snapshot3d('persp-right.png')
+
+# stitch images together
+
+left <- png::readPNG('persp-left.png')
+right <- png::readPNG('persp-right.png')
+stopifnot(identical(dim(left), dim(right)))
+
+# remove rows and columns that are blank in both images
+
+empty.rows <- which(
+  (rowSums(left) == 3 * ncol(left)) & (rowSums(right) == 3 * ncol(right))
+)
+empty.cols <- which(
+  (rowSums(colSums(left)) == 3 * nrow(left)) &
+  (rowSums(colSums(right)) == 3 * nrow(right))
+)
+left <- left[-empty.rows, -empty.cols, ]
+right <- right[-empty.rows, -empty.cols, ]
+
+# figure out how close we can get the left and right images before we
+# start overlapping non-white pixels
+
+no.overlap <- rowSums(left[, rev(seq_len(ncol(left))),], dims=2) == 3 |
+  rowSums(right, dims=2) == 3
+no.over.rle <- rle(colSums(no.overlap) == nrow(no.overlap))
+overlap.size <- if(isTRUE(no.over.rle[['values']][1]))
+  no.over.rle[['lengths']][1] else 0L
+
+# combine and write png
+
+combined <- array(0, dim=dim(left) * c(1,2,1) - c(0, overlap.size, 0))
+combined[,seq_len(ncol(left)),] <- left
+combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
+  combined[,tail(seq_len(ncol(combined)), ncol(right)),] + right
+png::writePNG(combined, 'persp.png')
+png::writePNG(right, 'temp.png')
 
 ```
 
