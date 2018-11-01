@@ -7,6 +7,7 @@ categories: []
 tags: []
 ---
 
+## get data
 ```{r}
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 elmat1 <- matrix(
@@ -20,43 +21,116 @@ shadow <- rayshader::ray_shade(mx, els, sun, lambert=FALSE)
 shadow <- shadow[, rev(seq_len(ncol(shadow)))]
 
 # rescale shadow to be a little lighter
-
 sh.scale <- .15
 sh.s <- (sh.scale + shadow) / (1 + sh.scale)
+```
 
-obs.alt <- 5 * max(mx)
-eye.sep <- max(mx)
+## stereo top down
 
+```{r}
 library(rgl)
 width <- 400
 height <- 300
-angle <- 4
+elev <- 50
 mfrow3d(2, 1)
+offset <- .55
+angle <- 3
 fp <- c(floor(nrow(mx)/2), floor(ncol(mx)/2))
 fp[3] <- mx[fp[1], fp[2]] + .05 * diff(range(mx))
 
-par3d(windowRect=c(0,0,2 * width, height))
+par3d(windowRect=c(0,0,(1+offset) * width, height))
 par3d(viewport=c(0,0,width, height))
 
-persp_elev <- function(elevation, sh)
+persp_elev <- function(elevation, sh, inc.sphere=TRUE) {
   persp3d(
     seq_len(nrow(elevation)), seq_len(ncol(elevation)), c(elevation),
     color=rgb(c(sh), c(sh), c(sh)), lit=FALSE,
     xlab="", ylab="", zlab="", box=FALSE, axes=FALSE
   )
-
+  if(inc.sphere) rgl.spheres(x=fp[1], y=fp[2], z=fp[3], color='red', r=20)
+  aspect3d(1, 1, 1)
+}
 persp_elev(mx, sh.s)
-rgl.spheres(x=fp[1], y=fp[2], z=fp[3], color='red', r=20)
-aspect3d(1.5, 1.5, .75)
-view3d(-angle, 0, zoom=0.70)
+view3d(-angle, 0, zoom=.60)
 
 next3d()
-par3d(viewport=c(.55*width,0,width,height))
+par3d(viewport=c(offset*width,0,width,height))
 persp_elev(mx, sh.s)
-rgl.spheres(x=fp[1], y=fp[2], z=fp[3], color='red', r=20)
-aspect3d(1.5, 1.5, .75)
-view3d(angle, 0, zoom=0.70)
+view3d(angle, 0, zoom=.60)
 ```
+
+## stereo angle
+
+```{r}
+ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
+ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
+XR <- rotationMatrix(  40 / 180 * pi, 1, 0, 0)
+
+open3d()
+par3d(windowRect=c(0,0,height,height))
+par3d(viewport=c(0,0,height,height))
+persp_elev(mx, sh.s)
+rgl.viewpoint(userMatrix=t(XR) %*% t(ZRl), type='modelviewpoint')
+
+open3d()
+par3d(windowRect=c(0,0,height,height))
+par3d(viewport=c(0,0,height,height))
+# par3d(viewport=c(offset*width,0,width,height))
+persp_elev(mx, sh.s)
+rgl.viewpoint(userMatrix=t(XR) %*% t(ZRr), type='modelviewpoint')
+
+```
+
+## rgl colors
+
+```{r}
+width <- 600
+height <- 600
+angle <- 2
+par3d(windowRect=c(0,0,width,height))
+par3d(viewport=c(0,0,width,height))
+persp_elev(mx, sh.s, inc.sphere=FALSE)
+view3d(-angle, 0, zoom=.55)
+snapshot3d('left.png')
+view3d(angle, 0, zoom=.55)
+snapshot3d('right.png')
+
+offset <- 10
+left <- png::readPNG('left.png')
+left[,,2:3] <- 0
+
+right <- png::readPNG('right.png')
+right[,,1] <- 0
+right[,-((ncol(right) - offset + 1L):ncol(right)),] <- right[,-seq_len(offset),]
+right[,((ncol(right) - offset + 1L):ncol(right)),] <- 0
+
+final <- left + right
+png::writePNG(final, 'final.png')
+
+offset <- 0
+dat <- rbind(
+  data.frame(
+    x=rep(seq_len(nrow(left)), ncol(left)) + offset,
+    y=rep(seq_len(ncol(left)), each=nrow(left)),
+    r=c(left[,,1]), g=c(left[,,2]), b=c(left[,,3])
+  ),
+  data.frame(
+    x=rep(seq_len(nrow(right)), ncol(right)) + offset,
+    y=rep(seq_len(ncol(right)), each=nrow(right)),
+    r=c(right[,,1]), g=c(right[,,2]), b=c(right[,,3])
+  )
+)
+library(data.table)
+setDT(dat)
+dat2 <- dat[, .(r=sum(r), g=sum(g), b=sum(b)), .(x, y)]
+dat2[, z:=rgb(r,g,b)]
+library(ggplot2)
+ggplot(dat2, aes(x=x, y=y, fill=z)) +
+  geom_raster()
+```
+
+
+## rgl other
 
 
 ```{r plot-settings echo=FALSE}
