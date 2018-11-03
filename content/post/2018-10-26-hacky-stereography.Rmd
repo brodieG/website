@@ -62,21 +62,23 @@ view3d(angle, 0, zoom=.60)
 ## stereo angle
 
 ```{r}
+empty_rows <- function(arr) (rowSums(arr) == 3 * ncol(arr))
+empty_cols <- function(arr) (rowSums(colSums(arr)) == 3 * nrow(arr))
+
+angle <- 4
 ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
 ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
-XR <- rotationMatrix(  40 / 180 * pi, 1, 0, 0)
+XR <- rotationMatrix(  50 / 180 * pi, 1, 0, 0)
 
-width <- height <- 550
+width <- height <- 450
 
 par3d(windowRect=c(0,0,width,height))
 par3d(viewport=c(0,0,width,height))
 persp_elev(mx, sh.s)
-
-umx <- t(XR) %*% t(ZRl)
-umx[4,4] <- 1
-rgl.viewpoint(userMatrix=umx, type='modelviewpoint', zoom=.7)
+rgl.viewpoint(userMatrix=t(XR) %*% t(ZRl), type='modelviewpoint', zoom=.7)
 snapshot3d('persp-left.png')
 
+clear3d()
 persp_elev(mx, sh.s)
 rgl.viewpoint(userMatrix=t(XR) %*% t(ZRr), type='modelviewpoint')
 snapshot3d('persp-right.png')
@@ -89,13 +91,8 @@ stopifnot(identical(dim(left), dim(right)))
 
 # remove rows and columns that are blank in both images
 
-empty.rows <- which(
-  (rowSums(left) == 3 * ncol(left)) & (rowSums(right) == 3 * ncol(right))
-)
-empty.cols <- which(
-  (rowSums(colSums(left)) == 3 * nrow(left)) &
-  (rowSums(colSums(right)) == 3 * nrow(right))
-)
+empty.rows <- which(empty_rows(left) & empty_rows(right))
+empty.cols <- which(empty_cols(left) & empty_cols(right))
 left <- left[-empty.rows, -empty.cols, ]
 right <- right[-empty.rows, -empty.cols, ]
 
@@ -115,7 +112,52 @@ combined[,seq_len(ncol(left)),] <- left
 combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
   combined[,tail(seq_len(ncol(combined)), ncol(right)),] + right
 png::writePNG(combined, 'persp.png')
-png::writePNG(right, 'temp.png')
+```
+
+```{r}
+angle <- 3
+ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
+ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
+trans <- matrix(numeric(16), 4)
+trans[1,4] <-  50
+trans[2,4] <- 600
+zoom <- .8
+
+zoff <- 1800
+width <- 800
+height <- 800
+
+open3d()
+par3d(windowRect=c(0,0,width,height))
+par3d(viewport=c(0,0,width,height))
+persp_elev(mx, sh.s, inc.sphere=FALSE)
+rgl.spheres(x=0, y=ncol(mx), z=zoff, color='#CCCCCC', r=40)
+mxu <- t(XR) %*% t(ZRl) + trans
+mxu[4,4] <- zoom
+rgl.viewpoint(userMatrix=mxu, type='modelviewpoint')
+snapshot3d('persp-color-left.png')
+
+clear3d()
+persp_elev(mx, sh.s, inc.sphere=FALSE)
+rgl.spheres(x=0, y=ncol(mx), z=zoff, color='#CCCCCC', r=40)
+mxu <- t(XR) %*% t(ZRr) + trans
+mxu[4,4] <- zoom
+rgl.viewpoint(userMatrix=mxu, type='modelviewpoint')
+snapshot3d('persp-color-right.png')
+
+# stitch images together
+
+left <- png::readPNG('persp-color-left.png')
+right <- png::readPNG('persp-color-right.png')
+empty.rows <- which(empty_rows(left) & empty_rows(right))
+empty.cols <- which(empty_cols(left) & empty_cols(right))
+left <- left[-empty.rows, -empty.cols, ]
+right <- right[-empty.rows, -empty.cols, ]
+
+left[,,2:3] <- 0
+right[,,1] <- 0
+
+png::writePNG(left + right, 'persp-color.png')
 
 ```
 
