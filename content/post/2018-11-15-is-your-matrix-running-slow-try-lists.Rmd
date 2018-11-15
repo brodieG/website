@@ -1,0 +1,267 @@
+---
+title: Is Your Matrix Running Slow? Try Lists.
+author: ~
+date: '2018-11-15'
+slug: is-your-matrix-running-slow-try-lists
+draft: true
+categories: [optimization]
+tags: [rstats]
+---
+
+```{r echo=FALSE}
+options(digits=3)
+library(microbenchmark)
+knitr::opts_chunk$set(
+  comment = ""
+)
+```
+
+## Matrices are Always Faster Than Data Frames, Right?
+
+Generally speaking matrices are amongst the R data structures that are
+fastest to operate on.  After all, they are contiguous chunks of memory with
+almost no overhead.  Unfortunately, they do come with a major limitation: any
+subset operation requires a copy of the data subset.  Consider:
+
+```{r}
+set.seed(1023)
+v1 <- runif(1e5)
+v2 <- runif(1e5)
+v3 <- runif(1e5)
+M <- cbind(v1, v2, v3)
+D <- data.frame(v1, v2, v3)
+microbenchmark(M[,1:2], D[,1:2], times=10)
+```
+
+The data frame subset is much faster because R treats data frame columns as
+independent objects, so referencing an entire column does not require a copy if
+the data is not modified.
+
+## Awesome, I'll Just Use Data Frames! Right?
+
+If you have been in R circles for any length of time you will inevitably have
+heard something I will loosely paraphrase as:
+
+> blah blah blah data frames are EVIL blah blah
+
+However said that to you was not completely lying.  Let us see what happens if
+we select rows and columns:
+
+```{r}
+idx <- sample(seq_len(nrow(M)), 5e4)
+microbenchmark(M[idx,1:2], D[idx,1:2], times=10)
+```
+
+Ouch!  So we cannot just switch to data frames blindly.  But what is going on?
+We can easily check how time is used by our expression with
+[treeprof](https://github.com/brodieG/treeprof):
+
+```{r eval=FALSE}
+treeprof::treeprof(D[idx,1:2], target.time=1)
+```
+```{r echo=FALSE}
+print(treeprof::treeprof(D[idx,1:2], target.time=1))
+```
+
+So `anyDuplicated` is taking a bunch of time, and while not obvious from the
+profile data alone, this is because data frames do not like having duplicated
+row names.  So let's introduce some duplicated row names to see what happens:
+
+```{r eval=FALSE}
+treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1)
+```
+```{r echo=FALSE}
+print(treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1))
+```
+
+Holy horror show!  Data frame creates new character row names that now have to
+be lugged around as a character vector.  This makes the data frame operation
+several times slower than the corresponding matrix operation.  In exchange you
+get:
+
+```{r}
+tail(rownames(D[c(idx,idx[1]), 1:2]))
+```
+
+Not. a. good. deal.
+
+# Lists to the Rescue
+
+With a little extra work you can do most of what you would normally do with a
+matrix or data frame with a list.  It is not trivial or something I would want
+to do on a regular basis, but for a package where performance it could be a
+better alternative than compiled code or adding a dependency.
+
+```{r}
+L <- as.list(D)
+identical(
+  lapply(L[1:2], '[', idx),   ## apply `[` to each "column"
+  as.list(D[idx,1:2])
+)
+microbenchmark(
+  M[idx,1:2], D[idx,1:2], lapply(L[1:2], '[', idx), times=10
+)
+```
+
+In the case in which we index rows the list/`lapply` method is comparable to the
+matrix indexing.  And if we only index columns then the list is even faster
+than the data frame:
+
+```{r}
+microbenchmark(M[,1:2], D[,1:2], L[1:2], times=10)
+```
+
+As hinted at by the `lapply(L[1:2], '[', idx)` construct earlier, unlocking the
+speed benefits takes a little work.  Since R is a (mostly) functional
+programming language with good list facilities, it can be fun and rewarding to
+find the list equivalents of common matrix operations.  For example, to find the
+distance between 2D points defined by `(v1,v2)` to those defined by `(v2,v3)` we
+would use:
+
+<a name='dist-calc'></a>
+```{r dist-calc}
+dist_m <- function(x, y) sqrt(rowSums((x - y)^2))
+dist_l <- function(x, y) sqrt(Reduce("+", lapply(Map("-", x, y), "^", 2)))
+```
+
+These are equivalent:
+
+```{r}
+all.equal(dist_m(M[, 1:2], M[,2:3]), dist_l(L[1:2], L[2:3]))
+```
+
+For a detailed explanation of what these functions are doing [see the
+appendix](#list-vs-matrix-example).
+
+The theme is that we don't benefit from the natural vectorization of
+base R functions across columns, so we have to explicitly execute that with
+`Map`, `lapply`, `Reduce`, and other functional programming tools.  This is not
+trivial, but with a little practice, functional manipulation of lists in R
+becomes second hand.  And there is payoff:
+
+```{r}
+microbenchmark(dist_m(M[,1:2], M[,2:3]), dist_l(L[1:2], L[2:3]))
+```
+
+A 2x performance increase out of an expression like:
+```{r eval=FALSE}
+sqrt(rowSums((M[,1:2] - M[,2:3])^2))
+```
+is nothing to sneeze at.  There is no guarantee that the list approach will
+always be faster, but if your data is tall (lots of observations) and skinny
+(not too many variables), and you need to subset for columns a lot, the list
+approach is a good option.  If the ratio of rows to columns is more in favor of
+columns the cost overhead of explicitly looping over columns will likely give
+matrix operations the edge.
+
+# A Case Study
+
+One of my side projects required me to implement [barycentric coordinate][1]
+conversions to interpolate values from triangle vertices into the triangles
+themselves.  So in the following diagram I wish to compute the barycentric
+coordinates of each gray point relative to its enclosing triangle:
+
+```{r echo=FALSE}
+size <- 2
+vert <- sin(60/180*pi)
+x1 <- seq(1, len=size, by=2)
+x2 <- seq(2, len=size, by=2)
+x3 <- seq(1.5, len=size, by=2)
+y1 <- rep(0, size)
+y2 <- rep(0,size)
+y3 <- rep(vert, size)
+
+x1a <- x1 + 1
+x2a <- x2 + 1
+x3a <- x3 + 1
+y1a <- y1 + vert
+y2a <- y2 + vert
+y3a <- y3 - vert
+
+band <- cbind(
+  c(x1,x2,x3,x1a,x2a,x3a),
+  c(y1,y2,y3,y1a,y2a,y3a),
+  c(rep(seq_len(size), 3), rep(seq_len(size), 3) + size)
+)
+yoffsets <- seq(0, len=size*2, by=vert + .1)
+mesh <- do.call(
+  rbind,
+  lapply(
+    seq_along(yoffsets),
+    function(x)
+      band + cbind(x=rep(0, nrow(band)), y=yoffsets[x], id=(x - 1) * size * 2)
+) )
+meshdf <- as.data.frame(mesh)
+meshidx <- with(meshdf, tapply(x, id, function(x) mean(range(x))))
+meshidy <- with(meshdf, tapply(y, id, function(x) mean(range(x))))
+meshid <- data.frame(
+  id=as.integer(names(meshidx)), x=meshidx, y=meshidy[names(meshidx)]
+)
+colstep <- 256 / (size * 2)^2
+meshdf <- with(meshdf, meshdf[order(id, x, y),])
+meshdf <- transform(
+  meshdf,
+  r=((id * colstep) - 1) * c(1, 0, 0) / 255,
+  g=((id * colstep) - 1) * c(0, 1, 0) / 255,
+  b=((id * colstep) - 1) * c(0, 0, 1) / 255
+)
+meshdf <- transform(meshdf, color=rgb(r, g, b))
+
+library(ggplot2)
+ggplot(meshdf) + geom_polygon(aes(x,y,group=id)) +
+  geom_label(data=meshid, aes(x, y, label=id)) +
+  geom_point(aes(x, y, color=I(color)))
+
+
+```
+
+# Appendix
+
+## List Vs Matrix Example
+
+Recall `dist_l` and `dist_m` from the [distance calculation
+example](#dist-calc):
+
+```{r dist-calc}
+```
+
+Here we break down each function into component steps by saving the intermediary
+results into variables.  The first step is to compute the pairwise differences
+between our columns:
+
+```{r}
+xL <- L[1:2];  yL <- L[2:3]
+xM <- M[,1:2]; yM <- M[,2:3]
+
+diffL <-      Map("-", xL, yL)   # with lists
+diffM <-      xM - yM            # with matrices
+str(diffL)
+str(diffM)
+```
+
+Obviously the matrix calculation is simpler, but the list version is effectively
+equivalent (minus the structure of the result), and extends naturally to any
+equal number of columns in `x` and `y`.  We could also just as easily substitute
+the "-" operator for any other binary operator or function as we could with the
+matrices.
+
+We then use a standard `lapply` to square each of the differences:
+
+```{r}
+diffsqL <-    lapply(diffL, "^", 2)
+diffsqM <-    diffM ^ 2
+```
+
+Finally, we can use `Reduce` to sum across columns as a replacement for
+`rowSums`:
+
+```{r}
+sqsumL <-     Reduce("+", diffsqL)
+sqsumM <-     rowSums(diffsqM)
+
+all.equal(sqrt(sqsumL), sqrt(sqsumM))
+```
+
+
+
+[1]: https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles
