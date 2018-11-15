@@ -6,9 +6,14 @@ slug: hacky-stereography
 categories: []
 tags: []
 ---
+```
+knitr::opts_chunk$set(
+  eval='FALSE', echo='FALSE', comment = ""
+)
+```
 
 ## get data
-```{r}
+```
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 elmat1 <- matrix(
   raster::extract(eltif,raster::extent(eltif),buffer=10000),
@@ -27,7 +32,7 @@ sh.s <- (sh.scale + shadow) / (1 + sh.scale)
 
 ## stereo top down
 
-```{r}
+```
 library(rgl)
 width <- 400
 height <- 300
@@ -61,7 +66,7 @@ view3d(angle, 0, zoom=.60)
 
 ## stereo angle
 
-```{r}
+```
 empty_rows <- function(arr) (rowSums(arr) == 3 * ncol(arr))
 empty_cols <- function(arr) (rowSums(colSums(arr)) == 3 * nrow(arr))
 
@@ -114,7 +119,7 @@ combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
 png::writePNG(combined, 'persp.png')
 ```
 
-```{r}
+```
 angle <- 3
 ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
 ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
@@ -163,7 +168,7 @@ png::writePNG(left + right, 'persp-color.png')
 
 ## rgl colors
 
-```{r}
+```
 width <- 600
 height <- 600
 angle <- 2
@@ -213,7 +218,7 @@ ggplot(dat2, aes(x=x, y=y, fill=z)) +
 ## rgl other
 
 
-```{r plot-settings echo=FALSE}
+```
 library(ggplot2)
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 elmat1 <- matrix(
@@ -257,7 +262,7 @@ We are only going to shift heights along the x-axis in proportion to the
 heights, instead of rotating the entire plane.  We do this with the
 `shift_shadow` function:
 
-```{r}
+```
 ## We start with a matrix of elevations, and compute shadows
 
 mx <- elmat1
@@ -431,11 +436,6 @@ mesh.int <- cbind(
 ## have the four coordinates side by side?
 
 
-
-
-
-
-```{r}
 mx <- matrix(0, 5, 5)
 rot.ang <- 45 / 180 * pi
 mx.c <- cbind(x=c(row(mx) - 3L), y=c(col(mx)), z=c(mx))
@@ -450,10 +450,9 @@ ggplot(mapping=aes(x, y, size=z)) +
   geom_point(data=df.c, color='black') +
   geom_point(data=df.c.r, color='red')
 
-
 ```
 
-```{r}
+```
 shift_shadow <- function(tilt, heightmap, shadow) {
   stopifnot(identical(dim(heightmap), dim(shadow)))
   ## determine new x-coordinates for each elevation; make them monotonically
@@ -493,7 +492,7 @@ two degrees to the left, and to the right:
 
 
 
-```{r}
+```
 ## Shift shadows
 
 tilts <- 1 * rev((c(left=1,right=-1))/180*pi)
@@ -540,6 +539,5 @@ ggplot(sh.df.2, aes(x=Var1, y=Var2, fill=z)) +
     data=data.frame(x=mid.x+mid.tilts, y=mid.y, id=c('left', 'right')),
     aes(x, y, fill=NULL), shape=24, color='red'
   )
-
 
 ```
