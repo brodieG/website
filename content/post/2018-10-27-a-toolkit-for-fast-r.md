@@ -32,6 +32,7 @@ tags: [rstats]
 * arithmetic operators
 * `sum`, `mean`, etc.
 * `sort`, `order`, etc.
+* `which`, `which.min`, also `arrInd=TRUE` examples
 
 # Example
 
