@@ -164,41 +164,38 @@ coordinates of each gray point relative to its enclosing triangle:
 ```{r echo=FALSE}
 size <- 2
 vert <- sin(60/180*pi)
-x1 <- seq(1, len=size, by=2)
-x2 <- seq(2, len=size, by=2)
-x3 <- seq(1.5, len=size, by=2)
-y1 <- rep(0, size)
-y2 <- rep(0,size)
-y3 <- rep(vert, size)
 
-x1a <- x1 + 1
-x2a <- x2 + 1
-x3a <- x3 + 1
-y1a <- y1 + vert
-y2a <- y2 + vert
-y3a <- y3 - vert
+x <- c(0, .5, 1)
+y <- c(0, vert, 0)
 
-band <- cbind(
-  c(x1,x2,x3,x1a,x2a,x3a),
-  c(y1,y2,y3,y1a,y2a,y3a),
-  c(rep(seq_len(size), 3), rep(seq_len(size), 3) + size)
+x.rep <- 2
+y.rep <- 4
+rep <- x.rep * y.rep
+x.off <- 2
+y.off <- 1
+
+xy.off <- as.matrix(
+  expand.grid(x=(seq_len(x.rep) - 1) * x.off, y=(seq_len(y.rep) - 1) * y.off)
+)[rep(seq_len(rep), each=3),]
+tri.up <- cbind(
+  cbind(rep(x, rep), rep(y, rep)) + xy.off, id=rep(seq_len(rep), each=3)
 )
-yoffsets <- seq(0, len=size*2, by=vert + .1)
-mesh <- do.call(
-  rbind,
-  lapply(
-    seq_along(yoffsets),
-    function(x)
-      band + cbind(x=rep(0, nrow(band)), y=yoffsets[x], id=(x - 1) * size * 2)
-) )
-meshdf <- as.data.frame(mesh)
-meshidx <- with(meshdf, tapply(x, id, function(x) mean(range(x))))
-meshidy <- with(meshdf, tapply(y, id, function(x) mean(range(x))))
-meshid <- data.frame(
-  id=as.integer(names(meshidx)), x=meshidx, y=meshidy[names(meshidx)]
+tri.down <- tri.up
+tri.down[,'y'] <- -tri.down[,'y']
+tri.down[,'y'] <- tri.down[,'y'] - min(tri.down[,'y'])
+tri.down[,'x'] <- tri.down[,'x'] + 1
+tri.down[,'id'] <- tri.down[,'id'] + max(tri.down[,'id'])
+
+meshdf <- as.data.frame(rbind(tri.up, tri.down))
+meshdf <- transform(meshdf,
+  x.mid=ave(x, id, FUN=function(z) mean(range(z))),
+  y.mid=ave(y, id, FUN=function(z) mean(range(z)))
 )
+meshdf <- with(meshdf, meshdf[order(y.mid + x.mid / (rep * 2)),])
+meshdf$id <- rep(seq_len(rep * 2), each=3)
+meshdf$idv <- seq_len(nrow(meshdf))
+
 colstep <- 256 / (size * 2)^2
-meshdf <- with(meshdf, meshdf[order(id, x, y),])
 meshdf <- transform(
   meshdf,
   r=((id * colstep) - 1) * c(1, 0, 0) / 255,
@@ -207,10 +204,91 @@ meshdf <- transform(
 )
 meshdf <- transform(meshdf, color=rgb(r, g, b))
 
+n <- 30
+mrg <- .025
+rng.x <- diff(range(x))
+rng.y <- diff(range(y))
+points <- expand.grid(
+  x=seq(min(x) + mrg * rng.x, max(x) - mrg * rng.x, length.out=n),
+  y=seq(min(y) + mrg * rng.y, max(y) - mrg * rng.y, length.out=n)
+)
+points.all <- do.call(
+  rbind,
+  lapply(
+    sort(unique(meshdf$id)),
+    function(z) {
+      transform(points,
+        id=z, x=x + (z-1) %% y.rep * x.off / 2, y=y + (z-1) %/% y.rep * y.off
+) } ) )
+
+ggplot(meshdf) +
+  geom_point(aes(x, y, color=I(color))) +
+  geom_polygon(aes(x, y, group=id), alpha=0, color='black') +
+  geom_point(data=points.all, aes(x, y), size=0.1) +
+  geom_label(aes(x.mid, y.mid, label=id))
+
+mesh1 <- meshdf[seq(1, len=rep*2, by=3), c('x','y','r','g','b')]
+mesh2 <- meshdf[seq(2, len=rep*2, by=3), c('x','y','r','g','b')]
+mesh3 <- meshdf[seq(3, len=rep*2, by=3), c('x','y','r','g','b')]
+
+names(mesh1) <- paste0(names(mesh1), "1")
+names(mesh2) <- paste0(names(mesh2), "2")
+names(mesh3) <- paste0(names(mesh3), "3")
+
+mesh.all <- cbind(mesh1, mesh2, mesh3)
+
+mesharr[,,1] <- 
+mesharr[,,2] <- meshdf[seq(1, len=rep*2, by=2), c('x','y','r','g','b')]
+mesharr[,,3] <- meshdf[seq(1, len=rep*2, by=2), c('x','y','r','g','b')]
+
+aperm(
+  array(
+    as.matrix(meshdf[]),
+    c(3, 5, nrow(meshdf)/3)
+  ),
+  c(3,1,2)
+)
+
+# generate points inside
+
+
+diff(range(x)) * .9 + min(x) * 1/.9
+
+
 library(ggplot2)
 ggplot(meshdf) + geom_polygon(aes(x,y,group=id)) +
-  geom_label(data=meshid, aes(x, y, label=id)) +
-  geom_point(aes(x, y, color=I(color)))
+
+bary_m <- function(M) {
+  det <- (M[,'y2']-M[,'y3'])*(M[,'x1']-M[,'x3']) +
+         (M[,'x3']-M[,'x2'])*(M[,'y1']-M[,'y3'])
+
+  l1 <- (
+          (M[,'y2']-M[,'y3']) * (M[,'x']-M[,'x3']) +
+          (M[,'x3']-M[,'x2']) * (M[,'y']-M[,'y3'])
+        ) / det
+  l2 <- (
+          (M[,'y3']-M[,'y1']) * (M[,'x']-M[,'x3']) +
+          (M[,'x1']-M[,'x3']) * (M[,'y']-M[,'y3'])
+        ) / det
+  l3 <- 1 - l1 - l2
+  cbind(l1, l2, l3)
+}
+bary_l <- function(L) {
+  det <- (L['y2']-L['y3'])*(L['x1']-L['x3']) +
+         (L['x3']-L['x2'])*(L['y1']-L['y3'])
+
+  l1 <- (
+          (L['y2']-L['y3']) * (L['x']-L['x3']) +
+          (L['x3']-L['x2']) * (L['y']-L['y3'])
+        ) / det
+  l2 <- (
+          (L['y3']-L['y1']) * (L['x']-L['x3']) +
+          (L['x1']-L['x3']) * (L['y']-L['y3'])
+        ) / det
+  l3 <- 1 - l1 - l2
+  list(l1, l2, l3)
+}
+
 
 
 ```
