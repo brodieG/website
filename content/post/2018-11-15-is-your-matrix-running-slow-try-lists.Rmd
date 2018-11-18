@@ -343,12 +343,135 @@ microbenchmark(times=10,
 # A Case Study
 
 One of my side projects required me to implement [barycentric coordinate][1]
-conversions to interpolate values from triangle vertices into the triangles
+conversions.  You can think of barycentric coordinates of a point on the surface
+of a triangle as the weights needed on each vertex such that the triangle
+balances on that point.  We show here three different points (red crosses) with
+the barycentric coordinates associated with each vertex.  The size of the vertex
+helps visualize the "weights":
+
+```{r echo=FALSE, fig.width=7, fig.height=2.5}
+bary_l <- function(p, v) {
+  det <-  (v[[2,'y']]-v[[3,'y']])*(v[[1,'x']]-v[[3,'x']]) +
+          (v[[3,'x']]-v[[2,'x']])*(v[[1,'y']]-v[[3,'y']])
+
+  l1 <- (
+          (v[[2,'y']]-v[[3,'y']])*(  p[['x']]-v[[3,'x']]) +
+          (v[[3,'x']]-v[[2,'x']])*(  p[['y']]-v[[3,'y']])
+        ) / det
+  l2 <- (
+          (v[[3,'y']]-v[[1,'y']])*(  p[['x']]-v[[3,'x']]) +
+          (v[[1,'x']]-v[[3,'x']])*(  p[['y']]-v[[3,'y']])
+        ) / det
+  l3 <- 1 - l1 - l2
+  list(l1, l2, l3)
+}
+height <- sin(pi/3)
+v.off <- (1 - height) / 2
+
+v <- cbind(x=list(0, .5, 1), y=as.list(c(0, height, 0) + v.off))
+
+p1 <- list(x=.5, y=tan(pi/6) * .5 + v.off)
+p2 <- list(x=.5, y=sin(pi/3) * .8 + v.off)
+p3 <- list(x=cos(pi/6)*sin(pi/3), y=sin(pi/3) * .5 + v.off)
+
+plot_bary <- function(p, v) {
+  labeler <- function(x) sprintf("%.02f", unlist(x))
+  bc <- bary_l(p, v)
+  polygon(unlist(v[,'x']), unlist(v[,'y']))
+  points(p, col='red', pch=4, cex=3)
+  points(v[,'x'], v[,'y'], cex=unlist(bc) * 5, pch=19)
+  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1)
+}
+par(bg='#EEEEEE')
+par(xpd=TRUE)
+par(mai=c(.25,.125,.25,.125))
+par(mfrow = c(1, 3))
+plot.new()
+plot_bary(p1, v)
+plot.new()
+plot_bary(p2, v)
+plot.new()
+plot_bary(p3, v)
+```
+
+This is useful if we want to interpolate values from the vertices to points in
+the triangle.  Here we do it with colors:
+
+```{r echo=FALSE, fig.width=7, fig.height=2.5}
+v2 <- cbind(v, r=c(1, 1, 0), g=c(0,1,1), b=c(1,0,1))
+
+plot_bary2 <- function(p, v) {
+  labeler <- function(x) sprintf("%.02f", unlist(x))
+  bc <- bary_l(p, v)
+  polygon(unlist(v[,'x']), unlist(v[,'y']))
+  bcw <- lapply(
+    seq_len(3),
+    function(x)
+      Reduce('+', matrix(Map('*', v[,c('r','g','b')], bc), nrow=nrow(v))[,x])
+  )
+  p.col <- rgb(bcw[1], bcw[2], bcw[3])
+  points(p, col='white', bg=p.col, pch=22, cex=3)
+  points(
+    v[,'x'], v[,'y'], cex=unlist(bc) * 5, pch=19,
+    col=rgb(v[,'r'], v[,'g'], v[,'b'])
+  )
+  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1)
+}
+par(bg='#EEEEEE')
+par(xpd=TRUE)
+par(mai=c(.25,.125,.25,.125))
+par(mfrow = c(1, 3))
+plot.new()
+plot_bary2(p1, v2)
+plot.new()
+plot_bary2(p2, v2)
+plot.new()
+plot_bary2(p3, v2)
+```
+
+And taken to the natural extreme:
+
+```{r echo=FALSE, fig.width=5, fig.height=5}
+n <- 200
+rng.x <- c(0,1)
+rng.y <- c(0,1)
+points <- expand.grid(
+  x=seq(rng.x[1], rng.x[2], length.out=n),
+  y=seq(rng.y[1], rng.y[2], length.out=n),
+  KEEP.OUT.ATTRS=FALSE
+)
+v2 <- cbind(v, r=c(1, 1, 0), g=c(0,1,1), b=c(1,0,1))
+vp <- lapply(v2, '[', rep(1, nrow(points)))
+dim(vp) <- dim(v2)
+dimnames(vp) <- dimnames(v2)
+
+bc <- bary_l(points, vp)
+inbounds <- Reduce('&', lapply(bc, '>=', 0))
+
+clrs.raw <- lapply(
+  apply(vp[, c('r','g','b')], 2, Map, f="*", bc),
+  Reduce, f="+"
+)
+par(bg='#EEEEEE')
+par(xpd=TRUE)
+par(mai=c(.25,.25,.25,.25))
+plot.new()
+clrs.in <- lapply(clrs.raw, '[', inbounds)
+clrs <- do.call(rgb, lapply(clrs.in, pmin, 1))
+points(points[inbounds,], pch=15, col=clrs)
+polygon(v2[,c('x', 'y')])
+points(
+  v2[,c('x', 'y')], pch=21, cex=5, bg=rgb(v2[,'r'], v2[,'g'], v2[,'b']),
+  col='white'
+)
+```
+
+to interpolate values from triangle vertices into the triangles
 themselves.  So in the following diagram I wish to compute the barycentric
 coordinates of each gray point relative to its enclosing triangle:
 
 ```{r echo=FALSE, eval=FALSE}
-bary_m <- function(M) {
+bary_m <- function(p, v) {
   det <- (M[,'y2']-M[,'y3'])*(M[,'x1']-M[,'x3']) +
          (M[,'x3']-M[,'x2'])*(M[,'y1']-M[,'y3'])
 
@@ -362,21 +485,6 @@ bary_m <- function(M) {
         ) / det
   l3 <- 1 - l1 - l2
   cbind(l1, l2, l3)
-}
-bary_l <- function(L) {
-  det <- (L[['y2']]-L[['y3']])*(L[['x1']]-L[['x3']]) +
-         (L[['x3']]-L[['x2']])*(L[['y1']]-L[['y3']])
-
-  l1 <- (
-          (L[['y2']]-L[['y3']]) * (L[['x']]-L[['x3']]) +
-          (L[['x3']]-L[['x2']]) * (L[['y']]-L[['y3']])
-        ) / det
-  l2 <- (
-          (L[['y3']]-L[['y1']]) * (L[['x']]-L[['x3']]) +
-          (L[['x1']]-L[['x3']]) * (L[['y']]-L[['y3']])
-        ) / det
-  l3 <- 1 - l1 - l2
-  list(l1, l2, l3)
 }
 size <- 2
 vert <- sin(60/180*pi)
@@ -454,14 +562,12 @@ l.dat.all <- lapply(l.dat, '[', points.all$id)
 dim(l.dat.all) <- dim(l.dat)
 dimnames(l.dat.all) <- dimnames(l.dat)
 
-l.coord <- c(points.all[c('x', 'y')], l.dat.all[, c('x', 'y')])
-names(l.coord) <- c('x', 'y', 'x1', 'x2', 'x3', 'y1', 'y2', 'y3')
-bl <- bary_l(l.coord)
+bl <- bary_l(points.all[c('x', 'y')], l.dat.all[,c('x','y')])
 
 inbounds <- Reduce('&', lapply(bl, '>=', 0))
 blg <- lapply(bl, "^", 1/1.4)
 clrs <- lapply(
-  apply(l.dat.all[, c('r','g','b')], 2, Map, f="*", blg),
+  apply(l.dat.all[, c('r','g','b')], 2, Map, f="*", bl),
   Reduce, f="+"
 )
 clrs <- lapply(clrs, pmin, 1)
@@ -481,8 +587,30 @@ all.equal(do.call(cbind, bl), bm, check.attributes=FALSE)
 # generate points inside
 
 poly.x <- rep(NA_real_, nrow(meshdf) / 3 * 4)
-poly.x[seq_len(nrow(meshdf)) +
-  cumsum(((seq_len(nrow(meshdf)) - 1) / 3))
+poly.x[seq_len(nrow(meshdf)) + rep(seq_len(max(meshdf$id)) - 1, each=3)] <-
+  meshdf$x
+poly.y <- rep(NA_real_, nrow(meshdf) / 3 * 4)
+poly.y[seq_len(nrow(meshdf)) + rep(seq_len(max(meshdf$id)) - 1, each=3)] <-
+  meshdf$y
+
+dev.off()
+dev.new()
+par(bg='#777777')
+par(mai=numeric(4))
+par(mgp=numeric(3))
+plot.new()
+rng.x <- range(c(poly.x, res$x), na.rm=TRUE)
+rng.y <- range(c(poly.y, res$y), na.rm=TRUE)
+scale <- function(x, rng) (x - rng[1]) / diff(rng)
+
+point.x <- scale(res$x, rng.x)
+point.y <- scale(res$y, rng.y)
+
+poly.x <- scale(poly.x, rng.x)
+poly.y <- scale(poly.y, rng.y)
+
+points(point.x, point.y, col=as.character(res$color), pch=15)
+polygon(poly.x, poly.y)
 
 
 
