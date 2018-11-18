@@ -414,9 +414,9 @@ meshdf$idv <- seq_len(nrow(meshdf))
 colstep <- 256 / (size * 2)^2
 meshdf <- transform(
   meshdf,
-  r=((id * colstep) - 1) * c(1, 0, 0) / 255,
-  g=((id * colstep) - 1) * c(0, 1, 0) / 255,
-  b=((id * colstep) - 1) * c(0, 0, 1) / 255
+  r=c(1,0,0) + ((id * colstep) - 1) * c(0, 1, 0) / 255,
+  g=c(0,1,0) + ((id * colstep) - 1) * c(0, 0, 1) / 255,
+  b=c(0,0,1) + ((id * colstep) - 1) * c(1, 0, 0) / 255
 )
 meshdf <- transform(meshdf, color=rgb(r, g, b))
 
@@ -439,7 +439,7 @@ points.all <- do.call(
 ) } ) )
 ggplot() +
   geom_point(data=points.all, aes(x, y, color=factor(id)), size=.2) +
-  geom_polygon(aes(x, y, group=id), alpha=0, color='black')
+  geom_polygon(data=meshdf, aes(x, y, group=id), alpha=0, color='black')
 
 
 mesh1 <- meshdf[seq(1, len=rep*2, by=3), c('x','y','r','g','b')]
@@ -455,17 +455,19 @@ dim(l.dat.all) <- dim(l.dat)
 dimnames(l.dat.all) <- dimnames(l.dat)
 
 l.coord <- c(points.all[c('x', 'y')], l.dat.all[, c('x', 'y')])
-names(l.coord) <- paste0(c('x', 'y'), rep(c("",1:3), each=2))
+names(l.coord) <- c('x', 'y', 'x1', 'x2', 'x3', 'y1', 'y2', 'y3')
 bl <- bary_l(l.coord)
 
 inbounds <- Reduce('&', lapply(bl, '>=', 0))
-blg <- lapply(bl, "^", 1/2.2)
+blg <- lapply(bl, "^", 1/1.4)
 clrs <- lapply(
   apply(l.dat.all[, c('r','g','b')], 2, Map, f="*", blg),
   Reduce, f="+"
 )
+clrs <- lapply(clrs, pmin, 1)
 res <- cbind(
-  points.all[inbounds,], color=do.call(rgb, lapply(clrs, '[', inbounds))
+  points.all[inbounds,],
+  color=do.call(rgb, lapply(clrs, '[', inbounds))
 )
 ggplot(meshdf) +
   geom_point(data=res, aes(x, y, color=I(color)), size=1.5, shape=15) +
