@@ -480,6 +480,9 @@ microbenchmark(bl <- bary_l(l.coord), bm <- bary_m(mx.coord))
 all.equal(do.call(cbind, bl), bm, check.attributes=FALSE)
 # generate points inside
 
+poly.x <- rep(NA_real_, nrow(meshdf) / 3 * 4)
+poly.x[seq_len(nrow(meshdf)) +
+  cumsum(((seq_len(nrow(meshdf)) - 1) / 3))
 
 
 
