@@ -17,6 +17,23 @@ knitr::opts_chunk$set(
 )
 ```
 
+# TL;DR
+
+I was minding my own business bothering no one when I [fell into the rabbit
+hole](https://www.brodieg.com/2018/10/23/do-not-shade-r/).  Now I'm just digging
+a warren of tunnels through topics completely unrelated to the projects I'm
+supposed to be working on, and only tangentially related to those that
+distracted me in the first place.  As part of this undirected flailing I
+discovered that shading triangle faces from vertex colors is done faster with
+list data structures than with matrices and arrays.
+
+Wait, what?
+
+Simple primitive operations like addition and multiplication can
+run faster on lists than on matrices?  The short answer is yes.  The long answer
+is full of story-ruining caveats and boring benchmarks, and it is waiting for
+you in all its gory glory.
+
 # Matrices are Always Faster Than Data Frames, Right?
 
 Generally speaking matrices are amongst the R data structures that are
@@ -26,7 +43,7 @@ subset operation requires a copy of the data subset.  Consider:
 
 ```{r}
 set.seed(1023)
-n <- 1e6
+n <- 1e5
 x1 <- runif(n)
 y1 <- runif(n)
 x2 <- runif(n)
@@ -351,8 +368,7 @@ balances on that point.  We show here three different points (red crosses) with
 the barycentric coordinates associated with each vertex.  The size of the vertex
 helps visualize the "weights":
 
-
-```{r bary, echo=FALSE}
+```{r bary-l, echo=FALSE}
 ## Conversion to Barycentric Coordinates; List-Matrix Version
 
 bary_L <- function(p, v) {
@@ -370,6 +386,8 @@ bary_L <- function(p, v) {
   l3 <- 1 - l1 - l2
   list(l1, l2, l3)
 }
+```
+```{r bary-a, echo=FALSE}
 ## Conversion to Barycentric Coordinates; Array Version
 
 bary_A <- function(p, v) {
@@ -456,7 +474,7 @@ plot_bary <- function(p, v) {
   polygon(unlist(v[,'x']), unlist(v[,'y']))
   points(p, col='red', pch=4, cex=3)
   points(v[,'x'], v[,'y'], cex=unlist(bc) * 8, pch=19)
-  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1)
+  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1.3)
 }
 plot_bary2 <- function(p, v) {
   plot.new()
@@ -468,7 +486,7 @@ plot_bary2 <- function(p, v) {
     v[,'x'], v[,'y'], cex=unlist(bc) * 8, pch=19,
     col=rgb(apply(v[,c('r','g','b')], 2, unlist))
   )
-  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1.2)
+  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1.3)
 }
 plot_shaded <- function(p, col, v=vinit) {
   par(bg='#EEEEEE')
@@ -476,7 +494,7 @@ plot_shaded <- function(p, col, v=vinit) {
   par(mai=c(.25,.25,.25,.25))
   plot.new()
 
-  points(p, pch=15, col=col, cex=.1)
+  points(p, pch=15, col=col, cex=.2)
   polygon(v[,c('x', 'y')])
   points(
     vinit[,c('x', 'y')], pch=21, cex=5,
@@ -484,7 +502,7 @@ plot_shaded <- function(p, col, v=vinit) {
   )
 }
 ```
-```{r echo=FALSE, fig.width=7, fig.height=2.5}
+```{r echo=FALSE, fig.width=7, fig.height=2.5, fig.align='center'}
 plot_par()
 plot_bary(p1, vinit)
 plot_bary(p2, vinit)
@@ -495,7 +513,7 @@ This is useful if we want to interpolate values from the vertices to points in
 the triangle.  Here we interpolate a color for a point in a triangle from the
 colors of the vertices of that triangle:
 
-```{r echo=FALSE, fig.width=7, fig.height=2.5}
+```{r echo=FALSE, fig.width=7, fig.height=2.5, fig.align='center'}
 plot_par()
 plot_bary2(p1, vinit)
 plot_bary2(p2, vinit)
@@ -559,7 +577,7 @@ str(bc)
 ```
 In:
 ```{r eval=FALSE}
-  clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
+clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
 ```
 We ask `apply` to call `Map` for each column of `v[, c('r','g','b')]`.  The
 additional arguments `f='*'` and `bc` are passed on to Map such that, for the
@@ -595,20 +613,20 @@ str(clr.raw)
 Step 3) collapse the weighted values into r,g,b triples for each point:
 
 ```{r}
-  str(lapply(clr.raw, Reduce, f="+"))
+str(lapply(clr.raw, Reduce, f="+"))
 ```
 
 And with the colors we can render our fully shaded triangle (see appendix for
 `plot_shaded`):
 
-```{r interp-list, fig.width=5, fig.height=5}
+```{r interp-list, fig.width=5, fig.height=5, fig.align='center'}
 color.L <- v_shade_L(point.L, vertex.L)
 plot_shaded(point.L, do.call(rgb, color.L))
 ```
 
 The corresponding function in array format looks very similar to the list one:
 
-```{r}
+```{r bary-matrix}
 v_shade_A <- function(p, v) {
   ## 1) compute barycentric coords
   bc <- bary_A(p, v)
@@ -618,19 +636,28 @@ v_shade_A <- function(p, v) {
   ## 3) for each point-colorchannel, sum the weighted values
   rowSums(aperm(clr.raw, c(1,3,2)), dim=2)
 }
-str(point.A)
-str(vertex.A)
-color.A <- v_shade_A(point.A, vertex.A)
 ```
 
-For a detailed description of what it is doing see the appendix.  The take-away
-for now is that every function in the array implementation is fast in the sense
-that all the real work is done in internal C code, and both functions produce
-the same result:
+For a detailed description of what it is doing [see the
+appendix](array-shading).  The take-away for now is that every function in the
+array implementation is fast in the sense that all the real work is done in
+internal C code.
+
+The data are also similar, although they are in matrix and array format instead
+of list and matrix-list:
 
 ```{r}
+str(point.A)
+str(vertex.A)
+```
+
+Both shading implementations produce the same result:
+
+```{r}
+color.A <- v_shade_A(point.A, vertex.A)
 all.equal(do.call(cbind, color.L), color.A, check.attributes=FALSE)
 ```
+
 Yet, the list based shading is substantially faster:
 
 ```{r}
@@ -639,24 +666,50 @@ microbenchmark(times=25,
   v_shade_A(point.A, vertex.A)
 )
 ```
+
+We can get a better sense of where the speed differences are coming from by
+looking at the profile data using [`treeprof`][2]:
+
 ```{r, eval=FALSE}
 treeprof(v_shade_L(point.L, vertex.L))
-treeprof(v_shade_A(point.A, vertex.A))
 ```
 ```{r, echo=FALSE}
 print(treeprof(v_shade_L(point.L, vertex.L)))
+```
+```{r, eval=FALSE}
+treeprof(v_shade_A(point.A, vertex.A))
+```
+```{r, echo=FALSE}
 print(treeprof(v_shade_A(point.A, vertex.A)))
 ```
 
+Most of the time difference is in the [`bary_L`](#bary_l) vs [`bary_A`](#bary_a)
+functions that compute the barycentric coordinates.  You can also tell that
+because almost all the time in the `bary_*` functions is "self" time (the second
+column in the profile data) that this time is all spent doing primitive /
+internal operations.
+
+Step 2) takes about the same amount of time for both the list-matrix and array
+methods (the `apply` call for `v_shade_L` and the `array` call for `v_shade_A`,
+but step 3) is also much faster for the list approach because with the
+array approach we need to permute the dimensions so we can use `rowSums`.
+
 # Conclusions
 
-
+If your data is tall and skinny, list data structures may allow you to extract
+substantial additional performance out of base R code.  This will come at the
+cost of some convolution in the code, but with a little care it can be justified
+for code written once and used many times.
 
 # Appendix
 
 ## Barycentric Conversions
 
-```{r bary, eval=FALSE}
+<a name='bary_l'></a>
+```{r bary-l, eval=FALSE}
+```
+<a name='bary_a'></a>
+```{r bary-a, eval=FALSE}
 ```
 
 ## Data
@@ -664,16 +717,8 @@ print(treeprof(v_shade_A(point.A, vertex.A)))
 ```{r data-generation, eval=FALSE}
 ```
 
-
-```{r, echo=FALSE, eval=FALSE}
-## Matrix multiplication
-L_dotprod <- function(x, y) mapply(function(u, v) sum(L[[u]] * L[[v]]), x, y)
-microbenchmark(times=5,
-  prod_L <- outer(seq_along(L), seq_along(L), L_dotprod),
-  prod_M <- t(M) %*% M
-)
-all.equal(prod_L, prod_M, check.attributes=FALSE)
-```
+## Matrix Barycentric Calculation
 
 
 [1]: https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles
+[2]: https://github.com/brodieG/treeprof
