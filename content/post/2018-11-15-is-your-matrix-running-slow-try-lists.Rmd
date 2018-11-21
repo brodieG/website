@@ -11,6 +11,7 @@ tags: [rstats]
 ```{r echo=FALSE}
 options(digits=3)
 library(microbenchmark)
+library(treeprof)
 knitr::opts_chunk$set(
   comment = ""
 )
@@ -25,7 +26,7 @@ subset operation requires a copy of the data subset.  Consider:
 
 ```{r}
 set.seed(1023)
-n <- 1e5
+n <- 1e6
 x1 <- runif(n)
 y1 <- runif(n)
 x2 <- runif(n)
@@ -60,7 +61,7 @@ We can easily check how time is used by our expression with
 [treeprof](https://github.com/brodieG/treeprof):
 
 ```{r eval=FALSE}
-treeprof::treeprof(D[idx,1:2], target.time=1)
+treeprof(D[idx,1:2], target.time=1)
 ```
 ```{r echo=FALSE}
 print(treeprof::treeprof(D[idx,1:2], target.time=1))
@@ -71,7 +72,7 @@ profile data alone, this is because data frames do not like having duplicated
 row names.  So let's introduce some duplicated row names to see what happens:
 
 ```{r eval=FALSE}
-treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1)
+treeprof(D[c(idx,idx[1]), 1:2], target.time=1)
 ```
 ```{r echo=FALSE}
 print(treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1))
@@ -196,8 +197,8 @@ microbenchmark(times=25,
 
 `Reduce` collapses the elements of the input list by repeatedly applying a
 binary function to turn two list elements into one.  To be completely honest I'm
-rather surprised it is _faster_ than `rowSums`.  This is partly because we only
-have two columns we are summing over, but still.  `Reduce` is equivalent to:
+rather surprised it is _faster_ than `rowSums`.  The speed advantage or
+`Reduce` seems to persist up to about eight columns.  `Reduce` is equivalent to:
 
 ```{r eval=FALSE}
 res <- numeric(length(diffsq.L[[1]]))
@@ -331,12 +332,13 @@ head(A[,'x', 1])
 We can use the same abstraction as with arrays, and keep performance advantage:
 
 ```{r}
+dist.A <-  sqrt(rowSums(                  (A[,,1] - A[,,2])   ^   2))
 dist.LM <- sqrt(Reduce('+', lapply(Map('-', LM[,1], LM[,2]), '^', 2)))
 all.equal(dist.LM, dist.A)
 
 microbenchmark(times=10,
-  sqrt(rowSums((A[,,1] - A[,,2])^2)),
-  sqrt(Reduce('+', lapply(Map('-', LM[,1], LM[,2]), '^', 2)))
+  Array=sqrt(rowSums((A[,,1] - A[,,2])^2)),
+  ListMatrix=sqrt(Reduce('+', lapply(Map('-', LM[,1], LM[,2]), '^', 2)))
 )
 ```
 
@@ -349,8 +351,11 @@ balances on that point.  We show here three different points (red crosses) with
 the barycentric coordinates associated with each vertex.  The size of the vertex
 helps visualize the "weights":
 
-```{r echo=FALSE, fig.width=7, fig.height=2.5}
-bary_l <- function(p, v) {
+
+```{r bary, echo=FALSE}
+## Conversion to Barycentric Coordinates; List-Matrix Version
+
+bary_L <- function(p, v) {
   det <-  (v[[2,'y']]-v[[3,'y']])*(v[[1,'x']]-v[[3,'x']]) +
           (v[[3,'x']]-v[[2,'x']])*(v[[1,'y']]-v[[3,'y']])
 
@@ -365,255 +370,298 @@ bary_l <- function(p, v) {
   l3 <- 1 - l1 - l2
   list(l1, l2, l3)
 }
+## Conversion to Barycentric Coordinates; Array Version
+
+bary_A <- function(p, v) {
+  det <- (v[,2,'y']-v[,3,'y'])*(v[,1,'x']-v[,3,'x']) +
+         (v[,3,'x']-v[,2,'x'])*(v[,1,'y']-v[,3,'y'])
+
+  l1 <- (
+          (v[,2,'y']-v[,3,'y']) * (p[,'x']-v[,3,'x']) +
+          (v[,3,'x']-v[,2,'x']) * (p[,'y']-v[,3,'y'])
+        ) / det
+  l2 <- (
+          (v[,3,'y']-v[,1,'y']) * (p[,'x']-v[,3,'x']) +
+          (v[,1,'x']-v[,3,'x']) * (p[,'y']-v[,3,'y'])
+        ) / det
+  l3 <- 1 - l1 - l2
+  cbind(l1, l2, l3)
+}
+```
+```{r data-generation, echo=FALSE}
+## Define basic triangle vertex position and colors
+
 height <- sin(pi/3)
 v.off <- (1 - height) / 2
-
-v <- cbind(x=list(0, .5, 1), y=as.list(c(0, height, 0) + v.off))
+vinit <- cbind(
+  x=list(0, .5, 1), y=as.list(c(0, height, 0) + v.off),
+  r=list(1, 1, 0), g=list(0,1,1), b=list(1,0,1)
+)
+## Sample points within the triangles
 
 p1 <- list(x=.5, y=tan(pi/6) * .5 + v.off)
 p2 <- list(x=.5, y=sin(pi/3) * .8 + v.off)
 p3 <- list(x=cos(pi/6)*sin(pi/3), y=sin(pi/3) * .5 + v.off)
 
-plot_bary <- function(p, v) {
-  labeler <- function(x) sprintf("%.02f", unlist(x))
-  bc <- bary_l(p, v)
-  polygon(unlist(v[,'x']), unlist(v[,'y']))
-  points(p, col='red', pch=4, cex=3)
-  points(v[,'x'], v[,'y'], cex=unlist(bc) * 5, pch=19)
-  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1)
-}
-par(bg='#EEEEEE')
-par(xpd=TRUE)
-par(mai=c(.25,.125,.25,.125))
-par(mfrow = c(1, 3))
-plot.new()
-plot_bary(p1, v)
-plot.new()
-plot_bary(p2, v)
-plot.new()
-plot_bary(p3, v)
-```
+## Generate n x n sample points within triangle; here we also expand the
+## vertex matrix so there is one row per point, even though all points are
+## inside the same triangle.  In our actual use case, there are many
+## triangles with a handful of points within each triangle.
 
-This is useful if we want to interpolate values from the vertices to points in
-the triangle.  Here we do it with colors:
-
-```{r echo=FALSE, fig.width=7, fig.height=2.5}
-v2 <- cbind(v, r=c(1, 1, 0), g=c(0,1,1), b=c(1,0,1))
-
-plot_bary2 <- function(p, v) {
-  labeler <- function(x) sprintf("%.02f", unlist(x))
-  bc <- bary_l(p, v)
-  polygon(unlist(v[,'x']), unlist(v[,'y']))
-  bcw <- lapply(
-    seq_len(3),
-    function(x)
-      Reduce('+', matrix(Map('*', v[,c('r','g','b')], bc), nrow=nrow(v))[,x])
-  )
-  p.col <- rgb(bcw[1], bcw[2], bcw[3])
-  points(p, col='white', bg=p.col, pch=22, cex=3)
-  points(
-    v[,'x'], v[,'y'], cex=unlist(bc) * 5, pch=19,
-    col=rgb(v[,'r'], v[,'g'], v[,'b'])
-  )
-  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1)
-}
-par(bg='#EEEEEE')
-par(xpd=TRUE)
-par(mai=c(.25,.125,.25,.125))
-par(mfrow = c(1, 3))
-plot.new()
-plot_bary2(p1, v2)
-plot.new()
-plot_bary2(p2, v2)
-plot.new()
-plot_bary2(p3, v2)
-```
-
-And taken to the natural extreme:
-
-```{r echo=FALSE, fig.width=5, fig.height=5}
-n <- 200
-rng.x <- c(0,1)
-rng.y <- c(0,1)
-points <- expand.grid(
+n <- 400
+rng.x <- range(unlist(vinit[,'x']))
+rng.y <- range(unlist(vinit[,'y']))
+points.raw <- expand.grid(
   x=seq(rng.x[1], rng.x[2], length.out=n),
   y=seq(rng.y[1], rng.y[2], length.out=n),
   KEEP.OUT.ATTRS=FALSE
 )
-v2 <- cbind(v, r=c(1, 1, 0), g=c(0,1,1), b=c(1,0,1))
-vp <- lapply(v2, '[', rep(1, nrow(points)))
-dim(vp) <- dim(v2)
-dimnames(vp) <- dimnames(v2)
+vp <- lapply(vinit, '[', rep(1, nrow(points.raw)))
+dim(vp) <- dim(vinit)
+dimnames(vp) <- dimnames(vinit)
 
-bc <- bary_l(points, vp)
-inbounds <- Reduce('&', lapply(bc, '>=', 0))
+## we're going to drop the oob points for the sake of clarity, one
+## nice perk of barycentric coordinates is that negative values indicate
+## you are out of the triangle.
 
-clrs.raw <- lapply(
-  apply(vp[, c('r','g','b')], 2, Map, f="*", bc),
-  Reduce, f="+"
-)
-par(bg='#EEEEEE')
-par(xpd=TRUE)
-par(mai=c(.25,.25,.25,.25))
-plot.new()
-clrs.in <- lapply(clrs.raw, '[', inbounds)
-clrs <- do.call(rgb, lapply(clrs.in, pmin, 1))
-points(points[inbounds,], pch=15, col=clrs)
-polygon(v2[,c('x', 'y')])
-points(
-  v2[,c('x', 'y')], pch=21, cex=5, bg=rgb(v2[,'r'], v2[,'g'], v2[,'b']),
-  col='white'
+bc.raw <- bary_L(points.raw, vp)
+inbounds <- Reduce('&', lapply(bc.raw, '>=', 0))
+
+## Make a list-matrix version of the data
+
+point.L <- lapply(points.raw, '[', inbounds)
+vertex.L <- lapply(vp, '[', inbounds)
+dim(vertex.L) <- dim(vp)
+dimnames(vertex.L) <- list(V=sprintf("v%d", 1:3), Data=colnames(vp))
+
+## Generate an array version of the same data
+
+point.A <- do.call(cbind, point.L)
+vertex.A <- array(
+  unlist(vertex.L), c(sum(inbounds), nrow(vertex.L), ncol(vertex.L)),
+  dimnames=c(list(NULL), dimnames(vertex.L))
 )
 ```
-
-to interpolate values from triangle vertices into the triangles
-themselves.  So in the following diagram I wish to compute the barycentric
-coordinates of each gray point relative to its enclosing triangle:
-
-```{r echo=FALSE, eval=FALSE}
-bary_m <- function(p, v) {
-  det <- (M[,'y2']-M[,'y3'])*(M[,'x1']-M[,'x3']) +
-         (M[,'x3']-M[,'x2'])*(M[,'y1']-M[,'y3'])
-
-  l1 <- (
-          (M[,'y2']-M[,'y3']) * (M[,'x']-M[,'x3']) +
-          (M[,'x3']-M[,'x2']) * (M[,'y']-M[,'y3'])
-        ) / det
-  l2 <- (
-          (M[,'y3']-M[,'y1']) * (M[,'x']-M[,'x3']) +
-          (M[,'x1']-M[,'x3']) * (M[,'y']-M[,'y3'])
-        ) / det
-  l3 <- 1 - l1 - l2
-  cbind(l1, l2, l3)
+```{r plot-utils, echo=FALSE}
+plot_par <- function() {
+  par(bg='#EEEEEE')
+  par(xpd=TRUE)
+  par(mai=c(.25,.125,.25,.125))
+  par(mfrow = c(1, 3))
 }
-size <- 2
-vert <- sin(60/180*pi)
+labeler <- function(x) sprintf("%.02f", unlist(x))
+plot_bary <- function(p, v) {
+  plot.new()
+  bc <- bary_L(p, v)
+  polygon(unlist(v[,'x']), unlist(v[,'y']))
+  points(p, col='red', pch=4, cex=3)
+  points(v[,'x'], v[,'y'], cex=unlist(bc) * 8, pch=19)
+  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1)
+}
+plot_bary2 <- function(p, v) {
+  plot.new()
+  bc <- bary_L(p, v)
+  polygon(unlist(v[,'x']), unlist(v[,'y']))
+  clrs <- lapply(apply(v[,c('r','g','b')], 2, Map, f='*', bc), Reduce, f='+')
+  points(p, col='white', bg=do.call(rgb, clrs), pch=22, cex=3)
+  points(
+    v[,'x'], v[,'y'], cex=unlist(bc) * 8, pch=19,
+    col=rgb(apply(v[,c('r','g','b')], 2, unlist))
+  )
+  text(v[,'x'], v[,'y'], labels=labeler(bc), pos=c(1,3,1), offset=1.2)
+}
+plot_shaded <- function(p, col, v=vinit) {
+  par(bg='#EEEEEE')
+  par(xpd=TRUE)
+  par(mai=c(.25,.25,.25,.25))
+  plot.new()
 
-x <- c(0, .5, 1)
-y <- c(0, vert, 0)
+  points(p, pch=15, col=col, cex=.1)
+  polygon(v[,c('x', 'y')])
+  points(
+    vinit[,c('x', 'y')], pch=21, cex=5,
+    bg=rgb(apply(v[, c('r','g','b')], 2, unlist)), col='white'
+  )
+}
+```
+```{r echo=FALSE, fig.width=7, fig.height=2.5}
+plot_par()
+plot_bary(p1, vinit)
+plot_bary(p2, vinit)
+plot_bary(p3, vinit)
+```
 
-x.rep <- 2
-y.rep <- 4
-rep <- x.rep * y.rep
-x.off <- 1.2
-y.off <- 1
+This is useful if we want to interpolate values from the vertices to points in
+the triangle.  Here we interpolate a color for a point in a triangle from the
+colors of the vertices of that triangle:
 
-xy.off <- as.matrix(
-  expand.grid(x=(seq_len(x.rep) - 1) * x.off, y=(seq_len(y.rep) - 1) * y.off)
-)[rep(seq_len(rep), each=3),]
-tri.up <- cbind(
-  cbind(rep(x, rep), rep(y, rep)) + xy.off, id=rep(seq_len(rep), each=3)
+```{r echo=FALSE, fig.width=7, fig.height=2.5}
+plot_par()
+plot_bary2(p1, vinit)
+plot_bary2(p2, vinit)
+plot_bary2(p3, vinit)
+```
+
+
+The formula for converting cartesian coordinates [to Barycentric][1] is:
+
+$$\lambda_1 = \frac{(y_2 - y_3)(x - x_3) + (x_3 - x_2)(y - y_3)}{(y_2 - y_3)(x_1 - x_3) + (x_3 - x_2)(y_1 - y_3)}\\
+\lambda_2 = \frac{(y_3 - y_1)(x - x_3) + (x_1 - x_3)(y - y_3)}{(y_2 - y_3)(x_1 - x_3) + (x_3 - x_2)(y_1 - y_3)}\\
+\lambda_3 = 1 - \lambda_1 - \lambda_2$$
+
+You can see that whatever the data structure is, we will be using a lot of
+column subsetting for this calculation.  We implement `bary_A` and `bary_L` to
+convert cartesian coordinates to barycentric using array and list-matrix data
+structures respectively.  Since both of these are a pretty naïve translations of
+the above formulas, we relegate them to the [code
+appendix](#barycentric-conversions).  We will use them to shade every point of
+our triangle with the weighted color of the vertices.
+
+First, the data:
+
+```{r}
+str(point.L)  # every point we want to compute color
+vertex.L      # list-matrix!
+```
+
+The `vertex.L` list-matrix has the x, y coordinates and the red, green, and blue
+color channel vales of the triangle associated with each point.  In this
+particular case it happens to be the same triangle for every point, so we could
+have used a single instance of the triangle.  However, the generalized is to
+have many triangles with a small and varying number of points per triangle, and
+to handle that efficiently in R we need to match each point to its
+own triangle.
+
+And the shading function:
+
+```{r}
+v_shade_L <- function(p, v) {
+  ## 1) compute barycentric coords
+  bc <- bary_L(p, v)
+  ## 2) for each point, weight vertex colors by bary coords
+  clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
+  ## 3) for each point-colorchannel, sum the weighted values
+  lapply(clr.raw, Reduce, f="+")
+}
+```
+
+Step 2) is the most complicated.  To understand what's going on we need to look
+at the two data inputs to `apply`, which are:
+
+```{r echo=FALSE}
+v <- vertex.L
+bc <- bary_L(point.L, vertex.L)
+clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
+```
+```{r}
+v[, c('r','g','b')]
+str(bc)
+```
+In:
+```{r eval=FALSE}
+  clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
+```
+We ask `apply` to call `Map` for each column of `v[, c('r','g','b')]`.  The
+additional arguments `f='*'` and `bc` are passed on to Map such that, for the
+first column, the `Map` call is:
+
+```{r eval=FALSE}
+Map('*', v[,'r'], bc)
+```
+
+`v[,'r']` is a list with the red color channel values for each of the three
+vertices for each of the points in our data:
+
+```{r}
+str(v[,'r'])
+```
+
+`bc` is a list of the barycentric coordinates of each point which we will use as
+the vertex weights when averaging the vertex colors to point colors:
+
+```{r}
+str(bc)
+```
+
+The `Map` call is just multiplying each color value by its weight vertex weight.
+
+`apply` will repeat this over the three color channels giving us the barycentric
+coordinate-weighted color channel values for each point:
+
+```{r}
+str(clr.raw)
+```
+
+Step 3) collapse the weighted values into r,g,b triples for each point:
+
+```{r}
+  str(lapply(clr.raw, Reduce, f="+"))
+```
+
+And with the colors we can render our fully shaded triangle (see appendix for
+`plot_shaded`):
+
+```{r interp-list, fig.width=5, fig.height=5}
+color.L <- v_shade_L(point.L, vertex.L)
+plot_shaded(point.L, do.call(rgb, color.L))
+```
+
+The corresponding function in array format looks very similar to the list one:
+
+```{r}
+v_shade_A <- function(p, v) {
+  ## 1) compute barycentric coords
+  bc <- bary_A(p, v)
+  ## 2) for each point, weight vertex colors by bary coords
+  v.clrs <- v[,,c('r','g','b')]
+  clr.raw <- array(bc, dim=dim(v.clrs)) * v.clrs
+  ## 3) for each point-colorchannel, sum the weighted values
+  rowSums(aperm(clr.raw, c(1,3,2)), dim=2)
+}
+str(point.A)
+str(vertex.A)
+color.A <- v_shade_A(point.A, vertex.A)
+```
+
+For a detailed description of what it is doing see the appendix.  The take-away
+for now is that every function in the array implementation is fast in the sense
+that all the real work is done in internal C code, and both functions produce
+the same result:
+
+```{r}
+all.equal(do.call(cbind, color.L), color.A, check.attributes=FALSE)
+```
+Yet, the list based shading is substantially faster:
+
+```{r}
+microbenchmark(times=25,
+  v_shade_L(point.L, vertex.L),
+  v_shade_A(point.A, vertex.A)
 )
-tri.down <- tri.up
-tri.down[,'y'] <- -tri.down[,'y']
-tri.down[,'y'] <- tri.down[,'y'] - min(tri.down[,'y'])
-tri.down[,'x'] <- tri.down[,'x'] + x.off / 2
-tri.down[,'id'] <- tri.down[,'id'] + max(tri.down[,'id'])
+```
+```{r, eval=FALSE}
+treeprof(v_shade_L(point.L, vertex.L))
+treeprof(v_shade_A(point.A, vertex.A))
+```
+```{r, echo=FALSE}
+print(treeprof(v_shade_L(point.L, vertex.L)))
+print(treeprof(v_shade_A(point.A, vertex.A)))
+```
 
-meshdf <- as.data.frame(rbind(tri.up, tri.down))
-meshdf <- transform(meshdf,
-  x.mid=ave(x, id, FUN=function(z) mean(range(z))),
-  y.mid=ave(y, id, FUN=function(z) mean(range(z)))
-)
-meshdf <- with(meshdf, meshdf[order(y.mid + x.mid / (rep * 2)),])
-meshdf$id <- rep(seq_len(rep * 2), each=3)
-meshdf$idv <- seq_len(nrow(meshdf))
-
-colstep <- 256 / (size * 2)^2
-meshdf <- transform(
-  meshdf,
-  r=c(1,0,0) + ((id * colstep) - 1) * c(0, 1, 0) / 255,
-  g=c(0,1,0) + ((id * colstep) - 1) * c(0, 0, 1) / 255,
-  b=c(0,0,1) + ((id * colstep) - 1) * c(1, 0, 0) / 255
-)
-meshdf <- transform(meshdf, color=rgb(r, g, b))
-
-n <- 30
-mrg <- .025
-rng.x <- diff(range(x))
-rng.y <- diff(range(y))
-points <- expand.grid(
-  x=seq(min(x) + mrg * rng.x, max(x) - mrg * rng.x, length.out=n),
-  y=seq(min(y) + mrg * rng.y, max(y) - mrg * rng.y, length.out=n),
-  KEEP.OUT.ATTRS=FALSE
-)
-points.all <- do.call(
-  rbind,
-  lapply(
-    sort(unique(meshdf$id)),
-    function(z) {
-      transform(points,
-        id=z, x=x + (z-1) %% y.rep * x.off / 2, y=y + (z-1) %/% y.rep * y.off
-) } ) )
-ggplot() +
-  geom_point(data=points.all, aes(x, y, color=factor(id)), size=.2) +
-  geom_polygon(data=meshdf, aes(x, y, group=id), alpha=0, color='black')
-
-
-mesh1 <- meshdf[seq(1, len=rep*2, by=3), c('x','y','r','g','b')]
-mesh2 <- meshdf[seq(2, len=rep*2, by=3), c('x','y','r','g','b')]
-mesh3 <- meshdf[seq(3, len=rep*2, by=3), c('x','y','r','g','b')]
-
-l.dat <- matrix(
-  c(as.list(mesh1), as.list(mesh2), as.list(mesh3)),
-  ncol=ncol(mesh1), dimnames=list(NULL, names(mesh1)), byrow=TRUE
-)
-l.dat.all <- lapply(l.dat, '[', points.all$id)
-dim(l.dat.all) <- dim(l.dat)
-dimnames(l.dat.all) <- dimnames(l.dat)
-
-bl <- bary_l(points.all[c('x', 'y')], l.dat.all[,c('x','y')])
-
-inbounds <- Reduce('&', lapply(bl, '>=', 0))
-blg <- lapply(bl, "^", 1/1.4)
-clrs <- lapply(
-  apply(l.dat.all[, c('r','g','b')], 2, Map, f="*", bl),
-  Reduce, f="+"
-)
-clrs <- lapply(clrs, pmin, 1)
-res <- cbind(
-  points.all[inbounds,],
-  color=do.call(rgb, lapply(clrs, '[', inbounds))
-)
-ggplot(meshdf) +
-  geom_point(data=res, aes(x, y, color=I(color)), size=1.5, shape=15) +
-  geom_polygon(aes(x, y, group=id), alpha=0, color='black') +
-  geom_point(aes(x, y, color=I(color)), size=3)
-  # geom_label(aes(x.mid, y.mid, label=id))
-
-microbenchmark(bl <- bary_l(l.coord), bm <- bary_m(mx.coord))
-
-all.equal(do.call(cbind, bl), bm, check.attributes=FALSE)
-# generate points inside
-
-poly.x <- rep(NA_real_, nrow(meshdf) / 3 * 4)
-poly.x[seq_len(nrow(meshdf)) + rep(seq_len(max(meshdf$id)) - 1, each=3)] <-
-  meshdf$x
-poly.y <- rep(NA_real_, nrow(meshdf) / 3 * 4)
-poly.y[seq_len(nrow(meshdf)) + rep(seq_len(max(meshdf$id)) - 1, each=3)] <-
-  meshdf$y
-
-dev.off()
-dev.new()
-par(bg='#777777')
-par(mai=numeric(4))
-par(mgp=numeric(3))
-plot.new()
-rng.x <- range(c(poly.x, res$x), na.rm=TRUE)
-rng.y <- range(c(poly.y, res$y), na.rm=TRUE)
-scale <- function(x, rng) (x - rng[1]) / diff(rng)
-
-point.x <- scale(res$x, rng.x)
-point.y <- scale(res$y, rng.y)
-
-poly.x <- scale(poly.x, rng.x)
-poly.y <- scale(poly.y, rng.y)
-
-points(point.x, point.y, col=as.character(res$color), pch=15)
-polygon(poly.x, poly.y)
+# Conclusions
 
 
 
+# Appendix
+
+## Barycentric Conversions
+
+```{r bary, eval=FALSE}
+```
+
+## Data
+
+```{r data-generation, eval=FALSE}
 ```
 
 
