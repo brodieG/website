@@ -16,358 +16,14 @@ knitr::opts_chunk$set(
   comment = ""
 )
 ```
-
-# TL;DR
-
-I was minding my own business bothering no one when I [fell into the rabbit
-hole](https://www.brodieg.com/2018/10/23/do-not-shade-r/).  Now I'm just digging
-a warren of tunnels through topics completely unrelated to the projects I'm
-supposed to be working on, and only tangentially related to those that
-distracted me in the first place.  As part of this undirected flailing I
-discovered that shading triangle faces from vertex colors is done faster with
-list data structures than with matrices and arrays.
-
-Wait, what?
-
-Simple primitive operations like addition and multiplication can
-run faster on lists than on matrices?  The short answer is yes.  The long answer
-is full of story-ruining caveats and boring benchmarks, and it is waiting for
-you in all its gory glory.
-
-# Matrices are Always Faster Than Data Frames, Right?
-
-Generally speaking matrices are amongst the R data structures that are
-fastest to operate on.  After all, they are contiguous chunks of memory with
-almost no overhead.  Unfortunately, they do come with a major limitation: any
-subset operation requires a copy of the data subset.  Consider:
-
-```{r}
-set.seed(1023)
-n <- 1e5
-x1 <- runif(n)
-y1 <- runif(n)
-x2 <- runif(n)
-y2 <- runif(n)
-
-M <- cbind(x1, y1, x2, y2)
-D <- data.frame(x1, y1, x2, y2)
-microbenchmark(M[,1:2], D[,1:2], times=25)
+```{r col-eq, echo=FALSE}
+col_eq <- function(x, y) {
+  if(is.matrix(x)) x <- lapply(seq_len(ncol(x)), function(z) x[, z])
+  if(is.matrix(y)) y <- lapply(seq_len(ncol(y)), function(z) y[, z])
+  # stopifnot(is.list(x), is.list(y))
+  all.equal(x, y, check.attributes=FALSE)
+}
 ```
-
-The data frame subset is much faster because R treats data frame columns as
-independent objects, so referencing an entire column does not require a copy if
-the data is not modified.
-
-# Awesome, I'll Just Use Data Frames! Right?
-
-If you have been in R circles for any length of time you will inevitably have
-heard something I will loosely paraphrase as:
-
-> blah blah blah data frames are EVIL blah blah
-
-Whoever said that to you was not completely lying.  Let's see what happens if
-we select rows and columns:
-
-```{r}
-idx <- sample(seq_len(nrow(M)), n/2)
-microbenchmark(M[idx,1:2], D[idx,1:2], times=25)
-```
-
-So we cannot just switch to data frames blindly.  But what is going on?
-We can easily check how time is used by our expression with
-[treeprof](https://github.com/brodieG/treeprof):
-
-```{r eval=FALSE}
-treeprof(D[idx,1:2], target.time=1)
-```
-```{r echo=FALSE}
-print(treeprof::treeprof(D[idx,1:2], target.time=1))
-```
-
-So `anyDuplicated` is taking a bunch of time, and while not obvious from the
-profile data alone, this is because data frames do not like having duplicated
-row names.  So let's introduce some duplicated row names to see what happens:
-
-```{r eval=FALSE}
-treeprof(D[c(idx,idx[1]), 1:2], target.time=1)
-```
-```{r echo=FALSE}
-print(treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1))
-```
-
-Ouch!  The duplicate row name triggered the creation of *character* row names,
-at great expense.  In return, you get:
-
-```{r}
-tail(rownames(D[c(idx,idx[1]), 1:2]))
-```
-
-Not. A. Good. Deal.
-
-# Lists to the Rescue
-
-With a little extra work you can do most of what you would normally do with a
-matrix or data frame with a list.  It is not something I would want to do on a
-regular basis, but it is an option to consider if you are looking to squeeze out
-some extra performance without compiled code or external dependencies.
-
-For example, to select "rows" in a list of vectors, we use `lapply` to apply `[`
-to each component vector:
-
-```{r}
-L <- as.list(D)
-str(L)
-sub.L <- lapply(L[1:2], '[', idx)
-str(sub.L)
-
-identical(sub.L, as.list(D[idx,1:2]))
-```
-
-This results in the same elements selected as with data frame or matrix
-subsetting, except the result remains a list.
-
-The expression `lapply(L[1:2], '[', idx)` is equivalent to:
-
-```{r}
-cols <- 1:2
-sub.L <- vector("list", length(cols))
-for(i in cols) sub.L[[i]] <- L[[i]][idx]
-```
-
-Despite the explicit looping over columns this list based subsetting is
-as fast or faster than matrix subsetting:
-
-```{r}
-microbenchmark(lapply(L[1:2], '[', idx), M[idx,1:2], D[idx,1:2], times=25)
-```
-
-And if we only index columns then the list is even faster than the data frame:
-
-```{r}
-microbenchmark(L[1:2], M[,1:2], D[,1:2], times=25)
-```
-
-# Patterns in List Based Analysis
-
-## An Example: Euclidean Distances
-
-Working with lists takes some extra work, but because R is a mostly functional
-language with good list facilities, it can rewarding to find the list
-equivalents of common matrix operations.  We do this here for the Euclidean
-distance between two variables.
-
-To compute the Euclidean distance between the 2D points in (x1,y1) and (x2,y2)
-with matrices we use the square root of the sum of squares:
-
-```{r echo=FALSE}
-a <- c('x1','y1')
-b <- c('x2','y2')
-```
-<a name='dist-calc'></a>
-```{r dist-calc, eval=FALSE}
-a <- c('x1','y1')
-b <- c('x2','y2')
-sqrt(rowSums((M[,a] - M[,b])^2))
-```
-
-This can be broken down into component pieces so we can compare each step of the
-matrix calculation to the list equivalent.  First, the difference in the x and y
-values:
-
-```{r}
-microbenchmark(times=25,
-  Matrix= diff.M <- M[,a] - M[,b],
-  List=   diff.L <- Map('-', L[a], L[b])
-)
-```
-
-Here the list approach benefits from subsetting full columns.
-Unfortunately, we need to explicitly cycle through the columns with `Map`, a
-close cousin of `mapply`.  We use `Map` instead of `mapply` because `Map` always returns a list.  `Map` calls its first argument with each value in the
-second and third arguments in turn.  It is equivalent to:
-
-```{r eval=FALSE}
-fun <- `-`
-cols <- seq_along(a)
-diff.L <- vector('list', length(cols))
-for(i in cols) diff.L[[i]] <- fun(L[a][[i]], L[b][[i]])
-```
-
-To take the squares of each column we do so explicitly with `lapply`:
-
-```{r}
-microbenchmark(times=25,
-  Matrix= diffsq.M <- diff.M ^ 2,
-  List=   diffsq.L <- lapply(diff.L, '^', 2)
-)
-```
-
-Unsurprisingly there is no speed benefit here, but there is also no penalty.
-For the final step we can use `Reduce`:
-
-```{r}
-microbenchmark(times=25,
-  Matrix= dist.M <- sqrt(rowSums(diffsq.M)),
-  List=   dist.L <- sqrt(Reduce('+', diffsq.L))
-)
-```
-
-`Reduce` collapses the elements of the input list by repeatedly applying a
-binary function to turn two list elements into one.  To be completely honest I'm
-rather surprised it is _faster_ than `rowSums`.  The speed advantage or
-`Reduce` seems to persist up to about eight columns.  `Reduce` is equivalent to:
-
-```{r eval=FALSE}
-res <- numeric(length(diffsq.L[[1]]))
-for(el in diffsq.L) res <- res + el
-```
-
-And to show that the calculations are the same:
-
-```{r}
-all.equal(dist.L, dist.M)
-```
-
-In exchange for the hassle of all the explicit looping through columns with
-`Map`, `lapply`, and `Reduce` we get a noticeable performance gains:
-
-```{r}
-microbenchmark(times=25,
-  Matrix= sqrt(rowSums((M[,a] - M[,b])^2)),
-  List=   sqrt(Reduce('+', lapply(Map('-', L[a], L[b]), '^', 2)))
-)
-```
-
-A ~2x speed-up from such an innocuous looking operation is
-nothing to sneeze at.  Each step is at least as fast with lists as it is with
-matrices, and some are faster.  This should be true so long as your data is tall
-and skinny, i.e. with a high ratio of observations to variables, and you need to
-subset for columns.
-
-## List to Matrix and Back
-
-R is awesome because it adopts some of the better features of functional
-languages and list based languages.  For example, the following two statements
-are equivalent:
-
-```{r}
-ML1 <- cbind(x1=L[[1]], y1=L[[2]], x2=L[[3]], y2=L[[4]])
-ML2 <- do.call(cbind, L)
-```
-
-Proof:
-
-```{r}
-identical(ML1, ML2)
-identical(ML1, M)
-```
-
-The blurring of calls, lists, data, and functions allows for very powerful
-manipulations of list based data.  In this case, `do.call(cbind, LIST)` will
-transform any list containing equal length vectors into a matrix, irrespective
-of how many columns it has.To confirm `cbind` did what we claim:
-
-To go in the other direction:
-
-```{r}
-LM <- lapply(seq_len(ncol(M)), function(x) M[,x])
-identical(L, setNames(LM, colnames(M)))
-```
-
-You _could_ use `split` but it is much slower.
-
-## More on `do.call`
-
-List based analysis works particularly well with `do.call` and functions that
-use `...` parameters:
-
-```{r}
-microbenchmark(times=25,
-  do.call(pmin, L),
-  pmin(M[,1],M[,2],M[,3],M[,4])
-)
-```
-
-The expression is both easier to type, and faster!
-
-There are a couple of "gotchas" with `do.call`, but they only crop up if you try
-to pass quoted language as part of the argument list (e.g. `quote(a + b)`).  If
-you are just using normal R data objects then the one drawback that I am
-aware of is that the call stack can get messy if you ever invoke `traceback()`
-or `sys.calls()` from a function called by `do.call`.
-
-Remember that data frames are lists, so you can do things like:
-
-```{r eval=FALSE}
-do.call(pmin, iris[-5])
-```
-
-## List Matrices?
-
-Let's revisit our earlier [distance calculation example](#dist-calc):
-
-```{r dist-calc, eval=FALSE}
-```
-
-One problem with our matrix structure is that it does not allow us to flexibly
-specify which dimensions or which points to select.  This is not too bad in the
-example because there are only two variables and two dimensions, but with more
-of either typing out the names or constructing them with string manipulation
-would quickly become tedious.
-
-Instead, we can use an array structure:
-
-```{r}
-A <- array(M, dim=c(nrow(M), ncol(M)/2, 2), dimnames=list(NULL, c('x','y')))
-A[1:2,,]
-```
-
-The third dimension tracks which variable the x-y coordinates belong to.  The
-distance calculation becomes:
-
-```{r}
-dist.A <- sqrt(rowSums((A[,,1] - A[,,2])^2))
-all.equal(dist.A, dist.M)
-```
-
-But how do we benefit from this structural simplification with our list-based
-methods?  Well, it turns out that lists can be matrices and arrays too:
-
-```{r}
-LM <- matrix(L, nrow=2, dimnames=list(c('x','y')))
-LM
-str(LM)
-```
-A chimera!  If you've never seen this it may seem a bit strange, but it allows
-us to create array-like structures with lists:
-
-```{r}
-head(LM[['x', 1]])
-head(A[,'x', 1])
-```
-
-We can use the same abstraction as with arrays, and keep performance advantage:
-
-```{r}
-dist.A <-  sqrt(rowSums(                  (A[,,1] - A[,,2])   ^   2))
-dist.LM <- sqrt(Reduce('+', lapply(Map('-', LM[,1], LM[,2]), '^', 2)))
-all.equal(dist.LM, dist.A)
-
-microbenchmark(times=10,
-  Array=sqrt(rowSums((A[,,1] - A[,,2])^2)),
-  ListMatrix=sqrt(Reduce('+', lapply(Map('-', LM[,1], LM[,2]), '^', 2)))
-)
-```
-
-# A Case Study
-
-One of my side projects required me to implement [barycentric coordinate][1]
-conversions.  You can think of barycentric coordinates of a point on the surface
-of a triangle as the weights needed on each vertex such that the triangle
-balances on that point.  We show here three different points (red crosses) with
-the barycentric coordinates associated with each vertex.  The size of the vertex
-helps visualize the "weights":
-
 ```{r bary-l, echo=FALSE}
 ## Conversion to Barycentric Coordinates; List-Matrix Version
 
@@ -502,6 +158,401 @@ plot_shaded <- function(p, col, v=vinit) {
   )
 }
 ```
+```{r v-shade-l, echo=FALSE}
+v_shade_L <- function(p, v) {
+  ## 1) compute barycentric coords
+  bc <- bary_L(p, v)
+  ## 2) for each point, weight vertex colors by bary coords
+  clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
+  ## 3) for each point-colorchannel, sum the weighted values
+  lapply(clr.raw, Reduce, f="+")
+}
+```
+<div style='display: none;'>
+```{r interp-list, echo=FALSE}
+color.L <- v_shade_L(point.L, vertex.L)
+plot_shaded(point.L, do.call(rgb, color.L))
+```
+</div>
+
+# TL;DR
+
+<img
+src='/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png'
+style='float: left; margin-right: 15px; margin-bottom: 5px;' width='200'/> I was
+minding my own business bothering no one when I [fell into the rabbit
+hole](https://www.brodieg.com/2018/10/23/do-not-shade-r/).  Now I'm just digging
+a warren of tunnels through topics completely unrelated to the projects I'm
+supposed to be working on, and only tangentially related to those that
+distracted me in the first place.  As part of this undirected flailing I
+discovered that shading triangle faces from vertex colors is done faster with
+list data structures than with matrices and arrays.
+
+Wait, what?
+
+Simple primitive operations like addition and multiplication can
+run faster on lists than on matrices?  The short answer is yes.  The long answer
+is full of story-ruining caveats and boring benchmarks, and it is waiting for
+you in all its gory glory.
+
+# Matrices are Always Faster Than Data Frames, Right?
+
+Generally speaking matrices are amongst the R data structures that are
+fastest to operate on.  After all, they are contiguous chunks of memory with
+almost no overhead.  Unfortunately, they do come with a major limitation: any
+subset operation requires a copy of the data subset.  Consider:
+
+```{r}
+set.seed(1023)
+n <- 1e5
+x1 <- runif(n)
+y1 <- runif(n)
+x2 <- runif(n)
+y2 <- runif(n)
+
+M <- cbind(x1, y1, x2, y2)
+D <- data.frame(x1, y1, x2, y2)
+microbenchmark(M[,1:2], D[,1:2], times=25)
+```
+
+The data frame subset is much faster because R treats data frame columns as
+independent objects, so referencing an entire column does not require a copy if
+the data is not modified.
+
+# Awesome, I'll Just Use Data Frames! Right?
+
+If you have been in R circles for any length of time you will inevitably have
+heard something I will loosely paraphrase as:
+
+> blah blah blah data frames are EVIL blah blah
+
+Whoever said that to you was not completely lying.  Let's see what happens if
+we select rows and columns:
+
+```{r}
+idx <- sample(seq_len(nrow(M)), n/2)
+microbenchmark(M[idx,1:2], D[idx,1:2], times=25)
+```
+
+So we cannot just switch to data frames blindly.  But what is going on?
+We can easily check how time is used by our expression with
+[treeprof](https://github.com/brodieG/treeprof):
+
+```{r eval=FALSE}
+treeprof(D[idx,1:2], target.time=1)
+```
+```{r echo=FALSE}
+print(treeprof::treeprof(D[idx,1:2], target.time=1))
+```
+
+So `anyDuplicated` is taking a bunch of time, and while not obvious from the
+profile data alone, this is because data frames do not like having duplicated
+row names.  So let's introduce some duplicated row names to see what happens:
+
+```{r eval=FALSE}
+treeprof(D[c(idx,idx[1]), 1:2], target.time=1)
+```
+```{r echo=FALSE}
+print(treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1))
+```
+
+Ouch!  The duplicate row name triggered the creation of *character* row names,
+at great expense.  In return, you get:
+
+```{r}
+tail(rownames(D[c(idx,idx[1]), 1:2]))
+```
+
+Not. A. Good. Deal.
+
+# Lists to the Rescue
+
+With a little extra work you can do most of what you would normally do with a
+matrix or data frame with a list.  It is not something I would want to do on a
+regular basis, but it is an option to consider if you are looking to squeeze out
+some extra performance without compiled code or external dependencies.
+
+For example, to select "rows" in a list of vectors, we use `lapply` to apply `[`
+to each component vector:
+
+```{r}
+L <- as.list(D)
+str(L)
+sub.L <- lapply(L[1:2], '[', idx)
+str(sub.L)
+
+col_eq(sub.L, D[idx,1:2])  # col_eq compares values in columns only
+```
+
+This results in the same elements selected as with data frame or matrix
+subsetting, except the result remains a list.  You can see how `col_eq` compares
+objects in the [appendix](#col-eq).
+
+Despite the explicit looping over columns this list based subsetting is
+as fast or faster than matrix subsetting:
+
+```{r}
+microbenchmark(lapply(L[1:2], '[', idx), M[idx,1:2], D[idx,1:2], times=25)
+```
+
+And if we only index columns then the list is even faster than the data frame:
+
+```{r}
+microbenchmark(L[1:2], M[,1:2], D[,1:2], times=25)
+```
+
+# Patterns in List Based Analysis
+
+## Row Subsetting
+
+Select rows indexed by `idx` (we saw this earlier):
+
+```{r}
+microbenchmark(times=25,
+  Matrix= M[idx,],
+  List=   lapply(L, '[', idx)
+)
+```
+
+The `lapply` expression is equivalent to:
+
+```{r eval=FALSE}
+result <- vector("list", length(L))
+for(i in seq_along(L)) result[[i]] <- L[[i]][idx]
+```
+
+We use `lapply` to apply a function to each element of our list.  In our case,
+each element is a vector, so we apply the function to each vector, one at a
+time.
+
+## Column Operations
+
+Suppose we wanted to multiply all the columns in our data by two:
+
+```{r}
+microbenchmark(times=25,
+  Matrix=  M * 2,
+  List=    lapply(L, '*', 2)
+)
+```
+
+The `lapply` call follows the same principle as with row subsetting.  We can use
+any binary function this way.  For unary functions we just omit the additional
+argument:
+
+```{r eval=FALSE}
+lapply(L, sqrt)
+```
+
+We can also extend this to column aggregating functions:
+
+```{r}
+microbenchmark(times=25,
+  Matrix_sum=  colSums(M),
+  List_sum=    lapply(L, sum),
+  Matrix_min=  apply(M, 2, min),
+  List_min=    lapply(L, min)
+)
+```
+
+In the matrix case we have the special `colSums` function that does all the
+calculations in internal C code.  Despite that it is no faster than the list
+approach.  And if there is no special column function and we need to rely on
+`apply` then the list approach is much faster.
+
+If we want to use different scalars for each column things get a bit more
+complicated, particularly for the matrix approach.  With the list we can use
+`Map`:
+
+```{r}
+vec <- 2:5
+microbenchmark(times=25,
+  Matrix_1= t(t(M) * vec),
+  Matrix_2= sapply(seq_along(vec), function(x) M[,x] * vec[x]),
+  Matrix_3= M %*% diag(vec),
+  List=     Map('*', L, vec)
+)
+col_eq(M %*% diag(vec), Map('*', L, vec))
+```
+
+Even our cleverest matrix implementation is slower than the list approach, with
+the additional infirmities that it cannot be extended to other operators, and it
+works incorrectly if the data contains infinite values.
+
+`Map` is a close cousin of `mapply`. It calls its first argument, in
+this case the function `*`, with one element each from the subsequent arguments,
+looping through the argument elements.  It is equivalent to:
+
+```{r eval=FALSE}
+f <- `*`
+result <- vector('list', length(cols))
+for(i in seq_along(L)) result[[i]] <- f(L[[i]], vec[[i]])
+```
+
+We use `Map` instead of `mapply` because it is guaranteed to always return a
+list, whereas `mapply` will simplify the result to a matrix.
+
+`Map` also allows us to operate pairwise on columns.  Another way to compute the
+square of our data might be:
+
+```{r}
+microbenchmark(times=25,
+  Matrix= M * M,
+  List=   Map('*', L, L)
+)
+col_eq(M * M, Map('*', L, L))
+```
+
+## Row-wise Operations
+
+A classic row-wise operation is to sum values by row.  This is easily done with
+`rowSums` for matrices.  For lists, we can use `Reduce` to collapse every column
+into one:
+
+```{r}
+message('rowwise')
+microbenchmark(times=25,
+  Matrix= rowSums(M),
+  List=   Reduce('+', L)
+)
+col_eq(rowSums(M), Reduce('+', L))
+```
+
+Much to my surprise `Reduce` is substantially faster, despite explicitly looping
+through the columns.  From informal testing `Reduce` has an edge up to eight
+columns or so.
+
+`Reduce` collapses the elements of the input list by repeatedly applying a
+binary function to turn two list elements into one.  `Reduce` is equivalent to:
+
+```{r eval=FALSE}
+result <- numeric(length(L[[1]]))
+for(l in L) result <- result + l
+```
+
+An additional advantage of the `Reduce` approach is you can use any binary
+function.
+
+## List to Matrix and Back
+
+R is awesome because it adopts some of the better features of functional
+languages and list based languages.  For example, the following two statements
+are equivalent:
+
+```{r}
+ML1 <- cbind(x1=L[[1]], y1=L[[2]], x2=L[[3]], y2=L[[4]])
+ML2 <- do.call(cbind, L)
+```
+
+Proof:
+
+```{r}
+identical(ML1, ML2)
+identical(ML1, M)
+```
+
+The blurring of calls, lists, data, and functions allows for very powerful
+manipulations of list based data.  In this case, `do.call(cbind, LIST)` will
+transform any list containing equal length vectors into a matrix, irrespective
+of how many columns it has.To confirm `cbind` did what we claim:
+
+To go in the other direction:
+
+```{r}
+LM <- lapply(seq_len(ncol(M)), function(x) M[,x])
+identical(L, setNames(LM, colnames(M)))
+```
+
+You _could_ use `split` but it is much slower.
+
+## More on `do.call`
+
+List based analysis works particularly well with `do.call` and functions that
+use `...` parameters:
+
+```{r}
+microbenchmark(times=25,
+  List=   do.call(pmin, L),
+  Matrix= pmin(M[,1],M[,2],M[,3],M[,4])
+)
+```
+
+The expression is both easier to type, and faster!
+
+There are a couple of "gotchas" with `do.call`, but they only crop up if you try
+to pass quoted language as part of the argument list (e.g. `quote(a + b)`).  If
+you are just using normal R data objects then the one drawback that I am
+aware of is that the call stack can get messy if you ever invoke `traceback()`
+or `sys.calls()` from a function called by `do.call`.
+
+Remember that data frames are lists, so you can do things like:
+
+```{r eval=FALSE}
+do.call(pmin, iris[-5])
+```
+
+## High Dimensional Data
+
+Matrices naturally extend to arrays in high dimensional data.  Imagine we wish
+to track triangle vertex coordinates in 3D space.  We can easily set up an array
+structure to do this:
+
+```{r}
+V <- runif(n * 3 * 3)
+tri.A <- array(
+  V, c(n, 3, 3),
+  dimnames=list(NULL, vertex=paste0('v', 1:3), dim=c('x','y','z'))
+)
+tri.A[1:2,,]
+```
+
+How do we do this with lists?  Well, it turns out that you can make
+list-matrices and list-arrays.  First we need to manipulate our data little as
+we created for use with an array:
+
+```{r}
+MV <- matrix(V, nrow=n)
+tri.L <- lapply(seq_len(9), function(x) MV[,x])
+```
+
+And now ... boom!
+
+```{r}
+dim(tri.L) <- tail(dim(tri.A), -1)
+dimnames(tri.L) <- tail(dimnames(tri.A), -1)
+tri.L
+class(tri.L)
+typeof(tri.L)
+```
+
+A chimera! `tri.L` is a list-matrix.  While this may seem strange if you haven't
+come across one previously, the list matrix and 3D array are essentially
+equivalent:
+
+```{r}
+head(tri.A[,'v1','x'])
+head(tri.L[['v1','x']])
+```
+
+An example operation might be to find the mean value of each coordinate for each
+vertex:
+
+```{r}
+colMeans(tri.A)
+apply(tri.L, 1:2, do.call, what=mean)
+```
+
+We'll be using these in the next section.
+
+# A Case Study
+
+One of my side projects required me to implement [barycentric coordinate][1]
+conversions.  You can think of barycentric coordinates of a point on the surface
+of a triangle as the weights needed on each vertex such that the triangle
+balances on that point.  We show here three different points (red crosses) with
+the barycentric coordinates associated with each vertex.  The size of the vertex
+helps visualize the "weights":
+
 ```{r echo=FALSE, fig.width=7, fig.height=2.5, fig.align='center'}
 plot_par()
 plot_bary(p1, vinit)
@@ -552,15 +603,7 @@ own triangle.
 
 And the shading function:
 
-```{r}
-v_shade_L <- function(p, v) {
-  ## 1) compute barycentric coords
-  bc <- bary_L(p, v)
-  ## 2) for each point, weight vertex colors by bary coords
-  clr.raw <- apply(v[, c('r','g','b')], 2, Map, f="*", bc)
-  ## 3) for each point-colorchannel, sum the weighted values
-  lapply(clr.raw, Reduce, f="+")
-}
+```{r v-shade-l}
 ```
 
 Step 2) is the most complicated.  To understand what's going on we need to look
@@ -620,8 +663,6 @@ And with the colors we can render our fully shaded triangle (see appendix for
 `plot_shaded`):
 
 ```{r interp-list, fig.width=5, fig.height=5, fig.align='center'}
-color.L <- v_shade_L(point.L, vertex.L)
-plot_shaded(point.L, do.call(rgb, color.L))
 ```
 
 The corresponding function in array format looks very similar to the list one:
@@ -674,13 +715,13 @@ looking at the profile data using [`treeprof`][2]:
 treeprof(v_shade_L(point.L, vertex.L))
 ```
 ```{r, echo=FALSE}
-print(treeprof(v_shade_L(point.L, vertex.L)))
+print(treeprof(v_shade_L(point.L, vertex.L), target.time=1))
 ```
 ```{r, eval=FALSE}
 treeprof(v_shade_A(point.A, vertex.A))
 ```
 ```{r, echo=FALSE}
-print(treeprof(v_shade_A(point.A, vertex.A)))
+print(treeprof(v_shade_A(point.A, vertex.A), target.time=1))
 ```
 
 Most of the time difference is in the [`bary_L`](#bary_l) vs [`bary_A`](#bary_a)
@@ -702,6 +743,12 @@ cost of some convolution in the code, but with a little care it can be justified
 for code written once and used many times.
 
 # Appendix
+
+## Column Equality
+
+<a name='col_eq'></a>
+```{r col-eq, eval=FALSE}
+```
 
 ## Barycentric Conversions
 
