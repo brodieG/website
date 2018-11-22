@@ -188,14 +188,14 @@ distracted me in the first place.  As part of this undirected flailing I
 discovered that shading triangle faces from vertex colors is done faster with
 list data structures than with matrices and arrays.
 
-Wait, what?
-
-Simple primitive operations like addition and multiplication can
+Wait, what?  Simple primitive operations like addition and multiplication can
 run faster on lists than on matrices?  The short answer is yes.  The long answer
 is full of story-ruining caveats and boring benchmarks, and it is waiting for
 you in all its gory glory.
 
-# Matrices are Always Faster Than Data Frames, Right?
+# Matrices Are Slow?
+
+## Column Subsetting
 
 Generally speaking matrices are amongst the R data structures that are
 fastest to operate on.  After all, they are contiguous chunks of memory with
@@ -205,13 +205,9 @@ subset operation requires a copy of the data subset.  Consider:
 ```{r}
 set.seed(1023)
 n <- 1e5
-x1 <- runif(n)
-y1 <- runif(n)
-x2 <- runif(n)
-y2 <- runif(n)
 
-M <- cbind(x1, y1, x2, y2)
-D <- data.frame(x1, y1, x2, y2)
+M <- cbind(runif(n), runif(n), runif(n), runif(n))
+D <- as.data.frame(M)
 microbenchmark(M[,1:2], D[,1:2], times=25)
 ```
 
@@ -219,53 +215,26 @@ The data frame subset is much faster because R treats data frame columns as
 independent objects, so referencing an entire column does not require a copy if
 the data is not modified.
 
-# Awesome, I'll Just Use Data Frames! Right?
-
-If you have been in R circles for any length of time you will inevitably have
-heard something I will loosely paraphrase as:
-
-> blah blah blah data frames are EVIL blah blah
-
-Whoever said that to you was not completely lying.  Let's see what happens if
-we select rows and columns:
+But data frames have big performance problems of their own.  Let's see what
+happens if we select columns **and** rows:
 
 ```{r}
 idx <- sample(seq_len(nrow(M)), n/2)
 microbenchmark(M[idx,1:2], D[idx,1:2], times=25)
 ```
 
-So we cannot just switch to data frames blindly.  But what is going on?
-We can easily check how time is used by our expression with
-[treeprof](https://github.com/brodieG/treeprof):
-
-```{r eval=FALSE}
-treeprof(D[idx,1:2], target.time=1)
-```
-```{r echo=FALSE}
-print(treeprof::treeprof(D[idx,1:2], target.time=1))
-```
-
-So `anyDuplicated` is taking a bunch of time, and while not obvious from the
-profile data alone, this is because data frames do not like having duplicated
-row names.  So let's introduce some duplicated row names to see what happens:
-
-```{r eval=FALSE}
-treeprof(D[c(idx,idx[1]), 1:2], target.time=1)
-```
-```{r echo=FALSE}
-print(treeprof::treeprof(D[c(idx,idx[1]), 1:2], target.time=1))
-```
-
-Ouch!  The duplicate row name triggered the creation of *character* row names,
-at great expense.  In return, you get:
+And its even worse if we have duplicate row indices:
 
 ```{r}
-tail(rownames(D[c(idx,idx[1]), 1:2]))
+idx2 <- c(idx, idx[1])
+microbenchmark(M[idx2,1:2], D[idx2,1:2], times=25)
 ```
 
-Not. A. Good. Deal.
+This is all happening because data frames have row names, and as a result any
+subset operation requires checking for duplicate row names, and creating new
+unique character row names if there are duplicates.
 
-# Lists to the Rescue
+## Lists to the Rescue
 
 With a little extra work you can do most of what you would normally do with a
 matrix or data frame with a list.  It is not something I would want to do on a
