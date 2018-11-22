@@ -23,6 +23,7 @@ tags: [rstats]
 * `outer`, but watch out for memory
 * `embed`
 * `%*%`
+* `* * *` faster than `^3`
 * `rowSums` and friends (include > 2d examples)
 * `rowsum`, need to check how fast this actual is for matrices
 * `max.col`
