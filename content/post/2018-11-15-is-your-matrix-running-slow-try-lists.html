@@ -1,0 +1,737 @@
+---
+title: Is Your Matrix Running Slow? Try Lists.
+author: ~
+date: '2018-11-23'
+slug: is-your-matrix-running-slow-try-lists
+categories: [optimization]
+tags: [rstats]
+---
+
+
+
+<div style="display: none;">
+<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png" width="672" /></p>
+</div>
+<div id="tldr" class="section level1">
+<h1>TL;DR</h1>
+<p><img
+src='/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/></p>
+<p>What do psychedelic triangles and chimeras have in common? Oddly the answer is
+“list data structures”. I discovered this while procrastinating from the side
+project that was my procrastination from my actual projects. Much
+to my surprise, shading triangles from vertex colors is faster with list data
+structures than with matrices and arrays. This despite the calculations
+involved being simple additions and multiplications on large atomic vectors.</p>
+<p>As with everything in life there are caveats to this finding. It is primarily
+applicable to tall and skinny data; i.e. data with a very high ratio of
+observations to variables. Given that this type of data is fairly common, it
+seems worth showing the methods for working with list data structures. In my
+particular use case I saw speed improvements on the order of 2x to 4x.</p>
+<p>If you are bored easily you might want to skip straight to the <a href="#a-case-study">case
+study</a> section of this post.</p>
+</div>
+<div id="matrices-are-slow" class="section level1">
+<h1>Matrices Are Slow?</h1>
+<div id="column-subsetting" class="section level2">
+<h2>Column Subsetting</h2>
+<p>Generally speaking matrices are amongst the R data structures that are
+fastest to operate on. After all, they are contiguous chunks of memory with
+almost no overhead. Unfortunately, they do come with a major limitation: any
+subset operation requires copying the data:</p>
+<pre class="r"><code>set.seed(1023)
+n &lt;- 1e5
+
+M &lt;- cbind(runif(n), runif(n), runif(n), runif(n))
+D &lt;- as.data.frame(M)
+microbenchmark(M[,1:2], D[,1:2], times=25)</code></pre>
+<pre><code>Unit: microseconds
+     expr   min     lq mean median     uq  max neval
+ M[, 1:2] 606.2 1656.2 2026 1735.9 1987.5 9626    25
+ D[, 1:2]  14.9   23.7   60   60.2   79.1  158    25</code></pre>
+<p>The data frame subset is much faster because R treats data frame columns as
+independent objects, so referencing an entire column does not require a copy.
+But data frames have big performance problems of their own. Let’s see what
+happens if we select columns <strong>and</strong> rows:</p>
+<pre class="r"><code>idx &lt;- sample(seq_len(nrow(M)), n/2)
+microbenchmark(M[idx,1:2], D[idx,1:2], times=25)</code></pre>
+<pre><code>Unit: microseconds
+        expr  min    lq  mean median    uq   max neval
+ M[idx, 1:2]  681  1152  1531   1324  1590  4750    25
+ D[idx, 1:2] 8954 10151 11717  11114 13081 16638    25</code></pre>
+<p>And its even worse if we have duplicate row indices:</p>
+<pre class="r"><code>idx2 &lt;- c(idx, idx[1])
+microbenchmark(M[idx2,1:2], D[idx2,1:2], times=25)</code></pre>
+<pre><code>Unit: milliseconds
+         expr   min   lq  mean median    uq  max neval
+ M[idx2, 1:2]  1.48  1.9  3.49   2.61  3.52 22.3    25
+ D[idx2, 1:2] 37.13 45.7 51.86  48.88 58.40 73.0    25</code></pre>
+<p>Data frames have row names that are required to be unique and most of the row
+subsetting overhead comes from managing them.</p>
+</div>
+<div id="lists-to-the-rescue" class="section level2">
+<h2>Lists to the Rescue</h2>
+<p>With a little extra work you can do most of what you would normally do with a
+matrix or data frame with a list. For example, to select “rows” in a list of
+vectors, we use <code>lapply</code> to apply <code>[</code> to each component vector:</p>
+<pre class="r"><code>L &lt;- as.list(D)
+str(L)</code></pre>
+<pre><code>List of 4
+ $ V1: num [1:100000] 0.249 0.253 0.95 0.489 0.406 ...
+ $ V2: num [1:100000] 0.7133 0.4531 0.6676 0.651 0.0663 ...
+ $ V3: num [1:100000] 0.87 0.783 0.714 0.419 0.495 ...
+ $ V4: num [1:100000] 0.44475 0.90667 0.12428 0.00587 0.77874 ...</code></pre>
+<pre class="r"><code>sub.L &lt;- lapply(L[1:2], &#39;[&#39;, idx)
+str(sub.L)</code></pre>
+<pre><code>List of 2
+ $ V1: num [1:50000] 0.997 0.43 0.945 0.798 0.252 ...
+ $ V2: num [1:50000] 0.539 0.287 0.567 0.848 0.56 ...</code></pre>
+<pre class="r"><code>col_eq(sub.L, D[idx,1:2])  # col_eq compares values column by column</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>This results in the same elements selected as with data frame or matrix
+subsetting, except the result remains a list. You can see how <code>col_eq</code> compares
+objects in the <a href="#col_eq">appendix</a>.</p>
+<p>Despite the explicit looping over columns this list based subsetting is
+comparable to matrix subsetting in speed:</p>
+<pre class="r"><code>microbenchmark(lapply(L[1:2], &#39;[&#39;, idx), M[idx,1:2], D[idx,1:2], times=25)</code></pre>
+<pre><code>Unit: microseconds
+                     expr   min    lq  mean median    uq   max neval
+ lapply(L[1:2], &quot;[&quot;, idx)   446  1451  2102   1810  2067 10660    25
+              M[idx, 1:2]  1067  1865  2122   2158  2315  3563    25
+              D[idx, 1:2] 10020 11958 12498  12743 13198 14043    25</code></pre>
+<p>And if we only index columns then the list is even faster than the data frame:</p>
+<pre class="r"><code>microbenchmark(L[1:2], M[,1:2], D[,1:2], times=25)</code></pre>
+<pre><code>Unit: nanoseconds
+     expr     min      lq    mean  median      uq     max neval
+   L[1:2]     716    1540    5901    1844    9124   46096    25
+ M[, 1:2] 1987701 2266001 2371282 2310686 2486724 3036772    25
+ D[, 1:2]   16930   25192   58212   28674   86343  156846    25</code></pre>
+</div>
+</div>
+<div id="patterns-in-list-based-analysis" class="section level1">
+<h1>Patterns in List Based Analysis</h1>
+<div id="row-subsetting" class="section level2">
+<h2>Row Subsetting</h2>
+<p>As we saw previously the idiom for subsetting “rows” from a list of equal length
+vectors is:</p>
+<pre class="r"><code>lapply(L, &#39;[&#39;, idx)</code></pre>
+<p>The <code>lapply</code> expression is equivalent to:</p>
+<pre class="r"><code>fun &lt;- `[`
+result &lt;- vector(&quot;list&quot;, length(L))
+for(i in seq_along(L)) result[[i]] &lt;- fun(L[[i]], idx)</code></pre>
+<p>We use <code>lapply</code> to apply a function to each element of our list. In our case,
+each element is a vector, and the function is the subset operator <code>[</code>. In R,
+<code>L[[i]][idx]</code> and <code>'['(L[[i]], idx)</code> are equivalent as operators are really just
+functions that R recognizes as functions at parse time.</p>
+</div>
+<div id="column-operations" class="section level2">
+<h2>Column Operations</h2>
+<p>We can extend the <code>lapply</code> principle to other operators and functions. To
+multiply every column by two we can use:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  Matrix=  M * 2,
+  List=    lapply(L, &#39;*&#39;, 2)
+)</code></pre>
+<pre><code>Unit: microseconds
+   expr min   lq mean median   uq   max neval
+ Matrix 918 2531 3218   2862 3328 13503    25
+   List 542  934 2536   2491 2837 13763    25</code></pre>
+<p>This will work for any binary function. For unary functions we just omit the
+additional argument:</p>
+<pre class="r"><code>lapply(L, sqrt)</code></pre>
+<p>We can also extend this to column aggregating functions:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  Matrix_sum=  colSums(M),
+  List_sum=    lapply(L, sum),
+  Matrix_min=  apply(M, 2, min),
+  List_min=    lapply(L, min)
+)</code></pre>
+<pre><code>Unit: microseconds
+       expr  min   lq  mean median    uq   max neval
+ Matrix_sum  537  561   619    569   592  1536    25
+   List_sum  526  542   599    573   644   771    25
+ Matrix_min 6177 9254 10553  10224 11667 17966    25
+   List_min  962 1050  1203   1089  1235  1840    25</code></pre>
+<p>In the matrix case we have the special <code>colSums</code> function that does all the
+calculations in internal C code. Despite that it is no faster than the list
+approach. And for operations without special column functions such as finding
+the minimum by column we need to use <code>apply</code>, at which point the list approach
+is much faster.</p>
+<p>If we want to use different scalars for each column things get a bit more
+complicated, particularly for the matrix approach. The most natural way to do
+this with the matrix is to transpose and take advantage of column recycling.
+For lists we can use <code>Map</code>:</p>
+<pre class="r"><code>vec &lt;- 2:5
+microbenchmark(times=25,
+  Matrix= t(t(M) * vec),
+  List=   Map(&#39;*&#39;, L, vec)
+)</code></pre>
+<pre><code>Unit: microseconds
+   expr  min   lq mean median   uq   max neval
+ Matrix 3071 4591 7738   7883 8907 14669    25
+   List  840 1114 2784   2435 3517 13766    25</code></pre>
+<pre class="r"><code>col_eq(t(t(M) * vec), Map(&#39;*&#39;, L, vec))</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p><code>Map</code> is a close cousin of <code>mapply</code>. It calls its first argument, in this case
+the function <code>*</code>, with one element each from the subsequent arguments, looping
+through the argument elements. We use <code>Map</code> instead of <code>mapply</code> because it is
+guaranteed to always return a list, whereas <code>mapply</code> will simplify the result to
+a matrix. It is equivalent to:</p>
+<pre class="r"><code>f &lt;- `*`
+result &lt;- vector(&#39;list&#39;, length(vec))
+for(i in seq_along(L)) result[[i]] &lt;- f(L[[i]], vec[[i]])</code></pre>
+<p>There are some faster ways to do this with matrices, such as:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  Matrix=  M %*% diag(vec),
+  List=    Map(&#39;*&#39;, L, vec)
+)</code></pre>
+<pre><code>Unit: microseconds
+   expr  min   lq mean median   uq   max neval
+ Matrix 3053 4508 4731   4615 4733 11913    25
+   List  989 2207 3153   3145 3203 12611    25</code></pre>
+<pre class="r"><code>col_eq(M %*% diag(vec), Map(&#39;*&#39;, L, vec))</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>But even that is slower than the list approach, with the additional infirmities
+that it cannot be extended to other operators, and it works incorrectly if the
+data contains infinite values.</p>
+<p><code>Map</code> also allows us to operate pairwise on columns. Another way to compute the
+square of our data might be:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  Matrix= M * M,
+  List=   Map(&#39;*&#39;, L, L)
+)</code></pre>
+<pre><code>Unit: microseconds
+   expr min   lq mean median   uq   max neval
+ Matrix 905 2496 2605   2633 2724  9853    25
+   List 518 2311 2639   2679 2891 12111    25</code></pre>
+<pre class="r"><code>col_eq(M * M, Map(&#39;*&#39;, L, L))</code></pre>
+<pre><code>[1] TRUE</code></pre>
+</div>
+<div id="row-wise-operations" class="section level2">
+<h2>Row-wise Operations</h2>
+<p>A classic row-wise operation is to sum values by row. This is easily done with
+<code>rowSums</code> for matrices. For lists, we can use <code>Reduce</code> to collapse every column
+into one:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  Matrix= rowSums(M),
+  List=   Reduce(&#39;+&#39;, L)
+)</code></pre>
+<pre><code>Unit: microseconds
+   expr  min   lq mean median   uq   max neval
+ Matrix 1548 2642 3291   2934 3306 14097    25
+   List  593 1426 1601   1690 1924  2245    25</code></pre>
+<pre class="r"><code>col_eq(rowSums(M), Reduce(&#39;+&#39;, L))</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Much to my surprise <code>Reduce</code> is substantially faster, despite explicitly looping
+through the columns. From informal testing <code>Reduce</code> has an edge up to ten
+columns or so. This may be because <code>rowSums</code> will use <code>long double</code> to store
+the interim results of the row sums, whereas <code>+</code> will just add double values
+directly, with some loss of precision as a result.</p>
+<p><code>Reduce</code> collapses the elements of the input list by repeatedly applying a
+binary function to turn two list elements into one. <code>Reduce</code> is equivalent to:</p>
+<pre class="r"><code>result &lt;- numeric(length(L[[1]]))
+for(l in L) result &lt;- result + l</code></pre>
+<p>An additional advantage of the <code>Reduce</code> approach is you can use any binary
+function for the row-wise aggregation.</p>
+</div>
+<div id="list-to-matrix-and-back" class="section level2">
+<h2>List to Matrix and Back</h2>
+<p>R is awesome because it adopts some of the better features of functional
+languages and list based languages. For example, the following two statements
+are equivalent:</p>
+<pre class="r"><code>ML1 &lt;- cbind(x1=L[[1]], y1=L[[2]], x2=L[[3]], y2=L[[4]])
+ML2 &lt;- do.call(cbind, L)</code></pre>
+<p>Proof:</p>
+<pre class="r"><code>col_eq(ML1, ML2)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<pre class="r"><code>col_eq(ML1, M)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>The blurring of calls, lists, data, and functions allows for very powerful
+manipulations of list based data. In this case, <code>do.call(cbind, LIST)</code> will
+transform any list containing equal length vectors into a matrix, irrespective
+of how many columns it has.To confirm <code>cbind</code> did what we claim:</p>
+<p>To go in the other direction:</p>
+<pre class="r"><code>LM &lt;- lapply(seq_len(ncol(M)), function(x) M[,x])
+col_eq(L, LM)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>You <em>could</em> use <code>split</code> but it is much slower.</p>
+</div>
+<div id="more-on-do.call" class="section level2">
+<h2>More on <code>do.call</code></h2>
+<p>List based analysis works particularly well with <code>do.call</code> and functions that
+use <code>...</code> parameters:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  List=   do.call(pmin, L),
+  Matrix= pmin(M[,1],M[,2],M[,3],M[,4])
+)</code></pre>
+<pre><code>Unit: milliseconds
+   expr  min   lq mean median   uq   max neval
+   List 3.00 3.38 3.55   3.46 3.72  4.49    25
+ Matrix 5.02 7.45 8.29   7.79 8.22 16.12    25</code></pre>
+<p>The expression is both easier to type, and faster!</p>
+<p>There are a couple of “gotchas” with <code>do.call</code>, but they only crop up if you try
+to pass quoted language as part of the argument list (e.g. <code>quote(a + b)</code>). If
+you are just using normal R data objects then the one drawback that I am
+aware of is that the call stack can get messy if you ever invoke <code>traceback()</code>
+or <code>sys.calls()</code> from a function called by <code>do.call</code>.</p>
+<p>Remember that data frames are lists, so you can do things like:</p>
+<pre class="r"><code>do.call(pmin, iris[-5])</code></pre>
+</div>
+<div id="high-dimensional-data" class="section level2">
+<h2>High Dimensional Data</h2>
+<p>Matrices naturally extend to arrays in high dimensional data. Imagine we wish
+to track triangle vertex coordinates in 3D space. We can easily set up an array
+structure to do this:</p>
+<pre class="r"><code>verts &lt;- 3
+dims &lt;- 3
+V &lt;- runif(n * verts * dims)
+tri.A &lt;- array(
+  V, c(n, verts, dims),
+  dimnames=list(NULL, vertex=paste0(&#39;v&#39;, seq_len(verts)), dim=c(&#39;x&#39;,&#39;y&#39;,&#39;z&#39;))
+)
+tri.A[1:2,,]</code></pre>
+<pre><code>, , dim = x
+
+      vertex
+          v1    v2    v3
+  [1,] 0.982 0.411 0.936
+  [2,] 0.798 0.675 0.345
+
+, , dim = y
+
+      vertex
+          v1    v2    v3
+  [1,] 0.561 0.156 0.782
+  [2,] 0.188 0.572 0.854
+
+, , dim = z
+
+      vertex
+          v1    v2    v3
+  [1,] 0.435 0.361 0.892
+  [2,] 0.146 0.109 0.922</code></pre>
+<p>How do we do this with lists? Well, it turns out that you can make
+list-matrices and list-arrays. First we need to manipulate our data little as
+we created it originally for use with an array:</p>
+<pre class="r"><code>MV &lt;- matrix(V, nrow=n)
+tri.L &lt;- lapply(seq_len(verts * dims), function(x) MV[,x])</code></pre>
+<p>Then, we just add dimensions:</p>
+<pre class="r"><code>dim(tri.L) &lt;- tail(dim(tri.A), -1)
+dimnames(tri.L) &lt;- tail(dimnames(tri.A), -1)
+tri.L</code></pre>
+<pre><code>      dim
+vertex x              y              z             
+    v1 Numeric,100000 Numeric,100000 Numeric,100000
+    v2 Numeric,100000 Numeric,100000 Numeric,100000
+    v3 Numeric,100000 Numeric,100000 Numeric,100000</code></pre>
+<pre class="r"><code>class(tri.L)</code></pre>
+<pre><code>[1] &quot;matrix&quot;</code></pre>
+<pre class="r"><code>typeof(tri.L)</code></pre>
+<pre><code>[1] &quot;list&quot;</code></pre>
+<p>A chimera! <code>tri.L</code> is a list-matrix. While this may seem strange if you haven’t
+come across one previously, the list matrix and 3D array are essentially
+equivalent:</p>
+<pre class="r"><code>head(tri.A[,&#39;v1&#39;,&#39;x&#39;])</code></pre>
+<pre><code>[1] 0.9825 0.7980 0.5111 0.0385 0.6194 0.1001</code></pre>
+<pre class="r"><code>head(tri.L[[&#39;v1&#39;,&#39;x&#39;]])</code></pre>
+<pre><code>[1] 0.9825 0.7980 0.5111 0.0385 0.6194 0.1001</code></pre>
+<p>An example operation might be to find the mean value of each coordinate for each
+vertex:</p>
+<pre class="r"><code>colMeans(tri.A)</code></pre>
+<pre><code>      dim
+vertex     x     y   z
+    v1 0.499 0.501 0.5
+    v2 0.500 0.500 0.5
+    v3 0.500 0.500 0.5</code></pre>
+<pre class="r"><code>apply(tri.L, 1:2, do.call, what=mean)</code></pre>
+<pre><code>      dim
+vertex     x     y   z
+    v1 0.499 0.501 0.5
+    v2 0.500 0.500 0.5
+    v3 0.500 0.500 0.5</code></pre>
+<p><code>apply</code> with the second argument set to <code>1:2</code> is equivalent to:</p>
+<pre class="r"><code>MARGIN &lt;- 1:2
+result &lt;- vector(&#39;list&#39;, prod(dim(tri.L)[MARGIN]))
+dim(result) &lt;- dim(tri.L)[MARGIN]
+fun &lt;- do.call
+for(i in seq_len(nrow(tri.L)))
+  for(j in seq_len(ncol(tri.L)))
+    result[i, j] &lt;- fun(what=mean, tri.L[i, j])</code></pre>
+<p>We use <code>do.call</code> because <code>tri.L[i, j]</code> is a list, and we wish to call <code>mean</code>
+with the contents of the list, not the list itself. We could also have used a
+function like <code>function(x) mean(x[[1]])</code> instead of <code>do.call</code>.</p>
+<p>We’ll be using list matrices in the next section.</p>
+</div>
+</div>
+<div id="a-case-study" class="section level1">
+<h1>A Case Study</h1>
+<p>One of my side projects required me to implement <a href="https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles">barycentric coordinate</a>
+conversions. You can think of barycentric coordinates of a point in a triangle
+as the weights of the vertices that cause the triangle to balance on that
+point. We show here three different points (red crosses) with the barycentric
+coordinates associated with each vertex. The size of the vertex helps visualize
+the “weights”:</p>
+<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/unnamed-chunk-30-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>This is useful if we want to interpolate values from the vertices to points in
+the triangle. Here we interpolate a color for a point in a triangle from the
+colors of the vertices of that triangle:</p>
+<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/unnamed-chunk-31-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><a name='bary_formula'></a>The formula for converting cartesian coordinates <a href="https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles">to Barycentric</a> is:</p>
+<p><span class="math display">\[\lambda_1 = \frac{(y_2 - y_3)(x - x_3) + (x_3 - x_2)(y - y_3)}{(y_2 - y_3)(x_1 - x_3) + (x_3 - x_2)(y_1 - y_3)}\\
+\lambda_2 = \frac{(y_3 - y_1)(x - x_3) + (x_1 - x_3)(y - y_3)}{(y_2 - y_3)(x_1 - x_3) + (x_3 - x_2)(y_1 - y_3)}\\
+\lambda_3 = 1 - \lambda_1 - \lambda_2\]</span></p>
+<p>You can see that whatever the data structure is, we will be using a lot of
+column subsetting for this calculation. We implement <code>bary_A</code> and <code>bary_L</code> to
+convert Cartesian coordinates to barycentric using array and list-matrix data
+structures respectively. Since both of these are direct translations of
+the above formulas, we relegate them to the <a href="#barycentric-conversions">code
+appendix</a>. We will use them to shade every point of
+our triangle with the weighted color of the vertices.</p>
+<p>First, the data:</p>
+<pre class="r"><code>str(point.L)  # every point we want to compute color</code></pre>
+<pre><code>List of 2
+ $ x: num [1:79946] 0 0.00251 0.00501 0.00752 0.01003 ...
+ $ y: num [1:79946] 0.067 0.067 0.067 0.067 0.067 ...</code></pre>
+<pre class="r"><code>vertex.L      # list-matrix!</code></pre>
+<pre><code>    Data
+V    x             y             r             g             b            
+  v1 Numeric,79946 Numeric,79946 Numeric,79946 Numeric,79946 Numeric,79946
+  v2 Numeric,79946 Numeric,79946 Numeric,79946 Numeric,79946 Numeric,79946
+  v3 Numeric,79946 Numeric,79946 Numeric,79946 Numeric,79946 Numeric,79946</code></pre>
+<p>The <code>vertex.L</code> list-matrix has the x, y coordinates and the red, green, and blue
+color channel vales of the triangle associated with each point. In this
+particular case it happens to be the same triangle for every point, so we could
+have used a single instance of the triangle. The generalization needs to
+allow for many triangles with a small and varying number of points per triangle,
+and to handle that efficiently in R we need to match each point to its own
+triangle.</p>
+<p>And the shading function:</p>
+<pre class="r"><code>v_shade_L &lt;- function(p, v) {
+  ## 1) compute barycentric coords
+  bc &lt;- bary_L(p, v)
+  ## 2) for each point, weight vertex colors by bary coords
+  clr.raw &lt;- apply(v[, c(&#39;r&#39;,&#39;g&#39;,&#39;b&#39;)], 2, Map, f=&quot;*&quot;, bc)
+  ## 3) for each point-colorchannel, sum the weighted values
+  lapply(clr.raw, Reduce, f=&quot;+&quot;)
+}</code></pre>
+<p>Step 1) is carried out by <a href="#bary_l"><code>bary_L</code></a>, which is a simple adaptation of
+the <a href="#bary-formula">barycentric conversion formulas</a>. Step 2) is the most
+complicated. To understand what’s going on we need to look at the two data
+inputs to <code>apply</code>, which are:</p>
+<pre class="r"><code>v[, c(&#39;r&#39;,&#39;g&#39;,&#39;b&#39;)]</code></pre>
+<pre><code>    Data
+V    r             g             b            
+  v1 Numeric,79946 Numeric,79946 Numeric,79946
+  v2 Numeric,79946 Numeric,79946 Numeric,79946
+  v3 Numeric,79946 Numeric,79946 Numeric,79946</code></pre>
+<pre class="r"><code>str(bc)</code></pre>
+<pre><code>List of 3
+ $ : num [1:79946] 1 0.997 0.995 0.992 0.99 ...
+ $ : num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+ $ : num [1:79946] 0 0.00251 0.00501 0.00752 0.01003 ...</code></pre>
+<p>In:</p>
+<pre class="r"><code>clr.raw &lt;- apply(v[, c(&#39;r&#39;,&#39;g&#39;,&#39;b&#39;)], 2, Map, f=&quot;*&quot;, bc)</code></pre>
+<p>We ask <code>apply</code> to call <code>Map</code> for each column of <code>v[, c('r','g','b')]</code>. The
+additional arguments <code>f='*'</code> and <code>bc</code> are passed on to <code>Map</code> such that, for the
+first column, the <code>Map</code> call is:</p>
+<pre class="r"><code>Map(&#39;*&#39;, v[,&#39;r&#39;], bc)</code></pre>
+<p><code>v[,'r']</code> is a list with the red color channel values for each of the three
+vertices for each of the points in our data:</p>
+<pre class="r"><code>str(v[,&#39;r&#39;])</code></pre>
+<pre><code>List of 3
+ $ v1: num [1:79946] 1 1 1 1 1 1 1 1 1 1 ...
+ $ v2: num [1:79946] 1 1 1 1 1 1 1 1 1 1 ...
+ $ v3: num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...</code></pre>
+<p><code>bc</code> is a list of the barycentric coordinates of each point which we will use as
+the vertex weights when averaging the vertex colors to point colors:</p>
+<pre class="r"><code>str(bc)</code></pre>
+<pre><code>List of 3
+ $ : num [1:79946] 1 0.997 0.995 0.992 0.99 ...
+ $ : num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+ $ : num [1:79946] 0 0.00251 0.00501 0.00752 0.01003 ...</code></pre>
+<p>The <code>Map</code> call is just multiplying each color value by its vertex weight.</p>
+<p><code>apply</code> will repeat this over the three color channels giving us the barycentric
+coordinate-weighted color channel values for each point:</p>
+<pre class="r"><code>str(clr.raw)</code></pre>
+<pre><code>List of 3
+ $ r:List of 3
+  ..$ v1: num [1:79946] 1 0.997 0.995 0.992 0.99 ...
+  ..$ v2: num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+  ..$ v3: num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+ $ g:List of 3
+  ..$ v1: num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+  ..$ v2: num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+  ..$ v3: num [1:79946] 0 0.00251 0.00501 0.00752 0.01003 ...
+ $ b:List of 3
+  ..$ v1: num [1:79946] 1 0.997 0.995 0.992 0.99 ...
+  ..$ v2: num [1:79946] 0 0 0 0 0 0 0 0 0 0 ...
+  ..$ v3: num [1:79946] 0 0.00251 0.00501 0.00752 0.01003 ...</code></pre>
+<p>Step 3) collapses the weighted values into (r,g,b) triplets for each point:</p>
+<pre class="r"><code>str(lapply(clr.raw, Reduce, f=&quot;+&quot;))</code></pre>
+<pre><code>List of 3
+ $ r: num [1:79946] 1 0.997 0.995 0.992 0.99 ...
+ $ g: num [1:79946] 0 0.00251 0.00501 0.00752 0.01003 ...
+ $ b: num [1:79946] 1 1 1 1 1 1 1 1 1 1 ...</code></pre>
+<p>And with the colors we can render our fully shaded triangle (see appendix for
+<a href="#plot_shaded"><code>plot_shaded</code></a>):</p>
+<pre class="r"><code>color.L &lt;- v_shade_L(point.L, vertex.L)
+plot_shaded(point.L, do.call(rgb, color.L))</code></pre>
+<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png" width="480" style="display: block; margin: auto;" /></p>
+<p>The corresponding function in array format looks very similar to the list one:</p>
+<pre class="r"><code>v_shade_A &lt;- function(p, v) {
+  ## 1) compute barycentric coords
+  bc &lt;- bary_A(p, v)
+  ## 2) for each point, weight vertex colors by bary coords
+  v.clrs &lt;- v[,,c(&#39;r&#39;,&#39;g&#39;,&#39;b&#39;)]
+  clr.raw &lt;- array(bc, dim=dim(v.clrs)) * v.clrs
+  ## 3) for each point-colorchannel, sum the weighted values
+  rowSums(aperm(clr.raw, c(1,3,2)), dims=2)
+}</code></pre>
+<p>For a detailed description of what it is doing <a href="#array-shading">see the
+appendix</a>. The take-away for now is that every function in the
+array implementation is fast in the sense that all the real work is done in
+internal C code.</p>
+<p>The data are also similar, although they are in matrix and array format instead
+of list and matrix-list:</p>
+<pre class="r"><code>str(point.A)</code></pre>
+<pre><code> num [1:79946, 1:2] 0 0.00251 0.00501 0.00752 0.01003 ...
+ - attr(*, &quot;dimnames&quot;)=List of 2
+  ..$ : NULL
+  ..$ : chr [1:2] &quot;x&quot; &quot;y&quot;</code></pre>
+<pre class="r"><code>str(vertex.A)</code></pre>
+<pre><code> num [1:79946, 1:3, 1:5] 0 0 0 0 0 0 0 0 0 0 ...
+ - attr(*, &quot;dimnames&quot;)=List of 3
+  ..$     : NULL
+  ..$ V   : chr [1:3] &quot;v1&quot; &quot;v2&quot; &quot;v3&quot;
+  ..$ Data: chr [1:5] &quot;x&quot; &quot;y&quot; &quot;r&quot; &quot;g&quot; ...</code></pre>
+<p>Both shading implementations produce the same result:</p>
+<pre class="r"><code>color.A &lt;- v_shade_A(point.A, vertex.A)
+col_eq(color.L, color.A)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Yet, the list based shading is substantially faster:</p>
+<pre class="r"><code>microbenchmark(times=25,
+  v_shade_L(point.L, vertex.L),
+  v_shade_A(point.A, vertex.A)
+)</code></pre>
+<pre><code>Unit: milliseconds
+                         expr  min   lq mean median   uq   max neval
+ v_shade_L(point.L, vertex.L)  9.6 15.8 20.3   20.0 22.3  33.8    25
+ v_shade_A(point.A, vertex.A) 65.4 79.0 93.3   89.7 98.3 151.1    25</code></pre>
+<p>We can get a better sense of where the speed differences are coming from by
+looking at the profile data using <a href="https://github.com/brodieG/treeprof"><code>treeprof</code></a>:</p>
+<pre class="r"><code>treeprof(v_shade_L(point.L, vertex.L))</code></pre>
+<pre><code>Ticks: 800; Iterations: 49; Time Per: 19.85 milliseconds; Time Total: 972.4 milliseconds; Time Ticks: 0.8
+
+                                  milliseconds
+v_shade_L -------------------- : 19.85 -  0.00
+    bary_L ------------------- : 10.15 - 10.15
+    apply -------------------- :  5.95 -  0.00
+    |   FUN ------------------ :  5.95 -  0.00
+    |       mapply ----------- :  5.95 -  0.00
+    |           &lt;Anonymous&gt; -- :  5.95 -  5.95
+    lapply ------------------- :  3.75 -  0.00
+        FUN ------------------ :  3.75 -  0.00
+            f ---------------- :  3.75 -  3.75</code></pre>
+<pre class="r"><code>treeprof(v_shade_A(point.A, vertex.A))</code></pre>
+<pre><code>Ticks: 716; Iterations: 12; Time Per: 65.99 milliseconds; Time Total: 791.8 milliseconds; Time Ticks: 0.716
+
+                                    milliseconds
+v_shade_A ---------------------- : 65.99 -  0.00
+    bary_A --------------------- : 44.33 - 43.50
+    |   cbind ------------------ :  0.83 -  0.83
+    rowSums -------------------- : 17.23 -  6.82
+    |   is.data.frame ---------- : 10.41 -  0.00
+    |       aperm -------------- : 10.41 -  0.18
+    |           aperm.default -- : 10.23 - 10.23
+    array ---------------------- :  4.42 -  4.42</code></pre>
+<p>Most of the time difference is in the <a href="#bary_l"><code>bary_L</code></a> vs <a href="#bary_a"><code>bary_A</code></a>
+functions that compute the barycentric coordinates. You can also tell that
+because almost all the time in the <code>bary_*</code> functions is “self” time (the second
+column in the profile data) that this time is all spent doing primitive /
+internal operations.</p>
+<p>Step 2) takes about the same amount of time for both the list-matrix and array
+methods (the <code>apply</code> call for <code>v_shade_L</code> and the <code>array</code> call for <code>v_shade_A</code>,
+but step 3) is also much faster for the list approach because with the
+array approach we need to permute the dimensions so we can use <code>rowSums</code> (more
+details in the <a href="#array-shading">appendix</a>).</p>
+</div>
+<div id="conclusion" class="section level1">
+<h1>Conclusion</h1>
+<p>If your data is tall and skinny, list data structures can improve performance
+without compiled code or additional external dependencies. Most operations are
+comparable in speed whether done with matrices or lists, but some key operations
+are faster and that make some tasks noticeably more efficient.</p>
+<p>One trade-off is that the data manipulation can be more difficult with lists,
+but for code in a package the extra work may be justified. Additionally, this
+is not always true: patterns like <code>do.call(fun, list)</code> simplify tasks that
+can be awkward with matrices.</p>
+<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="column-equality" class="section level2">
+<h2>Column Equality</h2>
+<p><a name='col_eq'></a></p>
+<pre class="r"><code>col_eq &lt;- function(x, y) {
+  if(is.matrix(x)) x &lt;- lapply(seq_len(ncol(x)), function(z) x[, z])
+  if(is.matrix(y)) y &lt;- lapply(seq_len(ncol(y)), function(z) y[, z])
+  # stopifnot(is.list(x), is.list(y))
+  all.equal(x, y, check.attributes=FALSE)
+}</code></pre>
+</div>
+<div id="barycentric-conversions" class="section level2">
+<h2>Barycentric Conversions</h2>
+<p><a name='bary_l'></a></p>
+<pre class="r"><code>## Conversion to Barycentric Coordinates; List-Matrix Version
+
+bary_L &lt;- function(p, v) {
+  det &lt;-  (v[[2,&#39;y&#39;]]-v[[3,&#39;y&#39;]])*(v[[1,&#39;x&#39;]]-v[[3,&#39;x&#39;]]) +
+          (v[[3,&#39;x&#39;]]-v[[2,&#39;x&#39;]])*(v[[1,&#39;y&#39;]]-v[[3,&#39;y&#39;]])
+
+  l1 &lt;- (
+          (v[[2,&#39;y&#39;]]-v[[3,&#39;y&#39;]])*(  p[[&#39;x&#39;]]-v[[3,&#39;x&#39;]]) +
+          (v[[3,&#39;x&#39;]]-v[[2,&#39;x&#39;]])*(  p[[&#39;y&#39;]]-v[[3,&#39;y&#39;]])
+        ) / det
+  l2 &lt;- (
+          (v[[3,&#39;y&#39;]]-v[[1,&#39;y&#39;]])*(  p[[&#39;x&#39;]]-v[[3,&#39;x&#39;]]) +
+          (v[[1,&#39;x&#39;]]-v[[3,&#39;x&#39;]])*(  p[[&#39;y&#39;]]-v[[3,&#39;y&#39;]])
+        ) / det
+  l3 &lt;- 1 - l1 - l2
+  list(l1, l2, l3)
+}</code></pre>
+<p><a name='bary_a'></a></p>
+<pre class="r"><code>## Conversion to Barycentric Coordinates; Array Version
+
+bary_A &lt;- function(p, v) {
+  det &lt;- (v[,2,&#39;y&#39;]-v[,3,&#39;y&#39;])*(v[,1,&#39;x&#39;]-v[,3,&#39;x&#39;]) +
+         (v[,3,&#39;x&#39;]-v[,2,&#39;x&#39;])*(v[,1,&#39;y&#39;]-v[,3,&#39;y&#39;])
+
+  l1 &lt;- (
+          (v[,2,&#39;y&#39;]-v[,3,&#39;y&#39;]) * (p[,&#39;x&#39;]-v[,3,&#39;x&#39;]) +
+          (v[,3,&#39;x&#39;]-v[,2,&#39;x&#39;]) * (p[,&#39;y&#39;]-v[,3,&#39;y&#39;])
+        ) / det
+  l2 &lt;- (
+          (v[,3,&#39;y&#39;]-v[,1,&#39;y&#39;]) * (p[,&#39;x&#39;]-v[,3,&#39;x&#39;]) +
+          (v[,1,&#39;x&#39;]-v[,3,&#39;x&#39;]) * (p[,&#39;y&#39;]-v[,3,&#39;y&#39;])
+        ) / det
+  l3 &lt;- 1 - l1 - l2
+  cbind(l1, l2, l3)
+}</code></pre>
+<p>In reality we could narrow some of the performance difference between these two
+implementations by avoiding repeated subsets of the same data. For example,
+<code>v[,3,'y']</code> is used several times, and we could have saved that subset to
+another variable for re-use.</p>
+</div>
+<div id="plotting" class="section level2">
+<h2>Plotting</h2>
+<p><a name='plot_shaded'></a></p>
+<pre class="r"><code>plot_shaded &lt;- function(p, col, v=vinit) {
+  par(bg=&#39;#EEEEEE&#39;)
+  par(xpd=TRUE)
+  par(mai=c(.25,.25,.25,.25))
+  plot.new()
+
+  points(p, pch=15, col=col, cex=.2)
+  polygon(v[,c(&#39;x&#39;, &#39;y&#39;)])
+  points(
+    vinit[,c(&#39;x&#39;, &#39;y&#39;)], pch=21, cex=5,
+    bg=rgb(apply(v[, c(&#39;r&#39;,&#39;g&#39;,&#39;b&#39;)], 2, unlist)), col=&#39;white&#39;
+  )
+}</code></pre>
+</div>
+<div id="array-shading" class="section level2">
+<h2>Array Shading</h2>
+<pre class="r"><code>v_shade_A &lt;- function(p, v) {
+  ## 1) compute barycentric coords
+  bc &lt;- bary_A(p, v)
+  ## 2) for each point, weight vertex colors by bary coords
+  v.clrs &lt;- v[,,c(&#39;r&#39;,&#39;g&#39;,&#39;b&#39;)]
+  clr.raw &lt;- array(bc, dim=dim(v.clrs)) * v.clrs
+  ## 3) for each point-colorchannel, sum the weighted values
+  rowSums(aperm(clr.raw, c(1,3,2)), dims=2)
+}</code></pre>
+<p>There are two items that may require additional explanation in <code>v_shade_A</code>.
+First, as part of step 2) we use:</p>
+<pre class="r"><code>array(bc, dim=dim(v.clrs)) * v.clrs</code></pre>
+<p>Our problem is that we need to multiply the vertex weights in <code>bc</code> with the
+<code>v.clrs</code> color channel values, but they do not conform:</p>
+<pre class="r"><code>dim(bc)</code></pre>
+<pre><code>[1] 79946     3</code></pre>
+<pre class="r"><code>dim(v.clrs)</code></pre>
+<pre><code>[1] 79946     3     3</code></pre>
+<p>Since we use the same weights for each color channel, it is just a matter of
+recycling the <code>bc</code> matrix once for each channel. Also, since the color channel
+is the last dimension we can just let <code>array</code> recycle the data to fill out the
+product of the vertex data dimensions:</p>
+<pre class="r"><code>dim(array(bc, dim=dim(v.clrs)))</code></pre>
+<pre><code>[1] 79946     3     3</code></pre>
+<p>This is reasonably fast, but not completely ideal since it does mean we need to
+allocate a memory chunk the size of <code>v.clrs</code>. Ideally R would internally
+recycle the <code>bc</code> matrix as it recycles vectors in situations like <code>matrix(1:4, 2) * 1:2</code>, but that is not how it is.</p>
+<p>The other tricky bit is part of step 3):</p>
+<pre class="r"><code>rowSums(aperm(clr.raw, c(1,3,2)), dims=2)</code></pre>
+<p>We ask <code>rowSums</code> to preserve the first two dimensions of the array with
+<code>dims=2</code>. The other dimensions are collapsed by summing the values that overlap
+in the first two. Unfortunately, we can only specify adjacent dimensions to
+preserve with <code>rowSums</code>. As a result we permute the data with <code>aperm</code> so that
+the point and color channel dimensions can be the first two and thus be
+preserved.</p>
+<p>There may be clever ways to better structure the data to minimize the number of
+copies we make.</p>
+</div>
+<div id="data" class="section level2">
+<h2>Data</h2>
+<pre class="r"><code>## Define basic triangle vertex position and colors
+
+height &lt;- sin(pi/3)
+v.off &lt;- (1 - height) / 2
+vinit &lt;- cbind(
+  x=list(0, .5, 1), y=as.list(c(0, height, 0) + v.off),
+  r=list(1, 1, 0), g=list(0,1,1), b=list(1,0,1)
+)
+## Sample points within the triangles
+
+p1 &lt;- list(x=.5, y=tan(pi/6) * .5 + v.off)
+p2 &lt;- list(x=.5, y=sin(pi/3) * .8 + v.off)
+p3 &lt;- list(x=cos(pi/6)*sin(pi/3), y=sin(pi/3) * .5 + v.off)
+
+## Generate n x n sample points within triangle; here we also expand the
+## vertex matrix so there is one row per point, even though all points are
+## inside the same triangle.  In our actual use case, there are many
+## triangles with a handful of points within each triangle.
+
+n &lt;- 400
+rng.x &lt;- range(unlist(vinit[,&#39;x&#39;]))
+rng.y &lt;- range(unlist(vinit[,&#39;y&#39;]))
+points.raw &lt;- expand.grid(
+  x=seq(rng.x[1], rng.x[2], length.out=n),
+  y=seq(rng.y[1], rng.y[2], length.out=n),
+  KEEP.OUT.ATTRS=FALSE
+)
+vp &lt;- lapply(vinit, &#39;[&#39;, rep(1, nrow(points.raw)))
+dim(vp) &lt;- dim(vinit)
+dimnames(vp) &lt;- dimnames(vinit)
+
+## we&#39;re going to drop the oob points for the sake of clarity, one
+## nice perk of barycentric coordinates is that negative values indicate
+## you are out of the triangle.
+
+bc.raw &lt;- bary_L(points.raw, vp)
+inbounds &lt;- Reduce(&#39;&amp;&#39;, lapply(bc.raw, &#39;&gt;=&#39;, 0))
+
+## Make a list-matrix version of the data
+
+point.L &lt;- lapply(points.raw, &#39;[&#39;, inbounds)
+vertex.L &lt;- lapply(vp, &#39;[&#39;, inbounds)
+dim(vertex.L) &lt;- dim(vp)
+dimnames(vertex.L) &lt;- list(V=sprintf(&quot;v%d&quot;, 1:3), Data=colnames(vp))
+
+## Generate an array version of the same data
+
+point.A &lt;- do.call(cbind, point.L)
+vertex.A &lt;- array(
+  unlist(vertex.L), c(sum(inbounds), nrow(vertex.L), ncol(vertex.L)),
+  dimnames=c(list(NULL), dimnames(vertex.L))
+)</code></pre>
+</div>
+</div>
