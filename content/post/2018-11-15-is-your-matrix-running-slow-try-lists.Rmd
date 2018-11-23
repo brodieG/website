@@ -3,7 +3,6 @@ title: Is Your Matrix Running Slow? Try Lists.
 author: ~
 date: '2018-11-23'
 slug: is-your-matrix-running-slow-try-lists
-draft: true
 categories: [optimization]
 tags: [rstats]
 ---
@@ -744,6 +743,8 @@ One trade-off is that the data manipulation can be more difficult with lists,
 but for code in a package the extra work may be justified.  Additionally, this
 is not always true: patterns like `do.call(fun, list)` simplify tasks that
 can be awkward with matrices.
+
+Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
 # Appendix
 
