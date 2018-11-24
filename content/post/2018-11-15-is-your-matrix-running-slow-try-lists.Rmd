@@ -546,7 +546,9 @@ We'll be using list matrices in the next section.
 One of my side projects required me to implement [barycentric coordinate][1]
 conversions.  You can think of barycentric coordinates of a point in a triangle
 as the weights of the vertices that cause the triangle to balance on that
-point.  We show here three different points (red crosses) with the barycentric
+point.
+
+We show here three different points (red crosses) with the barycentric
 coordinates associated with each vertex.  The size of the vertex helps visualize
 the "weights":
 
