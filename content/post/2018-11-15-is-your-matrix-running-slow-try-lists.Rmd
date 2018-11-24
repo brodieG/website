@@ -752,6 +752,12 @@ Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
 # Appendix
 
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
 ## Column Equality
 
 <a name='col_eq'></a>

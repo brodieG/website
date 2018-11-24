@@ -135,8 +135,8 @@ microbenchmark::microbenchmark(times=10,
 )</code></pre>
 <pre><code>Unit: microseconds
                    expr   min    lq   mean median    uq     max neval
- v.sum.1 &lt;- sum_loop(v) 400.7 401.7 3215.6  404.7 707.8 27722.9    10
-      v.sum.2 &lt;- sum(v)  13.5  13.6   16.6   14.6  19.1    23.4    10</code></pre>
+ v.sum.1 &lt;- sum_loop(v) 399.4 406.2 3079.6  435.3 543.7 26263.9    10
+      v.sum.2 &lt;- sum(v)  13.6  15.2   18.5   16.9  18.2    34.8    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -292,6 +292,44 @@ between frames rendered at slightly different angles).</p>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.5.1 (2018-07-02)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS High Sierra 10.13.6
+
+Matrix products: default
+BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_3.0.0
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.19         pillar_1.3.0         compiler_3.5.1      
+ [4] plyr_1.8.4           bindr_0.1.1          tools_3.5.1         
+ [7] digest_0.6.15        evaluate_0.10.1      tibble_1.4.2        
+[10] gtable_0.2.0         pkgconfig_2.0.2      rlang_0.3.0.1       
+[13] microbenchmark_1.4-4 yaml_2.2.0           blogdown_0.8        
+[16] xfun_0.3             bindrcpp_0.2.2       withr_2.1.2         
+[19] stringr_1.3.1        dplyr_0.7.6          knitr_1.20          
+[22] rprojroot_1.3-2      grid_3.5.1           tidyselect_0.2.4    
+[25] glue_1.3.0           R6_2.3.0             fansi_0.4.0         
+[28] rmarkdown_1.10       bookdown_0.7         purrr_0.2.5         
+[31] magrittr_1.5         backports_1.1.2      scales_1.0.0        
+[34] htmltools_0.3.6      assertthat_0.2.0     colorspace_1.3-2    
+[37] labeling_0.3         stringi_1.2.3        lazyeval_0.2.1      
+[40] munsell_0.5.0        crayon_1.3.4        </code></pre>
+</div>
+<div id="supporting-code" class="section level2">
+<h2>Supporting Code</h2>
 <p>Code used in this blog post follows. It is in the order it needs to be run in to
 function, not in the order in which it is used by the post.</p>
 <p>Code to load mountain elevation data:</p>
@@ -377,4 +415,5 @@ ggplot(mapping=aes(x, y)) +
     arrow=arrow(type=&quot;closed&quot;), size=0.5
   ) +
   scale_colour_discrete(guide=FALSE)</code></pre>
+</div>
 </div>

@@ -406,6 +406,14 @@ Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
 # Appendix
 
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
+## Supporting Code
+
 Code used in this blog post follows.  It is in the order it needs to be run in to
 function, not in the order in which it is used by the post.
 
