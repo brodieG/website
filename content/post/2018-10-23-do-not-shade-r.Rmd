@@ -399,7 +399,10 @@ compiled code function.
 One final note: the algorithm here is interpolating the height maps between
 _pixels_.  We also implement a simplified version that just uses the height of
 the nearest pixel in `shadow::ray_shade3`.  It looks just as good and runs
-twice as fast.
+twice as fast (update: it does not work as well if you want smooth transitions
+between frames rendered at slightly different angles).
+
+Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
 # Appendix
 

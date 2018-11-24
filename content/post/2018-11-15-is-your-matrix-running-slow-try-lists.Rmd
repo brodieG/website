@@ -190,13 +190,15 @@ structures than with matrices and arrays.  This despite the calculations
 involved being simple additions and multiplications on large atomic vectors.
 
 As with everything in life there are caveats to this finding.  It is primarily
-applicable to tall and skinny data; i.e. data with a very high ratio of
-observations to variables.  Given that this type of data is fairly common, it
-seems worth showing the methods for working with list data structures.  In my
-particular use case I saw speed improvements on the order of 2x to 4x.
+applicable to tall and skinny data sets, i.e. those with a very high ratio of
+observations to variables.  It also requires some additional work over standard
+methods.  Given that this type of data set is fairly common, it seems worth
+showing methods for working with list data structures.  In my particular use
+case I saw speed improvements on the order of 2x to 4x.
 
 If you are bored easily you might want to skip straight to the [case
-study](#a-case-study) section of this post.
+study](#a-case-study) section of this post.  If you like benchmarks and want an
+extensive review of list data structure manipulations, read on.
 
 # Matrices Are Slow?
 
@@ -431,7 +433,7 @@ col_eq(ML1, M)
 The blurring of calls, lists, data, and functions allows for very powerful
 manipulations of list based data.  In this case, `do.call(cbind, LIST)` will
 transform any list containing equal length vectors into a matrix, irrespective
-of how many columns it has.To confirm `cbind` did what we claim:
+of how many columns it has.
 
 To go in the other direction:
 
@@ -580,7 +582,7 @@ the above formulas, we relegate them to the [code
 appendix](#barycentric-conversions).  We will use them to shade every point of
 our triangle with the weighted color of the vertices.
 
-First, the data:
+First, the data (defined in the [appendix](#data)):
 
 ```{r}
 str(point.L)  # every point we want to compute color
@@ -734,10 +736,10 @@ details in the [appendix](#array-shading)).
 
 # Conclusion
 
-If your data is tall and skinny, list data structures can improve performance
-without compiled code or additional external dependencies.  Most operations are
-comparable in speed whether done with matrices or lists, but some key operations
-are faster and that make some tasks noticeably more efficient.
+If your data set is tall and skinny, list data structures can improve
+performance without compiled code or additional external dependencies.  Most
+operations are comparable in speed whether done with matrices or lists, but 
+key operations are faster and that make some tasks noticeably more efficient.
 
 One trade-off is that the data manipulation can be more difficult with lists,
 but for code in a package the extra work may be justified.  Additionally, this

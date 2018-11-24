@@ -134,9 +134,9 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )</code></pre>
 <pre><code>Unit: microseconds
-                   expr   min    lq   mean median     uq   max neval
- v.sum.1 &lt;- sum_loop(v) 676.4 684.4 5182.2  745.6 1206.7 43453    10
-      v.sum.2 &lt;- sum(v)  17.7  18.8   41.2   20.7   23.7   224    10</code></pre>
+                   expr   min    lq   mean median    uq     max neval
+ v.sum.1 &lt;- sum_loop(v) 400.7 401.7 3215.6  404.7 707.8 27722.9    10
+      v.sum.2 &lt;- sum(v)  13.5  13.6   16.6   14.6  19.1    23.4    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -182,7 +182,7 @@ Z2[-nrow(Z2), -ncol(Z2)] &lt;- Z</code></pre>
           ((1-YT)) * (XT)     * Z2[cbind(1+1L, j)]    +
           (YT)     * ((1-XT)) * Z2[cbind(i,    j+1L)] +
           (YT)     * (XT)     * Z2[cbind(1+1L, j+1L)]</code></pre>
-<p>We use array indexing of our <code>heightmap</code> (e.g. <code>Z2[cbind(i,j]</code>) to retrieve the
+<p>We use array indexing of our <code>heightmap</code> (e.g. <code>Z2[cbind(i,j)]</code>) to retrieve the
 Z values at each coordinate around each of the points we are interpolating.
 Since the R arithmetic operators are internally vectorized, we can compute
 interpolated heights for multiple coordinates with a single un-looped R
@@ -286,7 +286,9 @@ compiled code function.</p>
 <p>One final note: the algorithm here is interpolating the height maps between
 <em>pixels</em>. We also implement a simplified version that just uses the height of
 the nearest pixel in <code>shadow::ray_shade3</code>. It looks just as good and runs
-twice as fast.</p>
+twice as fast (update: it does not work as well if you want smooth transitions
+between frames rendered at slightly different angles).</p>
+<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
