@@ -12,74 +12,146 @@ knitr::opts_chunk$set(
 )
 ```
 
-## get data
+# Cool, but Not Eye Popping
+
+As we saw in our previous [blog post](/2018/10/23/do-not-shade-r/), you can do
+some pretty cool things with `rayshader`:
+
+```{r}
+plot(as.raster((volcano - min(volcano))/diff(range(volcano))))
 ```
-eltif <- raster::raster("~/Downloads/dem_01.tif")
-elmat1 <- matrix(
-  raster::extract(eltif,raster::extent(eltif),buffer=10000),
-  nrow=ncol(eltif),ncol=nrow(eltif)
+
+It is so beautiful it looks _almost_ 3D.  So why not actually make it 3D?  We
+have the elevation data after all.  Much of what we are going to do here can be
+done with `rgl`, but what's the fun in that?  Besides, there are few things as
+fun as procrastinating by learning about a fundamental component of computer graphics.  Okay, maybe I don't get out much.
+
+So come along for a ride through 3D projections, perspective adjustments,
+rasterization, and image processing, all in base R.
+
+# Step 0: Volcano!
+
+Sure, you've seen volcano a million times:
+
+```{r}
+plot(as.raster((t(volcano) - min(volcano))/diff(range(volcano))))
+plot(as.raster((volcano - min(volcano))/diff(range(volcano))))
+image((volcano - min(volcano))/diff(range(volcano)))
+v2 <- volcano[60:nrow(volcano),]
+plot(as.raster((v2 - min(v2))/diff(range(v2))))
+which(v2==max(v2), arr.ind=TRUE)
+plot.new()
+points(
+  x=c(row(volcano) - 1)/(nrow(volcano) - 1),
+  y=c(col(volcano) - 1)/(ncol(volcano) - 1),
+  col=gray((volcano - min(volcano))/diff(range(volcano))),
+  pch=15
 )
-mx <- elmat1
-sun <- 135
-els <- seq(-90, 90, length=25)
-shadow <- rayshader::ray_shade(mx, els, sun, lambert=FALSE)
-shadow <- shadow[, rev(seq_len(ncol(shadow)))]
-
-# rescale shadow to be a little lighter
-sh.scale <- .15
-sh.s <- (sh.scale + shadow) / (1 + sh.scale)
 ```
 
-## stereo top down
+Let's add some shading:
 
+```{r}
+library(shadow)
+sh <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
+par(mai=numeric(4L))
+plot(as.raster(t(sh)))
 ```
-library(rgl)
-width <- 400
-height <- 300
-elev <- 50
-mfrow3d(2, 1)
-offset <- .55
-angle <- 3
-fp <- c(floor(nrow(mx)/2), floor(ncol(mx)/2))
-fp[3] <- mx[fp[1], fp[2]] + .05 * diff(range(mx))
 
-par3d(windowRect=c(0,0,(1+offset) * width, height))
-par3d(viewport=c(0,0,width, height))
+# Step 1: 3D Projection
 
-persp_elev <- function(elevation, sh, inc.sphere=TRUE) {
-  persp3d(
-    seq_len(nrow(elevation)), seq_len(ncol(elevation)), c(elevation),
-    color=rgb(c(sh), c(sh), c(sh)), lit=FALSE,
-    xlab="", ylab="", zlab="", box=FALSE, axes=FALSE
-  )
-  if(inc.sphere) rgl.spheres(x=fp[1], y=fp[2], z=fp[3], color='red', r=20)
-  aspect3d(1, 1, 1)
-}
-persp_elev(mx, sh.s)
-view3d(-angle, 0, zoom=.60)
+While volcano looks pretty cool from above, we want to provide a more
+interesting view.  To do this we can use [3D rotation matrices][1].  In order to
+be able to use the rotation matrix we need to restructure our data into three
+column matrices with x, y, and z values, instead of a matrix of z values as we
+currently have.
 
-next3d()
-par3d(viewport=c(offset*width,0,width,height))
-persp_elev(mx, sh.s)
-view3d(angle, 0, zoom=.60)
+```{r}
+v2 <- cbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+str(v2)
+str(volcano)
 ```
+
+
+The `rot_x`
+and `rot_z` functions used here produce the matrices as described in the
+wikipedia article:
+
+```{r}
+rot_x(-20)
+rot_z(65)
+rot <- rot_x(-20) %*% rot_z(65)
+```
+
+We're going to tilt the map to the left and to the right by two degrees.  I just
+picked an angle that seemed reasonable, and given that a true human stereoscopic
+view of mountains is physically impossible I'm not going to worry too much about
+doing this correctly.
+
+Additionally, our tilt is going to be lazy.  As in,
+really-wrong-but-not-wrong-enough-to-ruin-everything lazy.
+We are only going to shift heights along the x-axis in proportion to the
+heights, instead of rotating the entire plane.  We do this with the
+`shift_shadow` function:
+
+# Stereoscopy in R
+
+After figuring out how to implement ray-shading with base R I was left wanting a
+little more.  The shading is so effective at conveying the impression of depth,
+but I r
 
 ## stereo angle
 
-```
+```{r rgl, eval=FALSE}
 empty_rows <- function(arr) (rowSums(arr) == 3 * ncol(arr))
 empty_cols <- function(arr) (rowSums(colSums(arr)) == 3 * nrow(arr))
 
 angle <- 4
-ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
-ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
-XR <- rotationMatrix(  50 / 180 * pi, 1, 0, 0)
 
-width <- height <- 450
+library(rgl)
+rot <- rotationMatrix(-20/180*pi, 1, 0, 0) %*% rotationMatrix(65/180*pi, 0, 0, 1)
 
+mfrow3d(1, 2)
+width <- height <- 600
+# par3d(windowRect=c(0,0,width*2,height))
 par3d(windowRect=c(0,0,width,height))
-par3d(viewport=c(0,0,width,height))
-persp_elev(mx, sh.s)
+# par3d(viewport=c(0,0,width,height))
+# mx <- volcano[,rev(seq_len(ncol(volcano)))]
+# sh2 <- sh[,rev(seq_len(ncol(sh)))]
+
+v2 <- (volcano - min(volcano)) / diff(range(volcano))
+persp3d(v2, color=gray(sh), lit=FALSE)
+
+# persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
+#   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
+#   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
+# )
+# persp3d(mx,
+#   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
+#   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
+# )
+view3d(0,0)
+rgl.viewpoint(userMatrix=rot)
+
+# next3d()
+# persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
+#   color=rgb(c(sh), c(sh), c(sh)), lit=FALSE,
+#   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
+# )
+# view3d(0,0)
+
+
+image(sh2)
+
+
+M <- identityMatrix()
+
+play3d(
+  par3dinterp(time = (0:2)*0.75, userMatrix=list(M,
+                                     rotate3d(M, pi/2, 1, 0, 0),
+                                     rotate3d(M, pi/2, 0, 1, 0) ) ) )
+
+aspect3d(1, 1, 1)
 rgl.viewpoint(userMatrix=t(XR) %*% t(ZRl), type='modelviewpoint', zoom=.7)
 snapshot3d('persp-left.png')
 
@@ -119,425 +191,4 @@ combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
 png::writePNG(combined, 'persp.png')
 ```
 
-```
-angle <- 3
-ZRl <- rotationMatrix((-315 - angle) / 180 * pi, 0, 0, 1)
-ZRr <- rotationMatrix((-315 + angle) / 180 * pi, 0, 0, 1)
-trans <- matrix(numeric(16), 4)
-trans[1,4] <-  50
-trans[2,4] <- 600
-zoom <- .8
-
-zoff <- 1800
-width <- 800
-height <- 800
-
-open3d()
-par3d(windowRect=c(0,0,width,height))
-par3d(viewport=c(0,0,width,height))
-persp_elev(mx, sh.s, inc.sphere=FALSE)
-rgl.spheres(x=0, y=ncol(mx), z=zoff, color='#CCCCCC', r=40)
-mxu <- t(XR) %*% t(ZRl) + trans
-mxu[4,4] <- zoom
-rgl.viewpoint(userMatrix=mxu, type='modelviewpoint')
-snapshot3d('persp-color-left.png')
-
-clear3d()
-persp_elev(mx, sh.s, inc.sphere=FALSE)
-rgl.spheres(x=0, y=ncol(mx), z=zoff, color='#CCCCCC', r=40)
-mxu <- t(XR) %*% t(ZRr) + trans
-mxu[4,4] <- zoom
-rgl.viewpoint(userMatrix=mxu, type='modelviewpoint')
-snapshot3d('persp-color-right.png')
-
-# stitch images together
-
-left <- png::readPNG('persp-color-left.png')
-right <- png::readPNG('persp-color-right.png')
-empty.rows <- which(empty_rows(left) & empty_rows(right))
-empty.cols <- which(empty_cols(left) & empty_cols(right))
-left <- left[-empty.rows, -empty.cols, ]
-right <- right[-empty.rows, -empty.cols, ]
-
-left[,,2:3] <- 0
-right[,,1] <- 0
-
-png::writePNG(left + right, 'persp-color.png')
-
-```
-
-## rgl colors
-
-```
-width <- 600
-height <- 600
-angle <- 2
-par3d(windowRect=c(0,0,width,height))
-par3d(viewport=c(0,0,width,height))
-persp_elev(mx, sh.s, inc.sphere=FALSE)
-view3d(-angle, 0, zoom=.55)
-snapshot3d('left.png')
-view3d(angle, 0, zoom=.55)
-snapshot3d('right.png')
-
-offset <- 10
-left <- png::readPNG('left.png')
-left[,,2:3] <- 0
-
-right <- png::readPNG('right.png')
-right[,,1] <- 0
-right[,-((ncol(right) - offset + 1L):ncol(right)),] <- right[,-seq_len(offset),]
-right[,((ncol(right) - offset + 1L):ncol(right)),] <- 0
-
-final <- left + right
-png::writePNG(final, 'final.png')
-
-offset <- 0
-dat <- rbind(
-  data.frame(
-    x=rep(seq_len(nrow(left)), ncol(left)) + offset,
-    y=rep(seq_len(ncol(left)), each=nrow(left)),
-    r=c(left[,,1]), g=c(left[,,2]), b=c(left[,,3])
-  ),
-  data.frame(
-    x=rep(seq_len(nrow(right)), ncol(right)) + offset,
-    y=rep(seq_len(ncol(right)), each=nrow(right)),
-    r=c(right[,,1]), g=c(right[,,2]), b=c(right[,,3])
-  )
-)
-library(data.table)
-setDT(dat)
-dat2 <- dat[, .(r=sum(r), g=sum(g), b=sum(b)), .(x, y)]
-dat2[, z:=rgb(r,g,b)]
-library(ggplot2)
-ggplot(dat2, aes(x=x, y=y, fill=z)) +
-  geom_raster()
-```
-
-
-## rgl other
-
-
-```
-library(ggplot2)
-eltif <- raster::raster("~/Downloads/dem_01.tif")
-elmat1 <- matrix(
-  raster::extract(eltif,raster::extent(eltif),buffer=10000),
-  nrow=ncol(eltif),ncol=nrow(eltif)
-)
-library(ggplot2)
-plot_attr <- list(
-  scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE),
-  ylab(NULL), xlab(NULL),
-  scale_x_continuous(expand=c(0,0)),
-  scale_y_continuous(expand=c(0,0)),
-  theme(
-    axis.text=element_text(size=6),
-    panel.spacing = unit(0, "npc"))
-)
-
-```
-# Cool, but Not Eye Popping
-
-As we saw in our previous blog post, you can do some pretty cool things with
-`rayshader`:
-
-It is so beautiful it looks _almost_ 3D.  So why not actually make it 3D?  We
-have the elevation data after all.
-
-I imagine there is probably a package out there that does this already, but if I
-used that I wouldn't have an excuse to procrastinate.  So instead I'm going to
-home brew 3D images of this height map.
-
-# Step 1: Tilt the Elevation Data
-
-We're going to tilt the map to the left and to the right by two degrees.  I just
-picked an angle that seemed reasonable, and given that a true human stereoscopic
-view of mountains is physically impossible I'm not going to worry too much about
-doing this correctly.
-
-Additionally, our tilt is going to be lazy.  As in,
-really-wrong-but-not-wrong-enough-to-ruin-everything lazy.
-We are only going to shift heights along the x-axis in proportion to the
-heights, instead of rotating the entire plane.  We do this with the
-`shift_shadow` function:
-
-```
-## We start with a matrix of elevations, and compute shadows
-
-mx <- elmat1
-sun <- 135
-els <- seq(-90, 90, length=25)
-shadow <- rayshader::ray_shade(mx, els, sun, lambert=FALSE)
-
-obs.alt <- 5 * max(mx)
-eye.sep <- max(mx)
-
-## Simulate Parallax From Binocular Vision
-##
-## We wrote this to generate stereoscopic images of heightmaps, so the z-axis
-## data is considered elevation, and x and y surface locations.
-
-binocular_parallax <- function(
-  mx, texture, dist, x.shift,
-  focal.point=c(
-    x=floor((nrow(mx) + 1) / 2), y=floor((ncol(mx) + 1) / 2), z=min(mx)
-) ) {
-  stopifnot(identical(dim(mx), dim(texture)))
-  rot_mx <- function(a) {
-    matrix(
-      c(
-         cos(a),      0,     sin(a),
-              0,      1,          0,
-        -sin(a),      0,     cos(a)
-      ),
-      byrow=TRUE,
-      nrow=3
-  ) }
-  ## Convert elevation matrix to long format,  and reset x coordinates so that
-  ## the origin is directly below each eye position
-
-  mx.l <- cbind(x=c(row(mx)), y=c(col(mx)), z=c(mx))
-  mx.l[,'x'] <- mx.l[,'x'] - focal.point['x'] - x.shift
-
-  ## Rotate along y axis for parallax effect (note, this does not do any
-  ## perspective adjustments; we'll  consider whether we need to do this later).
-
-  rot.ang <- atan(-x.shift / dist)
-  mx.l.r <- mx.l %*% t(rot_mx(rot.ang))
-  dimnames(mx.l.r) <- dimnames(mx.l)
-
-  ## also adjust and rotate the focal point
-
-  focal.point['x'] <- -x.shift
-  focal.point.r <- c(t(focal.point) %*% t(rot_mx(rot.ang)))
-  names(focal.point.r) <- names(focal.point)
-
-  ## It is possible that after rotation order along the x-axis has changed due
-  ## to ## height differences, so we need to get the cummmax per row.
-
-  mx.l.r[,1L] <- ave(mx.l.r[,1L], c(col(mx)), FUN=cummax)
-
-  ## We need to remap our data onto an integer x-y grid for display.  This is
-  ## relatively easy because our rotation does not affect the y values.  Start
-  ## by defining our integer grid x values.
-
-  x.rng <- seq(from=floor(min(mx.l.r[,'x'])), to=ceiling(max(mx.l.r[,'x'])))
-
-  ## For each column in our elevation map, find which rotated x coordinates our
-  ## grided values fall in
-
-  x.grid <- apply(matrix(mx.l.r[,'x'], nrow=nr), 2, findInterval, x=x.rng)
-  x.grid[x.grid == 0L] <- 1L
-
-  ## Interpolate the shadows from the original values onto our gridded x values
-  ## `pmax` to deal with grid values to the 'left' of leftmost defined x value
-
-  x.grid.rng <- x.rng[c(x.grid)]
-
-  x.grid.lo <- x.grid
-  x.grid.hi <- pmin(x.grid + 1L, max(x.grid))
-
-  x.lo <- mx.l.r[x.grid.lo, 'x']
-  x.hi <- mx.l.r[x.grid.hi, 'x']
-
-  z.lo <- shadow[cbind(c(x.grid.lo), c(col(x.grid)))]
-  z.hi <- shadow[cbind(c(x.grid.hi), c(col(x.grid)))]
-
-  x.diff <- x.hi - x.lo
-  x.offset <- pmax((x.grid.rng - x.lo), 0) / x.diff
-  x.offset[is.na(x.offset) | !is.finite(x.offset) | round(x.diff, 5) == 0] <- 1
-  z <- x.offset * z.hi + (1 - x.offset) * z.lo
-
-  df <- data.frame(x=rep(x.rng, ncol(x.grid)), y=c(col(x.grid)), z=c(z))
-  attr(df, 'focal.point') <- focal.point.r
-  df
-}
-dist <- 5 * diff(range(mat))
-sep <- dist / 40
-l <- binocular_parallax(mat, shadow, dist, -sep)
-r <- binocular_parallax(mat, shadow, dist, sep)
-
-df <- rbind(transform(l, eye='left'), transform(r, eye='right'))
-df.focus <- as.data.frame(
-  rbind(attr(l, 'focal.point')[1:2], attr(r, 'focal.point')[1:2])
-)
-df.focus$eye <- c('left', 'right')
-ggplot(df, aes(x=x, y=y)) +
-  geom_raster(aes(fill=z)) +
-  facet_wrap(~eye, scales='free_x') +
-  geom_point(data=df.focus, shape=24, color='red') +
-  plot_attr
-
-df <- rbind(transform(l, eye='left'), transform(r, eye='right'))
-shadow.offset <- 250
-df$r <- ifelse(df$eye == 'right', df$z, 0)
-df$g <- ifelse(df$eye == 'left', df$z, 0)
-df$b <- 0
-df$x <- ifelse(df$eye == 'right', df$x + shadow.offset, df$x)
-library(data.table)
-setDT(df)
-sdf <- df[, .(r=sum(r), g=sum(g), b=sum(b)), .(x, y)]
-sdf$fill <- rgb(sdf[, c('r', 'g', 'b')])
-
-ggplot(sdf, aes(x=x, y=y)) +
-  geom_raster(fill=sdf$fill) +
-  plot_attr
-
-df <- data.frame(x=c(row(shadow)), y=c(col(shadow)), z=c(shadow))
-ggplot(df, aes(x=x, y=y, fill=z)) +
-  geom_raster() +
-  scale_fill_gradient(low='#333333', high='#ffffff', guide=FALSE)
-
-
-
-h.c.r[,2L] <- ave(h.c.r[,2L], c(row(mat)), FUN=cummax)
-
-## Define the mesh on a tile by tile basis.  This would be easy to do if we
-## still had the matrix in the original wide format, but since it is in long
-## format we need to resort to some arithmetic.
-##
-## The third dimension of the resulting array represents which corner of the
-## tile mesh the data corresponds to (in order: top left, top right, bot left,
-## bot right)
-
-mesh <- c(
-  # drop last row, last col
-  h.c.r[-c(seq_len(nc) * nr, seq_len(nr) + nr * (nc - 1L)),],
-  # drop last row, first col
-  h.c.r[-c(seq_len(nc) * nr, seq_len(nr)),],
-  # drop first row, last col
-  h.c.r[-c((seq_len(nc) - 1L) * nr + 1L, seq_len(nr) + nr * (nc - 1L)), ],
-  # drop first row, first col
-  h.c.r[-c((seq_len(nc) - 1L) * nr + 1L, seq_len(nr)), ]
-)
-## track ids for top-left for debugging purposes
-mesh.id <- matrix(seq_len(length(mat)), nrow=nr)[-nr, -nc]
-dim(mesh) <- c(c(length(mesh) / 12L), 3L, 4L)
-dimnames(mesh) <- list(NULL, NULL, c('TL', 'TR', 'BL', 'BR'))
-
-## For each tile in the mesh, determine the set of integer x,y coordinates that
-## could potentially fit in the mesh-tile.
-
-mesh.int <- cbind(
-  id=seq_len(dim(mesh)[1]),
-  xmin=ceiling(pmin(mesh[,1L,1L], mesh[,1L,2L], mesh[,1L,3L], mesh[,1L,4L])),
-  xmax=floor(pmax(mesh[,1L,1L], mesh[,1L,2L], mesh[,1L,3L], mesh[,1L,4L])),
-  ymin=ceiling(pmin(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L])),
-  ymax=floor(pmax(mesh[,2L,1L], mesh[,2L,2L], mesh[,2L,3L], mesh[,2L,4L]))
-)
-
-
-
-
-
-## Compute integer coordinates possibly bounded by each square in the mesh
-## resulting from rotation transformation.  So transform the data so that we
-## have the four coordinates side by side?
-
-
-mx <- matrix(0, 5, 5)
-rot.ang <- 45 / 180 * pi
-mx.c <- cbind(x=c(row(mx) - 3L), y=c(col(mx)), z=c(mx))
-mx.c.r <- mx.c %*% t(rot_mx(rot.ang))
-
-df.c <- as.data.frame(mx.c)
-df.c.r <- as.data.frame(mx.c.r)
-names(df.c.r) <- names(df.c) <- c('x', 'y', 'z')
-library(ggplot2)
-
-ggplot(mapping=aes(x, y, size=z)) +
-  geom_point(data=df.c, color='black') +
-  geom_point(data=df.c.r, color='red')
-
-```
-
-```
-shift_shadow <- function(tilt, heightmap, shadow) {
-  stopifnot(identical(dim(heightmap), dim(shadow)))
-  ## determine new x-coordinates for each elevation; make them monotonically
-  ## increasing
-  x.sh <- apply(tan(tilt) * heightmap + row(heightmap), 2, cummax)
-  ## determine range of new x coordinates
-  x.sh.range <- c(floor(min(x.sh)), ceiling(max(x.sh)))
-  x.new <- seq(from=x.sh.range[1], to=x.sh.range[2], by=1L)
-  ## for each new x coordinate, find an interval from shifted range that
-  ## contains them
-  x.ref <- apply(x.sh, 2, function(x) findInterval(x.new, x))
-  x.ref[x.ref == 0L] <- 1L
-  ## Lookup the heights from original shadow matrix, but with new x-coordintes
-  matrix(
-    shadow[cbind(c(x.ref), rep(seq_len(ncol(x.ref)), each=nrow(x.ref)))],
-    nrow(x.ref)
-  )
-}
-```
-The one tricky bit is:
-
-This because
-without changing any heights.
-
-We
-will also re-interpolate
-
-There is probably some correct way to
-figure out what the angle should be
-
-
-tilt my entire elevation map to the right and to the left to create a
-stereoscopic view of the mountain.
-
-two degrees to the left, and to the right:
-
-
-
-
-```
-## Shift shadows
-
-tilts <- 1 * rev((c(left=1,right=-1))/180*pi)
-sh.s <- sapply(tilts, shift_shadow, elmat1, shadow, simplify=FALSE)
-
-## Compute middle of map location
-
-mid.x <- round(nrow(elmat1) / 2)
-mid.y <- round(ncol(elmat1) / 2)
-mid.tilts <- round(elmat1[mid.x, mid.y] * tan(tilts))
-
-## long
-
-tolong <- function(x, id)
-  cbind(do.call(expand.grid, lapply(dim(x), seq_len)), z=c(x), id=id)
-sh.long <- do.call(rbind, unname(Map(tolong, sh.s, names(sh.s))))
-sh.long$id <- relevel(sh.long$id, 'left')
-
-## color version
-
-sh.df.1 <- sh.long
-shadow.offset <- 10
-sh.df.1$r <- ifelse(sh.df.1$id == 'right', sh.df.1$z, 0)
-sh.df.1$g <- ifelse(sh.df.1$id == 'left', sh.df.1$z, 0)
-sh.df.1$b <- 0
-sh.df.1$Var1 <- ifelse(
-  sh.df.1$id == 'right', sh.df.1$Var1 + shadow.offset, sh.df.1$Var1
-)
-library(data.table)
-setDT(sh.df.1)
-sdf <- sh.df.1[, .(r=sum(r), g=sum(g), b=sum(b)), .(Var1, Var2)]
-sdf$fill <- rgb(sdf[, c('r', 'g', 'b')])
-
-ggplot(sdf, aes(x=Var1, y=Var2)) +
-  geom_raster(fill=sdf$fill) +
-  plot_attr
-
-sh.df.2 <- sh.long
-ggplot(sh.df.2, aes(x=Var1, y=Var2, fill=z)) +
-  geom_raster() +
-  plot_attr + facet_wrap(~id)
-  +
-  geom_point(
-    data=data.frame(x=mid.x+mid.tilts, y=mid.y, id=c('left', 'right')),
-    aes(x, y, fill=NULL), shape=24, color='red'
-  )
-
-```
+[1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
