@@ -61,10 +61,31 @@ plot(as.raster(t(sh)))
 # Step 1: 3D Projection
 
 While volcano looks pretty cool from above, we want to provide a more
-interesting view.  To do this we can use [3D rotation matrices][1].  In order to
-be able to use the rotation matrix we need to restructure our data into three
-column matrices with x, y, and z values, instead of a matrix of z values as we
-currently have.
+interesting view.  To do this we can use [3D rotation matrices][1].  `shadow`
+implements the `rot_*` functions, which are thin wrappers that generate the
+rotation matrices described in the wikipedia article:
+
+```{r}
+rot_z
+round(rot_z(65), 3)
+```
+
+By convention 
+
+
+In order to
+use the rotation matrix we need our data in long format.  This can be done
+easily by taking advantage of the `row` and `col` functions that return
+respectively the row and column indices of each element in the vector underlying
+the matrix:
+
+```{r}
+mx.example <- matrix(numeric(4), nrow=2, ncol=2)
+row(mx.example)
+col(mx.example)
+```
+
+So now we can make a long version of `volcano`:
 
 ```{r}
 v2 <- cbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
@@ -72,9 +93,10 @@ str(v2)
 str(volcano)
 ```
 
+We will use `rot_x` and `rot_z` form the 
 
-The `rot_x`
-and `rot_z` functions used here produce the matrices as described in the
+The `rot_x` and `rot_z` functions used here produce the matrices as described in
+the
 wikipedia article:
 
 ```{r}
@@ -94,6 +116,29 @@ We are only going to shift heights along the x-axis in proportion to the
 heights, instead of rotating the entire plane.  We do this with the
 `shift_shadow` function:
 
+```{r}
+mx2 <- volcano
+els <- seq(-90, 90, length=25)
+sun <- 180
+sh2 <- ray_shade2(mx2, els, sun)
+sh2 <- sh2 * .9 + .1
+rot <- rot_x(-20) %*% rot_z(65)
+
+proj <- project_elev(
+  mx2, sh2, rot, parallax=0, dist=1e6, resolution=c(600,600)
+)
+left <- proj[[1]]
+empty.rows <- which(empty_rows(left))
+empty.cols <- which(empty_cols(left))
+left <- left[-empty.rows, -empty.cols, ]
+
+left.r <- left[,,1]
+left.r[left.r < 0] <- 0
+
+# image(left.r)
+plot(as.raster(left.r))
+```
+
 # Stereoscopy in R
 
 After figuring out how to implement ray-shading with base R I was left wanting a
@@ -109,7 +154,8 @@ empty_cols <- function(arr) (rowSums(colSums(arr)) == 3 * nrow(arr))
 angle <- 4
 
 library(rgl)
-rot <- rotationMatrix(-20/180*pi, 1, 0, 0) %*% rotationMatrix(65/180*pi, 0, 0, 1)
+rot.rgl <- 
+  rotationMatrix(-20/180*pi, 1, 0, 0) %*% rotationMatrix(65/180*pi, 0, 0, 1)
 
 mfrow3d(1, 2)
 width <- height <- 600
@@ -119,8 +165,12 @@ par3d(windowRect=c(0,0,width,height))
 # mx <- volcano[,rev(seq_len(ncol(volcano)))]
 # sh2 <- sh[,rev(seq_len(ncol(sh)))]
 
-v2 <- (volcano - min(volcano)) / diff(range(volcano))
-persp3d(v2, color=gray(sh), lit=FALSE)
+persp3d(
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), 
+  z=c(volcano), color=gray(sh), lit=FALSE, aspect="iso"
+)
+view3d(0,0,fov=0)
+rgl.viewpoint(userMatrix=rot.rgl, fov=0)
 
 # persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
 #   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
@@ -130,8 +180,8 @@ persp3d(v2, color=gray(sh), lit=FALSE)
 #   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
 #   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
 # )
-view3d(0,0)
-rgl.viewpoint(userMatrix=rot)
+view3d(0,0, )
+rgl.viewpoint(userMatrix=rot, fov=0)
 
 # next3d()
 # persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
