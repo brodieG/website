@@ -124,6 +124,7 @@ names(vl) <- c('x', 'y', 'z', 't') # 't' for texture
 ## Plot!, but order by Z value first
 zord <- order(vl[[3]])
 vlo <- lapply(c(1:2,4), function(x) scale(vl[[x]][zord]))
+par(mai=numeric(4))
 plot.new()
 points(x=vlo[[1]], y=vlo[[2]], col=gray(vlo[[3]]), pch=15, cex=0.5)
 ```
@@ -209,12 +210,32 @@ mesh.tile <- matrix(
 Tada! A mesh:
 
 ```{r}
+par(mai=numeric(4))
 x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))
 y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))
-# dev.new(width=8, height=6)
+zord <- order(Reduce('+', mesh.tile[,'z']))
 plot.new()
-polygon(scale(x), scale(y))
+polygon(scale(x[,zord]), scale(y[,zord]), col='#EEEEEE')
 ```
+
+Okay, great you say, but we could have done all of this with `persp`, why
+bother?  The reality is we're not done.  Consider what we get with `persp`:
+
+```{r}
+par(mai=numeric(4))
+# persp(
+#   volcano, theta=-65, phi=70, r=1e6, col=gray(sh[-1,-1]),
+#   border=NA, box=FALSE, axes=FALSE, scale=FALSE
+# )
+persp(
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
+  theta=-65, phi=70, r=1e6, col=gray(sh[-1,-1]),
+  border=NA, box=FALSE, axes=FALSE, scale=FALSE
+)
+```
+
+This isn't great because of how blocky it is, and also because there is no good
+way to get rid of the borders.  Additionally it is a bit slow.
 
 But a tile mesh is not ideal.  Among other things, there is no guarantee the
 tiles are flat.  Triangles on the other hand are guaranteed to be flat, and
@@ -222,30 +243,29 @@ additionally benefit from simple shading algorithms.  So we will turn our tiles
 into triangles as we do here by turning the black tile into the blue and green
 triangles:
 
-```{r}
+```{r echo=FALSE}
 par(mai=numeric(4))
 plot.new()
-polygon(c(0, 1, 1, 0), c(0, 0, 1, 1), col='#EEEEEE', border=NA)
-polygon(scale(c(0, 1, 1, 0), .9), scale(c(0, 0, 1, 1), .9))
+polygon(scale(c(0, 1, 1, 0), .9), scale(c(0, 0, 1, 1), .9), col='#EEEEEE')
 text(
   scale(c(0, 1, 1, 0), .95), scale(c(0, 0, 1, 1), .95),
   labels=sprintf('v%d', 1:4)
 )
 polygon(
   scale(c(0, 1, 1), .8) + .0125, scale(c(0, 0, 1), .8) - .0125,
-  border='#0000FF'
+  border='#0000FF', col='#CCCCFF'
 )
 text(
   scale(c(0, 1, 1), .7) + .03, scale(c(0, 0, 1), .7) - .03,
-  labels=sprintf('v%d', 1:3), col='#0000FF'
+  labels=sprintf('v%d', 1:3), col='#0000AA'
 )
 polygon(
   scale(c(1, 0, 0), .8) - .0125, scale(c(1, 1, 0), .8) + .0125,
-  border='#00FF00'
+  border='#00FF00', col='#CCFFCC'
 )
 text(
   scale(c(1, 0, 0), .7) - .03, scale(c(1, 1, 0), .7) + .03,
-  labels=sprintf('v%d', c(3,4,1)), col='#00FF00'
+  labels=sprintf('v%d', c(3,4,1)), col='#00AA00'
 )
 ```
 
@@ -253,14 +273,43 @@ Our data is nicely structured that the translation from tile to triangle mesh is
 trivial:
 
 ```{r}
-tri.blue <- 1:3
-tri.green <- c(3,4,1)
-mesh.tri <- Map('c', mesh.tile[tri.blue,], mesh.tile[tri.green,])
+vertex.blue <- 1:3
+vertex.green <- c(3,4,1)
+mesh.tri <- Map('c', mesh.tile[vertex.blue,], mesh.tile[vertex.green,])
 dim(mesh.tri) <- c(3, 4)
 dimnames(mesh.tri) <- list(head(rownames(mesh.tile), -1), colnames(mesh.tile))
 mesh.tri
 ```
 
+And we can plot this.
+
+```{r}
+x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))
+y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))
+zord <- order(Reduce('+', mesh.tri[,'z']))
+par(mai=numeric(4))
+plot.new()
+polygon(
+  scale(x[,zord]), scale(y[,zord]),
+  col=rep(c('#CCCCFF','#CCFFCC'), each=length(mesh.tile[[1]]))[zord]
+)
+```
+
+Let's shade each facet with the mean of the vertex shadows:
+
+```{r}
+texture <- Reduce('+', mesh.tri[,'t']) / 3
+plot.new()
+polygon(
+  scale(x[,zord]), scale(y[,zord]), col=gray(texture[zord]), 
+  border=gray(texture[zord])
+)
+```
+
+Looks better than `persp`, but still the triangle faces irk me.  Also, I'm
+curious about how `polygon` takes the `polygon` data and renders it on the
+devices (or how the device does it).  Finally, this doesn't scale well to large
+polygon counts <span color='red'>ADD EXAMPLE?</span>.
 
 ```{r eval=FALSE}
 width <- height <- 600
@@ -411,7 +460,9 @@ combined[,seq_len(ncol(left)),] <- left
 combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
   combined[,tail(seq_len(ncol(combined)), ncol(right)),] + right
 png::writePNG(combined, 'persp.png')
+
 ```
 
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
 [2]: https://www.brodieg.com/2018/11/23/is-your-matrix-running-slow-try-lists/
+
