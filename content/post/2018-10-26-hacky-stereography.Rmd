@@ -24,7 +24,8 @@ plot(as.raster((volcano - min(volcano))/diff(range(volcano))))
 It is so beautiful it looks _almost_ 3D.  So why not actually make it 3D?  We
 have the elevation data after all.  Much of what we are going to do here can be
 done with `rgl`, but what's the fun in that?  Besides, there are few things as
-fun as procrastinating by learning about a fundamental component of computer graphics.  Okay, maybe I don't get out much.
+fun as procrastinating by learning about a fundamental component of computer
+graphics.  Okay, maybe I don't get out much.
 
 So come along for a ride through 3D projections, perspective adjustments,
 rasterization, and image processing, all in base R.
@@ -34,18 +35,19 @@ rasterization, and image processing, all in base R.
 Sure, you've seen volcano a million times:
 
 ```{r}
-plot(as.raster((t(volcano) - min(volcano))/diff(range(volcano))))
-plot(as.raster((volcano - min(volcano))/diff(range(volcano))))
-image((volcano - min(volcano))/diff(range(volcano)))
-v2 <- volcano[60:nrow(volcano),]
-plot(as.raster((v2 - min(v2))/diff(range(v2))))
-which(v2==max(v2), arr.ind=TRUE)
+scale <- function(x, range=1)
+  ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) *
+    range + (1 - range) / 2
+flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
+
+# plot(as.raster(flip(scale(volcano))))
+
+par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
 plot.new()
+plot.window(c(0,1), c(0,1), asp=ncol(volcano)/nrow(volcano))
 points(
-  x=c(row(volcano) - 1)/(nrow(volcano) - 1),
-  y=c(col(volcano) - 1)/(ncol(volcano) - 1),
-  col=gray((volcano - min(volcano))/diff(range(volcano))),
-  pch=15
+  x=scale(row(volcano)), y=scale(col(volcano)),
+  col=gray(scale(volcano)), pch=15, cex=.5
 )
 ```
 
@@ -54,8 +56,12 @@ Let's add some shading:
 ```{r}
 library(shadow)
 sh <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
-par(mai=numeric(4L))
-plot(as.raster(t(sh)))
+par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
+plot.new()
+points(
+  x=scale(row(volcano)), y=scale(col(volcano)),
+  col=gray(sh), pch=15, cex=0.5
+)
 ```
 
 # Step 1: 3D Projection
@@ -70,40 +76,205 @@ rot_z
 round(rot_z(65), 3)
 ```
 
-By convention 
+By our convention the Z-axis is always pointed directly at the user, even after
+rotations are applied.  In other words, it is the model that rotates, not the
+viewer.
 
-
-In order to
-use the rotation matrix we need our data in long format.  This can be done
-easily by taking advantage of the `row` and `col` functions that return
+In order to use the rotation matrix we need our data in long format.  This can
+be done easily by taking advantage of the `row` and `col` functions that return
 respectively the row and column indices of each element in the vector underlying
 the matrix:
 
 ```{r}
-mx.example <- matrix(numeric(4), nrow=2, ncol=2)
+mx.example <- matrix((0:3)*10, nrow=2, ncol=2)
 row(mx.example)
 col(mx.example)
+cbind(c(row(mx.example)), c(col(mx.example)), c(mx.example))
 ```
 
 So now we can make a long version of `volcano`:
 
 ```{r}
-v2 <- cbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
-str(v2)
+volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+str(volc.l)
 str(volcano)
 ```
 
-We will use `rot_x` and `rot_z` form the 
+Which we can rotate with our rotation matrices:
+
+```{r}
+rot <- rot_x(-20) %*% rot_z(65)
+volc.lr <- rot %*% volc.l
+```
+
+From this point forward we will be using list data structures instead of
+matrices as we have found them [to be more efficient][2] for the problem we're
+dealing with.
+
+```{r, echo=FALSE}
+asp <- diff(range(volc.lr[2,])) / diff(range(volc.lr[1,]))
+plot.window(0:1, 0:1, asp=asp)
+```
+```{r}
+## construct list data structure, adding texture/shadow info
+vl <- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
+vl <- c(vl, list(sh))              # add texture info
+names(vl) <- c('x', 'y', 'z', 't') # 't' for texture
+
+## Plot!, but order by Z value first
+zord <- order(vl[[3]])
+vlo <- lapply(c(1:2,4), function(x) scale(vl[[x]][zord]))
+plot.new()
+points(x=vlo[[1]], y=vlo[[2]], col=gray(vlo[[3]]), pch=15, cex=0.5)
+```
+
+The good news is now we have an awesome looking 3D rendition of our volcano...
+in the process of disintegration from a particularly unpleasant eruption.
+
+# Step 2: Meshes
+
+Okay, so we can't just use our elevation data as point coordinates.  One
+possibility is to turn our point "cloud" into a mesh.  Well, turning an
+arbitrary point cloud into a mesh is one of those problems that seems very easy
+but in reality is anything but.  Worse, the typical implementations involve some
+kind of sequential process that is repeated many times until the mesh is
+complete.  These types of algorithms cannot be implemented efficiently in R,
+though there are R packages that implement them in compiled code.
+
+Fortunately for us and our base-R only challenge, our point cloud is not
+arbitrary.  The source data contains the information required to build the mesh:
+the original x-y grid.  We can generate a tile mesh by sampling our data four
+times, once for each of the four vertices for each tile.  This is what it looks
+like with an illustrative 4 x 4 grid:
+
+```{r echo=FALSE, fig.width=5.5, fig.height=1.5}
+p.seq <- seq(.05, .95, length.out=4)
+points <- expand.grid(x=p.seq, y=p.seq)
+len <- length(p.seq)
+vert.box <- data.frame(
+  x=c(.025, p.seq[3] + .025, p.seq[3] + .025, .025),
+  y=c(-.025 + p.seq[2], -.025 + p.seq[2], .025 + p.seq[4], .025 + p.seq[4])
+)
+seq.diff <- diff(p.seq[1:2])
+# dev.new(width=5, height=1.5)
+old.par <- par(mfrow=c(1,4), mar=c(.5, .25, 2, .25))
+x.off <- c(0, 1, 1, 0)
+y.off <- c(1, 1, 0, 0)
+for(i in seq_along(p.seq)) {
+  plot.new()
+  plot.window(0:1, 0:1, asp=1)
+  title(sprintf('Vertex %d', i))
+  polygon(c(0, 1, 1, 0), c(0, 0, 1, 1), col='#EEEEEE', border=NA)
+  points(points, pch=15, cex=0.5)
+  polygon(
+    x=vert.box[['x']] + seq.diff * x.off[i],
+    y=vert.box[['y']] - seq.diff * y.off[i]
+  )
+}
+par(old.par)
+```
+
+We alternate dropping the first/last row/column.  Because our rotated volcano
+data is already in long format this requires a little extra work:
+
+```{r}
+nr <- dim(volcano)[1]
+nc <- dim(volcano)[2]
+idx.raw <- matrix(seq_along(volcano), nr, nc)
+idx.tile <- list(
+  idx.raw[-nr, -nc, drop=TRUE],
+  idx.raw[-nr,  -1, drop=TRUE],
+  idx.raw[ -1,  -1, drop=TRUE],
+  idx.raw[ -1, -nc, drop=TRUE]
+)
+```
+
+For each of our vectors from our rotated volcano, we will use `idx.tile` to pull
+out the vertex data for the tiles.  This does unfortunately mean we have several
+duplicative copies of the same data.
+
+```{r}
+mesh.tile <- matrix(
+  Map(
+    function(x, y) vl[[y]][idx.tile[[x]]],
+    rep(seq_along(idx.tile), length(vl)),
+    rep(seq_along(vl), each=length(idx.tile))
+  ),
+  nrow=length(idx.tile),
+  ncol=length(vl),
+  dimnames=list(sprintf('v%d', seq_along(idx.tile)), names(vl))
+)
+```
+
+Tada! A mesh:
+
+```{r}
+x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))
+y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))
+# dev.new(width=8, height=6)
+plot.new()
+polygon(scale(x), scale(y))
+```
+
+But a tile mesh is not ideal.  Among other things, there is no guarantee the
+tiles are flat.  Triangles on the other hand are guaranteed to be flat, and
+additionally benefit from simple shading algorithms.  So we will turn our tiles
+into triangles as we do here by turning the black tile into the blue and green
+triangles:
+
+```{r}
+par(mai=numeric(4))
+plot.new()
+polygon(c(0, 1, 1, 0), c(0, 0, 1, 1), col='#EEEEEE', border=NA)
+polygon(scale(c(0, 1, 1, 0), .9), scale(c(0, 0, 1, 1), .9))
+text(
+  scale(c(0, 1, 1, 0), .95), scale(c(0, 0, 1, 1), .95),
+  labels=sprintf('v%d', 1:4)
+)
+polygon(
+  scale(c(0, 1, 1), .8) + .0125, scale(c(0, 0, 1), .8) - .0125,
+  border='#0000FF'
+)
+text(
+  scale(c(0, 1, 1), .7) + .03, scale(c(0, 0, 1), .7) - .03,
+  labels=sprintf('v%d', 1:3), col='#0000FF'
+)
+polygon(
+  scale(c(1, 0, 0), .8) - .0125, scale(c(1, 1, 0), .8) + .0125,
+  border='#00FF00'
+)
+text(
+  scale(c(1, 0, 0), .7) - .03, scale(c(1, 1, 0), .7) + .03,
+  labels=sprintf('v%d', c(3,4,1)), col='#00FF00'
+)
+```
+
+Our data is nicely structured that the translation from tile to triangle mesh is
+trivial:
+
+```{r}
+tri.blue <- 1:3
+tri.green <- c(3,4,1)
+mesh.tri <- Map('c', mesh.tile[tri.blue,], mesh.tile[tri.green,])
+dim(mesh.tri) <- c(3, 4)
+dimnames(mesh.tri) <- list(head(rownames(mesh.tile), -1), colnames(mesh.tile))
+mesh.tri
+```
+
+
+```{r eval=FALSE}
+width <- height <- 600
+# par3d(windowRect=c(0,0,width*2,height))
+par3d(windowRect=c(0,0,width,height))
+clear3d()
+polygon3d(x=c(0, 1, 2, 1, 0), y=c(0, 2, 0, .2, 0), z=numeric(5))
+view3d(0,0,fov=60)
+```
 
 The `rot_x` and `rot_z` functions used here produce the matrices as described in
 the
 wikipedia article:
 
-```{r}
-rot_x(-20)
-rot_z(65)
-rot <- rot_x(-20) %*% rot_z(65)
-```
 
 We're going to tilt the map to the left and to the right by two degrees.  I just
 picked an angle that seemed reasonable, and given that a true human stereoscopic
@@ -116,7 +287,7 @@ We are only going to shift heights along the x-axis in proportion to the
 heights, instead of rotating the entire plane.  We do this with the
 `shift_shadow` function:
 
-```{r}
+```{r eval=FALSE}
 mx2 <- volcano
 els <- seq(-90, 90, length=25)
 sun <- 180
@@ -154,7 +325,7 @@ empty_cols <- function(arr) (rowSums(colSums(arr)) == 3 * nrow(arr))
 angle <- 4
 
 library(rgl)
-rot.rgl <- 
+rot.rgl <-
   rotationMatrix(-20/180*pi, 1, 0, 0) %*% rotationMatrix(65/180*pi, 0, 0, 1)
 
 mfrow3d(1, 2)
@@ -166,11 +337,12 @@ par3d(windowRect=c(0,0,width,height))
 # sh2 <- sh[,rev(seq_len(ncol(sh)))]
 
 persp3d(
-  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), 
-  z=c(volcano), color=gray(sh), lit=FALSE, aspect="iso"
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)),
+  z=c(volcano), color=gray(sh), lit=FALSE, aspect="iso",
+  box=FALSE, axes=FALSE, xlab="", ylab="", zlab=""
 )
+rgl.viewpoint(userMatrix=rot.rgl, fov=60)
 view3d(0,0,fov=0)
-rgl.viewpoint(userMatrix=rot.rgl, fov=0)
 
 # persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
 #   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
@@ -242,3 +414,4 @@ png::writePNG(combined, 'persp.png')
 ```
 
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
+[2]: https://www.brodieg.com/2018/11/23/is-your-matrix-running-slow-try-lists/
