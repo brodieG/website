@@ -111,6 +111,7 @@ dealing with.
 asp <- diff(range(volc.lr[2,])) / diff(range(volc.lr[1,]))
 plot.window(0:1, 0:1, asp=asp)
 ```
+<a name='volcano-list-long'></a>
 ```{r}
 ## construct list data structure, adding texture/shadow info
 vl <- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
@@ -403,8 +404,104 @@ text(
 
 For convenience we define the quantity `ZD` as the total depth of our object
 along the Z axis.  Then, we can define the distance of our observers from the
-nearest point along the Z axis with the measure `D` as multiples of `ZD`.
+nearest point along the Z axis with the measure `D` as multiples of `zd`.
 
+Applying perspective computations is then pretty straightforward:
+
+NEXT STEPS:
+* Actually write the wide->long, rotation, tile-mesh, triangle-mesh
+  function so when we re-generate this rotated mesh we do it with functions.
+* Generate Obs 1, 2, and 3 perspective plots (write perp function).
+
+For expository purposes we waited to this point to do perspective adjustments,
+but the reality is they are best done while the data is still in point cloud
+rather than mesh format.
+
+The perspective calculation ends up looking like (recall `vl` is `volcano` in
+[long list format](#volcano-list-long)):
+
+```{r eval=FALSE}
+D <- 0.5
+z.rng <- range(vl[['z']])
+ZD <- diff(z.rng)
+
+# normalize XY coordinates so observer is centered in midpoint of x-y extent
+# and at Z=0
+vlp <- vl
+vlp[c('x','y')] <- lapply(vlp[c('x','y')], function(x) x - range(x) / 2)
+vlp[['z']] <- vlp[['z']] - (z.rng[2] + D * ZD)
+
+# Apply perspective transformation
+z.factor <- -1 / vlp[['z']]
+vlp[c('x','y')] <- lapply(vlp[c('x','y')], function(x) x * z.factor)
+```
+
+And then turned back into meshes:
+
+```{r fig.width=7, fig.height=2.33}
+
+# order and texture are the same across all three
+
+par(mfrow=c(1,3), mar=c(.5, .25, 2, .25))
+D.vals <- c(.25)
+for(i in seq_along(D.vals)) {
+  vlp <- shadow::perspective(vl, D.vals[i])
+  vlpm <- shadow::mesh_tri(vlp, dim=dim(volcano))
+  xi <- do.call(rbind, c(vlpm[,'x'], list(NA)))
+  yi <- do.call(rbind, c(vlpm[,'y'], list(NA)))
+  zord <- order(Reduce('+', vlpm[,'z']))
+  texture <- Reduce('+', vlpm[,'t'])/3
+
+  plot.new()
+  title(sprintf('D = %.01f', D.vals[i]))
+  xis <- scale(xi[,zord], 1)
+  yis <- scale(yi[,zord], 1)
+  xm <- colMeans(xis[1:3,])
+  ym <- colMeans(yis[1:3,])
+  cond <- xm > .29 & xm < .35 & ym > .70 & ym < .85
+  cols <- rep(NA, sum(cond))
+  cols[c(a.ind, b.ind)] <- c('red', 'blue')
+  polygon(
+    scale(xis[,cond]), scale(yis[,cond]),
+    col=cols,
+    border='blue'
+  )
+  polygon(
+    scale(xi[,zord], 2), scale(yi[,zord], 2), col=gray(texture[zord]),
+    border=NA
+  )
+  a.ind <- which(xis[,cond] == min(xis[1:3,cond]), arr.ind=TRUE)[1, 2]
+  b.ind <- which(xis[,cond] == max(xis[1:3,cond]), arr.ind=TRUE)[1, 2]
+
+  sapply(vlpm[,'x'], '[[', zord[a.ind])
+  sapply(vlpm[,'z'], '[[', zord[a.ind])
+  sapply(vlpm[,'x'], '[[', zord[b.ind])
+  sapply(vlpm[,'z'], '[[', zord[b.ind])
+}
+```
+
+Let's shade each facet with the mean of the vertex shadows:
+
+```{r eval=FALSE}
+rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
+volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+ranges <- 
+obs <- c(
+  diff(ranges[,1])/2 + ranges[1,1],
+  diff(ranges[,2])/2 + ranges[1,2],
+  dist * diff(ranges[,3]) + ranges[2,3]
+)
+mxlro <- mxlr - obs
+dimnames(mxlro)[[1]] <- c('x', 'y', 'z')
+
+# apply parallax rotation and compute observer position
+# compute projection
+
+mxlrpp <- mxlro
+mxlrpp['x',] <- -1/mxlro['z',] * mxlro['x',]
+mxlrpp['y',] <- -1/mxlro['z',] * mxlro['y',]
+
+```
 
 
 

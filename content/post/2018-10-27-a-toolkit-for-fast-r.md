@@ -10,6 +10,8 @@ tags: [rstats]
 
 # Must Know Concepts
 
+* Favor internal recycling (i.e. `runif(1e6) * (5 * pi)` instead of
+  `(runif(1e6) * 5) * pi`
 * Recycling with matrices
 * Using lists instead of matrices for column data to avoid subset/copy overhead
     * but OMG data.frame row-names
@@ -39,5 +41,5 @@ tags: [rstats]
 
 * Group sums
 * Group max
-* Multiply 
+* Multiply
 
