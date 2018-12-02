@@ -17,10 +17,6 @@ knitr::opts_chunk$set(
 As we saw in our previous [blog post](/2018/10/23/do-not-shade-r/), you can do
 some pretty cool things with `rayshader`:
 
-```{r}
-plot(as.raster((volcano - min(volcano))/diff(range(volcano))))
-```
-
 It is so beautiful it looks _almost_ 3D.  So why not actually make it 3D?  We
 have the elevation data after all.  Much of what we are going to do here can be
 done with `rgl`, but what's the fun in that?  Besides, there are few things as
@@ -34,10 +30,10 @@ rasterization, and image processing, all in base R.
 
 Sure, you've seen volcano a million times:
 
-```{r}
-scale <- function(x, range=1)
-  ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) *
-    range + (1 - range) / 2
+```{r fig.width=5}
+scale <- function(x, range=1, center=0.5)
+  ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
+   (1 - range) * center
 flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
 
 # plot(as.raster(flip(scale(volcano))))
@@ -47,20 +43,20 @@ plot.new()
 plot.window(c(0,1), c(0,1), asp=ncol(volcano)/nrow(volcano))
 points(
   x=scale(row(volcano)), y=scale(col(volcano)),
-  col=gray(scale(volcano)), pch=15, cex=.5
+  col=gray(scale(volcano)), pch=15
 )
 ```
 
 Let's add some shading:
 
-```{r}
+```{r fig.width=5}
 library(shadow)
 sh <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
 par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
 plot.new()
 points(
   x=scale(row(volcano)), y=scale(col(volcano)),
-  col=gray(sh), pch=15, cex=0.5
+  col=gray(sh), pch=15
 )
 ```
 
@@ -225,11 +221,11 @@ bother?  The reality is we're not done.  Consider what we get with `persp`:
 par(mai=numeric(4))
 # persp(
 #   volcano, theta=-65, phi=70, r=1e6, col=gray(sh[-1,-1]),
-#   border=NA, box=FALSE, axes=FALSE, scale=FALSE
+#   border=NA, box=FALSE, axes=FALSE
 # )
 persp(
   x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
-  theta=-65, phi=70, r=1e6, col=gray(sh[-1,-1]),
+  theta=-65, phi=70, col=gray(sh[-1,-1]), r=1e6,
   border=NA, box=FALSE, axes=FALSE, scale=FALSE
 )
 ```
@@ -298,10 +294,11 @@ polygon(
 Let's shade each facet with the mean of the vertex shadows:
 
 ```{r}
+par(mai=numeric(4))
 texture <- Reduce('+', mesh.tri[,'t']) / 3
 plot.new()
 polygon(
-  scale(x[,zord]), scale(y[,zord]), col=gray(texture[zord]), 
+  scale(x[,zord]), scale(y[,zord]), col=gray(texture[zord]),
   border=gray(texture[zord])
 )
 ```
@@ -320,10 +317,122 @@ polygon3d(x=c(0, 1, 2, 1, 0), y=c(0, 2, 0, .2, 0), z=numeric(5))
 view3d(0,0,fov=60)
 ```
 
-The `rot_x` and `rot_z` functions used here produce the matrices as described in
-the
-wikipedia article:
+# Perspective
 
+Everything we've done so far has been assuming there is no perspective effect,
+that is, that the perceived size of objects is independent of the distance from
+the observer.  This is true if objects are infinitely far away.
+
+So far we have define our observer as being on a line parallel to the Z axis and
+passing through the midpoint of the X and Y extents of the projected object.
+Thus we have always been look at `volcano` straight down the Z axis.  For
+expository purposes we are about to, for the first time, rotate "Observer 0"
+(you) 90 degrees about the Y axis.
+
+In the following diagram we have rotated "Observer 0" (you) so that it is now
+looking at `volcano` down the X axis.  The Z axis now runs from left to right.
+Observers 1, 2, and 3 are all still looking at `volcano` down the Z axis.
+
+```{r echo=FALSE, fig.width=7, fig.height=2.33}
+rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
+volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+volc.lr2 <- rot2 %*% volc.l
+vl2 <- lapply(seq_len(nrow(volc.lr2)), function(x) volc.lr2[x,])
+vl2 <- c(vl2, list(sh))              # add texture info
+names(vl2) <- c('x', 'y', 'z', 't') # 't' for texture
+
+mesh.tile2 <- matrix(
+  Map(
+    function(x, y) vl2[[y]][idx.tile[[x]]],
+    rep(seq_along(idx.tile), length(vl2)),
+    rep(seq_along(vl2), each=length(idx.tile))
+  ),
+  nrow=length(idx.tile),
+  ncol=length(vl2),
+  dimnames=list(sprintf('v%d', seq_along(idx.tile)), names(vl2))
+)
+
+x <- do.call(rbind, c(mesh.tile2[,'x'], list(NA)))
+y <- do.call(rbind, c(mesh.tile2[,'y'], list(NA)))
+zord <- order(Reduce('+', mesh.tile2[,'z']))
+texture <- Reduce('+', mesh.tile2[,'t']) / 4
+yscale <- .8
+ylow <- (1 - yscale) * .9
+ymid <- .25 + yscale/2
+yarrow <- scale(c(0, .5, 1), yscale * .5, 0) + ylow
+yarmax <- max(yarrow)
+
+par(mai=numeric(4))
+plot.new()
+# polygon(c(0,1,1,0), c(0,0,1,1))
+polygon(
+  scale(x[,zord], 1/3, 1), scale(y[,zord], yscale, 1),
+  col=gray(texture[zord]), border=gray(texture[zord])
+)
+arrows(
+  x0=c(0,  1/3, 1/2, 2/3),
+  x1=c(2/3,2/3, 2/3,   1),
+  y0=c(yarrow, ylow),
+  y1=c(yarrow, ylow),
+  col=c(rep('blue', 3), '#00DD00'),
+  code=3
+)
+lines(
+  c(0, 0, NA, 1/3, 1/3, NA, 1/2, 1/2, NA, 2/3, 2/3, NA, 1, 1, NA),
+  c(ylow,                        ymid, NA,
+    ylow + (yarmax - ylow) * .5, ymid, NA,
+    yarmax,                      ymid, NA,
+    ylow,                         .75, NA,
+    ylow,                         .83, NA),
+  lty='dashed',
+  col='gray'
+)
+points(c(0, 1/3, 1/2), y=rep(ymid, 3), col='blue', pch=16)
+text(
+  x=c(2/3 * .5, 1/3 + 1/6, 1/2 + 1/12, 2/3 + 1/6),
+  y=c(yarrow - ylow/2, ylow/2),
+  col=c(rep('blue', 3), '#00DD00'),
+  label=c('D = ZD * 2', 'D = ZD', 'D = ZD / 2', 'ZD = Z Depth'),
+  cex=0.8
+)
+text(
+  x=c(0, 1/3, 1/2), y=rep(ymid, 3), col='blue', pos=3,
+  label=sprintf('Obs %d', 1:3)
+)
+```
+
+For convenience we define the quantity `ZD` as the total depth of our object
+along the Z axis.  Then, we can define the distance of our observers from the
+nearest point along the Z axis with the measure `D` as multiples of `ZD`.
+
+
+
+
+## Plot!, but order by Z value first
+
+```{r, eval=FALSE}
+zord <- order(vl2[[3]])
+vlo2 <- lapply(c(1:2,4), function(x) scale(vl2[[x]][zord]))
+x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))
+y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))
+zord <- order(Reduce('+', mesh.tile[,'z']))
+plot.new()
+polygon(scale(x[,zord]), scale(y[,zord]), col='#EEEEEE')
+
+par(mai=numeric(4))
+plot.new()
+points(x=vlo2[[1]], y=vlo2[[2]], col=gray(vlo2[[3]]), pch=15, cex=0.5)
+
+obs <- c(
+  diff(ranges[,1])/2 + ranges[1,1],
+  diff(ranges[,2])/2 + ranges[1,2],
+  dist * diff(ranges[,3]) + ranges[2,3]
+)
+```
+
+
+
+# Rasterization
 
 We're going to tilt the map to the left and to the right by two degrees.  I just
 picked an angle that seemed reasonable, and given that a true human stereoscopic
