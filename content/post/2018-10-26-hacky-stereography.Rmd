@@ -2,14 +2,16 @@
 title: Hacky Stereography
 author: ~
 date: '2018-10-26'
+draft: true
 slug: hacky-stereography
 categories: []
 tags: []
 ---
-```
+```{r echo=FALSE}
 knitr::opts_chunk$set(
-  eval='FALSE', echo='FALSE', comment = ""
+  comment = ""
 )
+options(digits=3)
 ```
 
 # Cool, but Not Eye Popping
@@ -68,13 +70,12 @@ implements the `rot_*` functions, which are thin wrappers that generate the
 rotation matrices described in the wikipedia article:
 
 ```{r}
-rot_z
-round(rot_z(65), 3)
+rot_z(90)
 ```
 
 By our convention the Z-axis is always pointed directly at the user, even after
 rotations are applied.  In other words, it is the model that rotates, not the
-viewer.
+viewer[^1].
 
 In order to use the rotation matrix we need our data in long format.  This can
 be done easily by taking advantage of the `row` and `col` functions that return
@@ -129,7 +130,7 @@ points(x=vlo[[1]], y=vlo[[2]], col=gray(vlo[[3]]), pch=15, cex=0.5)
 The good news is now we have an awesome looking 3D rendition of our volcano...
 in the process of disintegration from a particularly unpleasant eruption.
 
-# Step 2: Meshes
+# Meshes
 
 Okay, so we can't just use our elevation data as point coordinates.  One
 possibility is to turn our point "cloud" into a mesh.  Well, turning an
@@ -208,11 +209,11 @@ Tada! A mesh:
 
 ```{r}
 par(mai=numeric(4))
-x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))
-y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))
-zord <- order(Reduce('+', mesh.tile[,'z']))
+zord4 <- order(Reduce('+', mesh.tile[,'z']))
+x4 <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))[,zord4]
+y4 <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))[,zord4]
 plot.new()
-polygon(scale(x[,zord]), scale(y[,zord]), col='#EEEEEE')
+polygon(scale(x4), scale(y4), col='#EEEEEE')
 ```
 
 Okay, great you say, but we could have done all of this with `persp`, why
@@ -281,14 +282,13 @@ mesh.tri
 And we can plot this.
 
 ```{r}
-x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))
-y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))
-zord <- order(Reduce('+', mesh.tri[,'z']))
+zord3 <- order(Reduce('+', mesh.tri[,'z']))
+x3 <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord3]
+y3 <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord3]
 par(mai=numeric(4))
 plot.new()
-polygon(
-  scale(x[,zord]), scale(y[,zord]),
-  col=rep(c('#CCCCFF','#CCFFCC'), each=length(mesh.tile[[1]]))[zord]
+polygon(scale(x3), scale(y3),
+  col=rep(c('#CCCCFF','#CCFFCC'), each=ncol(x3)/2)[zord3]
 )
 ```
 
@@ -296,12 +296,9 @@ Let's shade each facet with the mean of the vertex shadows:
 
 ```{r}
 par(mai=numeric(4))
-texture <- Reduce('+', mesh.tri[,'t']) / 3
+texture3 <- gray(Reduce('+', mesh.tri[,'t']) / 3)[zord3]
 plot.new()
-polygon(
-  scale(x[,zord]), scale(y[,zord]), col=gray(texture[zord]),
-  border=gray(texture[zord])
-)
+polygon(scale(x3), scale(y3), col=texture3, border=texture3)
 ```
 
 Looks better than `persp`, but still the triangle faces irk me.  Also, I'm
@@ -336,27 +333,19 @@ Observers 1, 2, and 3 are all still looking at `volcano` down the Z axis.
 
 ```{r echo=FALSE, fig.width=7, fig.height=2.33}
 rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
-volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+volc.l2 <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
 volc.lr2 <- rot2 %*% volc.l
+
 vl2 <- lapply(seq_len(nrow(volc.lr2)), function(x) volc.lr2[x,])
 vl2 <- c(vl2, list(sh))              # add texture info
 names(vl2) <- c('x', 'y', 'z', 't') # 't' for texture
 
-mesh.tile2 <- matrix(
-  Map(
-    function(x, y) vl2[[y]][idx.tile[[x]]],
-    rep(seq_along(idx.tile), length(vl2)),
-    rep(seq_along(vl2), each=length(idx.tile))
-  ),
-  nrow=length(idx.tile),
-  ncol=length(vl2),
-  dimnames=list(sprintf('v%d', seq_along(idx.tile)), names(vl2))
-)
+mesh.tri2 <- shadow::mesh_tri(vl2, dim(volcano))
+zord32 <- order(Reduce('+', mesh.tri2[,'z']))
+x32 <- do.call(rbind, c(mesh.tri2[,'x'], list(NA)))[,zord32]
+y32 <- do.call(rbind, c(mesh.tri2[,'y'], list(NA)))[,zord32]
+texture32 <- gray((Reduce('+', mesh.tri2[,'t'])/4))[zord32]
 
-x <- do.call(rbind, c(mesh.tile2[,'x'], list(NA)))
-y <- do.call(rbind, c(mesh.tile2[,'y'], list(NA)))
-zord <- order(Reduce('+', mesh.tile2[,'z']))
-texture <- Reduce('+', mesh.tile2[,'t']) / 4
 yscale <- .8
 ylow <- (1 - yscale) * .9
 ymid <- .25 + yscale/2
@@ -365,10 +354,8 @@ yarmax <- max(yarrow)
 
 par(mai=numeric(4))
 plot.new()
-# polygon(c(0,1,1,0), c(0,0,1,1))
-polygon(
-  scale(x[,zord], 1/3, 1), scale(y[,zord], yscale, 1),
-  col=gray(texture[zord]), border=gray(texture[zord])
+polygon(scale(x32, 1/3, 1), scale(y32, yscale, 1),
+  col=texture32, border=texture32
 )
 arrows(
   x0=c(0,  1/3, 1/2, 2/3),
@@ -404,145 +391,266 @@ text(
 
 For convenience we define the quantity `ZD` as the total depth of our object
 along the Z axis.  Then, we can define the distance of our observers from the
-nearest point along the Z axis with the measure `D` as multiples of `zd`.
+nearest point along the Z axis with the measure `D` as multiples of `ZD`.
 
-Applying perspective computations is then pretty straightforward:
+Here is our volcano re-rendered from the perspective of each of observers 1-3
+pictured above:
 
-NEXT STEPS:
-* Actually write the wide->long, rotation, tile-mesh, triangle-mesh
-  function so when we re-generate this rotated mesh we do it with functions.
-* Generate Obs 1, 2, and 3 perspective plots (write perp function).
-
-For expository purposes we waited to this point to do perspective adjustments,
-but the reality is they are best done while the data is still in point cloud
-rather than mesh format.
-
-The perspective calculation ends up looking like (recall `vl` is `volcano` in
-[long list format](#volcano-list-long)):
-
-```{r eval=FALSE}
-D <- 0.5
-z.rng <- range(vl[['z']])
-ZD <- diff(z.rng)
-
-# normalize XY coordinates so observer is centered in midpoint of x-y extent
-# and at Z=0
-vlp <- vl
-vlp[c('x','y')] <- lapply(vlp[c('x','y')], function(x) x - range(x) / 2)
-vlp[['z']] <- vlp[['z']] - (z.rng[2] + D * ZD)
-
-# Apply perspective transformation
-z.factor <- -1 / vlp[['z']]
-vlp[c('x','y')] <- lapply(vlp[c('x','y')], function(x) x * z.factor)
-```
-
-And then turned back into meshes:
-
-```{r fig.width=7, fig.height=2.33}
-
-# order and texture are the same across all three
-
+```{r echo=FALSE, fig.width=7, fig.height=3}
 par(mfrow=c(1,3), mar=c(.5, .25, 2, .25))
-D.vals <- c(.25)
+D.vals <- c(2,1,.5)
 for(i in seq_along(D.vals)) {
-  vlp <- shadow::perspective(vl, D.vals[i])
+  vlp <- shadow::perspective(vl, D.vals[[i]])
   vlpm <- shadow::mesh_tri(vlp, dim=dim(volcano))
-  xi <- do.call(rbind, c(vlpm[,'x'], list(NA)))
-  yi <- do.call(rbind, c(vlpm[,'y'], list(NA)))
-  zord <- order(Reduce('+', vlpm[,'z']))
-  texture <- Reduce('+', vlpm[,'t'])/3
+  xi <- do.call(rbind, c(vlpm[,'x'], list(NA)))[,zord3]
+  yi <- do.call(rbind, c(vlpm[,'y'], list(NA)))[,zord3]
+  # zord <- order(Reduce('+', vlpm[,'z']))
+  # texture <- Reduce('+', vlpm[,'t'])/3
 
   plot.new()
+  plot.window(c(0,1), c(0,1), asp=diff(range(vlp['x']))/diff(range(vlp['y'])))
   title(sprintf('D = %.01f', D.vals[i]))
-  xis <- scale(xi[,zord], 1)
-  yis <- scale(yi[,zord], 1)
-  xm <- colMeans(xis[1:3,])
-  ym <- colMeans(yis[1:3,])
-  cond <- xm > .29 & xm < .35 & ym > .70 & ym < .85
-  cols <- rep(NA, sum(cond))
-  cols[c(a.ind, b.ind)] <- c('red', 'blue')
-  polygon(
-    scale(xis[,cond]), scale(yis[,cond]),
-    col=cols,
-    border='blue'
-  )
-  polygon(
-    scale(xi[,zord], 2), scale(yi[,zord], 2), col=gray(texture[zord]),
-    border=NA
-  )
-  a.ind <- which(xis[,cond] == min(xis[1:3,cond]), arr.ind=TRUE)[1, 2]
-  b.ind <- which(xis[,cond] == max(xis[1:3,cond]), arr.ind=TRUE)[1, 2]
-
-  sapply(vlpm[,'x'], '[[', zord[a.ind])
-  sapply(vlpm[,'z'], '[[', zord[a.ind])
-  sapply(vlpm[,'x'], '[[', zord[b.ind])
-  sapply(vlpm[,'z'], '[[', zord[b.ind])
+  polygon(scale(xi), scale(yi), col=texture3, border=texture3)
 }
 ```
 
-Let's shade each facet with the mean of the vertex shadows:
+The actual perspective computation is best applied to the original point cloud,
+so we go back to the `vl` variable, which is `volcano` in
+[long list format](#volcano-list-long), and apply the perspective transformation
+for observer 3:
 
+```{r}
+str(vl)                   # `volcano` in long list format
 ```{r eval=FALSE}
-rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
-volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
-ranges <- 
-obs <- c(
-  diff(ranges[,1])/2 + ranges[1,1],
-  diff(ranges[,2])/2 + ranges[1,2],
-  dist * diff(ranges[,3]) + ranges[2,3]
+D <- 0.5                  # Observer 3 is half Z-Depth from volcano
+z.rng <- range(vl[['z']])
+ZD <- diff(z.rng)
+
+## Normalize XY coordinates so observer is centered in midpoint of x-y extent
+## and at Z=0
+vlp <- vl
+vlp[c('x','y')] <- lapply(vl[c('x','y')], function(x) x - sum(range(x)) / 2)
+vlp[['z']] <- vlp[['z']] - (z.rng[2] + D * ZD)
+
+## Apply perspective transformation
+z.factor <- -1 / vlp[['z']]
+vlp[c('x','y')] <- lapply(vlp[c('x','y')], '*', z.factor)
+```
+```{r echo=FALSE, eval=FALSE}
+## just to confirm above works
+vlp <- sapply(vlp, '[', order(vlp[['z']]), simplify=FALSE)
+plot.new()
+points(
+  x=scale(vlp[['x']]), y=scale(vlp[['y']]), col=gray(vlp[['t']]), pch=15, cex=0.5
 )
-mxlro <- mxlr - obs
-dimnames(mxlro)[[1]] <- c('x', 'y', 'z')
-
-# apply parallax rotation and compute observer position
-# compute projection
-
-mxlrpp <- mxlro
-mxlrpp['x',] <- -1/mxlro['z',] * mxlro['x',]
-mxlrpp['y',] <- -1/mxlro['z',] * mxlro['y',]
-
 ```
 
+Now that we have the perspective-transformed cloud point, we can turn it back
+into a triangle mesh.  This time we just use `shadow::mesh_tri`, which simply
+carries out the calculations described in the [Mesh section](#meshes):
 
-
-## Plot!, but order by Z value first
-
-```{r, eval=FALSE}
-zord <- order(vl2[[3]])
-vlo2 <- lapply(c(1:2,4), function(x) scale(vl2[[x]][zord]))
-x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))
-y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))
-zord <- order(Reduce('+', mesh.tile[,'z']))
-plot.new()
-polygon(scale(x[,zord]), scale(y[,zord]), col='#EEEEEE')
-
+```{r}
+mesh.tri <- mesh_tri(vlp, dim(volcano))
+mesh.tri
+zord <- order(Reduce('+', mesh.tri[,'z']))
+x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord]
+y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord]
+texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))[zord]
 par(mai=numeric(4))
 plot.new()
-points(x=vlo2[[1]], y=vlo2[[2]], col=gray(vlo2[[3]]), pch=15, cex=0.5)
-
-obs <- c(
-  diff(ranges[,1])/2 + ranges[1,1],
-  diff(ranges[,2])/2 + ranges[1,2],
-  dist * diff(ranges[,3]) + ranges[2,3]
-)
+plot.window(c(0,1), c(0,1), asp=diff(range(vlp[['x']]))/diff(range(vlp[['y']])))
+box('figure')
+polygon(scale(x), scale(y), col=texture, border=texture)
 ```
 
-
+Are we there yet?  Nope, we're going to drag this baby kicking and screaming
+all the way to its painful, bloody conclusion.
 
 # Rasterization
 
-We're going to tilt the map to the left and to the right by two degrees.  I just
-picked an angle that seemed reasonable, and given that a true human stereoscopic
-view of mountains is physically impossible I'm not going to worry too much about
-doing this correctly.
+## Overview
 
-Additionally, our tilt is going to be lazy.  As in,
-really-wrong-but-not-wrong-enough-to-ruin-everything lazy.
-We are only going to shift heights along the x-axis in proportion to the
-heights, instead of rotating the entire plane.  We do this with the
-`shift_shadow` function:
+So far we have relied on base R plotting facilities, `polygon` mostly, to
+actually transform our 3D object representation into an image.  There are two
+problems with this:
+
+1. `volcano` does not look very natural with all the triangular faces.
+2. Speed is a problem with higher polygon counts.
+
+We will resolve these issues by resorting to rasterization, whereby we compute
+what each pixel of our final image should look like.  This requires determining
+which points of our final output pixel grid belong to which triangles.  While
+this is the type of thing a child could do easily, it is surprisingly difficult
+to instruct a computer to do the same, particularly when we need to account for
+the need to use internally vectorized base R code.
+
+Conceptually, the process takes three steps:
+
+```{r echo=FALSE, fig.width=7, fig.height=3}
+par(mfrow=c(1, 4), mar=c(.5, .25, 2, .25))
+x <- c(0, .8, .2, NA, .8, 1, .2, NA)
+y <- c(0, .2, .8, NA, .2, 1, .8, NA)
+plot.new()
+title('Mesh Polygons to Rasterize')
+polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+plot.new()
+title('Step 1: Rectangular Bounding Box')
+polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+polygon(
+  c(0, .8, .8,  0, NA, .2, 1, 1, .2, NA),
+  c(0,  0, .8, .8, NA, .2, .2, 1, 1, NA),
+  border=c('#0000FF', '#00DD00'), col=NA
+)
+plot.new()
+title('Step 2: Candidate Pixels')
+len <- 13
+pdat <- as.matrix(
+  expand.grid(x=seq(0, .8, length.out=len), y=seq(0, .8, length.out=len))
+)
+polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+polygon(
+  c(0, .8, .8,  0, NA, .2, 1, 1, .2, NA),
+  c(0,  0, .8, .8, NA, .2, .2, 1, 1, NA),
+  border=c('#0000FF', '#00DD00'), col=NA
+)
+points(pdat, pch=24, col='#0000FF')
+points(pdat + .2, pch=25, col='#00DD00')
+
+plot.new()
+title('Step 3: Actual Pixels')
+
+nr <- nrow(pdat)
+mx1 <- matrix(c(lapply(x[1:3], rep, nr), lapply(y[1:3], rep, nr)), 3)
+colnames(mx1) <- c('x', 'y')
+mx1.oob <- Reduce('|', lapply(barycentric(as.data.frame(pdat), mx1), '<', 0))
+
+mx2 <- matrix(c(lapply(x[5:7], rep, nr), lapply(y[5:7], rep, nr)), 3)
+colnames(mx2) <- c('x', 'y')
+mx2.oob <- Reduce('|', lapply(barycentric(as.data.frame(pdat+.2), mx2), '<', 0))
+
+polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+points(pdat[!mx1.oob,], pch=24, bg='#0000FF', col=NA)
+points(pdat[!mx2.oob,] + .2, pch=25, bg='#00DD00', col=NA)
+```
+
+## Step 1: Bounding Box
+
+Let's first scale our data to be 600 pixels wide.  We go back to the
+perspective-adjusted point cloud data to minimize the number of transformations
+we need to make:
+
+```{r}
+x.width <- 600L
+x.rng <- range(vlp[['x']])
+y.rng <- range(vlp[['y']])
+asp <- diff(x.rng) / diff(y.rng)
+y.width <- as.integer(x.width * asp)
+vlpt <- vlp
+vlpt[['x']] <- scale(vlpt[['x']], x.width - 1L, 0)
+vlpt[['y']] <- scale(vlpt[['y']], y.width - 1L, 0)
+```
+
+Regenerate the mesh, and for each mesh polygon compute the maximum x and y
+integer pixel values they could contain:
+
+```{r}
+mesh <- mesh_tri(vlpt, dim(volcano))
+mins <-
+  apply(mesh[,c('x','y')], 2, function(x) list(ceiling(do.call(pmin, x))))
+maxs <-
+  apply(mesh[,c('x','y')], 2, function(x) list(floor(do.call(pmax, x))))
+str(mins)  # `maxs` will have same structure
+```
+
+We use `list(...)` in the function to prevent `apply` from simplifying to
+matrix.
+
+## Step 2: Candidate Pixels
+
+Compute how many the dimensions of the bounding x/y min/max in pixels:
+
+```{r}
+dims.x <- pmax(maxs[['x']][[1]] - mins[['x']][[1]] + 1, 0)
+dims.y <- pmax(maxs[['y']][[1]] - mins[['y']][[1]] + 1, 0)
+dims.xy <- dims.x * dims.y
+```
+
+Now the tricky part: we need to fill out the bounding boxes described by `mins`
+and `maxs` with every permutation of x and y pixel coordinates.  The plan of
+attack is to compute the pixel "offset" permutations within each bounding box,
+and then add back the min x and y coordinates to get the actual pixel
+coordinates.
+
+This is the type of thing that one might normally do with `expand.grid`, but we
+need to do this for each of the 10,320 polygons[^2] which becomes
+computationally burdensome:
 
 ```{r eval=FALSE}
+make_grids <- function() {
+  lapply(seq_along(dims.x),
+    # function(x, y) expand.grid(x=seq_len(x), y=seq_len(y)), dims.x, dims.y
+    function(i) {
+      x <- dims.x[[i]]
+      y <- dims.y[[i]]
+      list(
+        rep(seq_len(x),y) + mins[['x']][[1]][i],
+        rep(seq_len(y), each=x) + mins[['y']][[1]][i]
+      )
+    }
+  )
+}
+stack_grids <- function(grids) {
+  grid.dat <- make_grids()
+  list(
+    unlist(lapply(grids, '[', 'x')),
+    unlist(lapply(grids, '[', 'y'))
+  )
+}
+compute_bary <- function() {
+  lapply(
+    idx,
+    function(i) {
+      points <- grids[[i]]
+      vertices <- lapply(mesh, '[', i)
+      dim(vertices) <- dim(mesh)
+      dimnames(vertices) <- dimnames(mesh)
+      barycentric(points, vertices)
+  } )
+}
+render_each <- function() {
+  grids <- make_grids()
+  bc <- compute_bary()
+  idx <- seq_along(grids)
+  inb <- lapply(bc, function(x) x[[1]] >= 0 & x[[2]] >= 0 & x[[3]] >= 0)
+  p.inb <- lapply(idx, function(i) lapply(grids[[i]], '[', inb[[i]]))
+  bc.inb <- lapply(idx, function(i) lapply(bc[[i]], '[', inb[[i]]))
+  texture <- lapply(
+    idx,
+    function(i) Reduce('+', Map('*', lapply(mesh[, 't'], '[', i), bc.inb[[i]]))
+  )
+  zs <- unlist(lapply(idx, function(i) Reduce('+', lapply(mesh[, 'z'], '[', i))))
+  zord <- order(zs)
+  xs <- unlist(lapply(p.inb, '[[', 'x')[zord])
+  ys <- unlist(lapply(p.inb, '[[', 'y')[zord])
+  ts <- unlist(texture[zord])
+
+  res <- matrix(numeric(), x.width, y.width)
+  res[cbind(xs, ys)] <- ts
+}
+treeprof::treeprof(render_each())
+plot(as.raster(res))
+
+system.time(
+  lapply(bc, function(x) x[[1]] >= 0 & x[[2]] >= 0 & x[[3]] >= 0)
+)
+```
+
+
+
+
+
+```{r eval=FALSE}
+library(shadow)
 mx2 <- volcano
 els <- seq(-90, 90, length=25)
 sun <- 180
@@ -550,9 +658,11 @@ sh2 <- ray_shade2(mx2, els, sun)
 sh2 <- sh2 * .9 + .1
 rot <- rot_x(-20) %*% rot_z(65)
 
+treeprof::treeprof(
 proj <- project_elev(
-  mx2, sh2, rot, parallax=0, dist=1e6, resolution=c(600,600)
-)
+  mx2, sh2, rot, parallax=0, dist=.5, resolution=c(600,600)
+))
+
 left <- proj[[1]]
 empty.rows <- which(empty_rows(left))
 empty.cols <- which(empty_cols(left))
@@ -561,7 +671,7 @@ left <- left[-empty.rows, -empty.cols, ]
 left.r <- left[,,1]
 left.r[left.r < 0] <- 0
 
-# image(left.r)
+## image(left.r)
 plot(as.raster(left.r))
 ```
 
@@ -668,7 +778,17 @@ combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
 png::writePNG(combined, 'persp.png')
 
 ```
-
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
 [2]: https://www.brodieg.com/2018/11/23/is-your-matrix-running-slow-try-lists/
+
+----
+[^1]: Some 3D packages out there will blatantly lie to you by rotating the
+      displayed axes along with the object, making it seem like the axes are
+      rotating, but in reality the underlying axes are not rotating.  This lie
+      made it particularly difficult for me to figure out why things were not
+      rotating the way I thought they should.  I'm still pissed off about it.
+[^2]: In reality we only *need* to do this for the polygons that are visible in
+      the end result, but determining what is visible and not is non-trivial and
+      we'll reserve that for a possible future low-probability-of-getting-made
+      blog post.
 
