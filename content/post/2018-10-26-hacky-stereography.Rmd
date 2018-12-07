@@ -537,7 +537,7 @@ points(pdat[!mx2.oob,] + .2, pch=25, bg='#00DD00', col=NA)
 
 Let's first scale our data to be 600 pixels wide.  We go back to the
 perspective-adjusted point cloud data to minimize the number of transformations
-we need to make:
+we need to make:<a name='bounding-box-scale'></a>
 
 ```{r}
 x.width <- 600L
@@ -555,6 +555,9 @@ integer pixel values they could contain:
 
 ```{r}
 mesh <- mesh_tri(vlpt, dim(volcano))
+zord <- order(Reduce('+', mesh[,'z']))
+mesh[] <- lapply(mesh, '[', zord)
+
 mins <- apply(
   mesh[,c('x','y')], 2, function(x) list(as.integer(ceiling(do.call(pmin, x))))
 )
@@ -745,13 +748,11 @@ fill out the bounding boxes.  One small tweak is that we generate the bounding
 boxes in the same Z order we have been using for our [mesh](#mesh-tri-persp).
 
 ```{r}
-dims.x <- dims.x[zord]
-dims.y <- dims.y[zord]
 dims.xy <- dims.x * dims.y
-bb.id <- rep(seq_along(dims.x)[zord], dims.xy)
+bb.id <- rep(seq_along(dims.x), dims.xy)
 x.lens <- rep(dims.x, dims.y)
-x.off <- sequence2(x.lens)
-y.off <- rep(sequence(dims.y), x.lens)
+x.off <- sequence2(x.lens) - 1L
+y.off <- rep(sequence(dims.y), x.lens) - 1L
 
 ## Add back the min values of the bounding boxes
 p.x <- x.off + mins[['x']][[1]][bb.id]
@@ -781,6 +782,7 @@ about which directions the dimensions run in we need to flip our matrix:
 
 ```{r}
 flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
+par(mai=numeric(4))
 plot(as.raster(flip(p.raster)))
 ```
 
@@ -809,33 +811,74 @@ blog post for a detailed explanation of what the function does.  For now, all we
 care about is which points end up with negative barycentric coordinates.
 `shadow::barycentric` is a copy of that function.
 
-But first we need to set up our vertex data so that we can use it in vectorized
-calculations.  Unfortunately, this means that we have to copy the vertex x-y
-coordinates for every single point.  This is wasteful, but one of the
-trade offs often made in R: use more memory in order to make fewer expensive R
-function calls.
+First we need to match up our vertex data to the candidate points so we can use
+vectorized operations.  Unfortunately, this means that we have to make a copy of
+the vertex x-y coordinates for every single point.  This is wasteful, but one of
+the trade offs often made in R: use more memory in order to make fewer expensive
+R function calls.
 
 ```{r}
-mesh.tri
-## Each id in `bb.id` references a mesh triangle
 cols <- c('x','y','t')  # don't need Z vals as `bb.id` already Z ordered
-mesh.tri.all <- lapply(mesh.tri[,cols], '[', bb.id)
-dim(mesh.tri.all) <- dim(mesh.tri[,cols])
-dimnames(mesh.tri.all) <- dimnames(mesh.tri[,cols])
-mesh.tri.all
+mesh.all <- mesh[, cols]
+mesh.all
+
+## each id in `bb.id` reference a mesh triangle
+mesh.all[] <- lapply(mesh.all, '[', bb.id)
+mesh.all
 ```
 
+Now we have as many polygons as points, which allows us to compute the
+barycentric coordinates in one R function call:
+
 ```{r}
-bc <- barycentric(list(x=p.x, y=p.y), mesh.tri.all[,c('x','y')])
+bc <- barycentric(list(x=p.x, y=p.y), mesh.all[,c('x','y')])
+
+## determine which points are inbounds and generate
+## raster matrix
 inbounds <- Reduce('&', lapply(bc, '>=', 0))
 
+p.x.in <- p.x[inbounds]
+p.y.in <- p.y[inbounds]
 p.raster <- matrix(numeric(0), x.width, y.width)
-p.raster[cbind(p.x[inbounds], p.y[inbounds])] <-
-  rep(texture, dims.xy)[inbounds]
+p.raster[cbind(p.x.in, p.y.in)] <- rep(texture, dims.xy)[inbounds]
+
+par(mai=numeric(4))
 plot(as.raster(flip(p.raster)))
 ```
 
+Great!  All that work and we're right back were we started[^5] with our
+[triangle mesh](#mesh-tri-persp).  But isn't it so satisfying that we built this
+thing pixel by pixel, with our bare hands.  It's a little bit like that pasta
+sauce you might make from scratch, that objectively really isn't that much
+better than the stuff in the jar, but it sure does _seem_ to taste better.
+
+Oh, and we're not done yet.
+
 # Shading
+
+The main reason I picked barycentric coordinates to determine which points are
+inbounds is that those coordinates also represent the relative weights at each
+vertex of the triangle required to "balance" the triangle on the corresponding
+points.  This will allow us to shade the pixels within polygons based on their
+proximity to each vertex and the vertex colors.  I cover this at length in the
+previously mentioned [blogpost][5].
+
+Since we have the barycentric coordinates, all we have to do is compute weighted
+average colors for each pixel:
+
+```{r}
+bc.in <- lapply(bc, '[', inbounds)
+t.in <- lapply(mesh.all[, 't'], '[', inbounds)
+t.shaded <- Reduce('+', Map('*', t.in, bc.in))
+
+p.raster <- matrix(numeric(0), x.width, y.width)
+p.raster[cbind(p.x.in, p.y.in)] <- t.shaded
+
+par(mai=numeric(4))
+plot(as.raster(flip(p.raster)))
+```
+
+And just like that we have a beautifully shaded volcano!
 
 ```{r eval=FALSE}
 library(shadow)
@@ -984,6 +1027,8 @@ png::writePNG(combined, 'persp.png')
   then, but looks about as good as our volcano here does right now.
   ![Comanche Screenshot][7] See [s-macke][6] for an amazing explanation of their
   rendering engine.
+[^5]: Well, almost, the eagle-eyed reader will notice we've lost the
+  anti-aliasing, but shhhh, don't tell anyone.
 
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
 [2]: /2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue
