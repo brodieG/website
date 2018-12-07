@@ -36,7 +36,6 @@ Sure, you've seen volcano a million times:
 scale <- function(x, range=1, center=0.5)
   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
    (1 - range) * center
-flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
 
 # plot(as.raster(flip(scale(volcano))))
 
@@ -438,16 +437,18 @@ vlp[c('x','y')] <- lapply(vlp[c('x','y')], '*', z.factor)
 ```
 ```{r echo=FALSE, eval=FALSE}
 ## just to confirm above works
-vlp <- sapply(vlp, '[', order(vlp[['z']]), simplify=FALSE)
+vlp2 <- sapply(vlp, '[', order(vlp[['z']]), simplify=FALSE)
 plot.new()
 points(
-  x=scale(vlp[['x']]), y=scale(vlp[['y']]), col=gray(vlp[['t']]), pch=15, cex=0.5
+  x=scale(vlp2[['x']]), y=scale(vlp2[['y']]), col=gray(vlp2[['t']]),
+  pch=15, cex=0.5
 )
 ```
 
 Now that we have the perspective-transformed cloud point, we can turn it back
 into a triangle mesh.  This time we just use `shadow::mesh_tri`, which simply
 carries out the calculations described in the [Mesh section](#meshes):
+<a name='mesh-tri-persp'></a>
 
 ```{r}
 mesh.tri <- mesh_tri(vlp, dim(volcano))
@@ -459,7 +460,6 @@ texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))[zord]
 par(mai=numeric(4))
 plot.new()
 plot.window(c(0,1), c(0,1), asp=diff(range(vlp[['x']]))/diff(range(vlp[['y']])))
-box('figure')
 polygon(scale(x), scale(y), col=texture, border=texture)
 ```
 
@@ -555,15 +555,18 @@ integer pixel values they could contain:
 
 ```{r}
 mesh <- mesh_tri(vlpt, dim(volcano))
-mins <-
-  apply(mesh[,c('x','y')], 2, function(x) list(ceiling(do.call(pmin, x))))
-maxs <-
-  apply(mesh[,c('x','y')], 2, function(x) list(floor(do.call(pmax, x))))
+mins <- apply(
+  mesh[,c('x','y')], 2, function(x) list(as.integer(ceiling(do.call(pmin, x))))
+)
+maxs <- apply(
+  mesh[,c('x','y')], 2, function(x) list(as.integer(do.call(pmax, x)))
+)
 str(mins)  # `maxs` will have same structure
 ```
 
 We use `list(...)` in the function to prevent `apply` from simplifying to
-matrix.
+matrix.  This does mean we will need to access the `mins` and `maxs` values as
+e.g. `mins[['x']][[1]]`, but that is only a slight annoyance.
 
 ## Step 2: Candidate Pixels
 
@@ -581,73 +584,258 @@ attack is to compute the pixel "offset" permutations within each bounding box,
 and then add back the min x and y coordinates to get the actual pixel
 coordinates.
 
-This is the type of thing that one might normally do with `expand.grid`, but we
-need to do this for each of the 10,320 polygons[^2] which becomes
-computationally burdensome:
+This is the type of thing that one might normally do with `expand.grid`:
 
 ```{r eval=FALSE}
-make_grids <- function() {
-  lapply(seq_along(dims.x),
-    # function(x, y) expand.grid(x=seq_len(x), y=seq_len(y)), dims.x, dims.y
-    function(i) {
-      x <- dims.x[[i]]
-      y <- dims.y[[i]]
-      list(
-        rep(seq_len(x),y) + mins[['x']][[1]][i],
-        rep(seq_len(y), each=x) + mins[['y']][[1]][i]
-      )
-    }
-  )
-}
-stack_grids <- function(grids) {
-  grid.dat <- make_grids()
-  list(
-    unlist(lapply(grids, '[', 'x')),
-    unlist(lapply(grids, '[', 'y'))
-  )
-}
-compute_bary <- function() {
-  lapply(
-    idx,
-    function(i) {
-      points <- grids[[i]]
-      vertices <- lapply(mesh, '[', i)
-      dim(vertices) <- dim(mesh)
-      dimnames(vertices) <- dimnames(mesh)
-      barycentric(points, vertices)
-  } )
-}
-render_each <- function() {
-  grids <- make_grids()
-  bc <- compute_bary()
-  idx <- seq_along(grids)
-  inb <- lapply(bc, function(x) x[[1]] >= 0 & x[[2]] >= 0 & x[[3]] >= 0)
-  p.inb <- lapply(idx, function(i) lapply(grids[[i]], '[', inb[[i]]))
-  bc.inb <- lapply(idx, function(i) lapply(bc[[i]], '[', inb[[i]]))
-  texture <- lapply(
-    idx,
-    function(i) Reduce('+', Map('*', lapply(mesh[, 't'], '[', i), bc.inb[[i]]))
-  )
-  zs <- unlist(lapply(idx, function(i) Reduce('+', lapply(mesh[, 'z'], '[', i))))
-  zord <- order(zs)
-  xs <- unlist(lapply(p.inb, '[[', 'x')[zord])
-  ys <- unlist(lapply(p.inb, '[[', 'y')[zord])
-  ts <- unlist(texture[zord])
+Map(function(x, y) expand.grid(x=seq_len(x), y=seq_len(y)), dims.x, dims.y)
+```
 
-  res <- matrix(numeric(), x.width, y.width)
-  res[cbind(xs, ys)] <- ts
-}
-treeprof::treeprof(render_each())
-plot(as.raster(res))
+Unfortunately, with 10,320 polygons[^2] it becomes computationally burdensome.
+We can do a little better with lower overhead variations[^3], but even then we
+are left with lists with thousands of elements that are awkward to manage.
+Instead we want to generate vectors that contain all the permutations of x and y
+offsets we need.  We do so here with a toy example for three bounding boxes with
+x and y dimensions defined by `dim.x0` and `dim.y0`:
 
-system.time(
-  lapply(bc, function(x) x[[1]] >= 0 & x[[2]] >= 0 & x[[3]] >= 0)
+```{r}
+dims.x0 <- c(2, 2, 3)
+dims.y0 <- c(2, 3, 2)
+dims.xy0 <- dims.x0 * dims.y0
+
+bb.id <- rep(seq_along(dims.xy0), dims.xy0)
+```
+```{r echo=FALSE}
+col <- c('#0000FF', '#00DD00', '#CCCC00')
+bb.col <- col[bb.id]
+
+bb.html <- sprintf(
+  '<span style="background-color:%s; color:#EEEEEE;">%d</span>', bb.col, bb.id
 )
 ```
 
+Here we took advantage of a less known feature of `rep` whereby if the second
+parameter is the same length as the first, then each value of the first
+parameter is repeated the number of times designated by the corresponding value
+of the second.  Visualized:
 
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+    "<pre><code>", paste0(c("bb.id: ", bb.html), collapse=" "), "</code></pre>"
+) )
+```
 
+This allows us to generate the bounding box ids with internally vectorized code,
+despite the bounding boxes having different sizes.
 
+Next we compute the x offsets of each pixel in the bounding box:
+
+```{r}
+## We wish to cycle through the x values in a bounding box
+## as many times as there are y values in that bounding box
+x.lens <- rep(dims.x0, dims.y0)  # special use of `rep` again here
+x.lens
+
+## sequence generates sequences of sequences...
+x.off <- sequence(x.lens)
+x.off
+```
+
+Now we have all the possible x offset values for each bounding box:
+
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+    "<pre><code>",
+    paste0(c("bb.id: ", bb.html), collapse=" "), "\n",
+    paste0(c("x.off: ", x.off), collapse=" "),
+    "</code></pre>"
+) )
+```
+
+The y offsets are a small variation on the theme:
+
+```{r}
+y.off <- rep(sequence(dims.y0), x.lens)
+```
+
+Everything together:
+
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+  "<pre><code>",
+    paste0(c("bb.id: ", bb.html), collapse=" "), "\n",
+    paste0(c("x.off: ", x.off), collapse=" "), "\n",
+    paste0(c("y.off: ", y.off), collapse=" "),
+  "</code></pre>"
+) )
+```
+
+And visualized in two dimensions:
+
+```{r echo=FALSE, fig.height=3.5}
+col <- c('#0000FF', '#00DD00', '#CCCC00')
+par(mfrow=c(1,3), mar=c(4, 4, 4, 0), pty='s')
+for(i in unique(bb.id)) {
+  plot(
+    x.off[bb.id == i], y.off[bb.id == i], col=col[i],
+    xlim=c(.8,3.2), ylim=c(.8,3.2), xaxp=c(1,3,2), yaxp=c(1,3,2),
+    xlab='x.off', ylab='y.off', asp=1, bty='n', pch=15, cex=3
+  )
+  title(sprintf("bb.id: %d", i))
+}
+```
+
+Unfortunately `sequence` is not an internally vectorized function.  It is just a
+looped call to `seq_len`:
+
+```{r}
+sequence
+```
+
+This becomes a liability when we have many sequences as with the full set of
+`volcano` polygons.  Fortunately it turns out that it is possible to write an
+internally vectorized version of `sequence` by taking advantage of the
+internally vectorized cumulative functions:
+
+```{r}
+## Start with one continuous sequence
+x.lens <- rep(dims.x0, dims.y0)
+seq <- seq_len(sum(x.lens))
+
+## Compute the locations at which the sequence should reset
+reset <- cumsum(x.lens[-length(x.lens)]) + 1L
+reset
+
+## Generate a reset vector
+sub.raw <- integer(length(seq))
+sub.raw[reset] <- reset - 1L
+sub.raw
+sub <- cummax(sub.raw)
+sub
+
+## Modify the sequence by subtracting the reset vector
+seq - cummax(sub)
+all.equal(x.off, seq - cummax(sub))
+```
+
+This produces the same result as with `sequence`.  For convenience we put the
+above logic into `shadow::sequence2`.  Let's benchmark against the full polygon
+data:
+
+```{r, eval=FALSE}
+x.lens <- rep(dims.x, dims.y)   # full volcano bounding boxes
+microbenchmark(sequence2(x.lens), sequence(x.lens))
+```
+```
+Unit: milliseconds
+              expr  min   lq  mean median    uq max neval
+ sequence2(x.lens) 13.8 15.9  31.4   22.7  30.8 177   100
+  sequence(x.lens) 68.8 94.5 139.0  123.2 155.7 363   100
+```
+
+We see a 4-5x improvement despite having to rely on far more function calls.
+Normally we wouldn't highlight such internal details, but this is an interesting
+use case of the internally vectorized cumulative functions to solve a problem
+that doesn't have a built-in vectorized solution.
+
+Now that we know how we can to generate the candidate x/y offsets quickly we can
+fill out the bounding boxes.  One small tweak is that we generate the bounding
+boxes in the same Z order we have been using for our [mesh](#mesh-tri-persp).
+
+```{r}
+dims.x <- dims.x[zord]
+dims.y <- dims.y[zord]
+dims.xy <- dims.x * dims.y
+bb.id <- rep(seq_along(dims.x)[zord], dims.xy)
+x.lens <- rep(dims.x, dims.y)
+x.off <- sequence2(x.lens)
+y.off <- rep(sequence(dims.y), x.lens)
+
+## Add back the min values of the bounding boxes
+p.x <- x.off + mins[['x']][[1]][bb.id]
+p.y <- y.off + mins[['y']][[1]][bb.id]
+```
+
+Finally, we're ready to generate our first pixel-level volcano.  As with the Z
+order, we will re-use the textures we computed for our [mesh](#mesh-tri-persp):
+
+```{r}
+p.raster <- matrix(numeric(0), x.width, y.width)
+p.raster[cbind(p.x, p.y)] <- rep(texture, dims.xy)
+```
+
+We apply the textures by indexing `bb.raster` with a matrix (`cbind(bb.x,
+bb.y)`).  This is a special type of indexing that allows you to directly address
+specific cells by providing a matrix with the row and column values you are
+targeting.
+
+There is also a subtle trick deployed here: instead of checking for duplicate
+pixels we just wrote all the pixels in increasing Z order.  This ensures that
+the pixels nearest to the viewer overwrite those further away implicitly
+eliminating the duplicates.
+
+Finally, we can plot our matrix as a raster, but due to different conventions
+about which directions the dimensions run in we need to flip our matrix:
+
+```{r}
+flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
+plot(as.raster(flip(p.raster)))
+```
+
+A volcano to make NovaLogic[^4] proud!
+
+## Step 3: Pixel Trimming
+
+We are now worse off than we were when plotting the polygons in our
+[mesh](#mesh-tri-persp), but fear not, we can improve the chunky raster volcano.
+We need to trim the excess pixels in our bounding boxes.  This is as simple as
+deciding which pixels are inside the original polygons and which ones are not.
+Really something that a three year old could do pretty easily.  Yet, as is often
+the case, expressing this task in a way that a computer can easily execute is
+difficult.
+
+There are many possible solutions to the problem, but I settled on using
+[barycentric coordinates][3].  These have the useful property that points with
+negative barycentric coordinates are outside of the triangle referenced by those
+coordinates.  Additionally, there is a simple arithmetic expression for
+barycentric coordinates that can be vectorized.  Finally, there is a substantial
+side-benefit that we will discuss when we get to [shading](#shading).
+
+We are going to re-use the [`bary_L`][4] function we implemented as part of our
+[previous blog post][5] on list data structures and vertex shading.  See that
+blog post for a detailed explanation of what the function does.  For now, all we
+care about is which points end up with negative barycentric coordinates.
+`shadow::barycentric` is a copy of that function.
+
+But first we need to set up our vertex data so that we can use it in vectorized
+calculations.  Unfortunately, this means that we have to copy the vertex x-y
+coordinates for every single point.  This is wasteful, but one of the
+trade offs often made in R: use more memory in order to make fewer expensive R
+function calls.
+
+```{r}
+mesh.tri
+## Each id in `bb.id` references a mesh triangle
+cols <- c('x','y','t')  # don't need Z vals as `bb.id` already Z ordered
+mesh.tri.all <- lapply(mesh.tri[,cols], '[', bb.id)
+dim(mesh.tri.all) <- dim(mesh.tri[,cols])
+dimnames(mesh.tri.all) <- dimnames(mesh.tri[,cols])
+mesh.tri.all
+```
+
+```{r}
+bc <- barycentric(list(x=p.x, y=p.y), mesh.tri.all[,c('x','y')])
+inbounds <- Reduce('&', lapply(bc, '>=', 0))
+
+p.raster <- matrix(numeric(0), x.width, y.width)
+p.raster[cbind(p.x[inbounds], p.y[inbounds])] <-
+  rep(texture, dims.xy)[inbounds]
+plot(as.raster(flip(p.raster)))
+```
+
+# Shading
 
 ```{r eval=FALSE}
 library(shadow)
@@ -778,17 +966,29 @@ combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
 png::writePNG(combined, 'persp.png')
 
 ```
-[1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
-[2]: https://www.brodieg.com/2018/11/23/is-your-matrix-running-slow-try-lists/
 
 ----
 [^1]: Some 3D packages out there will blatantly lie to you by rotating the
-      displayed axes along with the object, making it seem like the axes are
-      rotating, but in reality the underlying axes are not rotating.  This lie
-      made it particularly difficult for me to figure out why things were not
-      rotating the way I thought they should.  I'm still pissed off about it.
+  displayed axes along with the object, making it seem like the axes are
+  rotating, but in reality the underlying axes are not rotating.  This lie
+  made it particularly difficult for me to figure out why things were not
+  rotating the way I thought they should.  I'm still pissed off about it.
 [^2]: In reality we only *need* to do this for the polygons that are visible in
-      the end result, but determining what is visible and not is non-trivial and
-      we'll reserve that for a possible future low-probability-of-getting-made
-      blog post.
+  the end result, but determining what is visible and not is non-trivial and
+  we'll reserve that for a possible future low-probability-of-getting-made
+  blog post.
+[^3]: A more efficient variation on `expand.grid(x, y)` would be
+  `list(rep(seq_len(x),y), rep(seq_len(y), each=x))`
+[^4]: NovaLogic developed a 3D terrain rendering engine for use in the Comanche
+  helicopter flight simulations back in the early nineties.  It was awesome
+  then, but looks about as good as our volcano here does right now.
+  ![Comanche Screenshot][7] See [s-macke][6] for an amazing explanation of their
+  rendering engine.
 
+[1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
+[2]: /2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue
+[3]: https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles
+[4]: /2018/11/23/is-your-matrix-running-slow-try-lists/#bary_l
+[5]: /2018/11/23/is-your-matrix-running-slow-try-lists/#a-case-study
+[6]: https://github.com/s-macke/VoxelSpace
+[7]: https://cdn.arstechnica.net/sims-feature/comanche.jpg
