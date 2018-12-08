@@ -52,12 +52,12 @@ Let's add some shading:
 
 ```{r fig.width=5}
 library(shadow)
-sh <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
+shadow <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
 par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
 plot.new()
 points(
   x=scale(row(volcano)), y=scale(col(volcano)),
-  col=gray(sh), pch=15
+  col=gray(shadow), pch=15
 )
 ```
 
@@ -115,7 +115,7 @@ plot.window(0:1, 0:1, asp=asp)
 ```{r}
 ## construct list data structure, adding texture/shadow info
 vl <- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
-vl <- c(vl, list(sh))              # add texture info
+vl <- c(vl, list(shadow))              # add texture info
 names(vl) <- c('x', 'y', 'z', 't') # 't' for texture
 
 ## Plot!, but order by Z value first
@@ -226,7 +226,7 @@ par(mai=numeric(4))
 # )
 persp(
   x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
-  theta=-65, phi=70, col=gray(sh[-1,-1]), r=1e6,
+  theta=-65, phi=70, col=gray(shadow[-1,-1]), r=1e6,
   border=NA, box=FALSE, axes=FALSE, scale=FALSE
 )
 ```
@@ -336,7 +336,7 @@ volc.l2 <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
 volc.lr2 <- rot2 %*% volc.l
 
 vl2 <- lapply(seq_len(nrow(volc.lr2)), function(x) volc.lr2[x,])
-vl2 <- c(vl2, list(sh))              # add texture info
+vl2 <- c(vl2, list(shadow))              # add texture info
 names(vl2) <- c('x', 'y', 'z', 't') # 't' for texture
 
 mesh.tri2 <- shadow::mesh_tri(vl2, dim(volcano))
@@ -546,8 +546,8 @@ y.rng <- range(vlp[['y']])
 asp <- diff(x.rng) / diff(y.rng)
 y.width <- as.integer(x.width * asp)
 vlpt <- vlp
-vlpt[['x']] <- scale(vlpt[['x']], x.width - 1L, 0)
-vlpt[['y']] <- scale(vlpt[['y']], y.width - 1L, 0)
+vlpt[['x']] <- scale(vlpt[['x']], x.width - 1L, 0) + 1
+vlpt[['y']] <- scale(vlpt[['y']], y.width - 1L, 0) + 1
 ```
 
 Regenerate the mesh, and for each mesh polygon compute the maximum x and y
@@ -880,6 +880,88 @@ plot(as.raster(flip(p.raster)))
 
 And just like that we have a beautifully shaded volcano!
 
+# Interlude
+
+Hah, you probably thought we were done.  After all, what other indignities could
+we possibly subject dear `volcano` to...
+
+Benchmarks!
+
+I captured the entire process we went through in `shadow::render` to make it
+easier to re-use and benchmark:
+
+```{r, eval=FALSE}
+treeprof::treeprof(
+  render_elevation(volcano, shadow, rot, resolution=600, d=.5)
+)
+treeprof::treeprof(
+  render_elevation(volcano, shadow, rot, resolution=600, d=.5, zord='pixel')
+)
+```
+```
+Ticks: 2888; Iterations: 8; Time Per: 574.6 milliseconds; Time Total: 4.597 seconds; Time Ticks: 2.888
+
+                                          milliseconds
+render ------------------------------- : 574.6 -   0.0
+    rasterize ------------------------ : 572.2 -   8.2
+        mesh_expand ------------------ : 147.0 -   0.0
+        |   lapply ------------------- : 147.0 - 147.0
+        barycentric ------------------ : 126.1 - 126.1
+        shade ------------------------ : 109.6 -   0.0
+        |   Reduce ------------------- : 109.6 -   0.2
+        |       Map ------------------ :  97.9 -   0.0
+        |       |   mapply ----------- :  97.9 -   0.0
+        |       |       lapply ------- :  87.1 -  87.1
+        |       |       <Anonymous> -- :  10.7 -  10.7
+        |       f -------------------- :  11.5 -  11.5
+        candidate_pixels ------------- : 107.0 -  70.8
+        |   sequence2 ---------------- :  36.2 -  17.5
+        |       cummax --------------- :  14.5 -  14.5
+        |       integer -------------- :   3.8 -   3.8
+        Reduce ----------------------- :  45.8 -   1.0
+        |   f ------------------------ :  24.7 -  24.7
+        |   lapply ------------------- :  20.1 -   0.0
+        |       FUN ------------------ :  20.1 -  20.1
+        lapply ----------------------- :  21.9 -  21.9
+```
+
+Virtually all the time was spent rasterizing.  3D projection, meshes,
+and perspective adjustments those virtually no time.  So why bother with
+rasterization?  One obvious answer is that it allows us to implement much better
+shading.  Another factor is that polygon rendering becomes expensive when the
+polygon counts increase.
+
+```{r eval=FALSE}
+# File originally from http://tylermw.com/data/dem_01.tif.zip
+elev2 <- readRDS('static/data/three-d-pipeline-elev-complex.RDS')
+shadow2 <- readRDS()
+shadow2 <- ray_shade2(elev2, seq(-90, 90, length=25), 45)
+plot(as.raster(flip(shadow2)))
+
+system.time({
+  rel <- render_elevation(elev2, shadow2, rot_z(-90) %*% rot_y(-10), 600, 1,
+  zord='pixel')
+  plot(as.raster(flip(rel)))
+})
+system.time({
+  mesh2 <- elevation_as_mesh(elev2, shadow2, rot_z(-90) %*% rot_y(-10), d=1)
+  x <- do.call(rbind, c(mesh2[,'x'], list(NA)))
+  y <- do.call(rbind, c(mesh2[,'y'], list(NA)))
+  texture <- gray((Reduce('+', mesh2[,'t'])/nrow(mesh2)))
+  par(mai=numeric(4))
+  plot.new()
+  polygon(scale(x), scale(y), col=texture, border=texture)
+})
+
+
+```
+
+# Post Processing
+
+## Process In Functions
+
+The entire 3D rendering pipeline we 
+
 ```{r eval=FALSE}
 library(shadow)
 mx2 <- volcano
@@ -905,14 +987,15 @@ left.r[left.r < 0] <- 0
 ## image(left.r)
 plot(as.raster(left.r))
 ```
+Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
-# Stereoscopy in R
+# Appendix
 
-After figuring out how to implement ray-shading with base R I was left wanting a
-little more.  The shading is so effective at conveying the impression of depth,
-but I r
+## Session Info
 
-## stereo angle
+```{r}
+sessionInfo()
+```
 
 ```{r rgl, eval=FALSE}
 empty_rows <- function(arr) (rowSums(arr) == 3 * ncol(arr))
@@ -934,7 +1017,7 @@ par3d(windowRect=c(0,0,width,height))
 
 persp3d(
   x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)),
-  z=c(volcano), color=gray(sh), lit=FALSE, aspect="iso",
+  z=c(volcano), color=gray(shadow), lit=FALSE, aspect="iso",
   box=FALSE, axes=FALSE, xlab="", ylab="", zlab=""
 )
 rgl.viewpoint(userMatrix=rot.rgl, fov=60)
@@ -953,7 +1036,7 @@ rgl.viewpoint(userMatrix=rot, fov=0)
 
 # next3d()
 # persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
-#   color=rgb(c(sh), c(sh), c(sh)), lit=FALSE,
+#   color=rgb(c(shadow), c(shadow), c(shadow)), lit=FALSE,
 #   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
 # )
 # view3d(0,0)
