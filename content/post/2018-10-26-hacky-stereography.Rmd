@@ -1001,30 +1001,51 @@ polygon artifacts:
     style='max-width: 600px; display: block; margin: auto' />
 </a>
 
-# Post Processing
+# Stereoscopy
 
-As hinted up to we're looking to make [analygraphs][8] and [stereograms][9].  We
-can easily render two scenes with slightly different angles.  For convenience,
-we use `shadow::mrender_elevation` which is just a wrapper to `render_elevation`
-for multiple rotations.
+Finally: the fun stuff.  As hinted up to we're looking to make [analygraphs][8]
+and [stereograms][9].  We can easily render two scenes with slightly different
+angles.  For convenience, we use `shadow::mrender_elevation` which is a wrapper
+to `render_elevation` for multiple rotations.  In addition to supporting
+multiple rotations, `mrender_elevation` uses absolute distances and fixed fields
+of view to ensure consistent perspective transformations.
 
 ```{r}
-rot.l <- rot %*% rot_z(2)
-rot.r <- rot %*% rot_z(-2)
+rot.l <- rot %*% rot_z(2.5)
+rot.r <- rot %*% rot_z(-2.5)
 elren <- mrender_elevation(
-  volcano, shadow, list(rot.l, rot.r), res=1000, d=125, fov=75
+  volcano, shadow, list(rot.l, rot.r), res=1000, d=125, fov=80
 )
 left <- flip(elren[[1]])
 right <- flip(elren[[2]])
-elcolor <- array(0, dim=c(dim(left), 3))
-elcolor[,,1] <- left
-elcolor[,,2:3] <- right
-
-par(bg='black', mai=c(.25, 1, .25, 1))
-plot(as.raster(elcolor))
 ```
 
-Or we can juxtapose them to make a stereogram:
+In order to generate an analygraph we need to assign the left image to the red
+channel, and the right image to the cyan channel.  No cyan channel?  No problem:
+turns out that cyan is just blue and green added together.  This is very easy to
+do as the R raster format accepts 3D arrays as inputs in addition to matrices,
+where each value of the third dimension corresponds to one of the RGB color
+channels:
+
+```{r}
+analygraph <- function(left, right) {
+  analygraph <- array(0, dim=c(dim(left), 3))
+  analygraph[,,1] <- left
+  analygraph[,,2:3] <- right
+  analygraph
+}
+elcolor <- analygraph(left, right)
+par(bg='black', mai=c(.25, .5, .25, .5), xpd=TRUE)
+# par(bg='black', mai=numeric(4), xpd=TRUE)
+plot(as.raster(elcolor))
+shadow::analygraph_glasses(.15)   # for the icon h/t @jurbane2
+```
+
+One advantage of using red and cyan is that the areas where the images overlap
+are white or gray, which looks a lot more natural.  If we had used red and green
+the overlapping areas would end up yellow.
+
+We can also make stereograms:
 
 ```{r}
 eljuxt <- cbind(left, right)
@@ -1032,53 +1053,31 @@ par(bg='black', mai=c(.25, .5, .25, .5))
 plot(as.raster(eljuxt))
 ```
 
-```{r eval=FALSE}
-# rot.360 <- lapply(0:36, function(x) rot_z(10*x))
-# rot.360 <- lapply(c(0,9,18,27), function(x) rot_z(10*x))
-rot.360 <- lapply(0:71, function(x) rot %*% rot_z(5*x))
-# rot.360 <- lapply(24, function(x) rot %*% rot_z(10*x))
-elren <- mrender_elevation(volcano, shadow, rot.360, res=600, d=200, fov=60)
-for(i in seq_along(elren)) {
-  png(
-    sprintf('test/volc%02d.png', i),
-    width=nrow(elren[[1]]),
-    height=ncol(elren[[1]])
-  )
-  par(mai=numeric(4))
-  plot(as.raster(flip(elren[[i]])), asp=1)
-  dev.off()
-}
-```
+In order to see the 3D effect on these you need to get your [eyes to
+diverge][10] such that each eye is looking at one of the images.  It does take
+practice to master.  One trick that can help is making the image smaller so that
+the volcanoes are closer together.  If you wear glasses you might also find it
+easier to "focus" on the stereogram with them off.  The effort is worth it as
+the perspective effect is much stronger with stereograms than with analygraphs.
 
-## Process In Functions
+Since nowadays it seems no blog post is complete without some kind of animation,
+here goes nothing:
 
-The entire 3D rendering pipeline we
+With a little `ffmpeg` magic[^7] we have:
 
-```{r eval=FALSE}
-library(shadow)
-mx2 <- volcano
-els <- seq(-90, 90, length=25)
-sun <- 180
-sh2 <- ray_shade2(mx2, els, sun)
-sh2 <- sh2 * .9 + .1
-rot <- rot_x(-20) %*% rot_z(65)
+<video style='display: block; margin: 0 auto;' controls autoplay loop>
+  <source src="/videos/three-d-pipeline-volcano-rot.mp4" type="video/mp4" />
+</video>
 
-treeprof::treeprof(
-proj <- project_elev(
-  mx2, sh2, rot, parallax=0, dist=.5, resolution=c(600,600)
-))
+And one more, why not?
 
-left <- proj[[1]]
-empty.rows <- which(empty_rows(left))
-empty.cols <- which(empty_cols(left))
-left <- left[-empty.rows, -empty.cols, ]
+<video style='display: block; margin: 0 auto;' controls autoplay loop>
+  <source
+    src="/videos/three-d-pipeline-volcano-zoom.mp4" type="video/mp4" />
+</video>
 
-left.r <- left[,,1]
-left.r[left.r < 0] <- 0
+# The End
 
-## image(left.r)
-plot(as.raster(left.r))
-```
 Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
 # Appendix
@@ -1089,100 +1088,80 @@ Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 sessionInfo()
 ```
 
-```{r rgl, eval=FALSE}
-empty_rows <- function(arr) (rowSums(arr) == 3 * ncol(arr))
-empty_cols <- function(arr) (rowSums(colSums(arr)) == 3 * nrow(arr))
+## Additional Code
 
-angle <- 4
+Both videos were made by generating PNG files that I turned into an MP4 with
+`ffmpeg` with the command:
 
-library(rgl)
-rot.rgl <-
-  rotationMatrix(-20/180*pi, 1, 0, 0) %*% rotationMatrix(65/180*pi, 0, 0, 1)
+```
+ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp
+```
 
-mfrow3d(1, 2)
-width <- height <- 600
-# par3d(windowRect=c(0,0,width*2,height))
-par3d(windowRect=c(0,0,width,height))
-# par3d(viewport=c(0,0,width,height))
-# mx <- volcano[,rev(seq_len(ncol(volcano)))]
-# sh2 <- sh[,rev(seq_len(ncol(sh)))]
+Analygraph videos:
 
-persp3d(
-  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)),
-  z=c(volcano), color=gray(shadow), lit=FALSE, aspect="iso",
-  box=FALSE, axes=FALSE, xlab="", ylab="", zlab=""
-)
-rgl.viewpoint(userMatrix=rot.rgl, fov=60)
-view3d(0,0,fov=0)
+```{r eval=FALSE}
+## Basic video
 
-# persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
-#   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
-#   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
-# )
-# persp3d(mx,
-#   color=rgb(c(sh2), c(sh2), c(sh2)), lit=FALSE,
-#   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
-# )
-view3d(0,0, )
-rgl.viewpoint(userMatrix=rot, fov=0)
+deg <- 0:119 * 3
+deg.stereo <- c(deg + 2.5, deg - 2.5)
+rot.360 <- lapply(deg.stereo, function(x) rot %*% rot_z(x))
+sun.els <- seq(-30, 120, length=50)
+shadows <-
+  lapply(deg + 180, ray_shade2, anglebreaks=sun.els, heightmap=volcano)
 
-# next3d()
-# persp3d(seq_len(nrow(mx)), seq_len(ncol(mx)), c(mx),
-#   color=rgb(c(shadow), c(shadow), c(shadow)), lit=FALSE,
-#   xlab="X", ylab="Y", zlab="Z", box=FALSE, axes=TRUE
-# )
-# view3d(0,0)
+elren <- mrender_elevation(volcano, shadows, rot.360, res=600, d=200)
+elren <- lapply(elren, flip)
+dim(elren) <- c(length(elren) / 2, 2)  # a list matrix again
+elrows <- seq_len(nrow(elren))
+elren2 <- lapply(elrows, function(i) do.call(analygraph, elren[i,]))
+size <- max(dim(elren2[[1]]))
 
+for(i in elrows) {
+  png(sprintf('tmp/volc%03d.png', i), width=size, height=size, bg='black')
+  par(mai=numeric(4))
+  plot(as.raster(elren2[[i]]))
+  analygraph_glasses(.15)
+  dev.off()
+}
+## Coming at ya video
 
-image(sh2)
+eye.sep <- tan(2.5/180*pi) * 200  # really half eye sep, exaggerate angle
+dists <- seq(1400, 50, length.out=90)
+deg.d <- atan(eye.sep / dists) * 180 / pi
+deg.ds <- c(deg.d, -deg.d)
+rot.d <- lapply(deg.ds, function(x) rot %*% rot_z(x))
 
+elrena <- mrender_elevation(volcano, shadow, rot.d, res=600, d=as.list(dists))
 
-M <- identityMatrix()
+elrena <- lapply(elrena, flip)
+dim(elrena) <- c(length(elrena) / 2, 2)  # a list matrix again
+elrows <- seq_len(nrow(elrena))
+elrena2 <- lapply(elrows, function(i) do.call(analygraph, elrena[i,]))
+size <- max(dim(elrena2[[1]]))
 
-play3d(
-  par3dinterp(time = (0:2)*0.75, userMatrix=list(M,
-                                     rotate3d(M, pi/2, 1, 0, 0),
-                                     rotate3d(M, pi/2, 0, 1, 0) ) ) )
+for(i in elrows) {
+  png(sprintf('tmp1/volc%03d.png', i), width=size, height=size, bg='black')
+  par(mai=numeric(4))
+  plot(as.raster(elrena2[[i]]))
+  analygraph_glasses(.15)
+  dev.off()
+}
 
-aspect3d(1, 1, 1)
-rgl.viewpoint(userMatrix=t(XR) %*% t(ZRl), type='modelviewpoint', zoom=.7)
-snapshot3d('persp-left.png')
+```
 
-clear3d()
-persp_elev(mx, sh.s)
-rgl.viewpoint(userMatrix=t(XR) %*% t(ZRr), type='modelviewpoint')
-snapshot3d('persp-right.png')
+Stereogram video:
 
-# stitch images together
-
-left <- png::readPNG('persp-left.png')
-right <- png::readPNG('persp-right.png')
-stopifnot(identical(dim(left), dim(right)))
-
-# remove rows and columns that are blank in both images
-
-empty.rows <- which(empty_rows(left) & empty_rows(right))
-empty.cols <- which(empty_cols(left) & empty_cols(right))
-left <- left[-empty.rows, -empty.cols, ]
-right <- right[-empty.rows, -empty.cols, ]
-
-# figure out how close we can get the left and right images before we
-# start overlapping non-white pixels
-
-no.overlap <- rowSums(left[, rev(seq_len(ncol(left))),], dims=2) == 3 |
-  rowSums(right, dims=2) == 3
-no.over.rle <- rle(colSums(no.overlap) == nrow(no.overlap))
-overlap.size <- if(isTRUE(no.over.rle[['values']][1]))
-  no.over.rle[['lengths']][1] else 0L
-
-# combine and write png
-
-combined <- array(0, dim=dim(left) * c(1,2,1) - c(0, overlap.size, 0))
-combined[,seq_len(ncol(left)),] <- left
-combined[,tail(seq_len(ncol(combined)), ncol(right)),] <-
-  combined[,tail(seq_len(ncol(combined)), ncol(right)),] + right
-png::writePNG(combined, 'persp.png')
-
+```{r eval=FALSE}
+elren3 <- lapply(elrows, function(i) do.call(cbind, elren[i,]))
+width <- ncol(elren3[[1]]) / 2
+height <- nrow(elren3[[1]]) / 2
+for(i in elrows) {
+  path <- sprintf('tmp2/volc%03d.png', i)
+  png(path, width=600, height=600/width*height, bg='black')
+  par(mai=numeric(4))
+  plot(as.raster(elren3[[i]]))
+  dev.off()
+}
 ```
 
 ----
@@ -1208,6 +1187,7 @@ png::writePNG(combined, 'persp.png')
   or perhaps because of anti-aliasing (though turning that off did not seem to
   make a difference).  I am not curious enough to look at the source of the
   device code.
+[^7]: I used `ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4` on the PNG files.
 
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
 [2]: /2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue
@@ -1218,3 +1198,4 @@ png::writePNG(combined, 'persp.png')
 [7]: https://cdn.arstechnica.net/sims-feature/comanche.jpg
 [8]: https://en.wikipedia.org/wiki/Anaglyph_image
 [9]: https://en.wikipedia.org/wiki/Stereoscopy
+[10]: https://en.wikipedia.org/wiki/Stereoscopy#Freeviewing
