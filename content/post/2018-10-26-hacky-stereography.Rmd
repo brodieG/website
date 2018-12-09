@@ -9,7 +9,7 @@ tags: []
 ---
 ```{r echo=FALSE}
 knitr::opts_chunk$set(
-  comment = ""
+  comment = "", fig.align='center'
 )
 options(digits=3)
 ```
@@ -33,18 +33,18 @@ rasterization, and image processing, all in base R.
 Sure, you've seen volcano a million times:
 
 ```{r fig.width=5}
-scale <- function(x, range=1, center=0.5)
+rescale <- function(x, range=1, center=0.5)
   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
    (1 - range) * center
 
-# plot(as.raster(flip(scale(volcano))))
+# plot(as.raster(flip(rescale(volcano))))
 
 par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
 plot.new()
 plot.window(c(0,1), c(0,1), asp=ncol(volcano)/nrow(volcano))
 points(
-  x=scale(row(volcano)), y=scale(col(volcano)),
-  col=gray(scale(volcano)), pch=15
+  x=rescale(row(volcano)), y=rescale(col(volcano)),
+  col=gray(rescale(volcano)), pch=15
 )
 ```
 
@@ -56,7 +56,7 @@ shadow <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
 par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
 plot.new()
 points(
-  x=scale(row(volcano)), y=scale(col(volcano)),
+  x=rescale(row(volcano)), y=rescale(col(volcano)),
   col=gray(shadow), pch=15
 )
 ```
@@ -120,7 +120,7 @@ names(vl) <- c('x', 'y', 'z', 't') # 't' for texture
 
 ## Plot!, but order by Z value first
 zord <- order(vl[[3]])
-vlo <- lapply(c(1:2,4), function(x) scale(vl[[x]][zord]))
+vlo <- lapply(c(1:2,4), function(x) rescale(vl[[x]][zord]))
 par(mai=numeric(4))
 plot.new()
 points(x=vlo[[1]], y=vlo[[2]], col=gray(vlo[[3]]), pch=15, cex=0.5)
@@ -212,7 +212,7 @@ zord4 <- order(Reduce('+', mesh.tile[,'z']))
 x4 <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))[,zord4]
 y4 <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))[,zord4]
 plot.new()
-polygon(scale(x4), scale(y4), col='#EEEEEE')
+polygon(rescale(x4), rescale(y4), col='#EEEEEE')
 ```
 
 Okay, great you say, but we could have done all of this with `persp`, why
@@ -243,25 +243,25 @@ triangles:
 ```{r echo=FALSE}
 par(mai=numeric(4))
 plot.new()
-polygon(scale(c(0, 1, 1, 0), .9), scale(c(0, 0, 1, 1), .9), col='#EEEEEE')
+polygon(rescale(c(0, 1, 1, 0), .9), rescale(c(0, 0, 1, 1), .9), col='#EEEEEE')
 text(
-  scale(c(0, 1, 1, 0), .95), scale(c(0, 0, 1, 1), .95),
+  rescale(c(0, 1, 1, 0), .95), rescale(c(0, 0, 1, 1), .95),
   labels=sprintf('v%d', 1:4)
 )
 polygon(
-  scale(c(0, 1, 1), .8) + .0125, scale(c(0, 0, 1), .8) - .0125,
+  rescale(c(0, 1, 1), .8) + .0125, rescale(c(0, 0, 1), .8) - .0125,
   border='#0000FF', col='#CCCCFF'
 )
 text(
-  scale(c(0, 1, 1), .7) + .03, scale(c(0, 0, 1), .7) - .03,
+  rescale(c(0, 1, 1), .7) + .03, rescale(c(0, 0, 1), .7) - .03,
   labels=sprintf('v%d', 1:3), col='#0000AA'
 )
 polygon(
-  scale(c(1, 0, 0), .8) - .0125, scale(c(1, 1, 0), .8) + .0125,
+  rescale(c(1, 0, 0), .8) - .0125, rescale(c(1, 1, 0), .8) + .0125,
   border='#00FF00', col='#CCFFCC'
 )
 text(
-  scale(c(1, 0, 0), .7) - .03, scale(c(1, 1, 0), .7) + .03,
+  rescale(c(1, 0, 0), .7) - .03, rescale(c(1, 1, 0), .7) + .03,
   labels=sprintf('v%d', c(3,4,1)), col='#00AA00'
 )
 ```
@@ -286,7 +286,7 @@ x3 <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord3]
 y3 <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord3]
 par(mai=numeric(4))
 plot.new()
-polygon(scale(x3), scale(y3),
+polygon(rescale(x3), rescale(y3),
   col=rep(c('#CCCCFF','#CCFFCC'), each=ncol(x3)/2)[zord3]
 )
 ```
@@ -297,7 +297,7 @@ Let's shade each facet with the mean of the vertex shadows:
 par(mai=numeric(4))
 texture3 <- gray(Reduce('+', mesh.tri[,'t']) / 3)[zord3]
 plot.new()
-polygon(scale(x3), scale(y3), col=texture3, border=texture3)
+polygon(rescale(x3), rescale(y3), col=texture3, border=texture3)
 ```
 
 Looks better than `persp`, but still the triangle faces irk me.  Also, I'm
@@ -348,12 +348,12 @@ texture32 <- gray((Reduce('+', mesh.tri2[,'t'])/4))[zord32]
 yscale <- .8
 ylow <- (1 - yscale) * .9
 ymid <- .25 + yscale/2
-yarrow <- scale(c(0, .5, 1), yscale * .5, 0) + ylow
+yarrow <- rescale(c(0, .5, 1), yscale * .5, 0) + ylow
 yarmax <- max(yarrow)
 
 par(mai=numeric(4))
 plot.new()
-polygon(scale(x32, 1/3, 1), scale(y32, yscale, 1),
+polygon(rescale(x32, 1/3, 1), rescale(y32, yscale, 1),
   col=texture32, border=texture32
 )
 arrows(
@@ -409,7 +409,7 @@ for(i in seq_along(D.vals)) {
   plot.new()
   plot.window(c(0,1), c(0,1), asp=diff(range(vlp['x']))/diff(range(vlp['y'])))
   title(sprintf('D = %.01f', D.vals[i]))
-  polygon(scale(xi), scale(yi), col=texture3, border=texture3)
+  polygon(rescale(xi), rescale(yi), col=texture3, border=texture3)
 }
 ```
 
@@ -440,7 +440,7 @@ vlp[c('x','y')] <- lapply(vlp[c('x','y')], '*', z.factor)
 vlp2 <- sapply(vlp, '[', order(vlp[['z']]), simplify=FALSE)
 plot.new()
 points(
-  x=scale(vlp2[['x']]), y=scale(vlp2[['y']]), col=gray(vlp2[['t']]),
+  x=rescale(vlp2[['x']]), y=rescale(vlp2[['y']]), col=gray(vlp2[['t']]),
   pch=15, cex=0.5
 )
 ```
@@ -460,7 +460,7 @@ texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))[zord]
 par(mai=numeric(4))
 plot.new()
 plot.window(c(0,1), c(0,1), asp=diff(range(vlp[['x']]))/diff(range(vlp[['y']])))
-polygon(scale(x), scale(y), col=texture, border=texture)
+polygon(rescale(x), rescale(y), col=texture, border=texture)
 ```
 
 Are we there yet?  Nope, we're going to drag this baby kicking and screaming
@@ -546,8 +546,8 @@ y.rng <- range(vlp[['y']])
 asp <- diff(x.rng) / diff(y.rng)
 y.width <- as.integer(x.width * asp)
 vlpt <- vlp
-vlpt[['x']] <- scale(vlpt[['x']], x.width - 1L, 0) + 1
-vlpt[['y']] <- scale(vlpt[['y']], y.width - 1L, 0) + 1
+vlpt[['x']] <- rescale(vlpt[['x']], x.width - 1L, 0) + 1
+vlpt[['y']] <- rescale(vlpt[['y']], y.width - 1L, 0) + 1
 ```
 
 Regenerate the mesh, and for each mesh polygon compute the maximum x and y
@@ -894,73 +894,155 @@ easier to re-use and benchmark:
 treeprof::treeprof(
   render_elevation(volcano, shadow, rot, resolution=600, d=.5)
 )
-treeprof::treeprof(
-  render_elevation(volcano, shadow, rot, resolution=600, d=.5, zord='pixel')
-)
 ```
 ```
-Ticks: 2888; Iterations: 8; Time Per: 574.6 milliseconds; Time Total: 4.597 seconds; Time Ticks: 2.888
+Ticks: 3743; Iterations: 10; Time Per: 520.3 milliseconds; Time Total: 5.203 seconds; Time Ticks: 3.743
 
                                           milliseconds
-render ------------------------------- : 574.6 -   0.0
-    rasterize ------------------------ : 572.2 -   8.2
-        mesh_expand ------------------ : 147.0 -   0.0
-        |   lapply ------------------- : 147.0 - 147.0
-        barycentric ------------------ : 126.1 - 126.1
-        shade ------------------------ : 109.6 -   0.0
-        |   Reduce ------------------- : 109.6 -   0.2
-        |       Map ------------------ :  97.9 -   0.0
-        |       |   mapply ----------- :  97.9 -   0.0
-        |       |       lapply ------- :  87.1 -  87.1
-        |       |       <Anonymous> -- :  10.7 -  10.7
-        |       f -------------------- :  11.5 -  11.5
-        candidate_pixels ------------- : 107.0 -  70.8
-        |   sequence2 ---------------- :  36.2 -  17.5
-        |       cummax --------------- :  14.5 -  14.5
-        |       integer -------------- :   3.8 -   3.8
-        Reduce ----------------------- :  45.8 -   1.0
-        |   f ------------------------ :  24.7 -  24.7
-        |   lapply ------------------- :  20.1 -   0.0
-        |       FUN ------------------ :  20.1 -  20.1
-        lapply ----------------------- :  21.9 -  21.9
+render_elevation --------------------- : 520.3 -   0.0
+    rasterize ------------------------ : 518.2 -   8.9
+        barycentric ------------------ : 132.8 - 132.8
+        mesh_expand ------------------ : 120.7 -   0.0
+        |   lapply ------------------- : 120.7 - 120.7
+        candidate_pixels ------------- : 102.7 -  69.5
+        |   sequence2 ---------------- :  33.2 -  12.1
+        |       cummax --------------- :  16.0 -  16.0
+        |       integer -------------- :   4.9 -   4.9
+        lapply ----------------------- :  55.9 -  55.9
+        shade ------------------------ :  48.7 -   0.0
+        |   Reduce ------------------- :  48.7 -   0.0
+        |       Map ------------------ :  42.7 -   0.0
+        |       |   mapply ----------- :  42.7 -   0.0
+        |       |       lapply ------- :  34.1 -  34.1
+        |       |       <Anonymous> -- :   8.6 -   8.6
+        |       f -------------------- :   6.0 -   6.0
+        Reduce ----------------------- :  45.0 -   0.7
+            f ------------------------ :  23.1 -  23.1
+            lapply ------------------- :  21.3 -   0.0
+                FUN ------------------ :  21.1 -  21.1
 ```
 
 Virtually all the time was spent rasterizing.  3D projection, meshes,
-and perspective adjustments those virtually no time.  So why bother with
+and perspective adjustments take no time, relatively speaking.So why bother with
 rasterization?  One obvious answer is that it allows us to implement much better
 shading.  Another factor is that polygon rendering becomes expensive when the
-polygon counts increase.
+polygon counts increase:
 
 ```{r eval=FALSE}
 # File originally from http://tylermw.com/data/dem_01.tif.zip
+# shadow2 <- ray_shade2(elev2, seq(-90, 90, length=25), 45)
 elev2 <- readRDS('static/data/three-d-pipeline-elev-complex.RDS')
-shadow2 <- readRDS()
-shadow2 <- ray_shade2(elev2, seq(-90, 90, length=25), 45)
-plot(as.raster(flip(shadow2)))
+shadow2 <- readRDS('static/data/three-d-pipeline-shadow-complex.RDS')
+rot2 <- rot_x(-90) %*% rot_z(-90)
 
 system.time({
-  rel <- render_elevation(elev2, shadow2, rot_z(-90) %*% rot_y(-10), 600, 1,
-  zord='pixel')
+  rel <- render_elevation(elev2, shadow2, rot2, 1000, 2, zord='pixel')
+  par(mar=c(1,0,1,0))
   plot(as.raster(flip(rel)))
+  title('Raster Render', cex=1.5)
 })
+```
+```
+   user  system elapsed
+  1.956   0.649   2.622
+```
+```{r eval=FALSE}
 system.time({
-  mesh2 <- elevation_as_mesh(elev2, shadow2, rot_z(-90) %*% rot_y(-10), d=1)
+  mesh2 <- elevation_as_mesh(elev2, shadow2, rot_x(-90) %*% rot_z(-90), d=2)
   x <- do.call(rbind, c(mesh2[,'x'], list(NA)))
   y <- do.call(rbind, c(mesh2[,'y'], list(NA)))
   texture <- gray((Reduce('+', mesh2[,'t'])/nrow(mesh2)))
-  par(mai=numeric(4))
+  par(mar=c(1,0,1,0))
   plot.new()
-  polygon(scale(x), scale(y), col=texture, border=texture)
+  polygon(rescale(x), rescale(y), col=texture, border=texture)
+  title('Polygon Render', cex=5)
 })
-
-
 ```
+```
+   user  system elapsed
+ 10.389   0.238  10.664
+```
+```{r echo=FALSE, eval=FALSE}
+png(
+  'static/images/three-d-pipeline-pixel.png', width=1000, height=601,
+  pointsize=30
+)
+par(mar=c(1,0,1,0))
+plot(as.raster(flip(rel)))
+title('Raster Render', cex=1.5)
+dev.off()
+png(
+  'static/images/three-d-pipeline-polygon.png', width=1000, height=601,
+  pointsize=30
+)
+par(mar=c(1,0,1,0))
+plot.new()
+polygon(rescale(x), rescale(y), col=texture, border=texture)
+title('Polygon Render', cex=5)
+dev.off()
+```
+
+It is unclear to me why the polygon method is slower[^6] given that the
+graphical device will rasterize the polygons as well, presumably in compiled 
+code.  With the higher polygon count, the polygon image quality is higher, but
+if you compare the two renders closely you look closely you can still see the
+polygon artifacts:
+
+<a title='click for full size' href='/images/three-d-pipeline-pixel.png' >
+  <img
+    alt='Raster based render of elevation map'
+    src='/images/three-d-pipeline-pixel.png'
+    style='max-width: 600px; display: block; margin: auto' />
+</a>
+<a title='click for full size' href='/images/three-d-pipeline-pixel.png' >
+  <img
+    alt='Polygon based render of elevation map'
+    src='/images/three-d-pipeline-polygon.png'
+    style='max-width: 600px; display: block; margin: auto' />
+</a>
 
 # Post Processing
 
+As hinted up to we're looking to make [analygraphs][8] and [stereograms][9].  We
+can easily render two scenes with slightly different angles.  For convenience,
+we use `shadow::mrender_elevation` which is just a wrapper to `render_elevation`
+for multiple rotations.
+
+```{r fig.height=3}
+rot.l <- rot %*% rot_z(2)
+rot.r <- rot %*% rot_z(-2)
+elren <- mrender_elevation(
+  volcano, shadow, list(rot.l, rot.r), res=600, d=200, persp.mode='abs'
+)
+left <- flip(elren[[1]])
+right <- flip(elren[[2]])
+```
+
+We can then merge the two images to make an analygraph:
+
+```{r}
+elcolor <- array(0, dim=c(dim(left), 3))
+elcolor[,,1] <- left
+elcolor[,,2:3] <- right
+
+par(bg='black', mai=c(.25, 1, .25, 1))
+plot(as.raster(elcolor))
+```
+
+Or we can juxtapose them to make a stereogram:
+
+```{r}
+# figure out how close we can get the left and right images before we
+# start overlapping non-white pixels
+
+eljuxt <- cbind(left, right)
+par(bg='black', mai=c(.25, .5, .25, .5))
+plot(as.raster(eljuxt))
+```
+
 ## Process In Functions
 
-The entire 3D rendering pipeline we 
+The entire 3D rendering pipeline we
 
 ```{r eval=FALSE}
 library(shadow)
@@ -1112,6 +1194,10 @@ png::writePNG(combined, 'persp.png')
   rendering engine.
 [^5]: Well, almost, the eagle-eyed reader will notice we've lost the
   anti-aliasing, but shhhh, don't tell anyone.
+[^6]: Possibly it is because the device still renders the polygon borders,
+  or perhaps because of anti-aliasing (though turning that off did not seem to
+  make a difference).  I am not curious enough to look at the source of the
+  device code.
 
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
 [2]: /2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue
@@ -1120,3 +1206,5 @@ png::writePNG(combined, 'persp.png')
 [5]: /2018/11/23/is-your-matrix-running-slow-try-lists/#a-case-study
 [6]: https://github.com/s-macke/VoxelSpace
 [7]: https://cdn.arstechnica.net/sims-feature/comanche.jpg
+[8]: https://en.wikipedia.org/wiki/Anaglyph_image
+[9]: https://en.wikipedia.org/wiki/Stereoscopy
