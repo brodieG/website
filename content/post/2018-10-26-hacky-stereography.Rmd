@@ -1,9 +1,9 @@
 ---
-title: Hacky Stereography
+title: A New Stereoscopic Mount Spectacular
 author: ~
-date: '2018-10-26'
+date: '2018-12-12'
 draft: true
-slug: hacky-stereography
+slug: three-d-pipeline
 categories: []
 tags: []
 ---
@@ -15,6 +15,10 @@ options(digits=3)
 ```
 
 # Cool, but Not Eye Popping
+
+<img
+src='/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 
 As we saw in our previous [blog post](/2018/10/23/do-not-shade-r/), you can do
 some pretty cool things with `rayshader`:
@@ -28,24 +32,36 @@ graphics.  Okay, maybe I don't get out much.
 So come along for a ride through 3D projections, perspective adjustments,
 rasterization, and image processing, all in base R.
 
-# Step 0: Volcano!
+# Step 0: Helper Funs
 
-Sure, you've seen volcano a million times:
+Before we start we need a couple of small helper functions:
 
 ```{r fig.width=5}
+## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
    (1 - range) * center
 
-# plot(as.raster(flip(rescale(volcano))))
+## Prepare a plot with a particular aspect ratio
+plot_new <- function(
+  x, y, xlim=c(0,1), ylim=c(0,1),
+  par.args=list(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
+) {
+  if(length(par.args)) do.call(par, par.args)
+  plot.new()
+  plot.window(
+    xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
+) }
 
-par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
-plot.new()
-plot.window(c(0,1), c(0,1), asp=ncol(volcano)/nrow(volcano))
-points(
-  x=rescale(row(volcano)), y=rescale(col(volcano)),
-  col=gray(rescale(volcano)), pch=15
-)
+```
+
+# Volcano!
+
+```{r}
+xv <- row(volcano)
+yv <- col(volcano)
+plot_new(xv, yv)
+points(x=rescale(xv), y=rescale(yv), col=gray(rescale(volcano)), pch=15)
 ```
 
 Let's add some shading:
@@ -53,12 +69,8 @@ Let's add some shading:
 ```{r fig.width=5}
 library(shadow)
 shadow <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
-par(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
-plot.new()
-points(
-  x=rescale(row(volcano)), y=rescale(col(volcano)),
-  col=gray(shadow), pch=15
-)
+plot_new(xv, yv)
+points(x=rescale(xv), y=rescale(yv), col=gray(shadow), pch=15)
 ```
 
 # Step 1: 3D Projection
@@ -108,8 +120,6 @@ matrices as we have found them [to be more efficient][2] for the problem we're
 dealing with.
 
 ```{r, echo=FALSE}
-asp <- diff(range(volc.lr[2,])) / diff(range(volc.lr[1,]))
-plot.window(0:1, 0:1, asp=asp)
 ```
 <a name='volcano-list-long'></a>
 ```{r}
@@ -121,8 +131,8 @@ names(vl) <- c('x', 'y', 'z', 't') # 't' for texture
 ## Plot!, but order by Z value first
 zord <- order(vl[[3]])
 vlo <- lapply(c(1:2,4), function(x) rescale(vl[[x]][zord]))
-par(mai=numeric(4))
-plot.new()
+
+plot_new(vlo[[1]], vlo[[2]])
 points(x=vlo[[1]], y=vlo[[2]], col=gray(vlo[[3]]), pch=15, cex=0.5)
 ```
 
@@ -159,8 +169,7 @@ old.par <- par(mfrow=c(1,4), mar=c(.5, .25, 2, .25))
 x.off <- c(0, 1, 1, 0)
 y.off <- c(1, 1, 0, 0)
 for(i in seq_along(p.seq)) {
-  plot.new()
-  plot.window(0:1, 0:1, asp=1)
+  plot_new(0:1,0:1, par.args=NULL)
   title(sprintf('Vertex %d', i))
   polygon(c(0, 1, 1, 0), c(0, 0, 1, 1), col='#EEEEEE', border=NA)
   points(points, pch=15, cex=0.5)
@@ -207,29 +216,29 @@ mesh.tile <- matrix(
 Tada! A mesh:
 
 ```{r}
-par(mai=numeric(4))
 zord4 <- order(Reduce('+', mesh.tile[,'z']))
 x4 <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))[,zord4]
 y4 <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))[,zord4]
-plot.new()
-polygon(rescale(x4), rescale(y4), col='#EEEEEE')
+plot_new(x4, y4)
+polygon(rescale(x4), rescale(y4), col='#DDDDDD', border='#444444')
 ```
 
 Okay, great you say, but we could have done all of this with `persp`, why
-bother?  The reality is we're not done.  Consider what we get with `persp`:
+bother?  Consider what we get with `persp`:
 
 ```{r}
 par(mai=numeric(4))
-# persp(
-#   volcano, theta=-65, phi=70, r=1e6, col=gray(sh[-1,-1]),
-#   border=NA, box=FALSE, axes=FALSE
-# )
 persp(
-  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
-  theta=-65, phi=70, col=gray(shadow[-1,-1]), r=1e6,
-  border=NA, box=FALSE, axes=FALSE, scale=FALSE
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano, 
+  ylim=c(2,52), xlim=c(6,46),
+  theta=-65, phi=70, col='#EEEEEE', border='black',
+  # col=gray(shadow[-1,-1]), 
+  r=1e7, scale=FALSE
 )
 ```
+
+This doesn't look great: it's blocky, and there is no [good way to
+get rid of the anti-aliasing lines][11].  Beyond that 
 
 This isn't great because of how blocky it is, and also because there is no good
 way to get rid of the borders.  Additionally it is a bit slow.
@@ -243,7 +252,10 @@ triangles:
 ```{r echo=FALSE}
 par(mai=numeric(4))
 plot.new()
-polygon(rescale(c(0, 1, 1, 0), .9), rescale(c(0, 0, 1, 1), .9), col='#EEEEEE')
+polygon(
+  rescale(c(0, 1, 1, 0), .9), rescale(c(0, 0, 1, 1), .9), 
+  col='#DDDDDD', border='#444444'
+)
 text(
   rescale(c(0, 1, 1, 0), .95), rescale(c(0, 0, 1, 1), .95),
   labels=sprintf('v%d', 1:4)
@@ -1014,7 +1026,7 @@ of view to ensure consistent perspective transformations.
 rot.l <- rot %*% rot_z(2.5)
 rot.r <- rot %*% rot_z(-2.5)
 elren <- mrender_elevation(
-  volcano, shadow, list(rot.l, rot.r), res=1000, d=125, fov=80
+  volcano, shadow, list(rot.l, rot.r), res=1000, d=125, fov=85
 )
 left <- flip(elren[[1]])
 right <- flip(elren[[2]])
@@ -1027,7 +1039,7 @@ do as the R raster format accepts 3D arrays as inputs in addition to matrices,
 where each value of the third dimension corresponds to one of the RGB color
 channels:
 
-```{r}
+```{r analygraph}
 analygraph <- function(left, right) {
   analygraph <- array(0, dim=c(dim(left), 3))
   analygraph[,,1] <- left
@@ -1035,8 +1047,7 @@ analygraph <- function(left, right) {
   analygraph
 }
 elcolor <- analygraph(left, right)
-par(bg='black', mai=c(.25, .5, .25, .5), xpd=TRUE)
-# par(bg='black', mai=numeric(4), xpd=TRUE)
+par(bg='black', mai=numeric(4))
 plot(as.raster(elcolor))
 shadow::analygraph_glasses(.15)   # for the icon h/t @jurbane2
 ```
@@ -1047,7 +1058,7 @@ the overlapping areas would end up yellow.
 
 We can also make stereograms:
 
-```{r}
+```{r stereogram}
 eljuxt <- cbind(left, right)
 par(bg='black', mai=c(.25, .5, .25, .5))
 plot(as.raster(eljuxt))
@@ -1199,3 +1210,4 @@ for(i in elrows) {
 [8]: https://en.wikipedia.org/wiki/Anaglyph_image
 [9]: https://en.wikipedia.org/wiki/Stereoscopy
 [10]: https://en.wikipedia.org/wiki/Stereoscopy#Freeviewing
+[11]: https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors
