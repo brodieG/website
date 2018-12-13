@@ -17,26 +17,38 @@ options(digits=3)
 # Cool, but Not Eye Popping
 
 <img
-src='/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png'
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png'
 style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 
-As we saw in our previous [blog post](/2018/10/23/do-not-shade-r/), you can do
-some pretty cool things with `rayshader`:
+As I finished the [ray shading post](/2018/10/23/do-not-shade-r/), it occurred
+to me that it would be pretty cool if we could make these awesome 3D-looking
+reliefs actually 3D, or at least stereoscopic.  After all, how hard could it
+be?  We have the elevation data, so some simple trigonometry should allow us to
+tilt things left, tilt things right, and voilà.  So I did that and it looked
+like garbage.
 
-It is so beautiful it looks _almost_ 3D.  So why not actually make it 3D?  We
-have the elevation data after all.  Much of what we are going to do here can be
-done with `rgl`, but what's the fun in that?  Besides, there are few things as
-fun as procrastinating by learning about a fundamental component of computer
-graphics.  Okay, maybe I don't get out much.
+That would have been the right time to walk away and move on to more productive
+things.  Instead, I started messing around with [`rgl`][12] (fantastic package),
+but I struggled to get it to do *exactly* what I wanted programmatically.  While
+trying to understand how `rgl` reacts to inputs I read up on 3D projections,
+and realized that maybe this could all be done outside of `rgl`.
 
-So come along for a ride through 3D projections, perspective adjustments,
-rasterization, and image processing, all in base R.
+And so began this quixotic crusade[^quixotic] to implement an "efficient-enough"
+3D rendering pipeline using base R only.  I took notes along the way to share
+with those who like me are interested, but unlike me have better time management
+skills.  So, come along for a ride through 3D projections, meshes, perspective
+adjustments, rasterization, and image processing, all in base R[^base-r-only].
 
-# Step 0: Helper Funs
+# Volcano!
 
-Before we start we need a couple of small helper functions:
+Our subject today will be the much-loved `volcano`, a.k.a. Maunga Whau.  We are
+going to pretend that the Z-values of the `volcano` matrix are in the same units
+as the grid size (i.e. 10m per unit, as per `?volcano`).  This is obviously not
+the case, but the documentation is just ambiguous enough that I feel comfort
+indulging in this minor fraud for dramatic effect.  Here is a height-map of
+volcano:
 
-```{r fig.width=5}
+```{r helper-funs, echo=FALSE}
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
@@ -52,127 +64,169 @@ plot_new <- function(
   plot.window(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
-
 ```
-
-# Volcano!
-
-```{r}
+```{r, fig.width=6, fig.height=4}
 xv <- row(volcano)
 yv <- col(volcano)
 plot_new(xv, yv)
 points(x=rescale(xv), y=rescale(yv), col=gray(rescale(volcano)), pch=15)
 ```
 
-Let's add some shading:
+`plot_new` sets plot parameters (e.g. margins, aspect ratios).  `rescale`
+rescales values to between zero and one.  Both of these  are [helper functions
+defined in the appendix](#helper-functions).
 
-```{r fig.width=5}
+As we saw from the [ray shading post](/2018/10/23/do-not-shade-r/), it is
+possible to ray shade elevation maps using base R only.  For the sake of
+exposition I put the code in the [shadow demo package][], but as far as I'm
+concerned I'm still abiding by the base-R-only pledge.
+
+```{r, fig.width=6, fig.height=4}
 library(shadow)
 shadow <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
 plot_new(xv, yv)
 points(x=rescale(xv), y=rescale(yv), col=gray(shadow), pch=15)
 ```
 
-# Step 1: 3D Projection
+# 3D Projection
 
 While volcano looks pretty cool from above, we want to provide a more
 interesting view.  To do this we can use [3D rotation matrices][1].  `shadow`
 implements the `rot_*` functions, which are thin wrappers that generate the
-rotation matrices described in the wikipedia article:
+rotation matrices described in the [wikipedia article][1]:
 
 ```{r}
-rot_z(90)
+round(rot_z(90), 3)
 ```
 
 By our convention the Z-axis is always pointed directly at the user, even after
 rotations are applied.  In other words, it is the model that rotates, not the
-viewer[^1].
+viewer[^1].  This also means that the X and Y axes remain in their traditional
+positions.
 
 In order to use the rotation matrix we need our data in long format.  This can
-be done easily by taking advantage of the `row` and `col` functions that return
-respectively the row and column indices of each element in the vector underlying
-the matrix:
+be done easily by taking advantage of the `row` and `col` functions:
 
 ```{r}
 mx.example <- matrix((0:3)*10, nrow=2, ncol=2)
 row(mx.example)
 col(mx.example)
-cbind(c(row(mx.example)), c(col(mx.example)), c(mx.example))
+rbind(x=c(row(mx.example)), y=c(col(mx.example)), z=c(mx.example))
 ```
 
-So now we can make a long version of `volcano`:
+While this looks rather wide for long wide, but I assure you it is long in
+spirit.  It is just that we need it in 3 x n rather n x 3 format for the
+upcoming matrix multiplication.  As applied to `volcano`:
 
 ```{r}
 volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
-str(volc.l)
-str(volcano)
+ncol(volc.l)      # long data has same number of colums ...
+length(volcano)   # ... as volcano has elements
 ```
 
-Which we can rotate with our rotation matrices:
+The 3D projection is then just a matrix multiply:
 
 ```{r}
 rot <- rot_x(-20) %*% rot_z(65)
 volc.lr <- rot %*% volc.l
 ```
 
-From this point forward we will be using list data structures instead of
-matrices as we have found them [to be more efficient][2] for the problem we're
-dealing with.
+We need to re-order by Z values to ensure that the nearest points are plotted
+last so they are not occluded by further points. Recall the Z axis is pointed
+directly at you, so points with higher Z values are closer.
 
-```{r, echo=FALSE}
-```
-<a name='volcano-list-long'></a>
-```{r}
-## construct list data structure, adding texture/shadow info
-vl <- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
-vl <- c(vl, list(shadow))              # add texture info
-names(vl) <- c('x', 'y', 'z', 't') # 't' for texture
-
-## Plot!, but order by Z value first
-zord <- order(vl[[3]])
-vlo <- lapply(c(1:2,4), function(x) rescale(vl[[x]][zord]))
-
-plot_new(vlo[[1]], vlo[[2]])
-points(x=vlo[[1]], y=vlo[[2]], col=gray(vlo[[3]]), pch=15, cex=0.5)
+```{r, fig.width=6}
+zord <- order(volc.lr[3,])
+vord <- volc.lr[, zord]   # reorder by Z-values
+x <- vord[1,]
+y <- vord[2,]
+plot_new(x, y)
+points(rescale(x), rescale(y), col=gray(shadow[zord]), pch=15, cex=0.5)
 ```
 
 The good news is now we have an awesome looking 3D rendition of our volcano...
-in the process of disintegration from a particularly unpleasant eruption.
+in the moments after a direct hit from a disruptor cannon.
+
+# Interlude I
+
+As you might have guessed one of the reasons why people don't usually implement
+3D rendering pipelines in base R is performance.  If we are to have any hope of
+creating a pipeline that renders things in _useful_[^how-fast-is-useful] time we
+need to be careful about how we structure our data and calculations.
+
+In an earlier blog post we found that [list and list-matrix data structures are
+often faster to operate on][2] than the pure-vector equivalent matrices and
+arrays.  Here we turn our long volcano matrix into list format:
+
+<a name='volcano-list-long'></a>
+```{r}
+vl <- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
+vl <- c(vl, list(shadow))              # add texture info
+names(vl) <- c('x', 'y', 'z', 't')     # 't' for texture
+str(vl)
+```
+
+Throughout the rest of this blog post we will use techniques explored at length
+in the aforementioned post.  If you are not familiar with `lapply`, `do.call`,
+`Map`, `Reduce`, and similar functional list manipulation facilities, you should
+consider reading [that post][2].  We'll wait for you right here =).
 
 # Meshes
 
-Okay, so we can't just use our elevation data as point coordinates.  One
-possibility is to turn our point "cloud" into a mesh.  Well, turning an
-arbitrary point cloud into a mesh is one of those problems that seems very easy
-but in reality is anything but.  Worse, the typical implementations involve some
-kind of sequential process that is repeated many times until the mesh is
-complete.  These types of algorithms cannot be implemented efficiently in R,
-though there are R packages that implement them in compiled code.
+## Tiles
 
-Fortunately for us and our base-R only challenge, our point cloud is not
+As our disintegrating volcano demonstrates, we can't just use elevation data
+as point coordinates.  One possibility is to turn our point "cloud" into a mesh.
+It turns out that making a mesh out of an arbitrary point cloud is one of those
+"seems easy but isn't" problems.  Worse, the typical implementations
+involve some kind of sequential process that is repeated many times until the
+mesh is complete.  These types of algorithms cannot be implemented efficiently
+in R, though there are R packages that implement them in compiled code.
+
+Fortunately for us and our base-R-only challenge, our point cloud is not
 arbitrary.  The source data contains the information required to build the mesh:
-the original x-y grid.  We can generate a tile mesh by sampling our data four
-times, once for each of the four vertices for each tile.  This is what it looks
-like with an illustrative 4 x 4 grid:
+the original x-y grid.  We can generate a tile mesh by subsetting a contiguous
+portion of our elevation matrix four times, once for each of the four vertices
+of each tile.  This is what it looks like with an illustrative 4 x 4 grid:
 
-```{r echo=FALSE, fig.width=5.5, fig.height=1.5}
-p.seq <- seq(.05, .95, length.out=4)
+```{r echo=FALSE, fig.width=7, fig.height=1.75}
+p.seq <- seq(.1, .9, length.out=4)
 points <- expand.grid(x=p.seq, y=p.seq)
 len <- length(p.seq)
+pad <- .05
 vert.box <- data.frame(
-  x=c(.025, p.seq[3] + .025, p.seq[3] + .025, .025),
-  y=c(-.025 + p.seq[2], -.025 + p.seq[2], .025 + p.seq[4], .025 + p.seq[4])
+  x=c(pad, p.seq[3] + pad, p.seq[3] + pad, pad),
+  y=c(-pad + p.seq[2], -pad + p.seq[2], pad + p.seq[4], pad + p.seq[4])
 )
 seq.diff <- diff(p.seq[1:2])
 # dev.new(width=5, height=1.5)
-old.par <- par(mfrow=c(1,4), mar=c(.5, .25, 2, .25))
+old.par <- par(mfrow=c(1,5), mar=c(.5, .25, 2, .25))
 x.off <- c(0, 1, 1, 0)
 y.off <- c(1, 1, 0, 0)
+cols <- c(
+  "#440154FF", "#472D7BFF", "#3B528BFF", "#2C728EFF", "#21908CFF",
+  "#27AD81FF", "#5DC863FF", "#AADC32FF", "#FDE725FF")
+col.basic <- matrix('black', 4, 4)
+bg.basic <- matrix(NA_character_, 4, 4)
+
+plot_new(0:1,0:1, par.args=NULL)
+title('Tiles')
+tiles <- shadow:::mesh_tile(c(as.list(points), list(1:16)), c(4,4))
+x4 <- do.call(rbind, c(tiles[,'x'], list(NA)))
+y4 <- do.call(rbind, c(tiles[,'y'], list(NA)))
+polygon(c(0, 1, 1, 0), c(0, 0, 1, 1), col='#EEEEEE', border=NA)
+polygon(x4, y4, col=cols, border=NA)
+points(points, pch=22, col='black', bg=NA)
+
 for(i in seq_along(p.seq)) {
   plot_new(0:1,0:1, par.args=NULL)
   title(sprintf('Vertex %d', i))
   polygon(c(0, 1, 1, 0), c(0, 0, 1, 1), col='#EEEEEE', border=NA)
-  points(points, pch=15, cex=0.5)
+  col.new <- col.basic
+  bg.new <- bg.basic
+  col.new[if(x.off[i]) -1 else -4, if(y.off[i]) -4 else -1] <- cols
+  bg.new[if(x.off[i]) -1 else -4, if(y.off[i]) -4 else -1] <- cols
+  points(points, pch=22, col=col.new, bg=bg.new)
   polygon(
     x=vert.box[['x']] + seq.diff * x.off[i],
     y=vert.box[['y']] - seq.diff * y.off[i]
@@ -181,67 +235,148 @@ for(i in seq_along(p.seq)) {
 par(old.par)
 ```
 
-We alternate dropping the first/last row/column.  Because our rotated volcano
-data is already in long format this requires a little extra work:
+To form each tile as shown in the first panel we take one vertex from each
+of the four vertex panels.  Each panel has the 9 of 16 grid points available
+for use as vertices enclosed in a black bounding box.  For the top left
+green tile, we take the top left point of the same color from each of the
+bounding boxes.  The same process is repeated for each tile by picking the
+corresponding vertex from each panel.
+
+The operation we just described is equivalent to alternating dropping the
+first/last row/column.  Because our projected volcano data is already in long
+format, we need to compute which elements in the long data correspond to
+the first and last rows.  This is actually pretty straightforward if we recall
+that our matrix in long format is basically the component vectors "unspooled".
+We can "re-spool" an index vector the length of our data, `seq_along(volcano)`,
+by making a matrix out of it with the correct dimensions:
 
 ```{r}
 nr <- dim(volcano)[1]
 nc <- dim(volcano)[2]
 idx.raw <- matrix(seq_along(volcano), nr, nc)
+```
+
+Exploiting the underlying vector nature of matrices, and vice versa, is a common
+theme when trying to write fast R code.
+
+We can now drop rows and columns in sequence from that index matrix to get the
+long format indices for each vertex for each tile:
+
+```{r}
 idx.tile <- list(
-  idx.raw[-nr, -nc, drop=TRUE],
-  idx.raw[-nr,  -1, drop=TRUE],
-  idx.raw[ -1,  -1, drop=TRUE],
-  idx.raw[ -1, -nc, drop=TRUE]
+  v1=c(idx.raw[-nr, -nc]), v2=c(idx.raw[-nr,  -1]),
+  v3=c(idx.raw[ -1,  -1]), v4=c(idx.raw[ -1, -nc])
 )
 ```
 
-For each of our vectors from our rotated volcano, we will use `idx.tile` to pull
-out the vertex data for the tiles.  This does unfortunately mean we have several
-duplicative copies of the same data.
+For example, to get the location of vertex data for tile forty two:
 
 ```{r}
+sapply(idx.tile, '[', 42)
+```
+
+This means that data for vertex 1 for tile 42 is at position 42 in the long data,
+for vertex 2 it is at position 129, and so on.
+
+Recall that the volcano data is in `vl` in [long list
+format](#volcano-list-long):
+
+```{r}
+str(vl)
+```
+
+So to get the `x`, `y`, `z` coordinates, and "texture" values for the vertices
+of tile forty two we use:
+
+```{r}
+sapply(vl, '[', sapply(idx.tile, '[', 42))
+```
+
+In order to extend this to the full tile set we are going to use some `for`
+loops.  After all `sapply`, `lapply`, and friends are just for
+loops themselves.  Additionally in this case we want a specific result structure
+that is just easier to fill with for loops.  Finally, there will only be sixteen
+iterations of the loop, so the overhead from R-level function calls is small.
+
+```{r}
+## Initialize result structure
 mesh.tile <- matrix(
-  Map(
-    function(x, y) vl[[y]][idx.tile[[x]]],
-    rep(seq_along(idx.tile), length(vl)),
-    rep(seq_along(vl), each=length(idx.tile))
-  ),
-  nrow=length(idx.tile),
-  ncol=length(vl),
-  dimnames=list(sprintf('v%d', seq_along(idx.tile)), names(vl))
+  list(), nrow=length(idx.tile), ncol=length(vl),
+  dimnames=list(names(idx.tile), names(vl))
 )
+## Fill it with the correctly subset volcano data
+for(i in names(idx.tile))
+  for(j in names(vl))
+    mesh.tile[[i,j]] <- vl[[j]][idx.tile[[i]]]
+
+mesh.tile
 ```
 
-Tada! A mesh:
+This is an instance of the fabled list-matrix.  It looks a little weird, but it
+is equivalent to a 3D array and is just a list of equal length vectors with a
+`dim` attribute:
 
 ```{r}
-zord4 <- order(Reduce('+', mesh.tile[,'z']))
-x4 <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))[,zord4]
-y4 <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))[,zord4]
-plot_new(x4, y4)
-polygon(rescale(x4), rescale(y4), col='#DDDDDD', border='#444444')
+length(mesh.tile)
+dim(mesh.tile)
+str(mesh.tile[[1]])
 ```
 
-Okay, great you say, but we could have done all of this with `persp`, why
-bother?  Consider what we get with `persp`:
+One problem with this data structure is that it is duplicative.  Most vertices
+are shared by four tiles, yet we make a copy of each vertex for each tile.  This
+is one of the trade-offs we accept for improved overall
+performance[^copies-for-speed].
+
+To extract tile forty two's data from this structure we can use:
 
 ```{r}
-par(mai=numeric(4))
-persp(
-  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano, 
-  ylim=c(2,52), xlim=c(6,46),
-  theta=-65, phi=70, col='#EEEEEE', border='black',
-  # col=gray(shadow[-1,-1]), 
-  r=1e7, scale=FALSE
-)
+apply(mesh.tile, 1:2, function(x) unlist(x)[42])
 ```
 
-This doesn't look great: it's blocky, and there is no [good way to
-get rid of the anti-aliasing lines][11].  Beyond that 
+The required `unlist` makes this a little awkward, but we do not intend to
+operate on a single tile at a time.  For most of our manipulations, the
+list-matrix is convenient.  Look how easy it is to display the mesh from raw
+polygons:
 
-This isn't great because of how blocky it is, and also because there is no good
-way to get rid of the borders.  Additionally it is a bit slow.
+<a name='tile-mesh-plot'></a>
+```{r}
+zord <- order(Reduce('+', mesh.tile[,'z']))
+x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))[,zord]
+y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))[,zord]
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
+```
+```{r echo=FALSE}
+x4 <- x   # for later re-use
+y4 <- y
+```
+
+It may help to look at the data structure of `x` above to understand what's
+going on:
+
+```{r}
+x[,1:10]
+```
+
+`y` shares the same structure.  In order to have `polygon` render multiple
+polygons, we need to NA-delimit our input vectors.  Rather than painstakingly
+creating those vectors from the undelimited ones, we `rbind` the four vertex
+vectors with one NA vector.  That this produces a matrix is besides the point;
+the idea is that the vector wrapping nature of the matrix allows us to easily
+sandwich NA values between each of our tiles' data:
+
+```{r}
+c(x[,1:10])
+```
+
+Great, but did we _really_ need to subject ourselves to this rigmarole?
+Wouldn't `persp`, which would still abide by our base-R-only pledge, do this
+just as well and without ridiculous list-matrices?  Well, [kind
+of](#meshes-with-pesp), but more importantly, "this" is not what we're after.
+We have far grander ambitions, and "this" is basically about the limit of what
+we can do with `persp`.
+
+## Triangles
 
 But a tile mesh is not ideal.  Among other things, there is no guarantee the
 tiles are flat.  Triangles on the other hand are guaranteed to be flat, and
@@ -290,57 +425,44 @@ dimnames(mesh.tri) <- list(head(rownames(mesh.tile), -1), colnames(mesh.tile))
 mesh.tri
 ```
 
-And we can plot this.
+Plotted:
 
 ```{r}
 zord3 <- order(Reduce('+', mesh.tri[,'z']))
-x3 <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord3]
-y3 <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord3]
-par(mai=numeric(4))
-plot.new()
-polygon(rescale(x3), rescale(y3),
-  col=rep(c('#CCCCFF','#CCFFCC'), each=ncol(x3)/2)[zord3]
-)
+x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord3]
+y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord3]
+col <- rep(c('#CCCCFF','#CCFFCC'), each=ncol(x)/2)[zord3]
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=col)
 ```
 
-Let's shade each facet with the mean of the vertex shadows:
+And with more realistic colors by shading each facet with the mean of the vertex
+shadows:
 
 ```{r}
-par(mai=numeric(4))
-texture3 <- gray(Reduce('+', mesh.tri[,'t']) / 3)[zord3]
-plot.new()
-polygon(rescale(x3), rescale(y3), col=texture3, border=texture3)
+texture <- gray(Reduce('+', mesh.tri[,'t']) / 3)[zord3]
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=texture, border=texture)
+```
+```{r echo=FALSE}
+texture3 <- texture # for later use
 ```
 
-Looks better than `persp`, but still the triangle faces irk me.  Also, I'm
-curious about how `polygon` takes the `polygon` data and renders it on the
-devices (or how the device does it).  Finally, this doesn't scale well to large
-polygon counts <span color='red'>ADD EXAMPLE?</span>.
-
-```{r eval=FALSE}
-width <- height <- 600
-# par3d(windowRect=c(0,0,width*2,height))
-par3d(windowRect=c(0,0,width,height))
-clear3d()
-polygon3d(x=c(0, 1, 2, 1, 0), y=c(0, 2, 0, .2, 0), z=numeric(5))
-view3d(0,0,fov=60)
-```
+Now we're cooking!
 
 # Perspective
 
-Everything we've done so far has been assuming there is no perspective effect,
-that is, that the perceived size of objects is independent of the distance from
-the observer.  This is true if objects are infinitely far away.
+Everything we've done to this point has been assumed no perspective effect, so
+that objects of the same size appear the same size irrespective of how far
+from the observer they are.  This observer, you, has been looking at the object
+down on a line parallel to the Z axis and passing through the midpoint of the X
+and Y extents of the projected object.  For expository purposes we are about to,
+for the first and only time, rotate Observer 0 (you) 90 degrees about the Y
+axis.
 
-So far we have define our observer as being on a line parallel to the Z axis and
-passing through the midpoint of the X and Y extents of the projected object.
-Thus we have always been look at `volcano` straight down the Z axis.  For
-expository purposes we are about to, for the first time, rotate "Observer 0"
-(you) 90 degrees about the Y axis.
-
-In the following diagram we have rotated "Observer 0" (you) so that it is now
-looking at `volcano` down the X axis.  The Z axis now runs from left to right.
-Observers 1, 2, and 3 are all still looking at `volcano` down the Z axis.
+In the following diagram you are looking down a line parallel to the X axis.
+The Z axis now runs from left to right.  Observers 1, 2, and 3 are all still
+looking at `volcano` down the Z axis:
 
 ```{r echo=FALSE, fig.width=7, fig.height=2.33}
 rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
@@ -437,8 +559,7 @@ D <- 0.5                  # Observer 3 is half Z-Depth from volcano
 z.rng <- range(vl[['z']])
 ZD <- diff(z.rng)
 
-## Normalize XY coordinates so observer is centered in midpoint of x-y extent
-## and at Z=0
+## Center observer on x-y extent and at Z=0
 vlp <- vl
 vlp[c('x','y')] <- lapply(vl[c('x','y')], function(x) x - sum(range(x)) / 2)
 vlp[['z']] <- vlp[['z']] - (z.rng[2] + D * ZD)
@@ -457,9 +578,9 @@ points(
 )
 ```
 
-Now that we have the perspective-transformed cloud point, we can turn it back
-into a triangle mesh.  This time we just use `shadow::mesh_tri`, which simply
-carries out the calculations described in the [Mesh section](#meshes):
+Now that we have the perspective-transformed point cloud, we can turn it back
+into a triangle mesh.  This time we use `shadow::mesh_tri`, which is a wrapper
+around the calculations described in the [Mesh section](#meshes):
 <a name='mesh-tri-persp'></a>
 
 ```{r}
@@ -469,9 +590,7 @@ zord <- order(Reduce('+', mesh.tri[,'z']))
 x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord]
 y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord]
 texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))[zord]
-par(mai=numeric(4))
-plot.new()
-plot.window(c(0,1), c(0,1), asp=diff(range(vlp[['x']]))/diff(range(vlp[['y']])))
+plot_new(x, y)
 polygon(rescale(x), rescale(y), col=texture, border=texture)
 ```
 
@@ -498,68 +617,102 @@ the need to use internally vectorized base R code.
 
 Conceptually, the process takes three steps:
 
-```{r echo=FALSE, fig.width=7, fig.height=3}
+```{r raster-overview, echo=FALSE, fig.width=7, fig.height=2.5}
 par(mfrow=c(1, 4), mar=c(.5, .25, 2, .25))
-x <- c(0, .8, .2, NA, .8, 1, .2, NA)
-y <- c(0, .2, .8, NA, .2, 1, .8, NA)
-plot.new()
-title('Mesh Polygons to Rasterize')
-polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
-plot.new()
-title('Step 1: Rectangular Bounding Box')
-polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
-polygon(
-  c(0, .8, .8,  0, NA, .2, 1, 1, .2, NA),
-  c(0,  0, .8, .8, NA, .2, .2, 1, 1, NA),
-  border=c('#0000FF', '#00DD00'), col=NA
-)
-plot.new()
-title('Step 2: Candidate Pixels')
+xr <- c(0, .8, .2, NA, .8, 1, .2, NA)
+yr <- c(0, .2, .8, NA, .2, 1, .8, NA)
+triangles <- function() {
+  polygon(
+    c(0, .8, .8,  0, NA, .2, 1, 1, .2, NA),
+    c(0,  0, .8, .8, NA, .2, .2, 1, 1, NA),
+    border=c('#0000FF', '#00DD00'), col=NA
+  )
+}
+plot_new(xr, yr, par.args=list(mar=c(.5, .25, 2, .25)))
+title('Mesh Polygons\nto Rasterize')
+polygon(xr, yr, col=c('#CCCCFF','#CCFFCC'), border=NA)
+plot_new(xr, yr, par.args=list(mar=c(.5, .25, 2, .25)))
+title('Step 1:\nBounding Box')
+rast_1 <- function(x, y) {
+  polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+  triangles()
+}
+rast_1(xr, yr)
+plot_new(xr, yr, par.args=list(mar=c(.5, .25, 2, .25)))
+title('Step 2:\nCandidate Pixels')
 len <- 13
 pdat <- as.matrix(
   expand.grid(x=seq(0, .8, length.out=len), y=seq(0, .8, length.out=len))
 )
-polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
-polygon(
-  c(0, .8, .8,  0, NA, .2, 1, 1, .2, NA),
-  c(0,  0, .8, .8, NA, .2, .2, 1, 1, NA),
-  border=c('#0000FF', '#00DD00'), col=NA
-)
-points(pdat, pch=24, col='#0000FF')
-points(pdat + .2, pch=25, col='#00DD00')
+rast_2 <- function(x, y, pdat) {
+  polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+  triangles()
+  points(pdat, pch=24, col='#0000FF')
+  points(pdat + .2, pch=25, col='#00DD00')
+}
+rast_2(xr, yr, pdat)
 
-plot.new()
-title('Step 3: Actual Pixels')
+plot_new(xr, yr, par.args=list(mar=c(.5, .25, 2, .25)))
+title('Step 3:\nActual Pixels')
 
 nr <- nrow(pdat)
-mx1 <- matrix(c(lapply(x[1:3], rep, nr), lapply(y[1:3], rep, nr)), 3)
+mx1 <- matrix(c(lapply(xr[1:3], rep, nr), lapply(yr[1:3], rep, nr)), 3)
 colnames(mx1) <- c('x', 'y')
 mx1.oob <- Reduce('|', lapply(barycentric(as.data.frame(pdat), mx1), '<', 0))
 
-mx2 <- matrix(c(lapply(x[5:7], rep, nr), lapply(y[5:7], rep, nr)), 3)
+mx2 <- matrix(c(lapply(xr[5:7], rep, nr), lapply(yr[5:7], rep, nr)), 3)
 colnames(mx2) <- c('x', 'y')
 mx2.oob <- Reduce('|', lapply(barycentric(as.data.frame(pdat+.2), mx2), '<', 0))
 
-polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
-points(pdat[!mx1.oob,], pch=24, bg='#0000FF', col=NA)
-points(pdat[!mx2.oob,] + .2, pch=25, bg='#00DD00', col=NA)
+rast_3 <- function(x, y, pdat, oob1, oob2) {
+  polygon(x, y, col=c('#CCCCFF','#CCFFCC'), border=NA)
+  points(pdat[!oob1,], pch=24, bg='#0000FF', col=NA)
+  points(pdat[!oob2,] + .2, pch=25, bg='#00DD00', col=NA)
+}
+rast_3(xr, yr, pdat, mx1.oob, mx2.oob)
 ```
+<div style='display: none;'>
+We use these for the little inset thumbnails.
+```{r rast-one, fig.width=3, fig.height=3}
+plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
+rast_1(xr, yr)
+```
+```{r rast-two, fig.width=3, fig.height=3}
+plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
+rast_2(xr, yr, pdat)
+```
+```{r rast-three, fig.width=3, fig.height=3}
+plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
+rast_3(xr, yr, pdat, mx1.oob, mx2.oob)
+```
+</div>
 
-## Step 1: Bounding Box
+## Step 1: Bounding Boxes
 
-Let's first scale our data to be 600 pixels wide.  We go back to the
-perspective-adjusted point cloud data to minimize the number of transformations
-we need to make:<a name='bounding-box-scale'></a>
+<img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+One thing that is easy to do is to compute the rectangular bounding box for each
+triangle.  All we need to do is compute the x and y extents of the vertices, and
+use those to generate the corners of our bounding box.  
+
+Before we do this we need to settle on the resolution of our output grid as
+everything is going to be measured in relation to that. This is easiest to do
+with the perspective transformed point cloud data rather than the mesh version.
+For exposition purposes we keep jumping back and forth between these formats,
+although in the final rendering pipeline we will only carry out the mesh
+transformation once we no longer have a need for the point data.
+<a name='bounding-box-scale'></a>
 
 ```{r}
 x.width <- 600L
 x.rng <- range(vlp[['x']])
 y.rng <- range(vlp[['y']])
-asp <- diff(x.rng) / diff(y.rng)
+asp <- diff(y.rng) / diff(x.rng)
 y.width <- as.integer(x.width * asp)
 vlpt <- vlp
-vlpt[['x']] <- rescale(vlpt[['x']], x.width - 1L, 0) + 1
-vlpt[['y']] <- rescale(vlpt[['y']], y.width - 1L, 0) + 1
+vlpt[['x']] <- rescale(vlpt[['x']], center = 0) * (x.width - 1)  + 1
+vlpt[['y']] <- rescale(vlpt[['y']], center = 0) * (y.width - 1) + 1
 ```
 
 Regenerate the mesh, and for each mesh polygon compute the maximum x and y
@@ -570,36 +723,55 @@ mesh <- mesh_tri(vlpt, dim(volcano))
 zord <- order(Reduce('+', mesh[,'z']))
 mesh[] <- lapply(mesh, '[', zord)
 
-mins <- apply(
-  mesh[,c('x','y')], 2, function(x) list(as.integer(ceiling(do.call(pmin, x))))
-)
-maxs <- apply(
-  mesh[,c('x','y')], 2, function(x) list(as.integer(do.call(pmax, x)))
-)
+ceil_min <- function(x) list(as.integer(ceiling(do.call(pmin, x))))
+floor_max <- function(x) list(as.integer(do.call(pmax, x)))
+
+mins <- unlist(apply(mesh[,c('x','y')], 2, ceil_min), recursive=FALSE)
+maxs <- unlist(apply(mesh[,c('x','y')], 2, floor_max), recursive=FALSE)
 str(mins)  # `maxs` will have same structure
 ```
 
-We use `list(...)` in the function to prevent `apply` from simplifying to
-matrix.  This does mean we will need to access the `mins` and `maxs` values as
-e.g. `mins[['x']][[1]]`, but that is only a slight annoyance.
+We use `list(...)` in the ceil/floor functions to prevent `apply` from
+simplifying to a numeric matrix, which in turn requires the unlist to get the
+desired structure.
+
+And now we can visualize or bounding boxes:
+
+```{r}
+minmax <- unname(c(mins, maxs))
+xs <- range(unlist(minmax[c(1,3)]))
+ys <- range(unlist(minmax[c(2,4)]))
+xss <- lapply(minmax[c(1,3)], function(x) (x - xs[1]) / diff(xs))
+yss <- lapply(minmax[c(2,4)], function(y) (y - ys[1]) / diff(ys))
+plot_new(xs, ys)
+rect(xss[[1]], yss[[1]], xss[[2]], yss[[2]], border='#00000033', asp=1)
+```
 
 ## Step 2: Candidate Pixels
 
-Compute how many the dimensions of the bounding x/y min/max in pixels:
+<img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+
+This is the part of the process that feels dirtiest.  We will brute force
+generate pixels to fill each of our bounding boxes.  Oddly this is a little
+tricky, mostly because we wish to do this fully in internally vectorized code.
+And it is particularly important that we do so because we are about to
+dramatically increase the amount of data we are dealing with.  The plan of
+attack is to compute all possible pixel "offset" permutations within each
+bounding box, and then add back the min x and y coordinates to get the actual
+pixel coordinates.
+
+First we compute how dimensions of the bounding x/y min/max boxes in pixels:
 
 ```{r}
-dims.x <- pmax(maxs[['x']][[1]] - mins[['x']][[1]] + 1, 0)
-dims.y <- pmax(maxs[['y']][[1]] - mins[['y']][[1]] + 1, 0)
+dims.x <- pmax(maxs[['x']] - mins[['x']] + 1, 0)
+dims.y <- pmax(maxs[['y']] - mins[['y']] + 1, 0)
 dims.xy <- dims.x * dims.y
 ```
 
-Now the tricky part: we need to fill out the bounding boxes described by `mins`
-and `maxs` with every permutation of x and y pixel coordinates.  The plan of
-attack is to compute the pixel "offset" permutations within each bounding box,
-and then add back the min x and y coordinates to get the actual pixel
-coordinates.
-
-This is the type of thing that one might normally do with `expand.grid`:
+Then we generate all the offset permutations.  This is the type of thing that
+one might normally do with `expand.grid`:
 
 ```{r eval=FALSE}
 Map(function(x, y) expand.grid(x=seq_len(x), y=seq_len(y)), dims.x, dims.y)
@@ -689,7 +861,7 @@ writeLines(
 
 And visualized in two dimensions:
 
-```{r echo=FALSE, fig.height=3.5}
+```{r echo=FALSE, fig.height=2.5}
 col <- c('#0000FF', '#00DD00', '#CCCC00')
 par(mfrow=c(1,3), mar=c(4, 4, 4, 0), pty='s')
 for(i in unique(bb.id)) {
@@ -735,9 +907,8 @@ seq - cummax(sub)
 all.equal(x.off, seq - cummax(sub))
 ```
 
-This produces the same result as with `sequence`.  For convenience we put the
-above logic into `shadow::sequence2`.  Let's benchmark against the full polygon
-data:
+This produces the same result as `sequence`.  For convenience we put the above
+logic into `shadow::sequence2`.  Let's benchmark against the full polygon data:
 
 ```{r, eval=FALSE}
 x.lens <- rep(dims.x, dims.y)   # full volcano bounding boxes
@@ -767,8 +938,8 @@ x.off <- sequence2(x.lens) - 1L
 y.off <- rep(sequence(dims.y), x.lens) - 1L
 
 ## Add back the min values of the bounding boxes
-p.x <- x.off + mins[['x']][[1]][bb.id]
-p.y <- y.off + mins[['y']][[1]][bb.id]
+p.x <- x.off + mins[['x']][bb.id]
+p.y <- y.off + mins[['y']][bb.id]
 ```
 
 Finally, we're ready to generate our first pixel-level volcano.  As with the Z
@@ -802,6 +973,9 @@ A volcano to make NovaLogic[^4] proud!
 
 ## Step 3: Pixel Trimming
 
+<img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 We are now worse off than we were when plotting the polygons in our
 [mesh](#mesh-tri-persp), but fear not, we can improve the chunky raster volcano.
 We need to trim the excess pixels in our bounding boxes.  This is as simple as
@@ -845,8 +1019,7 @@ barycentric coordinates in one R function call:
 ```{r}
 bc <- barycentric(list(x=p.x, y=p.y), mesh.all[,c('x','y')])
 
-## determine which points are inbounds and generate
-## raster matrix
+## determine which points are inbounds and generate raster matrix
 inbounds <- Reduce('&', lapply(bc, '>=', 0))
 
 p.x.in <- p.x[inbounds]
@@ -855,7 +1028,7 @@ p.raster <- matrix(numeric(0), x.width, y.width)
 p.raster[cbind(p.x.in, p.y.in)] <- rep(texture, dims.xy)[inbounds]
 
 par(mai=numeric(4))
-plot(as.raster(flip(p.raster)))
+plot(as.raster(flip(p.raster)), asp=1)
 ```
 
 Great!  All that work and we're right back were we started[^5] with our
@@ -892,15 +1065,11 @@ plot(as.raster(flip(p.raster)))
 
 And just like that we have a beautifully shaded volcano!
 
-# Interlude
+# Interlude II
 
-Hah, you probably thought we were done.  After all, what other indignities could
-we possibly subject dear `volcano` to...
-
-Benchmarks!
-
-I captured the entire process we went through in `shadow::render` to make it
-easier to re-use and benchmark:
+Hah, you probably thought we were done.  Well, we're close.  But first,
+we need to run some benchmarks.  I captured the entire process we went through
+in `shadow::render` to make it easier to re-use and benchmark:
 
 ```{r, eval=FALSE}
 treeprof::treeprof(
@@ -934,16 +1103,24 @@ render_elevation --------------------- : 520.3 -   0.0
                 FUN ------------------ :  21.1 -  21.1
 ```
 
-Virtually all the time was spent rasterizing.  3D projection, meshes,
-and perspective adjustments take no time, relatively speaking.So why bother with
-rasterization?  One obvious answer is that it allows us to implement much better
-shading.  Another factor is that polygon rendering becomes expensive when the
-polygon counts increase:
+Almost 2FPS!  We're not going to be playing any 3D games with this, but
+considering this is done on a 2016 Macbook (yes, the 12" Macbook a.k.a. Apple
+Netbook), on CPU, with a single core, in double precision floating
+point[^double-precision], and via an interpreted programming language, it's not
+too bad.
+
+As for the benchmark details: virtually all the time was spent rasterizing.  3D
+projection, meshes, and perspective adjustments take no time, relatively
+speaking.  So why bother with rasterization?  One obvious answer is that it
+allows us to implement much better shading.  Another factor is that polygon
+rendering becomes expensive when the polygon counts increase.  Here we
+illustrate with an elevation map that has fifty times as many points as
+`volcano`:
 
 ```{r eval=FALSE}
 # File originally from http://tylermw.com/data/dem_01.tif.zip
-# shadow2 <- ray_shade2(elev2, seq(-90, 90, length=25), 45)
 elev2 <- readRDS('static/data/three-d-pipeline-elev-complex.RDS')
+# shadow2 <- ray_shade2(elev2, seq(-90, 90, length=25), 45)
 shadow2 <- readRDS('static/data/three-d-pipeline-shadow-complex.RDS')
 rot2 <- rot_x(-90) %*% rot_z(-90)
 
@@ -1051,6 +1228,15 @@ par(bg='black', mai=numeric(4))
 plot(as.raster(elcolor))
 shadow::analygraph_glasses(.15)   # for the icon h/t @jurbane2
 ```
+<div style='display: none;'>
+```{r analygraph-square, echo=FALSE, fig.width=4, fig.height=4}
+# living on the edge here, we should really re-render and set the empty color
+# to -1 or something, but we're lazy.  This is for the opening thumbnail.
+par(bg='transparent', mai=numeric(4))
+elcolor[elcolor == 0] <- 1
+plot(as.raster(elcolor))
+```
+</div>
 
 One advantage of using red and cyan is that the areas where the images overlap
 are white or gray, which looks a lot more natural.  If we had used red and green
@@ -1074,7 +1260,7 @@ the perspective effect is much stronger with stereograms than with analygraphs.
 Since nowadays it seems no blog post is complete without some kind of animation,
 here goes nothing:
 
-With a little `ffmpeg` magic[^7] we have:
+With a little [`ffmpeg` magic](#videos) we have:
 
 <video style='display: block; margin: 0 auto;' controls autoplay loop>
   <source src="/videos/three-d-pipeline-volcano-rot.mp4" type="video/mp4" />
@@ -1087,7 +1273,10 @@ And one more, why not?
     src="/videos/three-d-pipeline-volcano-zoom.mp4" type="video/mp4" />
 </video>
 
-# The End
+# So Long, and Thanks For All The Clicks
+
+
+
 
 Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
@@ -1099,18 +1288,77 @@ Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 sessionInfo()
 ```
 
-## Additional Code
+## Helper Functions
+
+```{r helper-funs, eval=FALSE}
+```
+
+## Meshes With Persp
+
+With some work I was able to roughly recreate our own [tile
+mesh](#tile-mesh-plot):
+
+```{r}
+par(mai=numeric(4))
+persp(
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
+  ylim=c(2,52), xlim=c(6,46), theta=-65, phi=70,
+  col='#DDDDDD', border='#444444', r=1e7, scale=FALSE
+)
+```
+
+I left the box in on purpose to highlight that I had to go to ridiculous lengths
+to get `persp` to fit the viewport the way I wanted.  Finding the correct `xlim`
+and `ylim` values to achieve the desired effect was an exercise in almost futile
+stochastic debugging.  There probably is a way to do this better.
+
+Notice also that the `theta` and `phi` values are kind of weird given that we
+use `rot_x(-20) %*% rot_z(65)`.  I wasn't able to figure out what values I
+needed until I went through the C source code to figure out what what order
+`phi` and `theta` were being applied (it matters), and saw this:
+
+```
+## r-devel@75683:src/library/graphics/src/plot3d.c@1205
+XRotate(-90.0);                /* rotate x-y plane to horizontal */
+YRotate(-theta);               /* azimuthal rotation */
+XRotate(phi);                  /* elevation rotation */
+```
+
+I had similar frustrations in understanding `rgl` as well, and similarly had to
+dig through sources to figure exactly what was going on and eventually decided
+it was more fun to just build the whole thing from scratch to best fit the
+specific purpose I had in mind.
+
+As far as I was able to get with `persp` is this:
+
+```{r}
+par(mai=numeric(4))
+tile.col <- Reduce('+', mesh.tile[,'t']) / 4
+persp(
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
+  ylim=c(2,52), xlim=c(6,46), theta=-65, phi=70,
+  col=gray(tile.col), border=NA, r=1e7, scale=FALSE, box=FALSE
+)
+```
+
+This doesn't look great: it's blocky, and there is no [good way to
+get rid of the anti-aliasing lines][11].  I also used our `mesh.tile`
+list-matrix to compute the shading of the tiles, which requires a fair bit of
+work beyond what `persp` does on its own.  Finally, while I can get this
+out to a bitmap, AFAICT there is no easy base-R-only way to read back a bitmap
+into R for manipulation to make the analygraphs.
+
+## Videos
 
 Both videos were made by generating PNG files that I turned into an MP4 with
-`ffmpeg` with the command:
+ffmpeg` with the command:
 
 ```
 ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp
 ```
 
-Analygraph videos:
-
 ```{r eval=FALSE}
+Analygraph videos:
 ## Basic video
 
 deg <- 0:119 * 3
@@ -1175,16 +1423,37 @@ for(i in elrows) {
 }
 ```
 
-----
+---
+
+[^quixotic]: Why would I subject myself to this?  Well, I'm as sucker for
+  learning new interesting things such as how 3D rendering is actually done, and
+  there is no better way to learn than to do.  I also believe, as an R package
+  developer, that it is important to know just how far you can push base
+  R (there are good reasons for this that I will elaborate on in a future blog
+  post), and there is no better way to know than to push it to do
+  things it isn't really meant to do.
+[^base-r-only]: I use the term loosely to mean the packages that are by default
+  loaded into the search path of a "vanilla" R session.  As of this writing the
+  packages are `stats`, `graphics`, `grDevices`, `utils`, `datasets`, `methods`,
+  and the actual `base` package.
+[^copies-for-speed]: There is always a tension in R between minimizing R-level
+  function calls and minimizing memory footprint.  Due to the cost of calling
+  R-level functions it is often though not always useful to duplicate or
+  partially duplicate data if it avoids many R-level function calls.
+[^how-fast-is-useful]: We're not shooting for live rendering of 3D games here;
+  something that will allow us to render short video clips in single digit
+  minutes is what we consider useful.
+[^double-precision]: 3D rendering is typically done in single precision floating
+  point, which would halve the memory footprint of the process.
 [^1]: Some 3D packages out there will blatantly lie to you by rotating the
   displayed axes along with the object, making it seem like the axes are
   rotating, but in reality the underlying axes are not rotating.  This lie
   made it particularly difficult for me to figure out why things were not
   rotating the way I thought they should.  I'm still pissed off about it.
 [^2]: In reality we only *need* to do this for the polygons that are visible in
-  the end result, but determining what is visible and not is non-trivial and
-  we'll reserve that for a possible future low-probability-of-getting-made
-  blog post.
+  the end result, but determining what is visible and not is non-trivial,
+  particularly for open surfaces at the pixel level, so we'll reserve that for a
+  possible future low-probability-of-getting-made blog post.
 [^3]: A more efficient variation on `expand.grid(x, y)` would be
   `list(rep(seq_len(x),y), rep(seq_len(y), each=x))`
 [^4]: NovaLogic developed a 3D terrain rendering engine for use in the Comanche
@@ -1211,3 +1480,4 @@ for(i in elrows) {
 [9]: https://en.wikipedia.org/wiki/Stereoscopy
 [10]: https://en.wikipedia.org/wiki/Stereoscopy#Freeviewing
 [11]: https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors
+[12]: https://cran.r-project.org/web/packages/rgl/index.html
