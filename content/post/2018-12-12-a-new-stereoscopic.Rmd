@@ -33,11 +33,17 @@ but I struggled to get it to do *exactly* what I wanted programmatically.  While
 trying to understand how `rgl` reacts to inputs I read up on 3D projections,
 and realized that maybe this could all be done outside of `rgl`.
 
-And so began this quixotic crusade[^quixotic] to implement an "efficient-enough"
-3D rendering pipeline using base R only.  I took notes along the way to share
-with those who like me are interested, but unlike me have better time management
-skills.  So, come along for a ride through 3D projections, meshes, perspective
-adjustments, rasterization, and image processing, all in base R[^base-r-only].
+And so began this quixotic crusade[^quixotic] to implement an
+"efficient-enough"[^how-fast-is-useful] 3D rendering pipeline using base R only.
+I took notes along the way to share with those who like me are interested, but
+unlike me have better time management skills.  So, come along for a ride through
+3D projections, meshes, perspective adjustments, rasterization, and image
+processing, all in base R[^base-r-only].
+
+**DISCLAIMER**: I knew nothing about 3D rendering before starting this post.  I
+know a little bit more about it now.  Do not look for 3D rendering best
+practices here.  Most of the stuff I made up and kept because it _seemed_ to
+work.
 
 # Volcano!
 
@@ -72,9 +78,9 @@ plot_new(xv, yv)
 points(x=rescale(xv), y=rescale(yv), col=gray(rescale(volcano)), pch=15)
 ```
 
-`plot_new` sets plot parameters (e.g. margins, aspect ratios).  `rescale`
-rescales values to between zero and one.  Both of these  are [helper functions
-defined in the appendix](#helper-functions).
+`plot_new` is a thin wrapper around `plot.new` that also sets some `par`
+values.  `rescale` rescales values to between zero and one.  Both of these  are
+[helper functions defined in the appendix](#helper-functions).
 
 As we saw from the [ray shading post](/2018/10/23/do-not-shade-r/), it is
 possible to ray shade elevation maps using base R only.  For the sake of
@@ -114,9 +120,9 @@ col(mx.example)
 rbind(x=c(row(mx.example)), y=c(col(mx.example)), z=c(mx.example))
 ```
 
-While this looks rather wide for long wide, but I assure you it is long in
-spirit.  It is just that we need it in 3 x n rather n x 3 format for the
-upcoming matrix multiplication.  As applied to `volcano`:
+While this looks rather wide for long format data, I assure you it is long in
+spirit.  We need it in 3 x n rather n x 3 format for the upcoming matrix
+multiplication.  As applied to `volcano`:
 
 ```{r}
 volc.l <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
@@ -238,9 +244,9 @@ par(old.par)
 To form each tile as shown in the first panel we take one vertex from each
 of the four vertex panels.  Each panel has the 9 of 16 grid points available
 for use as vertices enclosed in a black bounding box.  For the top left
-green tile, we take the top left point of the same color from each of the
-bounding boxes.  The same process is repeated for each tile by picking the
-corresponding vertex from each panel.
+green tile, we take the top left point from each of the bounding boxes.  The
+same process is repeated for each tile by picking the corresponding vertex from
+each panel.  The vertices are colored by the tile they belong to.
 
 The operation we just described is equivalent to alternating dropping the
 first/last row/column.  Because our projected volcano data is already in long
@@ -257,7 +263,7 @@ idx.raw <- matrix(seq_along(volcano), nr, nc)
 ```
 
 Exploiting the underlying vector nature of matrices, and vice versa, is a common
-theme when trying to write fast R code.
+technique when trying to write fast R code.
 
 We can now drop rows and columns in sequence from that index matrix to get the
 long format indices for each vertex for each tile:
@@ -362,8 +368,8 @@ x[,1:10]
 polygons, we need to NA-delimit our input vectors.  Rather than painstakingly
 creating those vectors from the undelimited ones, we `rbind` the four vertex
 vectors with one NA vector.  That this produces a matrix is besides the point;
-the idea is that the vector wrapping nature of the matrix allows us to easily
-sandwich NA values between each of our tiles' data:
+the idea is that the vector wrapping nature of the matrix allows us to sandwich
+NA values between each of our tiles' data:
 
 ```{r}
 c(x[,1:10])
@@ -378,17 +384,16 @@ we can do with `persp`.
 
 ## Triangles
 
-But a tile mesh is not ideal.  Among other things, there is no guarantee the
+A tile mesh is not ideal.  Among other things, there is no guarantee the
 tiles are flat.  Triangles on the other hand are guaranteed to be flat, and
 additionally benefit from simple shading algorithms.  So we will turn our tiles
-into triangles as we do here by turning the black tile into the blue and green
-triangles:
+into triangles:
 
 ```{r echo=FALSE}
 par(mai=numeric(4))
 plot.new()
 polygon(
-  rescale(c(0, 1, 1, 0), .9), rescale(c(0, 0, 1, 1), .9), 
+  rescale(c(0, 1, 1, 0), .9), rescale(c(0, 0, 1, 1), .9),
   col='#DDDDDD', border='#444444'
 )
 text(
@@ -413,8 +418,8 @@ text(
 )
 ```
 
-Our data is nicely structured that the translation from tile to triangle mesh is
-trivial:
+The list-matrix structure of our data makes the translation from tile to
+triangle mesh trivial:
 
 ```{r}
 vertex.blue <- 1:3
@@ -452,17 +457,17 @@ Now we're cooking!
 
 # Perspective
 
-Everything we've done to this point has been assumed no perspective effect, so
-that objects of the same size appear the same size irrespective of how far
-from the observer they are.  This observer, you, has been looking at the object
-down on a line parallel to the Z axis and passing through the midpoint of the X
+Everything we've done to this point has assumed no perspective effect; objects
+of the same size appear the same size irrespective of how far from the observer
+they are.  This observer, you, has been looking at the object
+along a line parallel to the Z axis and passing through the midpoint of the X
 and Y extents of the projected object.  For expository purposes we are about to,
 for the first and only time, rotate Observer 0 (you) 90 degrees about the Y
 axis.
 
-In the following diagram you are looking down a line parallel to the X axis.
+In the following diagram you are looking along a line parallel to the X axis.
 The Z axis now runs from left to right.  Observers 1, 2, and 3 are all still
-looking at `volcano` down the Z axis:
+looking at `volcano` along the Z axis:
 
 ```{r echo=FALSE, fig.width=7, fig.height=2.33}
 rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
@@ -584,15 +589,17 @@ around the calculations described in the [Mesh section](#meshes):
 <a name='mesh-tri-persp'></a>
 
 ```{r}
-mesh.tri <- mesh_tri(vlp, dim(volcano))
+mesh.tri <- mesh_tri(vlp, dim(volcano), order=TRUE)
 mesh.tri
-zord <- order(Reduce('+', mesh.tri[,'z']))
-x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord]
-y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord]
-texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))[zord]
+x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))
+y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))
+texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=texture, border=texture)
 ```
+
+`mesh_tri` has the additional benefit that it orders the tiles by Z value so we
+do not need to worry about re-ordering before plotting anymore.
 
 Are we there yet?  Nope, we're going to drag this baby kicking and screaming
 all the way to its painful, bloody conclusion.
@@ -613,7 +620,7 @@ what each pixel of our final image should look like.  This requires determining
 which points of our final output pixel grid belong to which triangles.  While
 this is the type of thing a child could do easily, it is surprisingly difficult
 to instruct a computer to do the same, particularly when we need to account for
-the need to use internally vectorized base R code.
+the need to use internally vectorized[^internally-vectorized] base R code.
 
 Conceptually, the process takes three steps:
 
@@ -694,7 +701,7 @@ src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png'
 style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 One thing that is easy to do is to compute the rectangular bounding box for each
 triangle.  All we need to do is compute the x and y extents of the vertices, and
-use those to generate the corners of our bounding box.  
+use those to generate the corners of our bounding box.
 
 Before we do this we need to settle on the resolution of our output grid as
 everything is going to be measured in relation to that. This is easiest to do
@@ -715,13 +722,11 @@ vlpt[['x']] <- rescale(vlpt[['x']], center = 0) * (x.width - 1)  + 1
 vlpt[['y']] <- rescale(vlpt[['y']], center = 0) * (y.width - 1) + 1
 ```
 
-Regenerate the mesh, and for each mesh polygon compute the maximum x and y
-integer pixel values they could contain:
+We can regenerate the mesh, and for each mesh polygon compute the maximum x and y
+integer pixel values they will contain:
 
 ```{r}
-mesh <- mesh_tri(vlpt, dim(volcano))
-zord <- order(Reduce('+', mesh[,'z']))
-mesh[] <- lapply(mesh, '[', zord)
+mesh <- mesh_tri(vlpt, dim(volcano), order=TRUE)
 
 ceil_min <- function(x) list(as.integer(ceiling(do.call(pmin, x))))
 floor_max <- function(x) list(as.integer(do.call(pmax, x)))
@@ -735,7 +740,7 @@ We use `list(...)` in the ceil/floor functions to prevent `apply` from
 simplifying to a numeric matrix, which in turn requires the unlist to get the
 desired structure.
 
-And now we can visualize or bounding boxes:
+This is what bounding boxes look like:
 
 ```{r}
 minmax <- unname(c(mins, maxs))
@@ -753,16 +758,15 @@ rect(xss[[1]], yss[[1]], xss[[2]], yss[[2]], border='#00000033', asp=1)
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png'
 style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 
-This is the part of the process that feels dirtiest.  We will brute force
-generate pixels to fill each of our bounding boxes.  Oddly this is a little
-tricky, mostly because we wish to do this fully in internally vectorized code.
-And it is particularly important that we do so because we are about to
-dramatically increase the amount of data we are dealing with.  The plan of
-attack is to compute all possible pixel "offset" permutations within each
+We will brute force generate pixels to fill each of our bounding boxes.  Oddly
+this is a little tricky, mostly because we wish to do this fully in internally
+vectorized code.  And it is particularly important that we do so because we are
+about to dramatically increase the amount of data we are dealing with.  The plan
+of attack is to compute all possible pixel "offset" permutations within each
 bounding box, and then add back the min x and y coordinates to get the actual
 pixel coordinates.
 
-First we compute how dimensions of the bounding x/y min/max boxes in pixels:
+First we compute the dimensions of the bounding x/y min/max boxes in pixels:
 
 ```{r}
 dims.x <- pmax(maxs[['x']] - mins[['x']] + 1, 0)
@@ -927,8 +931,7 @@ use case of the internally vectorized cumulative functions to solve a problem
 that doesn't have a built-in vectorized solution.
 
 Now that we know how we can to generate the candidate x/y offsets quickly we can
-fill out the bounding boxes.  One small tweak is that we generate the bounding
-boxes in the same Z order we have been using for our [mesh](#mesh-tri-persp).
+fill out the bounding boxes.
 
 ```{r}
 dims.xy <- dims.x * dims.y
@@ -942,8 +945,8 @@ p.x <- x.off + mins[['x']][bb.id]
 p.y <- y.off + mins[['y']][bb.id]
 ```
 
-Finally, we're ready to generate our first pixel-level volcano.  As with the Z
-order, we will re-use the textures we computed for our [mesh](#mesh-tri-persp):
+Finally, we're ready to generate our first pixel-level volcano.  We will re-use
+the textures we computed for our [mesh](#mesh-tri-persp):
 
 ```{r}
 p.raster <- matrix(numeric(0), x.width, y.width)
@@ -980,16 +983,17 @@ We are now worse off than we were when plotting the polygons in our
 [mesh](#mesh-tri-persp), but fear not, we can improve the chunky raster volcano.
 We need to trim the excess pixels in our bounding boxes.  This is as simple as
 deciding which pixels are inside the original polygons and which ones are not.
-Really something that a three year old could do pretty easily.  Yet, as is often
-the case, expressing this task in a way that a computer can easily execute is
+Really something that a three year old could do.  Yet, as is often
+the case, expressing such tasks in a way that a computer can easily execute is
 difficult.
 
 There are many possible solutions to the problem, but I settled on using
 [barycentric coordinates][3].  These have the useful property that points with
 negative barycentric coordinates are outside of the triangle referenced by those
 coordinates.  Additionally, there is a simple arithmetic expression for
-barycentric coordinates that can be vectorized.  Finally, there is a substantial
-side-benefit that we will discuss when we get to [shading](#shading).
+barycentric coordinates in triangles that can be internally vectorized.
+Finally, there is a substantial side-benefit that we will discuss when we get to
+[shading](#shading).
 
 We are going to re-use the [`bary_L`][4] function we implemented as part of our
 [previous blog post][5] on list data structures and vertex shading.  See that
@@ -1018,7 +1022,13 @@ barycentric coordinates in one R function call:
 
 ```{r}
 bc <- barycentric(list(x=p.x, y=p.y), mesh.all[,c('x','y')])
+str(bc)
+```
 
+Of the five points `str` shows, only point 3 will be kept as it is the only one
+with positive barycentric coordinates for each vertex.
+
+```{r}
 ## determine which points are inbounds and generate raster matrix
 inbounds <- Reduce('&', lapply(bc, '>=', 0))
 
@@ -1112,10 +1122,12 @@ too bad.
 As for the benchmark details: virtually all the time was spent rasterizing.  3D
 projection, meshes, and perspective adjustments take no time, relatively
 speaking.  So why bother with rasterization?  One obvious answer is that it
-allows us to implement much better shading.  Another factor is that polygon
-rendering becomes expensive when the polygon counts increase.  Here we
-illustrate with an elevation map that has fifty times as many points as
-`volcano`:
+allows us to implement much better shading.  We also want the bitmap data
+as an R object for further manipulation, and while it is possible to save
+the polygon output to image files, I don't know of an easy way to get that
+information back into R with base-R-only.  And finally polygon rendering becomes
+expensive when the polygon counts increase.  Here we illustrate with an
+elevation map that has fifty times as many points as `volcano`:
 
 ```{r eval=FALSE}
 # File originally from http://tylermw.com/data/dem_01.tif.zip
@@ -1192,12 +1204,13 @@ polygon artifacts:
 
 # Stereoscopy
 
-Finally: the fun stuff.  As hinted up to we're looking to make [analygraphs][8]
-and [stereograms][9].  We can easily render two scenes with slightly different
-angles.  For convenience, we use `shadow::mrender_elevation` which is a wrapper
-to `render_elevation` for multiple rotations.  In addition to supporting
-multiple rotations, `mrender_elevation` uses absolute distances and fixed fields
-of view to ensure consistent perspective transformations.
+Finally: the fun stuff.  As hinted at in the introduction, we are looking to
+make [analygraphs][8] and [stereograms][9].  We can easily render two scenes
+with slightly different angles.  For convenience, we use
+`shadow::mrender_elevation` which is a wrapper to `render_elevation` for
+multiple rotations.  In addition to supporting multiple rotations,
+`mrender_elevation` uses absolute distances and fixed fields of view to ensure
+consistent perspective transformations.
 
 ```{r}
 rot.l <- rot %*% rot_z(2.5)
@@ -1212,15 +1225,14 @@ right <- flip(elren[[2]])
 In order to generate an analygraph we need to assign the left image to the red
 channel, and the right image to the cyan channel.  No cyan channel?  No problem:
 turns out that cyan is just blue and green added together.  This is very easy to
-do as the R raster format accepts 3D arrays as inputs in addition to matrices,
-where each value of the third dimension corresponds to one of the RGB color
-channels:
+do as the R raster format accepts 3D arrays as inputs, where each value of the
+third dimension corresponds to one of the RGB color channels:
 
 ```{r analygraph}
 analygraph <- function(left, right) {
   analygraph <- array(0, dim=c(dim(left), 3))
-  analygraph[,,1] <- left
-  analygraph[,,2:3] <- right
+  analygraph[,,1] <- left      # red channel
+  analygraph[,,2:3] <- right   # green and blue
   analygraph
 }
 elcolor <- analygraph(left, right)
@@ -1275,8 +1287,12 @@ And one more, why not?
 
 # So Long, and Thanks For All The Clicks
 
+Hopefully this was somewhat instructive and enjoyable for you.  I imagine if you
+got this far there is a chance you did.  Or maybe you're just looking for my
+contact info to flame me on the interwebs.
 
-
+All the illustrations in this post were generated with base R graphics.  You can
+see the [source for this post on Github][14].
 
 Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
 
@@ -1443,6 +1459,8 @@ for(i in elrows) {
 [^how-fast-is-useful]: We're not shooting for live rendering of 3D games here;
   something that will allow us to render short video clips in single digit
   minutes is what we consider useful.
+[^internally-vectorized]: R code that carries out looped operations over vectors
+  in compiled code rather than in R-level code.
 [^double-precision]: 3D rendering is typically done in single precision floating
   point, which would halve the memory footprint of the process.
 [^1]: Some 3D packages out there will blatantly lie to you by rotating the
@@ -1481,3 +1499,4 @@ for(i in elrows) {
 [10]: https://en.wikipedia.org/wiki/Stereoscopy#Freeviewing
 [11]: https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors
 [12]: https://cran.r-project.org/web/packages/rgl/index.html
+[14]: https://github.com/brodieG/website/blob/master/content/post/2018-12-12-a-new-stereoscopic.Rmd
