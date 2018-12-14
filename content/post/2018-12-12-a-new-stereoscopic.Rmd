@@ -2,10 +2,9 @@
 title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
-draft: true
 slug: three-d-pipeline
-categories: []
-tags: []
+categories: [r]
+tags: [optimization,visualization]
 ---
 ```{r echo=FALSE}
 knitr::opts_chunk$set(
@@ -33,17 +32,16 @@ but I struggled to get it to do *exactly* what I wanted programmatically.  While
 trying to understand how `rgl` reacts to inputs I read up on 3D projections,
 and realized that maybe this could all be done outside of `rgl`.
 
-And so began this quixotic crusade[^quixotic] to implement an
+And so began this quixotic challenge[^quixotic] to implement an
 "efficient-enough"[^how-fast-is-useful] 3D rendering pipeline using base R only.
 I took notes along the way to share with those who like me are interested, but
 unlike me have better time management skills.  So, come along for a ride through
 3D projections, meshes, perspective adjustments, rasterization, and image
 processing, all in base R[^base-r-only].
 
-**DISCLAIMER**: I knew nothing about 3D rendering before starting this post.  I
-know a little bit more about it now.  Do not look for 3D rendering best
-practices here.  Most of the stuff I made up and kept because it _seemed_ to
-work.
+**DISCLAIMER**: I knew nothing about 3D rendering before starting this post, and
+now I know just enough to be dangerous.  Do not look for 3D rendering best
+practices here.  My criteria for using things in this post is: "does it _appear_ to work".
 
 # Volcano!
 
@@ -84,7 +82,7 @@ values.  `rescale` rescales values to between zero and one.  Both of these  are
 
 As we saw from the [ray shading post](/2018/10/23/do-not-shade-r/), it is
 possible to ray shade elevation maps using base R only.  For the sake of
-exposition I put the code in the [shadow demo package][], but as far as I'm
+exposition I put the code in the [shadow demo package][15], but as far as I'm
 concerned I'm still abiding by the base-R-only pledge.
 
 ```{r, fig.width=6, fig.height=4}
@@ -456,6 +454,9 @@ texture3 <- texture # for later use
 Now we're cooking!
 
 # Perspective
+
+If I had any perspective I wouldn't be writing this blog post.  But that can't
+be helped.  Our dear friend `volcano` is a different story.
 
 Everything we've done to this point has assumed no perspective effect; objects
 of the same size appear the same size irrespective of how far from the observer
@@ -1250,11 +1251,13 @@ plot(as.raster(elcolor))
 ```
 </div>
 
+You can get [analygraph glasses very cheaply][16].  I got 10 for USD5.
+
 One advantage of using red and cyan is that the areas where the images overlap
 are white or gray, which looks a lot more natural.  If we had used red and green
 the overlapping areas would end up yellow.
 
-We can also make stereograms:
+If you can't be bothered getting the glasses, we can also make stereograms:
 
 ```{r stereogram}
 eljuxt <- cbind(left, right)
@@ -1270,26 +1273,33 @@ easier to "focus" on the stereogram with them off.  The effort is worth it as
 the perspective effect is much stronger with stereograms than with analygraphs.
 
 Since nowadays it seems no blog post is complete without some kind of animation,
-here goes nothing:
+let's spin up `volcano`.  Out of courtesy to those of you who get nauseated
+easily, I'm not auto-playing the videos.  I also set up the lighting to remain
+constant throughout so that it is clear that our frame of reference is fixed.
+Tough luck to those visiting `volcano` today.
 
-With a little [`ffmpeg` magic](#videos) we have:
-
-<video style='display: block; margin: 0 auto;' controls autoplay loop>
+<video style='display: block; margin: 0 auto;' controls loop>
   <source src="/videos/three-d-pipeline-volcano-rot.mp4" type="video/mp4" />
 </video>
 
 And one more, why not?
 
-<video style='display: block; margin: 0 auto;' controls autoplay loop>
+<video style='display: block; margin: 0 auto;' controls loop>
   <source
     src="/videos/three-d-pipeline-volcano-zoom.mp4" type="video/mp4" />
 </video>
 
+Assembling the video from the component frames with [`ffmpeg` magic](#videos)
+and using blogdown to render the post are the only things we resorted to
+non base R for.
+
 # So Long, and Thanks For All The Clicks
 
 Hopefully this was somewhat instructive and enjoyable for you.  I imagine if you
-got this far there is a chance you did.  Or maybe you're just looking for my
-contact info to flame me on the interwebs.
+got this far there is a chance it was.  Or maybe you're just looking for my
+contact info to flame me on the interwebs.  If the latter I'll take some solace
+in the fact that you probably overshot and had to scroll back through the
+footnotes and appendix.
 
 All the illustrations in this post were generated with base R graphics.  You can
 see the [source for this post on Github][14].
@@ -1462,7 +1472,10 @@ for(i in elrows) {
 [^internally-vectorized]: R code that carries out looped operations over vectors
   in compiled code rather than in R-level code.
 [^double-precision]: 3D rendering is typically done in single precision floating
-  point, which would halve the memory footprint of the process.
+  point, which would halve the memory footprint of the process.  Granted we only
+  have on color chanel, but on the whole even if we had three color chanels
+  we're taking a performance penalty due to R only have one type of floating
+  point data type.
 [^1]: Some 3D packages out there will blatantly lie to you by rotating the
   displayed axes along with the object, making it seem like the axes are
   rotating, but in reality the underlying axes are not rotating.  This lie
@@ -1485,7 +1498,6 @@ for(i in elrows) {
   or perhaps because of anti-aliasing (though turning that off did not seem to
   make a difference).  I am not curious enough to look at the source of the
   device code.
-[^7]: I used `ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4` on the PNG files.
 
 [1]: https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
 [2]: /2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue
@@ -1500,3 +1512,5 @@ for(i in elrows) {
 [11]: https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors
 [12]: https://cran.r-project.org/web/packages/rgl/index.html
 [14]: https://github.com/brodieG/website/blob/master/content/post/2018-12-12-a-new-stereoscopic.Rmd
+[15]: https://github.com/brodieG/shadow/releases/tag/blog-stereoscopic
+[16]: https://duckduckgo.com/?q=analygraph+glasses&t=ffsb&ia=products
