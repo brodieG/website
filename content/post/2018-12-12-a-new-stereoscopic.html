@@ -1,0 +1,1073 @@
+---
+title: A New Stereoscopic Mount Spectacular
+author: ~
+date: '2018-12-12'
+slug: three-d-pipeline
+categories: [r]
+tags: [optimization,visualization]
+---
+
+
+
+<div id="cool-but-not-eye-popping" class="section level1">
+<h1>Cool, but Not Eye Popping</h1>
+<p><img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/></p>
+<p>As I finished the <a href="/2018/10/23/do-not-shade-r/">ray shading post</a>, it occurred
+to me that it would be pretty cool if we could make these awesome 3D-looking
+reliefs actually 3D, or at least stereoscopic. After all, how hard could it
+be? We have the elevation data, so some simple trigonometry should allow us to
+tilt things left, tilt things right, and voilà. So I did that and it looked
+like garbage.</p>
+<p>That would have been the right time to walk away and move on to more productive
+things. Instead, I started messing around with <a href="https://cran.r-project.org/web/packages/rgl/index.html"><code>rgl</code></a> (fantastic package),
+but I struggled to get it to do <em>exactly</em> what I wanted programmatically. While
+trying to understand how <code>rgl</code> reacts to inputs I read up on 3D projections,
+and realized that maybe this could all be done outside of <code>rgl</code>.</p>
+<p>And so began this quixotic challenge<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> to implement an
+“efficient-enough”<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> 3D rendering pipeline using base R only.
+I took notes along the way to share with those who like me are interested, but
+unlike me have better time management skills. So, come along for a ride through
+3D projections, meshes, perspective adjustments, rasterization, and image
+processing, all in base R<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>.</p>
+<p><strong>DISCLAIMER</strong>: I knew nothing about 3D rendering before starting this post, and
+now I know just enough to be dangerous. Do not look for 3D rendering best
+practices here. My criteria for using things in this post is: “does it <em>appear</em> to work”.</p>
+</div>
+<div id="volcano" class="section level1">
+<h1>Volcano!</h1>
+<p>Our subject today will be the much-loved <code>volcano</code>, a.k.a. Maunga Whau. We are
+going to pretend that the Z-values of the <code>volcano</code> matrix are in the same units
+as the grid size (i.e. 10m per unit, as per <code>?volcano</code>). This is obviously not
+the case, but the documentation is just ambiguous enough that I feel comfort
+indulging in this minor fraud for dramatic effect. Here is a height-map of
+volcano:</p>
+<pre class="r"><code>xv &lt;- row(volcano)
+yv &lt;- col(volcano)
+plot_new(xv, yv)
+points(x=rescale(xv), y=rescale(yv), col=gray(rescale(volcano)), pch=15)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-2-1.png" width="576" style="display: block; margin: auto;" /></p>
+<p><code>plot_new</code> is a thin wrapper around <code>plot.new</code> that also sets some <code>par</code>
+values. <code>rescale</code> rescales values to between zero and one. Both of these are
+<a href="#helper-functions">helper functions defined in the appendix</a>.</p>
+<p>As we saw from the <a href="/2018/10/23/do-not-shade-r/">ray shading post</a>, it is
+possible to ray shade elevation maps using base R only. For the sake of
+exposition I put the code in the <a href="https://github.com/brodieG/shadow/releases/tag/blog-stereoscopic">shadow demo package</a>, but as far as I’m
+concerned I’m still abiding by the base-R-only pledge.</p>
+<pre class="r"><code>library(shadow)
+shadow &lt;- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
+plot_new(xv, yv)
+points(x=rescale(xv), y=rescale(yv), col=gray(shadow), pch=15)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-3-1.png" width="576" style="display: block; margin: auto;" /></p>
+</div>
+<div id="d-projection" class="section level1">
+<h1>3D Projection</h1>
+<p>While volcano looks pretty cool from above, we want to provide a more
+interesting view. To do this we can use <a href="https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions">3D rotation matrices</a>. <code>shadow</code>
+implements the <code>rot_*</code> functions, which are thin wrappers that generate the
+rotation matrices described in the <a href="https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions">wikipedia article</a>:</p>
+<pre class="r"><code>round(rot_z(90), 3)</code></pre>
+<pre><code>     [,1] [,2] [,3]
+[1,]    0   -1    0
+[2,]    1    0    0
+[3,]    0    0    1</code></pre>
+<p>By our convention the Z-axis is always pointed directly at the user, even after
+rotations are applied. In other words, it is the model that rotates, not the
+viewer<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>. This also means that the X and Y axes remain in their traditional
+positions.</p>
+<p>In order to use the rotation matrix we need our data in long format. This can
+be done easily by taking advantage of the <code>row</code> and <code>col</code> functions:</p>
+<pre class="r"><code>mx.example &lt;- matrix((0:3)*10, nrow=2, ncol=2)
+row(mx.example)</code></pre>
+<pre><code>     [,1] [,2]
+[1,]    1    1
+[2,]    2    2</code></pre>
+<pre class="r"><code>col(mx.example)</code></pre>
+<pre><code>     [,1] [,2]
+[1,]    1    2
+[2,]    1    2</code></pre>
+<pre class="r"><code>rbind(x=c(row(mx.example)), y=c(col(mx.example)), z=c(mx.example))</code></pre>
+<pre><code>  [,1] [,2] [,3] [,4]
+x    1    2    1    2
+y    1    1    2    2
+z    0   10   20   30</code></pre>
+<p>While this looks rather wide for long format data, I assure you it is long in
+spirit. We need it in 3 x n rather n x 3 format for the upcoming matrix
+multiplication. As applied to <code>volcano</code>:</p>
+<pre class="r"><code>volc.l &lt;- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+ncol(volc.l)      # long data has same number of colums ...</code></pre>
+<pre><code>[1] 5307</code></pre>
+<pre class="r"><code>length(volcano)   # ... as volcano has elements</code></pre>
+<pre><code>[1] 5307</code></pre>
+<p>The 3D projection is then just a matrix multiply:</p>
+<pre class="r"><code>rot &lt;- rot_x(-20) %*% rot_z(65)
+volc.lr &lt;- rot %*% volc.l</code></pre>
+<p>We need to re-order by Z values to ensure that the nearest points are plotted
+last so they are not occluded by further points. Recall the Z axis is pointed
+directly at you, so points with higher Z values are closer.</p>
+<pre class="r"><code>zord &lt;- order(volc.lr[3,])
+vord &lt;- volc.lr[, zord]   # reorder by Z-values
+x &lt;- vord[1,]
+y &lt;- vord[2,]
+plot_new(x, y)
+points(rescale(x), rescale(y), col=gray(shadow[zord]), pch=15, cex=0.5)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-8-1.png" width="576" style="display: block; margin: auto;" /></p>
+<p>The good news is now we have an awesome looking 3D rendition of our volcano…
+in the moments after a direct hit from a disruptor cannon.</p>
+</div>
+<div id="interlude-i" class="section level1">
+<h1>Interlude I</h1>
+<p>As you might have guessed one of the reasons why people don’t usually implement
+3D rendering pipelines in base R is performance. If we are to have any hope of
+creating a pipeline that renders things in <em>useful</em><a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a> time we
+need to be careful about how we structure our data and calculations.</p>
+<p>In an earlier blog post we found that <a href="/2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue">list and list-matrix data structures are
+often faster to operate on</a> than the pure-vector equivalent matrices and
+arrays. Here we turn our long volcano matrix into list format:</p>
+<p><a name='volcano-list-long'></a></p>
+<pre class="r"><code>vl &lt;- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
+vl &lt;- c(vl, list(shadow))              # add texture info
+names(vl) &lt;- c(&#39;x&#39;, &#39;y&#39;, &#39;z&#39;, &#39;t&#39;)     # &#39;t&#39; for texture
+str(vl)</code></pre>
+<pre><code>List of 4
+ $ x: num [1:5307] -0.4837 -0.0611 0.3615 0.7842 1.2068 ...
+ $ y: num [1:5307] 35.5 36.6 37.8 39 40.2 ...
+ $ z: num [1:5307] 93.5 94.1 94.8 95.4 96 ...
+ $ t: num [1:87, 1:61] 1 1 1 1 1 1 1 1 1 1 ...</code></pre>
+<p>Throughout the rest of this blog post we will use techniques explored at length
+in the aforementioned post. If you are not familiar with <code>lapply</code>, <code>do.call</code>,
+<code>Map</code>, <code>Reduce</code>, and similar functional list manipulation facilities, you should
+consider reading <a href="/2018/11/23/is-your-matrix-running-slow-try-lists#lists-to-the-rescue">that post</a>. We’ll wait for you right here =).</p>
+</div>
+<div id="meshes" class="section level1">
+<h1>Meshes</h1>
+<div id="tiles" class="section level2">
+<h2>Tiles</h2>
+<p>As our disintegrating volcano demonstrates, we can’t just use elevation data
+as point coordinates. One possibility is to turn our point “cloud” into a mesh.
+It turns out that making a mesh out of an arbitrary point cloud is one of those
+“seems easy but isn’t” problems. Worse, the typical implementations
+involve some kind of sequential process that is repeated many times until the
+mesh is complete. These types of algorithms cannot be implemented efficiently
+in R, though there are R packages that implement them in compiled code.</p>
+<p>Fortunately for us and our base-R-only challenge, our point cloud is not
+arbitrary. The source data contains the information required to build the mesh:
+the original x-y grid. We can generate a tile mesh by subsetting a contiguous
+portion of our elevation matrix four times, once for each of the four vertices
+of each tile. This is what it looks like with an illustrative 4 x 4 grid:</p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-10-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>To form each tile as shown in the first panel we take one vertex from each
+of the four vertex panels. Each panel has the 9 of 16 grid points available
+for use as vertices enclosed in a black bounding box. For the top left
+green tile, we take the top left point from each of the bounding boxes. The
+same process is repeated for each tile by picking the corresponding vertex from
+each panel. The vertices are colored by the tile they belong to.</p>
+<p>The operation we just described is equivalent to alternating dropping the
+first/last row/column. Because our projected volcano data is already in long
+format, we need to compute which elements in the long data correspond to
+the first and last rows. This is actually pretty straightforward if we recall
+that our matrix in long format is basically the component vectors “unspooled”.
+We can “re-spool” an index vector the length of our data, <code>seq_along(volcano)</code>,
+by making a matrix out of it with the correct dimensions:</p>
+<pre class="r"><code>nr &lt;- dim(volcano)[1]
+nc &lt;- dim(volcano)[2]
+idx.raw &lt;- matrix(seq_along(volcano), nr, nc)</code></pre>
+<p>Exploiting the underlying vector nature of matrices, and vice versa, is a common
+technique when trying to write fast R code.</p>
+<p>We can now drop rows and columns in sequence from that index matrix to get the
+long format indices for each vertex for each tile:</p>
+<pre class="r"><code>idx.tile &lt;- list(
+  v1=c(idx.raw[-nr, -nc]), v2=c(idx.raw[-nr,  -1]),
+  v3=c(idx.raw[ -1,  -1]), v4=c(idx.raw[ -1, -nc])
+)</code></pre>
+<p>For example, to get the location of vertex data for tile forty two:</p>
+<pre class="r"><code>sapply(idx.tile, &#39;[&#39;, 42)</code></pre>
+<pre><code> v1  v2  v3  v4 
+ 42 129 130  43 </code></pre>
+<p>This means that data for vertex 1 for tile 42 is at position 42 in the long data,
+for vertex 2 it is at position 129, and so on.</p>
+<p>Recall that the volcano data is in <code>vl</code> in <a href="#volcano-list-long">long list
+format</a>:</p>
+<pre class="r"><code>str(vl)</code></pre>
+<pre><code>List of 4
+ $ x: num [1:5307] -0.4837 -0.0611 0.3615 0.7842 1.2068 ...
+ $ y: num [1:5307] 35.5 36.6 37.8 39 40.2 ...
+ $ z: num [1:5307] 93.5 94.1 94.8 95.4 96 ...
+ $ t: num [1:87, 1:61] 1 1 1 1 1 1 1 1 1 1 ...</code></pre>
+<p>So to get the <code>x</code>, <code>y</code>, <code>z</code> coordinates, and “texture” values for the vertices
+of tile forty two we use:</p>
+<pre class="r"><code>sapply(vl, &#39;[&#39;, sapply(idx.tile, &#39;[&#39;, 42))</code></pre>
+<pre><code>        x    y    z    t
+[1,] 16.8 73.1 88.3 1.00
+[2,] 15.9 73.8 89.1 0.76
+[3,] 16.4 75.0 89.7 0.76
+[4,] 17.3 74.3 89.0 1.00</code></pre>
+<p>In order to extend this to the full tile set we are going to use some <code>for</code>
+loops. After all <code>sapply</code>, <code>lapply</code>, and friends are just for
+loops themselves. Additionally in this case we want a specific result structure
+that is just easier to fill with for loops. Finally, there will only be sixteen
+iterations of the loop, so the overhead from R-level function calls is small.</p>
+<pre class="r"><code>## Initialize result structure
+mesh.tile &lt;- matrix(
+  list(), nrow=length(idx.tile), ncol=length(vl),
+  dimnames=list(names(idx.tile), names(vl))
+)
+## Fill it with the correctly subset volcano data
+for(i in names(idx.tile))
+  for(j in names(vl))
+    mesh.tile[[i,j]] &lt;- vl[[j]][idx.tile[[i]]]
+
+mesh.tile</code></pre>
+<pre><code>   x            y            z            t           
+v1 Numeric,5160 Numeric,5160 Numeric,5160 Numeric,5160
+v2 Numeric,5160 Numeric,5160 Numeric,5160 Numeric,5160
+v3 Numeric,5160 Numeric,5160 Numeric,5160 Numeric,5160
+v4 Numeric,5160 Numeric,5160 Numeric,5160 Numeric,5160</code></pre>
+<p>This is an instance of the fabled list-matrix. It looks a little weird, but it
+is equivalent to a 3D array and is just a list of equal length vectors with a
+<code>dim</code> attribute:</p>
+<pre class="r"><code>length(mesh.tile)</code></pre>
+<pre><code>[1] 16</code></pre>
+<pre class="r"><code>dim(mesh.tile)</code></pre>
+<pre><code>[1] 4 4</code></pre>
+<pre class="r"><code>str(mesh.tile[[1]])</code></pre>
+<pre><code> num [1:5160] -0.4837 -0.0611 0.3615 0.7842 1.2068 ...</code></pre>
+<p>One problem with this data structure is that it is duplicative. Most vertices
+are shared by four tiles, yet we make a copy of each vertex for each tile. This
+is one of the trade-offs we accept for improved overall
+performance<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>.</p>
+<p>To extract tile forty two’s data from this structure we can use:</p>
+<pre class="r"><code>apply(mesh.tile, 1:2, function(x) unlist(x)[42])</code></pre>
+<pre><code>      x    y    z    t
+v1 16.8 73.1 88.3 1.00
+v2 15.9 73.8 89.1 0.76
+v3 16.4 75.0 89.7 0.76
+v4 17.3 74.3 89.0 1.00</code></pre>
+<p>The required <code>unlist</code> makes this a little awkward, but we do not intend to
+operate on a single tile at a time. For most of our manipulations, the
+list-matrix is convenient. Look how easy it is to display the mesh from raw
+polygons:</p>
+<p><a name='tile-mesh-plot'></a></p>
+<pre class="r"><code>zord &lt;- order(Reduce(&#39;+&#39;, mesh.tile[,&#39;z&#39;]))
+x &lt;- do.call(rbind, c(mesh.tile[,&#39;x&#39;], list(NA)))[,zord]
+y &lt;- do.call(rbind, c(mesh.tile[,&#39;y&#39;], list(NA)))[,zord]
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=&#39;#DDDDDD&#39;, border=&#39;#444444&#39;)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-19-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>It may help to look at the data structure of <code>x</code> above to understand what’s
+going on:</p>
+<pre class="r"><code>x[,1:10]</code></pre>
+<pre><code>    [,1]  [,2]  [,3]  [,4]  [,5]  [,6]  [,7]  [,8]  [,9] [,10]
+v1 -18.0 -17.1 -16.2 -18.5 -15.3 -17.5 -14.4 -16.6 -18.9 -13.5
+v2 -18.9 -18.0 -17.1 -19.4 -16.2 -18.5 -15.3 -17.5 -19.8 -14.4
+v3 -18.5 -17.6 -16.7 -18.9 -15.8 -18.0 -14.9 -17.1 -19.4 -14.0
+v4 -17.6 -16.7 -15.8 -18.0 -14.9 -17.1 -14.0 -16.2 -18.5 -13.1
+      NA    NA    NA    NA    NA    NA    NA    NA    NA    NA</code></pre>
+<p><code>y</code> shares the same structure. In order to have <code>polygon</code> render multiple
+polygons, we need to NA-delimit our input vectors. Rather than painstakingly
+creating those vectors from the undelimited ones, we <code>rbind</code> the four vertex
+vectors with one NA vector. That this produces a matrix is besides the point;
+the idea is that the vector wrapping nature of the matrix allows us to sandwich
+NA values between each of our tiles’ data:</p>
+<pre class="r"><code>c(x[,1:10])</code></pre>
+<pre><code> [1] -18.0 -18.9 -18.5 -17.6    NA -17.1 -18.0 -17.6 -16.7    NA -16.2
+[12] -17.1 -16.7 -15.8    NA -18.5 -19.4 -18.9 -18.0    NA -15.3 -16.2
+[23] -15.8 -14.9    NA -17.5 -18.5 -18.0 -17.1    NA -14.4 -15.3 -14.9
+[34] -14.0    NA -16.6 -17.5 -17.1 -16.2    NA -18.9 -19.8 -19.4 -18.5
+[45]    NA -13.5 -14.4 -14.0 -13.1    NA</code></pre>
+<p>Great, but did we <em>really</em> need to subject ourselves to this rigmarole?
+Wouldn’t <code>persp</code>, which would still abide by our base-R-only pledge, do this
+just as well and without ridiculous list-matrices? Well, <a href="#meshes-with-pesp">kind
+of</a>, but more importantly, “this” is not what we’re after.
+We have far grander ambitions, and “this” is basically about the limit of what
+we can do with <code>persp</code>.</p>
+</div>
+<div id="triangles" class="section level2">
+<h2>Triangles</h2>
+<p>A tile mesh is not ideal. Among other things, there is no guarantee the
+tiles are flat. Triangles on the other hand are guaranteed to be flat, and
+additionally benefit from simple shading algorithms. So we will turn our tiles
+into triangles:</p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-23-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>The list-matrix structure of our data makes the translation from tile to
+triangle mesh trivial:</p>
+<pre class="r"><code>vertex.blue &lt;- 1:3
+vertex.green &lt;- c(3,4,1)
+mesh.tri &lt;- Map(&#39;c&#39;, mesh.tile[vertex.blue,], mesh.tile[vertex.green,])
+dim(mesh.tri) &lt;- c(3, 4)
+dimnames(mesh.tri) &lt;- list(head(rownames(mesh.tile), -1), colnames(mesh.tile))
+mesh.tri</code></pre>
+<pre><code>   x             y             z             t            
+v1 Numeric,10320 Numeric,10320 Numeric,10320 Numeric,10320
+v2 Numeric,10320 Numeric,10320 Numeric,10320 Numeric,10320
+v3 Numeric,10320 Numeric,10320 Numeric,10320 Numeric,10320</code></pre>
+<p>Plotted:</p>
+<pre class="r"><code>zord3 &lt;- order(Reduce(&#39;+&#39;, mesh.tri[,&#39;z&#39;]))
+x &lt;- do.call(rbind, c(mesh.tri[,&#39;x&#39;], list(NA)))[,zord3]
+y &lt;- do.call(rbind, c(mesh.tri[,&#39;y&#39;], list(NA)))[,zord3]
+col &lt;- rep(c(&#39;#CCCCFF&#39;,&#39;#CCFFCC&#39;), each=ncol(x)/2)[zord3]
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=col)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-25-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>And with more realistic colors by shading each facet with the mean of the vertex
+shadows:</p>
+<pre class="r"><code>texture &lt;- gray(Reduce(&#39;+&#39;, mesh.tri[,&#39;t&#39;]) / 3)[zord3]
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=texture, border=texture)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-26-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Now we’re cooking!</p>
+</div>
+</div>
+<div id="perspective" class="section level1">
+<h1>Perspective</h1>
+<p>If I had any perspective I wouldn’t be writing this blog post. But that can’t
+be helped. Our dear friend <code>volcano</code> is a different story.</p>
+<p>Everything we’ve done to this point has assumed no perspective effect; objects
+of the same size appear the same size irrespective of how far from the observer
+they are. This observer, you, has been looking at the object
+along a line parallel to the Z axis and passing through the midpoint of the X
+and Y extents of the projected object. For expository purposes we are about to,
+for the first and only time, rotate Observer 0 (you) 90 degrees about the Y
+axis.</p>
+<p>In the following diagram you are looking along a line parallel to the X axis.
+The Z axis now runs from left to right. Observers 1, 2, and 3 are all still
+looking at <code>volcano</code> along the Z axis:</p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-28-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>For convenience we define the quantity <code>ZD</code> as the total depth of our object
+along the Z axis. Then, we can define the distance of our observers from the
+nearest point along the Z axis with the measure <code>D</code> as multiples of <code>ZD</code>.</p>
+<p>Here is our volcano re-rendered from the perspective of each of observers 1-3
+pictured above:</p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-29-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>The actual perspective computation is best applied to the original point cloud,
+so we go back to the <code>vl</code> variable, which is <code>volcano</code> in
+<a href="#volcano-list-long">long list format</a>, and apply the perspective transformation
+for observer 3:</p>
+<pre class="r"><code>str(vl)                   # `volcano` in long list format</code></pre>
+<pre><code>List of 4
+ $ x: num [1:5307] -0.4837 -0.0611 0.3615 0.7842 1.2068 ...
+ $ y: num [1:5307] 35.5 36.6 37.8 39 40.2 ...
+ $ z: num [1:5307] 93.5 94.1 94.8 95.4 96 ...
+ $ t: num [1:87, 1:61] 1 1 1 1 1 1 1 1 1 1 ...</code></pre>
+<pre class="r"><code>D &lt;- 0.5                  # Observer 3 is half Z-Depth from volcano
+z.rng &lt;- range(vl[[&#39;z&#39;]])
+ZD &lt;- diff(z.rng)
+
+## Center observer on x-y extent and at Z=0
+vlp &lt;- vl
+vlp[c(&#39;x&#39;,&#39;y&#39;)] &lt;- lapply(vl[c(&#39;x&#39;,&#39;y&#39;)], function(x) x - sum(range(x)) / 2)
+vlp[[&#39;z&#39;]] &lt;- vlp[[&#39;z&#39;]] - (z.rng[2] + D * ZD)
+
+## Apply perspective transformation
+z.factor &lt;- -1 / vlp[[&#39;z&#39;]]
+vlp[c(&#39;x&#39;,&#39;y&#39;)] &lt;- lapply(vlp[c(&#39;x&#39;,&#39;y&#39;)], &#39;*&#39;, z.factor)</code></pre>
+<p>Now that we have the perspective-transformed point cloud, we can turn it back
+into a triangle mesh. This time we use <code>shadow::mesh_tri</code>, which is a wrapper
+around the calculations described in the <a href="#meshes">Mesh section</a>:
+<a name='mesh-tri-persp'></a></p>
+<pre class="r"><code>mesh.tri &lt;- mesh_tri(vlp, dim(volcano), order=TRUE)
+mesh.tri</code></pre>
+<pre><code>   x             y             z             t            
+v1 Numeric,10320 Numeric,10320 Numeric,10320 Numeric,10320
+v2 Numeric,10320 Numeric,10320 Numeric,10320 Numeric,10320
+v3 Numeric,10320 Numeric,10320 Numeric,10320 Numeric,10320</code></pre>
+<pre class="r"><code>x &lt;- do.call(rbind, c(mesh.tri[,&#39;x&#39;], list(NA)))
+y &lt;- do.call(rbind, c(mesh.tri[,&#39;y&#39;], list(NA)))
+texture &lt;- gray((Reduce(&#39;+&#39;, mesh.tri[,&#39;t&#39;])/nrow(mesh.tri)))
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=texture, border=texture)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-33-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><code>mesh_tri</code> has the additional benefit that it orders the tiles by Z value so we
+do not need to worry about re-ordering before plotting anymore.</p>
+<p>Are we there yet? Nope, we’re going to drag this baby kicking and screaming
+all the way to its painful, bloody conclusion.</p>
+</div>
+<div id="rasterization" class="section level1">
+<h1>Rasterization</h1>
+<div id="overview" class="section level2">
+<h2>Overview</h2>
+<p>So far we have relied on base R plotting facilities, <code>polygon</code> mostly, to
+actually transform our 3D object representation into an image. There are two
+problems with this:</p>
+<ol style="list-style-type: decimal">
+<li><code>volcano</code> does not look very natural with all the triangular faces.</li>
+<li>Speed is a problem with higher polygon counts.</li>
+</ol>
+<p>We will resolve these issues by resorting to rasterization, whereby we compute
+what each pixel of our final image should look like. This requires determining
+which points of our final output pixel grid belong to which triangles. While
+this is the type of thing a child could do easily, it is surprisingly difficult
+to instruct a computer to do the same, particularly when we need to account for
+the need to use internally vectorized<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a> base R code.</p>
+<p>Conceptually, the process takes three steps:</p>
+<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/raster-overview-1.png" width="672" style="display: block; margin: auto;" />
+<div style="display: none;">
+<p>We use these for the little inset thumbnails.</p>
+<pre class="r"><code>plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
+rast_1(xr, yr)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png" width="288" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
+rast_2(xr, yr, pdat)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png" width="288" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
+rast_3(xr, yr, pdat, mx1.oob, mx2.oob)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png" width="288" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="step-1-bounding-boxes" class="section level2">
+<h2>Step 1: Bounding Boxes</h2>
+<p><img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+One thing that is easy to do is to compute the rectangular bounding box for each
+triangle. All we need to do is compute the x and y extents of the vertices, and
+use those to generate the corners of our bounding box.</p>
+<p>Before we do this we need to settle on the resolution of our output grid as
+everything is going to be measured in relation to that. This is easiest to do
+with the perspective transformed point cloud data rather than the mesh version.
+For exposition purposes we keep jumping back and forth between these formats,
+although in the final rendering pipeline we will only carry out the mesh
+transformation once we no longer have a need for the point data.
+<a name='bounding-box-scale'></a></p>
+<pre class="r"><code>x.width &lt;- 600L
+x.rng &lt;- range(vlp[[&#39;x&#39;]])
+y.rng &lt;- range(vlp[[&#39;y&#39;]])
+asp &lt;- diff(y.rng) / diff(x.rng)
+y.width &lt;- as.integer(x.width * asp)
+vlpt &lt;- vlp
+vlpt[[&#39;x&#39;]] &lt;- rescale(vlpt[[&#39;x&#39;]], center = 0) * (x.width - 1)  + 1
+vlpt[[&#39;y&#39;]] &lt;- rescale(vlpt[[&#39;y&#39;]], center = 0) * (y.width - 1) + 1</code></pre>
+<p>We can regenerate the mesh, and for each mesh polygon compute the maximum x and y
+integer pixel values they will contain:</p>
+<pre class="r"><code>mesh &lt;- mesh_tri(vlpt, dim(volcano), order=TRUE)
+
+ceil_min &lt;- function(x) list(as.integer(ceiling(do.call(pmin, x))))
+floor_max &lt;- function(x) list(as.integer(do.call(pmax, x)))
+
+mins &lt;- unlist(apply(mesh[,c(&#39;x&#39;,&#39;y&#39;)], 2, ceil_min), recursive=FALSE)
+maxs &lt;- unlist(apply(mesh[,c(&#39;x&#39;,&#39;y&#39;)], 2, floor_max), recursive=FALSE)
+str(mins)  # `maxs` will have same structure</code></pre>
+<pre><code>List of 2
+ $ x: int [1:10320] 272 270 277 275 282 270 280 267 287 275 ...
+ $ y: int [1:10320] 618 618 616 616 614 613 614 613 612 611 ...</code></pre>
+<p>We use <code>list(...)</code> in the ceil/floor functions to prevent <code>apply</code> from
+simplifying to a numeric matrix, which in turn requires the unlist to get the
+desired structure.</p>
+<p>This is what bounding boxes look like:</p>
+<pre class="r"><code>minmax &lt;- unname(c(mins, maxs))
+xs &lt;- range(unlist(minmax[c(1,3)]))
+ys &lt;- range(unlist(minmax[c(2,4)]))
+xss &lt;- lapply(minmax[c(1,3)], function(x) (x - xs[1]) / diff(xs))
+yss &lt;- lapply(minmax[c(2,4)], function(y) (y - ys[1]) / diff(ys))
+plot_new(xs, ys)
+rect(xss[[1]], yss[[1]], xss[[2]], yss[[2]], border=&#39;#00000033&#39;, asp=1)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-36-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="step-2-candidate-pixels" class="section level2">
+<h2>Step 2: Candidate Pixels</h2>
+<p><img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/></p>
+<p>We will brute force generate pixels to fill each of our bounding boxes. Oddly
+this is a little tricky, mostly because we wish to do this fully in internally
+vectorized code. And it is particularly important that we do so because we are
+about to dramatically increase the amount of data we are dealing with. The plan
+of attack is to compute all possible pixel “offset” permutations within each
+bounding box, and then add back the min x and y coordinates to get the actual
+pixel coordinates.</p>
+<p>First we compute the dimensions of the bounding x/y min/max boxes in pixels:</p>
+<pre class="r"><code>dims.x &lt;- pmax(maxs[[&#39;x&#39;]] - mins[[&#39;x&#39;]] + 1, 0)
+dims.y &lt;- pmax(maxs[[&#39;y&#39;]] - mins[[&#39;y&#39;]] + 1, 0)
+dims.xy &lt;- dims.x * dims.y</code></pre>
+<p>Then we generate all the offset permutations. This is the type of thing that
+one might normally do with <code>expand.grid</code>:</p>
+<pre class="r"><code>Map(function(x, y) expand.grid(x=seq_len(x), y=seq_len(y)), dims.x, dims.y)</code></pre>
+<p>Unfortunately, with 10,320 polygons<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a> it becomes computationally burdensome.
+We can do a little better with lower overhead variations<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a>, but even then we
+are left with lists with thousands of elements that are awkward to manage.
+Instead we want to generate vectors that contain all the permutations of x and y
+offsets we need. We do so here with a toy example for three bounding boxes with
+x and y dimensions defined by <code>dim.x0</code> and <code>dim.y0</code>:</p>
+<pre class="r"><code>dims.x0 &lt;- c(2, 2, 3)
+dims.y0 &lt;- c(2, 3, 2)
+dims.xy0 &lt;- dims.x0 * dims.y0
+
+bb.id &lt;- rep(seq_along(dims.xy0), dims.xy0)</code></pre>
+<p>Here we took advantage of a less known feature of <code>rep</code> whereby if the second
+parameter is the same length as the first, then each value of the first
+parameter is repeated the number of times designated by the corresponding value
+of the second. Visualized:</p>
+<pre><code>bb.id:  <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span></code></pre>
+<p>This allows us to generate the bounding box ids with internally vectorized code,
+despite the bounding boxes having different sizes.</p>
+<p>Next we compute the x offsets of each pixel in the bounding box:</p>
+<pre class="r"><code>## We wish to cycle through the x values in a bounding box
+## as many times as there are y values in that bounding box
+x.lens &lt;- rep(dims.x0, dims.y0)  # special use of `rep` again here
+x.lens</code></pre>
+<pre><code>[1] 2 2 2 2 2 3 3</code></pre>
+<pre class="r"><code>## sequence generates sequences of sequences...
+x.off &lt;- sequence(x.lens)
+x.off</code></pre>
+<pre><code> [1] 1 2 1 2 1 2 1 2 1 2 1 2 3 1 2 3</code></pre>
+<p>Now we have all the possible x offset values for each bounding box:</p>
+<pre><code>bb.id:  <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span>
+x.off:  1 2 1 2 1 2 1 2 1 2 1 2 3 1 2 3</code></pre>
+<p>The y offsets are a small variation on the theme:</p>
+<pre class="r"><code>y.off &lt;- rep(sequence(dims.y0), x.lens)</code></pre>
+<p>Everything together:</p>
+<pre><code>bb.id:  <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#0000FF; color:#EEEEEE;">1</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#00DD00; color:#EEEEEE;">2</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span> <span style="background-color:#CCCC00; color:#EEEEEE;">3</span>
+x.off:  1 2 1 2 1 2 1 2 1 2 1 2 3 1 2 3
+y.off:  1 1 2 2 1 1 2 2 3 3 1 1 1 2 2 2</code></pre>
+<p>And visualized in two dimensions:</p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-46-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Unfortunately <code>sequence</code> is not an internally vectorized function. It is just a
+looped call to <code>seq_len</code>:</p>
+<pre class="r"><code>sequence</code></pre>
+<pre><code>function (nvec) 
+unlist(lapply(nvec, seq_len))
+&lt;bytecode: 0x7fa961cf0678&gt;
+&lt;environment: namespace:base&gt;</code></pre>
+<p>This becomes a liability when we have many sequences as with the full set of
+<code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
+internally vectorized version of <code>sequence</code> by taking advantage of the
+internally vectorized cumulative functions:</p>
+<pre class="r"><code>## Start with one continuous sequence
+x.lens &lt;- rep(dims.x0, dims.y0)
+seq &lt;- seq_len(sum(x.lens))
+
+## Compute the locations at which the sequence should reset
+reset &lt;- cumsum(x.lens[-length(x.lens)]) + 1L
+reset</code></pre>
+<pre><code>[1]  3  5  7  9 11 14</code></pre>
+<pre class="r"><code>## Generate a reset vector
+sub.raw &lt;- integer(length(seq))
+sub.raw[reset] &lt;- reset - 1L
+sub.raw</code></pre>
+<pre><code> [1]  0  0  2  0  4  0  6  0  8  0 10  0  0 13  0  0</code></pre>
+<pre class="r"><code>sub &lt;- cummax(sub.raw)
+sub</code></pre>
+<pre><code> [1]  0  0  2  2  4  4  6  6  8  8 10 10 10 13 13 13</code></pre>
+<pre class="r"><code>## Modify the sequence by subtracting the reset vector
+seq - cummax(sub)</code></pre>
+<pre><code> [1] 1 2 1 2 1 2 1 2 1 2 1 2 3 1 2 3</code></pre>
+<pre class="r"><code>all.equal(x.off, seq - cummax(sub))</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>This produces the same result as <code>sequence</code>. For convenience we put the above
+logic into <code>shadow::sequence2</code>. Let’s benchmark against the full polygon data:</p>
+<pre class="r"><code>x.lens &lt;- rep(dims.x, dims.y)   # full volcano bounding boxes
+microbenchmark(sequence2(x.lens), sequence(x.lens))</code></pre>
+<pre><code>Unit: milliseconds
+              expr  min   lq  mean median    uq max neval
+ sequence2(x.lens) 13.8 15.9  31.4   22.7  30.8 177   100
+  sequence(x.lens) 68.8 94.5 139.0  123.2 155.7 363   100</code></pre>
+<p>We see a 4-5x improvement despite having to rely on far more function calls.
+Normally we wouldn’t highlight such internal details, but this is an interesting
+use case of the internally vectorized cumulative functions to solve a problem
+that doesn’t have a built-in vectorized solution.</p>
+<p>Now that we know how we can to generate the candidate x/y offsets quickly we can
+fill out the bounding boxes.</p>
+<pre class="r"><code>dims.xy &lt;- dims.x * dims.y
+bb.id &lt;- rep(seq_along(dims.x), dims.xy)
+x.lens &lt;- rep(dims.x, dims.y)
+x.off &lt;- sequence2(x.lens) - 1L
+y.off &lt;- rep(sequence(dims.y), x.lens) - 1L
+
+## Add back the min values of the bounding boxes
+p.x &lt;- x.off + mins[[&#39;x&#39;]][bb.id]
+p.y &lt;- y.off + mins[[&#39;y&#39;]][bb.id]</code></pre>
+<p>Finally, we’re ready to generate our first pixel-level volcano. We will re-use
+the textures we computed for our <a href="#mesh-tri-persp">mesh</a>:</p>
+<pre class="r"><code>p.raster &lt;- matrix(numeric(0), x.width, y.width)
+p.raster[cbind(p.x, p.y)] &lt;- rep(texture, dims.xy)</code></pre>
+<p>We apply the textures by indexing <code>bb.raster</code> with a matrix (<code>cbind(bb.x, bb.y)</code>). This is a special type of indexing that allows you to directly address
+specific cells by providing a matrix with the row and column values you are
+targeting.</p>
+<p>There is also a subtle trick deployed here: instead of checking for duplicate
+pixels we just wrote all the pixels in increasing Z order. This ensures that
+the pixels nearest to the viewer overwrite those further away implicitly
+eliminating the duplicates.</p>
+<p>Finally, we can plot our matrix as a raster, but due to different conventions
+about which directions the dimensions run in we need to flip our matrix:</p>
+<pre class="r"><code>flip &lt;- function(x) t(x)[rev(seq_len(ncol(x))),]
+par(mai=numeric(4))
+plot(as.raster(flip(p.raster)))</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-52-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>A volcano to make NovaLogic<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a> proud!</p>
+</div>
+<div id="step-3-pixel-trimming" class="section level2">
+<h2>Step 3: Pixel Trimming</h2>
+<p><img
+src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+We are now worse off than we were when plotting the polygons in our
+<a href="#mesh-tri-persp">mesh</a>, but fear not, we can improve the chunky raster volcano.
+We need to trim the excess pixels in our bounding boxes. This is as simple as
+deciding which pixels are inside the original polygons and which ones are not.
+Really something that a three year old could do. Yet, as is often
+the case, expressing such tasks in a way that a computer can easily execute is
+difficult.</p>
+<p>There are many possible solutions to the problem, but I settled on using
+<a href="https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles">barycentric coordinates</a>. These have the useful property that points with
+negative barycentric coordinates are outside of the triangle referenced by those
+coordinates. Additionally, there is a simple arithmetic expression for
+barycentric coordinates in triangles that can be internally vectorized.
+Finally, there is a substantial side-benefit that we will discuss when we get to
+<a href="#shading">shading</a>.</p>
+<p>We are going to re-use the <a href="/2018/11/23/is-your-matrix-running-slow-try-lists/#bary_l"><code>bary_L</code></a> function we implemented as part of our
+<a href="/2018/11/23/is-your-matrix-running-slow-try-lists/#a-case-study">previous blog post</a> on list data structures and vertex shading. See that
+blog post for a detailed explanation of what the function does. For now, all we
+care about is which points end up with negative barycentric coordinates.
+<code>shadow::barycentric</code> is a copy of that function.</p>
+<p>First we need to match up our vertex data to the candidate points so we can use
+vectorized operations. Unfortunately, this means that we have to make a copy of
+the vertex x-y coordinates for every single point. This is wasteful, but one of
+the trade offs often made in R: use more memory in order to make fewer expensive
+R function calls.</p>
+<pre class="r"><code>cols &lt;- c(&#39;x&#39;,&#39;y&#39;,&#39;t&#39;)  # don&#39;t need Z vals as `bb.id` already Z ordered
+mesh.all &lt;- mesh[, cols]
+mesh.all</code></pre>
+<pre><code>   x             y             t            
+v1 Numeric,10320 Numeric,10320 Numeric,10320
+v2 Numeric,10320 Numeric,10320 Numeric,10320
+v3 Numeric,10320 Numeric,10320 Numeric,10320</code></pre>
+<pre class="r"><code>## each id in `bb.id` reference a mesh triangle
+mesh.all[] &lt;- lapply(mesh.all, &#39;[&#39;, bb.id)
+mesh.all</code></pre>
+<pre><code>   x               y               t              
+v1 Numeric,1302788 Numeric,1302788 Numeric,1302788
+v2 Numeric,1302788 Numeric,1302788 Numeric,1302788
+v3 Numeric,1302788 Numeric,1302788 Numeric,1302788</code></pre>
+<p>Now we have as many polygons as points, which allows us to compute the
+barycentric coordinates in one R function call:</p>
+<pre class="r"><code>bc &lt;- barycentric(list(x=p.x, y=p.y), mesh.all[,c(&#39;x&#39;,&#39;y&#39;)])
+str(bc)</code></pre>
+<pre><code>List of 3
+ $ : num [1:1302788] 0.4138 0.2552 0.0966 -0.062 -0.2205 ...
+ $ : num [1:1302788] -0.436 -0.203 0.029 0.261 0.494 ...
+ $ : num [1:1302788] 1.022 0.948 0.874 0.801 0.727 ...</code></pre>
+<p>Of the five points <code>str</code> shows, only point 3 will be kept as it is the only one
+with positive barycentric coordinates for each vertex.</p>
+<pre class="r"><code>## determine which points are inbounds and generate raster matrix
+inbounds &lt;- Reduce(&#39;&amp;&#39;, lapply(bc, &#39;&gt;=&#39;, 0))
+
+p.x.in &lt;- p.x[inbounds]
+p.y.in &lt;- p.y[inbounds]
+p.raster &lt;- matrix(numeric(0), x.width, y.width)
+p.raster[cbind(p.x.in, p.y.in)] &lt;- rep(texture, dims.xy)[inbounds]
+
+par(mai=numeric(4))
+plot(as.raster(flip(p.raster)), asp=1)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-55-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Great! All that work and we’re right back were we started<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a> with our
+<a href="#mesh-tri-persp">triangle mesh</a>. But isn’t it so satisfying that we built this
+thing pixel by pixel, with our bare hands. It’s a little bit like that pasta
+sauce you might make from scratch, that objectively really isn’t that much
+better than the stuff in the jar, but it sure does <em>seem</em> to taste better.</p>
+<p>Oh, and we’re not done yet.</p>
+</div>
+</div>
+<div id="shading" class="section level1">
+<h1>Shading</h1>
+<p>The main reason I picked barycentric coordinates to determine which points are
+inbounds is that those coordinates also represent the relative weights at each
+vertex of the triangle required to “balance” the triangle on the corresponding
+points. This will allow us to shade the pixels within polygons based on their
+proximity to each vertex and the vertex colors. I cover this at length in the
+previously mentioned <a href="/2018/11/23/is-your-matrix-running-slow-try-lists/#a-case-study">blogpost</a>.</p>
+<p>Since we have the barycentric coordinates, all we have to do is compute weighted
+average colors for each pixel:</p>
+<pre class="r"><code>bc.in &lt;- lapply(bc, &#39;[&#39;, inbounds)
+t.in &lt;- lapply(mesh.all[, &#39;t&#39;], &#39;[&#39;, inbounds)
+t.shaded &lt;- Reduce(&#39;+&#39;, Map(&#39;*&#39;, t.in, bc.in))
+
+p.raster &lt;- matrix(numeric(0), x.width, y.width)
+p.raster[cbind(p.x.in, p.y.in)] &lt;- t.shaded
+
+par(mai=numeric(4))
+plot(as.raster(flip(p.raster)))</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-56-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>And just like that we have a beautifully shaded volcano!</p>
+</div>
+<div id="interlude-ii" class="section level1">
+<h1>Interlude II</h1>
+<p>Hah, you probably thought we were done. Well, we’re close. But first,
+we need to run some benchmarks. I captured the entire process we went through
+in <code>shadow::render</code> to make it easier to re-use and benchmark:</p>
+<pre class="r"><code>treeprof::treeprof(
+  render_elevation(volcano, shadow, rot, resolution=600, d=.5)
+)</code></pre>
+<pre><code>Ticks: 3743; Iterations: 10; Time Per: 520.3 milliseconds; Time Total: 5.203 seconds; Time Ticks: 3.743
+
+                                          milliseconds
+render_elevation --------------------- : 520.3 -   0.0
+    rasterize ------------------------ : 518.2 -   8.9
+        barycentric ------------------ : 132.8 - 132.8
+        mesh_expand ------------------ : 120.7 -   0.0
+        |   lapply ------------------- : 120.7 - 120.7
+        candidate_pixels ------------- : 102.7 -  69.5
+        |   sequence2 ---------------- :  33.2 -  12.1
+        |       cummax --------------- :  16.0 -  16.0
+        |       integer -------------- :   4.9 -   4.9
+        lapply ----------------------- :  55.9 -  55.9
+        shade ------------------------ :  48.7 -   0.0
+        |   Reduce ------------------- :  48.7 -   0.0
+        |       Map ------------------ :  42.7 -   0.0
+        |       |   mapply ----------- :  42.7 -   0.0
+        |       |       lapply ------- :  34.1 -  34.1
+        |       |       &lt;Anonymous&gt; -- :   8.6 -   8.6
+        |       f -------------------- :   6.0 -   6.0
+        Reduce ----------------------- :  45.0 -   0.7
+            f ------------------------ :  23.1 -  23.1
+            lapply ------------------- :  21.3 -   0.0
+                FUN ------------------ :  21.1 -  21.1</code></pre>
+<p>Almost 2FPS! We’re not going to be playing any 3D games with this, but
+considering this is done on a 2016 Macbook (yes, the 12&quot; Macbook a.k.a. Apple
+Netbook), on CPU, with a single core, in double precision floating
+point<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>, and via an interpreted programming language, it’s not
+too bad.</p>
+<p>As for the benchmark details: virtually all the time was spent rasterizing. 3D
+projection, meshes, and perspective adjustments take no time, relatively
+speaking. So why bother with rasterization? One obvious answer is that it
+allows us to implement much better shading. We also want the bitmap data
+as an R object for further manipulation, and while it is possible to save
+the polygon output to image files, I don’t know of an easy way to get that
+information back into R with base-R-only. And finally polygon rendering becomes
+expensive when the polygon counts increase. Here we illustrate with an
+elevation map that has fifty times as many points as <code>volcano</code>:</p>
+<pre class="r"><code># File originally from http://tylermw.com/data/dem_01.tif.zip
+elev2 &lt;- readRDS(&#39;static/data/three-d-pipeline-elev-complex.RDS&#39;)
+# shadow2 &lt;- ray_shade2(elev2, seq(-90, 90, length=25), 45)
+shadow2 &lt;- readRDS(&#39;static/data/three-d-pipeline-shadow-complex.RDS&#39;)
+rot2 &lt;- rot_x(-90) %*% rot_z(-90)
+
+system.time({
+  rel &lt;- render_elevation(elev2, shadow2, rot2, 1000, 2, zord=&#39;pixel&#39;, empty=1)
+  par(mar=c(1,0,1,0))
+  plot(as.raster(flip(rel)))
+  title(&#39;Raster Render&#39;, cex=1.5)
+})</code></pre>
+<pre><code>   user  system elapsed
+  1.956   0.649   2.622</code></pre>
+<pre class="r"><code>system.time({
+  mesh2 &lt;- elevation_as_mesh(elev2, shadow2, rot_x(-90) %*% rot_z(-90), d=2)
+  x &lt;- do.call(rbind, c(mesh2[,&#39;x&#39;], list(NA)))
+  y &lt;- do.call(rbind, c(mesh2[,&#39;y&#39;], list(NA)))
+  texture &lt;- gray((Reduce(&#39;+&#39;, mesh2[,&#39;t&#39;])/nrow(mesh2)))
+  par(mar=c(1,0,1,0))
+  plot.new()
+  polygon(rescale(x), rescale(y), col=texture, border=texture)
+  title(&#39;Polygon Render&#39;, cex=5)
+})</code></pre>
+<pre><code>   user  system elapsed
+ 10.389   0.238  10.664</code></pre>
+<p>It is unclear to me why the polygon method is slower<a href="#fn13" class="footnote-ref" id="fnref13"><sup>13</sup></a> given that the
+graphical device will rasterize the polygons as well, presumably in compiled
+code. With the higher polygon count, the polygon image quality is higher, but
+if you compare the two renders closely you look closely you can still see the
+polygon artifacts:</p>
+<p><a title='click for full size' href='/images/three-d-pipeline-pixel.png' >
+<img
+    alt='Raster based render of elevation map'
+    src='/images/three-d-pipeline-pixel.png'
+    style='max-width: 600px; display: block; margin: auto' />
+</a>
+<a title='click for full size' href='/images/three-d-pipeline-polygon.png' >
+<img
+    alt='Polygon based render of elevation map'
+    src='/images/three-d-pipeline-polygon.png'
+    style='max-width: 600px; display: block; margin: auto' />
+</a></p>
+</div>
+<div id="stereoscopy" class="section level1">
+<h1>Stereoscopy</h1>
+<p>Finally: the fun stuff. As hinted at in the introduction, we are looking to
+make <a href="https://en.wikipedia.org/wiki/Anaglyph_image">analygraphs</a> and <a href="https://en.wikipedia.org/wiki/Stereoscopy">stereograms</a>. We can easily render two scenes
+with slightly different angles. For convenience, we use
+<code>shadow::mrender_elevation</code> which is a wrapper to <code>render_elevation</code> for
+multiple rotations. In addition to supporting multiple rotations,
+<code>mrender_elevation</code> uses absolute distances and fixed fields of view to ensure
+consistent perspective transformations.</p>
+<pre class="r"><code>rot.l &lt;- rot %*% rot_z(2.5)
+rot.r &lt;- rot %*% rot_z(-2.5)
+elren &lt;- mrender_elevation(
+  volcano, shadow, list(rot.l, rot.r), res=1000, d=125, fov=85
+)
+left &lt;- flip(elren[[1]])
+right &lt;- flip(elren[[2]])</code></pre>
+<p>In order to generate an analygraph we need to assign the left image to the red
+channel, and the right image to the cyan channel. No cyan channel? No problem:
+turns out that cyan is just blue and green added together. This is very easy to
+do as the R raster format accepts 3D arrays as inputs, where each value of the
+third dimension corresponds to one of the RGB color channels:</p>
+<pre class="r"><code>analygraph &lt;- function(left, right) {
+  analygraph &lt;- array(0, dim=c(dim(left), 3))
+  analygraph[,,1] &lt;- left      # red channel
+  analygraph[,,2:3] &lt;- right   # green and blue
+  analygraph
+}
+elcolor &lt;- analygraph(left, right)
+par(bg=&#39;black&#39;, mai=numeric(4))
+plot(as.raster(elcolor))
+shadow::analygraph_glasses(.15)   # for the icon h/t @jurbane2</code></pre>
+<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-1.png" width="672" style="display: block; margin: auto;" />
+<div style="display: none;">
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png" width="384" style="display: block; margin: auto;" /></p>
+</div>
+<p>You can get <a href="https://duckduckgo.com/?q=analygraph+glasses&amp;t=ffsb&amp;ia=products">analygraph glasses very cheaply</a>. I got 10 for USD5.</p>
+<p>One advantage of using red and cyan is that the areas where the images overlap
+are white or gray, which looks a lot more natural. If we had used red and green
+the overlapping areas would end up yellow.</p>
+<p>If you can’t be bothered getting the glasses, we can also make stereograms:</p>
+<pre class="r"><code>eljuxt &lt;- cbind(left, right)
+par(bg=&#39;black&#39;, mai=c(.25, .5, .25, .5))
+plot(as.raster(eljuxt))</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/stereogram-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>In order to see the 3D effect on these you need to get your <a href="https://en.wikipedia.org/wiki/Stereoscopy#Freeviewing">eyes to
+diverge</a> such that each eye is looking at one of the images. It does take
+practice to master. One trick that can help is making the image smaller so that
+the volcanoes are closer together. If you wear glasses you might also find it
+easier to “focus” on the stereogram with them off. The effort is worth it as
+the perspective effect is much stronger with stereograms than with analygraphs.</p>
+<p>Since nowadays it seems no blog post is complete without some kind of animation,
+let’s spin up <code>volcano</code>. Out of courtesy to those of you who get nauseated
+easily, I’m not auto-playing the videos. I also set up the lighting to remain
+constant throughout so that it is clear that our frame of reference is fixed.
+Tough luck to those visiting <code>volcano</code> today.</p>
+<video style='display: block; margin: 0 auto;' controls loop>
+<source src="/videos/three-d-pipeline-volcano-rot.mp4" type="video/mp4" />
+</video>
+<p>And one more, why not?</p>
+<video style='display: block; margin: 0 auto;' controls loop>
+<source
+    src="/videos/three-d-pipeline-volcano-zoom.mp4" type="video/mp4" />
+</video>
+<p>Assembling the video from the component frames with <a href="#videos"><code>ffmpeg</code> magic</a>
+and using blogdown to render the post are the only things we resorted to
+non base R for.</p>
+</div>
+<div id="so-long-and-thanks-for-all-the-clicks" class="section level1">
+<h1>So Long, and Thanks For All The Clicks</h1>
+<p>Hopefully this was somewhat instructive and enjoyable for you. I imagine if you
+got this far there is a chance it was. Or maybe you’re just looking for my
+contact info to flame me on the interwebs. If the latter I’ll take some solace
+in the fact that you probably overshot and had to scroll back through the
+footnotes and appendix.</p>
+<p>All the illustrations in this post were generated with base R graphics. You can
+see the <a href="https://github.com/brodieG/website/blob/master/content/post/2018-12-12-a-new-stereoscopic.Rmd">source for this post on Github</a>.</p>
+<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.5.1 (2018-07-02)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS High Sierra 10.13.6
+
+Matrix products: default
+BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] shadow_0.0.0.9000
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.19    bookdown_0.7    digest_0.6.15   rprojroot_1.3-2
+ [5] backports_1.1.2 magrittr_1.5    evaluate_0.10.1 blogdown_0.8   
+ [9] stringi_1.2.3   rmarkdown_1.10  tools_3.5.1     stringr_1.3.1  
+[13] xfun_0.3        yaml_2.2.0      compiler_3.5.1  htmltools_0.3.6
+[17] knitr_1.20     </code></pre>
+</div>
+<div id="helper-functions" class="section level2">
+<h2>Helper Functions</h2>
+<pre class="r"><code>## Rescale data to a range from 0 to `range` where `range` in (0,1]
+rescale &lt;- function(x, range=1, center=0.5)
+  ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
+   (1 - range) * center
+
+## Prepare a plot with a particular aspect ratio
+plot_new &lt;- function(
+  x, y, xlim=c(0,1), ylim=c(0,1),
+  par.args=list(mai=numeric(4L), xaxt=&#39;n&#39;, yaxt=&#39;n&#39;, xaxs=&#39;i&#39;, yaxs=&#39;i&#39;)
+) {
+  if(length(par.args)) do.call(par, par.args)
+  plot.new()
+  plot.window(
+    xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
+) }</code></pre>
+</div>
+<div id="meshes-with-persp" class="section level2">
+<h2>Meshes With Persp</h2>
+<p>With some work I was able to roughly recreate our own <a href="#tile-mesh-plot">tile
+mesh</a>:</p>
+<pre class="r"><code>par(mai=numeric(4))
+persp(
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
+  ylim=c(2,52), xlim=c(6,46), theta=-65, phi=70,
+  col=&#39;#DDDDDD&#39;, border=&#39;#444444&#39;, r=1e7, scale=FALSE
+)</code></pre>
+<pre><code>Warning in persp.default(x = seq_len(nrow(volcano)), y =
+seq_len(ncol(volcano)), : surface extends beyond the box</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-63-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>I left the box in on purpose to highlight that I had to go to ridiculous lengths
+to get <code>persp</code> to fit the viewport the way I wanted. Finding the correct <code>xlim</code>
+and <code>ylim</code> values to achieve the desired effect was an exercise in almost futile
+stochastic debugging. There probably is a way to do this better.</p>
+<p>Notice also that the <code>theta</code> and <code>phi</code> values are kind of weird given that we
+use <code>rot_x(-20) %*% rot_z(65)</code>. I wasn’t able to figure out what values I
+needed until I went through the C source code to figure out what what order
+<code>phi</code> and <code>theta</code> were being applied (it matters), and saw this:</p>
+<pre><code>## r-devel@75683:src/library/graphics/src/plot3d.c@1205
+XRotate(-90.0);                /* rotate x-y plane to horizontal */
+YRotate(-theta);               /* azimuthal rotation */
+XRotate(phi);                  /* elevation rotation */</code></pre>
+<p>I had similar frustrations in understanding <code>rgl</code> as well, and similarly had to
+dig through sources to figure exactly what was going on and eventually decided
+it was more fun to just build the whole thing from scratch to best fit the
+specific purpose I had in mind.</p>
+<p>As far as I was able to get with <code>persp</code> is this:</p>
+<pre class="r"><code>par(mai=numeric(4))
+tile.col &lt;- Reduce(&#39;+&#39;, mesh.tile[,&#39;t&#39;]) / 4
+persp(
+  x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
+  ylim=c(2,52), xlim=c(6,46), theta=-65, phi=70,
+  col=gray(tile.col), border=NA, r=1e7, scale=FALSE, box=FALSE
+)</code></pre>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-64-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>This doesn’t look great: it’s blocky, and there is no <a href="https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors">good way to
+get rid of the anti-aliasing lines</a>. I also used our <code>mesh.tile</code>
+list-matrix to compute the shading of the tiles, which requires a fair bit of
+work beyond what <code>persp</code> does on its own. Finally, while I can get this
+out to a bitmap, AFAICT there is no easy base-R-only way to read back a bitmap
+into R for manipulation to make the analygraphs.</p>
+</div>
+<div id="videos" class="section level2">
+<h2>Videos</h2>
+<p>Both videos were made by generating PNG files that I turned into an MP4 with
+ffmpeg` with the command:</p>
+<pre><code>ffmpeg -pattern_type glob -i &#39;*.png&#39; -r 30 -pix_fmt yuv420p out.mp</code></pre>
+<pre class="r"><code>Analygraph videos:
+## Basic video
+
+deg &lt;- 0:119 * 3
+deg.stereo &lt;- c(deg + 2.5, deg - 2.5)
+rot.360 &lt;- lapply(deg.stereo, function(x) rot %*% rot_z(x))
+sun.els &lt;- seq(-30, 120, length=50)
+shadows &lt;-
+  lapply(deg + 180, ray_shade2, anglebreaks=sun.els, heightmap=volcano)
+
+elren &lt;- mrender_elevation(volcano, shadows, rot.360, res=600, d=200)
+elren &lt;- lapply(elren, flip)
+dim(elren) &lt;- c(length(elren) / 2, 2)  # a list matrix again
+elrows &lt;- seq_len(nrow(elren))
+elren2 &lt;- lapply(elrows, function(i) do.call(analygraph, elren[i,]))
+size &lt;- max(dim(elren2[[1]]))
+
+for(i in elrows) {
+  png(sprintf(&#39;tmp/volc%03d.png&#39;, i), width=size, height=size, bg=&#39;black&#39;)
+  par(mai=numeric(4))
+  plot(as.raster(elren2[[i]]))
+  analygraph_glasses(.15)
+  dev.off()
+}
+## Coming at ya video
+
+eye.sep &lt;- tan(2.5/180*pi) * 200  # really half eye sep, exaggerate angle
+dists &lt;- seq(1400, 50, length.out=90)
+deg.d &lt;- atan(eye.sep / dists) * 180 / pi
+deg.ds &lt;- c(deg.d, -deg.d)
+rot.d &lt;- lapply(deg.ds, function(x) rot %*% rot_z(x))
+
+elrena &lt;- mrender_elevation(volcano, shadow, rot.d, res=600, d=as.list(dists))
+
+elrena &lt;- lapply(elrena, flip)
+dim(elrena) &lt;- c(length(elrena) / 2, 2)  # a list matrix again
+elrows &lt;- seq_len(nrow(elrena))
+elrena2 &lt;- lapply(elrows, function(i) do.call(analygraph, elrena[i,]))
+size &lt;- max(dim(elrena2[[1]]))
+
+for(i in elrows) {
+  png(sprintf(&#39;tmp1/volc%03d.png&#39;, i), width=size, height=size, bg=&#39;black&#39;)
+  par(mai=numeric(4))
+  plot(as.raster(elrena2[[i]]))
+  analygraph_glasses(.15)
+  dev.off()
+}</code></pre>
+<p>Stereogram video:</p>
+<pre class="r"><code>elren3 &lt;- lapply(elrows, function(i) do.call(cbind, elren[i,]))
+width &lt;- ncol(elren3[[1]]) / 2
+height &lt;- nrow(elren3[[1]]) / 2
+for(i in elrows) {
+  path &lt;- sprintf(&#39;tmp2/volc%03d.png&#39;, i)
+  png(path, width=600, height=600/width*height, bg=&#39;black&#39;)
+  par(mai=numeric(4))
+  plot(as.raster(elren3[[i]]))
+  dev.off()
+}</code></pre>
+<hr />
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Why would I subject myself to this? Well, I’m as sucker for
+learning new interesting things such as how 3D rendering is actually done, and
+there is no better way to learn than to do. I also believe, as an R package
+developer, that it is important to know just how far you can push base
+R (there are good reasons for this that I will elaborate on in a future blog
+post), and there is no better way to know than to push it to do
+things it isn’t really meant to do.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>We’re not shooting for live rendering of 3D games here;
+something that will allow us to render short video clips in single digit
+minutes is what we consider useful.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>I use the term loosely to mean the packages that are by default
+loaded into the search path of a “vanilla” R session. As of this writing the
+packages are <code>stats</code>, <code>graphics</code>, <code>grDevices</code>, <code>utils</code>, <code>datasets</code>, <code>methods</code>,
+and the actual <code>base</code> package.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>Some 3D packages out there will blatantly lie to you by rotating the
+displayed axes along with the object, making it seem like the axes are
+rotating, but in reality the underlying axes are not rotating. This lie
+made it particularly difficult for me to figure out why things were not
+rotating the way I thought they should. I’m still pissed off about it.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>We’re not shooting for live rendering of 3D games here;
+something that will allow us to render short video clips in single digit
+minutes is what we consider useful.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>There is always a tension in R between minimizing R-level
+function calls and minimizing memory footprint. Due to the cost of calling
+R-level functions it is often though not always useful to duplicate or
+partially duplicate data if it avoids many R-level function calls.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>R code that carries out looped operations over vectors
+in compiled code rather than in R-level code.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>In reality we only <em>need</em> to do this for the polygons that are visible in
+the end result, but determining what is visible and not is non-trivial,
+particularly for open surfaces at the pixel level, so we’ll reserve that for a
+possible future low-probability-of-getting-made blog post.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p>A more efficient variation on <code>expand.grid(x, y)</code> would be
+<code>list(rep(seq_len(x),y), rep(seq_len(y), each=x))</code><a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p>NovaLogic developed a 3D terrain rendering engine for use in the Comanche
+helicopter flight simulations back in the early nineties. It was awesome
+then, but looks about as good as our volcano here does right now:
+<img src="https://cdn.arstechnica.net/sims-feature/comanche.jpg" alt="Comanche Screenshot" /><br />See <a href="https://github.com/s-macke/VoxelSpace">s-macke</a> for an amazing explanation of
+their rendering engine.<a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>Well, almost, the eagle-eyed reader will notice we’ve lost the
+anti-aliasing, but shhhh, don’t tell anyone.<a href="#fnref11" class="footnote-back">↩</a></p></li>
+<li id="fn12"><p>3D rendering is typically done in single precision floating
+point, which would halve the memory footprint of the process. Granted we only
+have on color chanel, but on the whole even if we had three color chanels
+we’re taking a performance penalty due to R only have one type of floating
+point data type.<a href="#fnref12" class="footnote-back">↩</a></p></li>
+<li id="fn13"><p>Possibly it is because the device still renders the polygon borders,
+or perhaps because of anti-aliasing (though turning that off did not seem to
+make a difference). I am not curious enough to look at the source of the
+device code.<a href="#fnref13" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
