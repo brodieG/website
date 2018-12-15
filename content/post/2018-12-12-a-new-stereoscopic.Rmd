@@ -48,7 +48,7 @@ practices here.  My criteria for using things in this post is: "does it _appear_
 Our subject today will be the much-loved `volcano`, a.k.a. Maunga Whau.  We are
 going to pretend that the Z-values of the `volcano` matrix are in the same units
 as the grid size (i.e. 10m per unit, as per `?volcano`).  This is obviously not
-the case, but the documentation is just ambiguous enough that I feel comfort
+the case, but the documentation is just ambiguous enough that I feel comfortable
 indulging in this minor fraud for dramatic effect.  Here is a height-map of
 volcano:
 
@@ -376,7 +376,7 @@ c(x[,1:10])
 Great, but did we _really_ need to subject ourselves to this rigmarole?
 Wouldn't `persp`, which would still abide by our base-R-only pledge, do this
 just as well and without ridiculous list-matrices?  Well, [kind
-of](#meshes-with-pesp), but more importantly, "this" is not what we're after.
+of](#meshes-with-persp), but more importantly, "this" is not what we're after.
 We have far grander ambitions, and "this" is basically about the limit of what
 we can do with `persp`.
 
@@ -954,8 +954,8 @@ p.raster <- matrix(numeric(0), x.width, y.width)
 p.raster[cbind(p.x, p.y)] <- rep(texture, dims.xy)
 ```
 
-We apply the textures by indexing `bb.raster` with a matrix (`cbind(bb.x,
-bb.y)`).  This is a special type of indexing that allows you to directly address
+We apply the textures by indexing `bb.raster` with a matrix (`cbind(p.x,
+p.y)`).  This is a special type of indexing that allows you to directly address
 specific cells by providing a matrix with the row and column values you are
 targeting.
 
@@ -1251,7 +1251,7 @@ plot(as.raster(elcolor))
 ```
 </div>
 
-You can get [analygraph glasses very cheaply][16].  I got 10 for USD5.
+You can get [analygraph glasses very cheaply][16].  I got ten for five bucks.
 
 One advantage of using red and cyan is that the areas where the images overlap
 are white or gray, which looks a lot more natural.  If we had used red and green

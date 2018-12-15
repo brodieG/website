@@ -40,7 +40,7 @@ practices here. My criteria for using things in this post is: “does it <em>app
 <p>Our subject today will be the much-loved <code>volcano</code>, a.k.a. Maunga Whau. We are
 going to pretend that the Z-values of the <code>volcano</code> matrix are in the same units
 as the grid size (i.e. 10m per unit, as per <code>?volcano</code>). This is obviously not
-the case, but the documentation is just ambiguous enough that I feel comfort
+the case, but the documentation is just ambiguous enough that I feel comfortable
 indulging in this minor fraud for dramatic effect. Here is a height-map of
 volcano:</p>
 <pre class="r"><code>xv &lt;- row(volcano)
@@ -278,7 +278,7 @@ NA values between each of our tiles’ data:</p>
 [45]    NA -13.5 -14.4 -14.0 -13.1    NA</code></pre>
 <p>Great, but did we <em>really</em> need to subject ourselves to this rigmarole?
 Wouldn’t <code>persp</code>, which would still abide by our base-R-only pledge, do this
-just as well and without ridiculous list-matrices? Well, <a href="#meshes-with-pesp">kind
+just as well and without ridiculous list-matrices? Well, <a href="#meshes-with-persp">kind
 of</a>, but more importantly, “this” is not what we’re after.
 We have far grander ambitions, and “this” is basically about the limit of what
 we can do with <code>persp</code>.</p>
@@ -527,7 +527,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7fa961cf0678&gt;
+&lt;bytecode: 0x7f83bd021c78&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
@@ -581,7 +581,7 @@ p.y &lt;- y.off + mins[[&#39;y&#39;]][bb.id]</code></pre>
 the textures we computed for our <a href="#mesh-tri-persp">mesh</a>:</p>
 <pre class="r"><code>p.raster &lt;- matrix(numeric(0), x.width, y.width)
 p.raster[cbind(p.x, p.y)] &lt;- rep(texture, dims.xy)</code></pre>
-<p>We apply the textures by indexing <code>bb.raster</code> with a matrix (<code>cbind(bb.x, bb.y)</code>). This is a special type of indexing that allows you to directly address
+<p>We apply the textures by indexing <code>bb.raster</code> with a matrix (<code>cbind(p.x, p.y)</code>). This is a special type of indexing that allows you to directly address
 specific cells by providing a matrix with the row and column values you are
 targeting.</p>
 <p>There is also a subtle trick deployed here: instead of checking for duplicate
@@ -815,7 +815,7 @@ shadow::analygraph_glasses(.15)   # for the icon h/t @jurbane2</code></pre>
 <div style="display: none;">
 <p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png" width="384" style="display: block; margin: auto;" /></p>
 </div>
-<p>You can get <a href="https://duckduckgo.com/?q=analygraph+glasses&amp;t=ffsb&amp;ia=products">analygraph glasses very cheaply</a>. I got 10 for USD5.</p>
+<p>You can get <a href="https://duckduckgo.com/?q=analygraph+glasses&amp;t=ffsb&amp;ia=products">analygraph glasses very cheaply</a>. I got ten for five bucks.</p>
 <p>One advantage of using red and cyan is that the areas where the images overlap
 are white or gray, which looks a lot more natural. If we had used red and green
 the overlapping areas would end up yellow.</p>
