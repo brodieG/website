@@ -1,0 +1,146 @@
+---
+title: Accidental Art
+author: ~
+date: '2018-12-29'
+slug: accidental-art
+draft: true
+categories: [r]
+tags: [visualization]
+---
+
+
+
+<div id="poor-volcano" class="section level1">
+<h1>Poor Volcano</h1>
+<p><a href="/2018/12/12/three-d-pipeline/">Writing a 3D rendering pipeline</a> in R was fertile ground for accidental art.
+Here are some examples that I retained for posterity. Code for most of them in
+in the <a href="#appendix">appendix</a>.</p>
+</div>
+<div id="hash-and-its-skeleton" class="section level1">
+<h1>Hash and Its Skeleton</h1>
+<p>Grayscale tiles of increasing brightness that were not. An off by three error
+took care of that.</p>
+<p><img src="/post/2018-12-04-accidental-art_files/figure-html/hash-1.png" width="576" style="display: block; margin: auto;" /><img src="/post/2018-12-04-accidental-art_files/figure-html/hash-2.png" width="576" style="display: block; margin: auto;" /></p>
+<p><a href="#hash-code">Code</a>.</p>
+</div>
+<div id="shattered-dreams" class="section level1">
+<h1>Shattered Dreams</h1>
+<p>This one happened late when I thought I was done and it almost broke me. It was
+a simple fix, but those are hard to find with bleary eyes.</p>
+<p><img src="/post/2018-12-04-accidental-art_files/figure-html/shattered-dreams-1.png" width="576" style="display: block; margin: auto;" /></p>
+<p><a href="#shattered-dreams-code">Code</a>.</p>
+</div>
+<div id="stormy-night" class="section level1">
+<h1>Stormy Night</h1>
+<p>You probably wouldn’t guess I was trying my hand at stereoscopy from this one.
+This was supposed to be a ray-shaded elevation shifted slightly along the y axis
+for the parallax for stereoscopy. Instead we get storm clouds at night.</p>
+<p><img src="/post/2018-12-04-accidental-art_files/figure-html/stormy-night-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><a href="#stormy-night-code">Code</a>.</p>
+</div>
+<div id="static" class="section level1">
+<h1>Static</h1>
+<p>I find it particularly interesting that some parts of the image are not
+scrambled.</p>
+<p><img src='/images/accidental-art-1.PNG' style='width: 7in;' /></p>
+<p>The code for this one is lost.</p>
+</div>
+<div id="orthogonal" class="section level1">
+<h1>Orthogonal</h1>
+<p>A bit banal, but there is something about the glitchy look that I like.</p>
+<p><img src="/post/2018-12-04-accidental-art_files/figure-html/orthogonal-1.png" width="576" style="display: block; margin: auto;" /></p>
+<p><a href="#orthogonal-code">Code</a>.</p>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="hash-code" class="section level2">
+<h2>Hash Code</h2>
+<pre class="r"><code>nr &lt;- 23
+nc &lt;- 20
+mx &lt;- matrix(numeric(nr * nc), nc)   # &lt;- BAD, should be ncol=nc
+par(mai=numeric(4))
+col &lt;- paste0(gray((row(mx[-1,-1]) * col(mx[-1,-1])/((nr-1)*(nr-1)))), &quot;77&quot;)
+suppressWarnings(
+  mxpoly.x &lt;- rbind(
+    c(row(mx)[-nr, -nc]), c(row(mx)[-1, -nc]), c(row(mx)[-1, -1]), 
+    c(row(mx)[-nr, -1]), NA
+) )
+suppressWarnings(
+  mxpoly.y &lt;- rbind(
+    c(col(mx)[-nr, -nc]), c(col(mx)[-1, -nc]), c(col(mx)[-1, -1]), 
+    c(col(mx)[-nr, -1]), NA
+) )
+plot.new()
+polygon(
+  (mxpoly.x - 1) / (max(mxpoly.x,na.rm=TRUE) - 1), 
+  (mxpoly.y - 1) / (max(mxpoly.y,na.rm=TRUE) - 1),
+  col=col, border=NA
+)
+plot.new()
+polygon(
+  (mxpoly.x - 1) / (max(mxpoly.x,na.rm=TRUE) - 1), 
+  (mxpoly.y - 1) / (max(mxpoly.y,na.rm=TRUE) - 1),
+  border=&#39;black&#39;, lwd=0.5
+)</code></pre>
+</div>
+<div id="shattered-dreams-code" class="section level2">
+<h2>Shattered Dreams Code</h2>
+<pre class="r"><code>library(shadow)
+rescale &lt;- function(x, range=1, center=0.5)
+  ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
+   (1 - range) * center
+volc.l &lt;- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
+rot &lt;- rot_x(-20) %*% rot_z(65)
+volc.lr &lt;- rot %*% volc.l
+vl &lt;- lapply(seq_len(nrow(volc.lr)), function(x) volc.lr[x,])
+names(vl) &lt;- c(&#39;x&#39;,&#39;y&#39;,&#39;z&#39;)
+vlp &lt;- vl
+vlp[c(&#39;x&#39;,&#39;y&#39;)] &lt;- lapply(vl[c(&#39;x&#39;,&#39;y&#39;)], function(x) x - sum(range(x)) / 2)
+z.rng &lt;- range(vlp[[&#39;z&#39;]])
+D &lt;- .5
+ZD &lt;- diff(z.rng)
+vlp[[&#39;z&#39;]] &lt;- vlp[[&#39;z&#39;]] - (z.rng[2] + D * ZD)
+vlp[[&#39;t&#39;]] &lt;- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
+z.factor &lt;- -1 / vlp[[&#39;z&#39;]]
+vlp[c(&#39;x&#39;,&#39;y&#39;)] &lt;- lapply(vlp[c(&#39;x&#39;,&#39;y&#39;)], &#39;*&#39;, z.factor)
+vlp &lt;- sapply(vlp, &#39;[&#39;, order(vlp[[&#39;z&#39;]]), simplify=FALSE)  # &lt;-- BAD
+mesh.tri &lt;- mesh_tri(vlp, dim(volcano))
+zord &lt;- order(Reduce(&#39;+&#39;, mesh.tri[,&#39;z&#39;]))
+x &lt;- do.call(rbind, c(mesh.tri[,&#39;x&#39;], list(NA)))[,zord]
+y &lt;- do.call(rbind, c(mesh.tri[,&#39;y&#39;], list(NA)))[,zord]
+texture &lt;- gray((Reduce(&#39;+&#39;, mesh.tri[,&#39;t&#39;])/nrow(mesh.tri)))[zord]
+par(mai=numeric(4))
+plot.new()
+plot.window(c(0,1), c(0,1), asp=diff(range(vlp[[&#39;x&#39;]]))/diff(range(vlp[[&#39;y&#39;]])))
+polygon(rescale(x), rescale(y), col=texture, border=texture)</code></pre>
+</div>
+<div id="stormy-night-code" class="section level2">
+<h2>Stormy Night Code</h2>
+<pre class="r"><code>dem &lt;- readRDS(&#39;../../static/data/three-d-pipeline-elev-complex.RDS&#39;)
+ell &lt;- rbind(x=c(row(dem)), y=c(col(dem)), z=c(dem))
+elfin &lt;- rot_y(10) %*% ell
+elfin &lt;- elfin[,order(-elfin[3,])]
+
+par(mai=numeric(4), bg=&#39;black&#39;)
+plot.new()
+points(
+  y=rescale(-elfin[1,]), x=rescale(elfin[2,]),
+  col=gray(rescale(elfin[3,], .8, 1)),
+  pch=16
+)</code></pre>
+</div>
+<div id="orthogonal-code" class="section level2">
+<h2>Orthogonal Code</h2>
+<pre class="r"><code>rot &lt;- rot_x(-20) %*% rot_z(65)
+rot.l &lt;- rot %*% rot_z(2.5)
+rot.r &lt;- rot %*% rot_z(-2.5)
+shadow &lt;- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
+elren &lt;- mrender_elevation(
+  volcano, shadow, list(rot.l, rot.r), res=1000, d=125, fov=85
+)
+flip &lt;- function(x) t(x)[rev(seq_len(ncol(x))),]
+elcolor &lt;- analygraph(flip(elren[[1]]), elren[[2]])  # missing flip
+par(mai=numeric(4))
+plot(as.raster(elcolor))</code></pre>
+</div>
+</div>
