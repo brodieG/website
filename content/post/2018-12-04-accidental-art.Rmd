@@ -3,7 +3,6 @@ title: Accidental Art
 author: ~
 date: '2018-12-29'
 slug: accidental-art
-draft: true
 categories: [r]
 tags: [visualization]
 ---
