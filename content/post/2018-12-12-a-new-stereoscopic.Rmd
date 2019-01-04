@@ -1451,7 +1451,7 @@ for(i in elrows) {
 
 ---
 
-[^quixotic]: Why would I subject myself to this?  Well, I'm as sucker for
+[^quixotic]: Why would I subject myself to this?  Well, I'm a sucker for
   learning new interesting things such as how 3D rendering is actually done, and
   there is no better way to learn than to do.  I also believe, as an R package
   developer, that it is important to know just how far you can push base
