@@ -56,7 +56,7 @@ vec <- 1:12
 vec
 ```
 
-`vec` is stored in memory as nine 32-bit[^3] contiguous sections of memory.
+`vec` is stored in memory as twelve 32-bit[^3] contiguous sections of memory.
 
 One of the foundational principles of R is that complex data structures can be
 derived from vectors by attaching meta-data to them.  This is a simple and
@@ -70,11 +70,11 @@ attr(mx, 'dim') <- c(3, 4)
 mx
 ```
 
-Even though the underlying data is unchanged, it is treated differently.  R
+Even though the underlying data is unchanged, its semantics change. R
 comes with several built-in special attributes like 'dim' that induce
 data-structure specific semantics.  Additionally the 'class' attribute can be
 used in combination with generic functions to attach any interpretation
-imaginable[^5].
+imaginable[^5] to data.
 
 The mere addition of the 'dim' attribute allows magic like matrix multiplication
 on what are really one dimensional vectors.  At the same time, R can re-use all
@@ -97,28 +97,79 @@ Or row-wise with transposition or repetition:
 
 ```{r}
 t(t(mx) + (1:4) * 100)
-mx + rep(1:4, each=ncol(mx))
+mx + rep(1:4, each=nrow(mx))
 ```
 
 The "dual" nature of matrices and arrays[^6] provides many opportunities for
 creative manipulation.
 
-We have been looking primary at numeric vectors, but R has different types of
-vectors.  There are logical vectors, and character vectors.  There are also list
-vectors:
+We have been looking primary at numeric vectors, but there are several others.
+There are logical vectors, and character vectors, and also vectors:
 
 ```{r}
 list(1, list(1,2), 'hello')
 ```
 
+But how can lists be vectors if vectors are supposed to be a sequence of
+contiguous, equal-size, equal-type elements?  It is because the list proper is a
+vector of pointers that link to the actual contents.  The pointers themselves
+are equal size and equal type, even though the "contents" are not.  If this
+seems odd, realize that character vectors are the same.  They are vectors of
+pointers to strings which themselves are often different sizes.
 
+Since lists are vectors, we can also add dim attributes to them and get
+meaningful results:
 
+```{r}
+set.seed(42)
+l <- replicate(12, runif(10), simplify=FALSE)
+dim(l) <- c(3, 4)
+l
+l[[3, 2]]
+```
 
+While list-matrices are a bit odd they do have uses we'll discuss shortly.  The
+important point for now is that we started with the simple concept of vectors
+and attributes, and ended up with strange but useful list-matrices.  R allowed
+us to combine simple concepts to create useful complexity.
+
+DATAFRAMES?  `lapply` over columns?
 
 # Everything is Data
 
+Certainly this is true of anything that happens on a computer, but it is as bit
+more obvious with R than with most other programming languages.  I still recall
+my consternation when I first started using R and typed the following into the
+terminal thinking I had a variable defined by that name:
+
+```{r}
+var
+```
+
+R happily went ahead and displayed the contents of the `var` function as it
+would display the contents of any normal variable.  That functions were stored
+in variables as any other data felt more like a curiosity or even an annoyance
+than anything else:
+
+```{r}
+var(1:10)
+variance <- var
+var <- 1:10
+variance(1:10)
+```
+
+This was before I fully appreciated that while R can behave like a traditional
+imperative language, it has a strong functional bent providing a whole host of
+functions that manipulate data, numeric, function or otherwise.
+
+
+That was before I became
+
+
 * Functions
 * Language
+* do.call
+* Functional
 
 # Freedom
 
@@ -153,24 +204,6 @@ RPN calculator.
 
 ```{r}
 rpn <- function(...) {
-  l <- rev(list(...))
-  rpn_rec <- function(l) {
-    if(is.numeric(l)) l
-    else j
-
-    call(as.name(l[[1]]),
-
-
-  }
-
-  Reduce(
-    function(x, y)
-      if(length(x) == 3)
-
-}
-
-
-rpn <- function(...) {
   l <- lapply(list(...), function(x) if(is.numeric(x)) x else as.name(x))
   i <- 1
   while(length(l) >= i) {
@@ -183,18 +216,21 @@ rpn <- function(...) {
   l[[1]]
 }
 rpn(3, 4, '+', 5, '*', pi, 2, '-', '/')
+l <- list(3, 4, as.name('+'), 5, as.name('*'), pi, 2, as.name('-'), as.name('/'))
 
-ul <- function(x) if(is.call(x)) lapply(as.list(x), ul) else x
+rpn_rec <- function(hd, tl)
+  if(length(tl)) {
+    hd <- if(is.numeric(tl[[1]])) c(hd, tl[1])
+          else c(head(hd, -2), list(as.call(c(tl[1], tail(hd, 2)))))
+    Recall(hd, tl[-1])}
+  else hd[[1]]
 
-
+rpn2 <- function(...) {
+  l <- lapply(list(...), function(x) if(is.numeric(x)) x else as.name(x))
+  rpn_rec(list(), l)
 }
 
-rpn_rec <- function(hd, tl) {
-  if(length(tl))
-    if(is.numeric(tl)) rpn_rec(c(hd, tl[1]), tl[-1])
-    else c(head(hd, -2), as.call(c(tl[[1]], tail(h2, 2)))),
 
-}
 rpn <- function(...) {
   l <- lapply(list(...), function(x) if(is.numeric(x)) x else as.name(x))
   for(i in seq(2, length(l), 1))
