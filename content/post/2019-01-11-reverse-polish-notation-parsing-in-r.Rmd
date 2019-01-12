@@ -11,30 +11,227 @@ tags: []
 
 One of the many remarkable things about R is that you can [compute on the
 language][1].  "Language" in this context are unevaluated R expressions of the
-type produced by `quote` or `parse`.
+type produced by `quote` or `parse`[^1]:
 
 ```{r}
 quote(6 * 7)
 typeof(quote(6 * 7))
-parse("6 * 7")
-typeof(parse("6 * 7"))
-typeof(parse("6 * 7")[[1]])
+class(quote(6 * 7))
 ```
 
-Language objects 
+`quote` returns "call" objects, which are unevaluated function calls.  Language
+objects are structured in a manner that the R evaluation engine can readily
+interpret:
+
+```{r}
+eval(quote(6 * 7))
+```
+
+When you type an expression at the R prompt, R will parse it into a language
+object and then evaluate it.
+
+Language objects are internally stored as lists[^2] with the first element a
+function or the name of a function, and subsequent elements the arguments.  We
+can reveal this structure by coercing to list:
+
+```{r}
+str(as.list(quote(6 * 7)))
+```
+
+In R operators are really functions disguised as operators, which explains why
+the `*` shows up as the first element of the list:
+
+```{r}
+class(`*`)
+`*`(6, 7)
+```
+
+R could have hidden all this language business behind the scenes, but by
+exposing it to the user it allows us to do some rather remarkable things:
+
+```{r}
+answer <- quote(6 * 7)
+answer
+answer[[1]] <- as.name('/')
+answer
+eval(answer)
+```
+
+You might say: "big deal, I could have done that with regular expressions on the
+text of the expression".  In this specific case you could have, but generally
+speaking you need the semantic context of a language object to properly
+manipulate it, as in [this example][2] where we replace assignment `=` with `<-`
+without also replacing `=`s that are not assignment.
+
+It is also possible to create calls out of component pieces with `call` or
+`as.call`:
+
+```{r}
+call('/', 378, 9)
+as.call(list(as.name('/'), 378, 9))
+```
+
+`call` wants the function name in character format; internally it will convert
+it to a symbol when it assembles the call.  `as.call` does less input
+processing so it requires `as.name` to create the symbol[^3].
+
+```{r}
+typeof(as.name('/'))
+```
+
+When symbols are evaluated in R, R looks for that symbol through the search path
+and returns the associated object.  In this case it would be the division
+function in the base environment.
+
+# Reverse Polish Notation
+
+[Reverse Polish Notation][4] (RPN henceforth) is an algebraic notation where
+operands are listed before their operators.  So `A B +` in RPN and `A + B` in
+standard notation are semantically equivalent.  The main advantage of RPN is
+that under the assumption that operators are binary, there is no precedence
+ambiguity:
+
+```
+A + B * C      # Normal
+A B C * +      # RPN
+
+(A + B) * C    # Normal
+A B + C *      # RPN
+```
+
+Operators-operand grouping is wholly determined by the order in which they
+appear in the expression.  This makes it a lot easier to enter complex algebraic
+expressions that would otherwise require nested parentheses into calculators,
+particularly so when the calculator displays were small.  This is why most
+Hewlett Packard calculators tended to use this convention, including the
+venerable HP-12C:
+
+![HP-12C Calculator][5]
+
+Undoubtedly the cognitive load required to understand RPN is greater. I still
+remember being completely baffled when I was given my first HP-12C, but once
+you get the hang of it there is no going back.  I still reach for my HP-12C when
+I need to do some quick calculations rather than type them in finder or at the R
+prompt.
+
+# Parsing RPN With R
+
+Why bother with RPN now that we have nice big displays and IDEs with
+auto-completing parentheses?  Only because parsing RPN is a great example of R's
+language computation capabilities.
+
+First, we need to define a helper function to convert operators in character
+format to the their symbol equivalents.
+
+```{r}
+chr_to_name <- function(y)
+  lapply(y, function(x) if(is.numeric(x)) x else as.name(x))
+```
+
+If we we have a list containing RPN ordered tokens:
+
+```{r}
+tokens <- chr_to_name(list(20, 22, '+'))
+str(tokens)
+```
+
+Converting them to the "normal" form is trivial:
+
+```{r}
+call <- as.call(c(tokens[3], tokens[-3]))
+call
+eval(call)
+```
+
+And it's barely any more work to build a full RPN parser:
+
+```{r}
+rpn <- function(...) {
+  L <- chr_to_name(list(...))
+  i <- 1
+  while(length(L) >= i) {
+    if(is.name(L[[i]])) {
+      L[[i]] <- as.call(L[i-c(0,2,1)])
+      L[i-(1:2)] <- NULL
+      i <- i-1
+    } else {
+      i <- i+1
+    }
+  }
+  L[[1]]
+}
+rpn(20, 22, '+')
+rpn(3, 3, '+', 2, 5, '+', '*')
+plot(1:10, 1:10)
+```
+
+You can play the evaluation of `rpn` frame by frame to get a sense of what's
+going on:
+
+```{r eval=FALSE, echo=FALSE}
+source('static/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/explain.R')
+options(explain.delay=readline)
+explain(rpn)(9, 3, '-', 2, 5, '+', '*')
+writeLines(
+  sprintf(
+    "<img id='bg-rpn-%d' class='bg-rpn' src='%s' style='display: none' />",
+    seq_along(files), files
+) )
+```
+
+<div id='bg-rpn-flipbook' style='background-color: black;'>
+</div>
+<script type='text/javascript'>
+var img_dir =
+  '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook';
+var img_n = 47;
+var flipbook = document.getElementById('bg-rpn-flipbook');
+var pad = "00";
+var img_active = 0;
+for(i = 0; i < img_n; i++) {
+  var img = document.createElement("img");
+  var img_n_str = "" + (i + 1);
+  var img_file = pad.substring(0, pad.length - img_n_str.length) + img_n_str;
+  var img_src = img_dir + '/img-' + img_file + '.png'
+  img.src = img_src;
+  img.style.display = 'none';
+  img.style.width = '598px';
+  img.style.margin = 'auto';
+  flipbook.append(img);
+}
+for(i = 0; i < img_n; i++) {
+  flipbook.children[i].style.display = 'block';
+}
+for(i = 0; i < img_n; i++) {
+  flipbook.children[i].style.display = 'none';
+}
+flipbook.children[img_active].style.display = 'block';
+
+function slideShow(e) {
+  var old_active = img_active;
+  if(e.shiftKey) {
+    img_active = Math.max(0, img_active - 1);
+  } else {
+    img_active = Math.min(img_n, img_active + 1);
+  }
+  flipbook.children[img_active].style.display = 'block';
+  flipbook.children[old_active].style.display = 'none';
+}
+flipbook.addEventListener("click", slideShow);
+</script>
 
 # Appendix
 
 This is the code used to implement `explain`.  While the concepts it uses are
 generally applicable, the logic was designed to work with the `rpn`
-function as defined in this post for expediency and should not be expected to
-work with other function.
+function as defined in this post for expediency's sake.  It should not be
+expected to work with other functions.
 
 In order of this to work properly the `rpn` function must be loaded from a
 source file as otherwise the parse data is not accessible.
 
 ```{r eval=FALSE}
-
+## source('rpn.R')
 
 # We're going to loop through the body, and record start and end lines of
 # the expressions.  Multi-line expressions are split into sub-expressions.
@@ -51,8 +248,7 @@ src_lines <- function(x, dat) {
       with(sub[i,], if(line2 - line1 > 0) src_lines(id, dat) else line1)
   res
 }
-# Track the monitored values, i, L, and udpate their display when they
-# change.
+# Add a monitoring function call to each sub-expression in the function
 
 enmonitor_one <- function(lang, line) {
   call(
@@ -62,6 +258,9 @@ enmonitor_one <- function(lang, line) {
     quote(.res)
   )
 }
+# Recursively traverse the function code and add monitoring calls to each
+# non-while or if expression.
+
 enmonitor <- function(code, ln) {
   i <- j <- 1
   while(i <= length(code)) {
@@ -80,18 +279,9 @@ enmonitor <- function(code, ln) {
   }
   code
 }
-## pad with spaces accounting for ANSI CSI
-nchar2 <- function(x) nchar(gsub('\033\\[[^m]*m', '', x))
-pad <- function(x) {
-  chars <- nchar2(x)
-  paste0(x, strrep(" ", max(chars) - chars))
-}
-reset <- function(rows, cols) {
-  whiteout <- rep(strrep(" ", cols), rows)
-  cat(sprintf("\033[%dA\r", rows))
-  writeLines(whiteout)
-  cat(sprintf("\033[%dA\r", rows))
-}
+## Generate the function that is called for each expression in `rpn` to update
+## the "debugging" display
+
 make_refresh_display <- function(src, idx.name, L.name, delay=delay) {
   L.old <- i.chr.init <- character()
   idx.old <- 0
@@ -166,6 +356,7 @@ make_refresh_display <- function(src, idx.name, L.name, delay=delay) {
     Sys.sleep(delay)
   }
 }
+## Inject monitoring function calls to each expression
 
 explain <- function(fun, delay=.75) {
   fun.name <- substitute(fun)
@@ -193,9 +384,35 @@ explain <- function(fun, delay=.75) {
   environment(fun2) <- environment()
   fun2
 }
+## Helper functions
+
+nchar2 <- function(x) nchar(gsub('\033\\[[^m]*m', '', x))
+pad <- function(x) {
+  chars <- nchar2(x)
+  paste0(x, strrep(" ", max(chars) - chars))
+}
+reset <- function(rows, cols) {
+  whiteout <- rep(strrep(" ", cols), rows)
+  cat(sprintf("\033[%dA\r", rows))
+  writeLines(whiteout)
+  cat(sprintf("\033[%dA\r", rows))
+}
 
 ```
 
+[^1]: `quote` produces a single R statement or "call", whereas `parse` produces
+  a list of them, possibly of length one.  The lists of calls produced by `parse`
+  are called "expression" objects.
+[^2]: Pair list really, and even though internally these are stored in a manner
+  quite different to the traditional "vector" lists we're used to in R, their
+  semantics are very similar when accessed through R.  See this [SO answer][3]
+  for more details.
+[^3]: You can make calls with `as.call` with string function names, and even an
+  anonymous function, but in those cases the language object will not rendered
+  as an operator, e.g. `as.call(list('+', 1, 2))` is `"+"(1, 2)`.
 
 [1]: https://cran.r-project.org/doc/manuals/r-release/R-lang.html#Computing-on-the-language
-
+[2]: https://stackoverflow.com/a/54139497/2725969
+[3]: https://stackoverflow.com/a/29419060/2725969
+[4]: https://en.wikipedia.org/wiki/Reverse_Polish_notation
+[5]: https://upload.wikimedia.org/wikipedia/commons/9/9b/HP-12C_programmable_calculator.jpg
