@@ -257,6 +257,10 @@ satisfying.
 
 # Vectors
 
+# Concessions to Common Semantic Standards
+
+Disguising things to look like other things: language like language, operators
+like operators.
 
 
 # Functions are Data
