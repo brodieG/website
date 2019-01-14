@@ -1,7 +1,6 @@
-# We need to laod the `rpn` function from source so that te parse data is
-# available
+# This works if wd is the website
 
-# source('https://www.brodieg.com/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/rpn.R')
+# source('static/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/rpn.R')
 
 # We're going to loop through the body, and record start and end lines of
 # the expressions.  Multi-line expressions are split into sub-expressions.
@@ -24,9 +23,9 @@ src_lines <- function(x, dat) {
 enmonitor_one <- function(lang, line) {
   call(
     '{',
-    call('<-', quote(.res), call("(", lang)),
-    bquote(refresh_display(.(line))),
-    quote(.res)
+    call('<-', quote(.res), call("(", lang)),  # eval and temporarily store
+    bquote(refresh_display(.(line))),          # update debug display
+    quote(.res)                                # return temporary value
   )
 }
 enmonitor <- function(code, ln) {

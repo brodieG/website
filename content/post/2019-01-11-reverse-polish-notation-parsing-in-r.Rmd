@@ -1,5 +1,5 @@
 ---
-title: Reverse Polish Notation Parsing in R
+title: Reverse Polish Notation Parsing
 author: ~
 date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
@@ -7,39 +7,88 @@ categories: [r]
 tags: []
 ---
 
+```{r echo=FALSE}
+knitr::opts_chunk$set(
+  comment = "", fig.align='center'
+)
+options(digits=3)
+```
+
+# Reverse Polish Notation
+
+[Reverse Polish Notation][4] (RPN henceforth) is an algebraic notation where
+operands are listed before their operators.  So `A + B` becomes `A B +` in RPN.
+One advantage of polish notation is that under the assumption that operators are
+binary, there is no precedence ambiguity:
+
+```
+A + (B * C)    # Normal
+A B C * +      # RPN
+(A (B C *) +)  # RPN with unncessary parentheses
+
+(A + B) * C    # Normal
+A B + C *      # RPN
+((A B +) C *)  # RPN with unncessary parentheses
+```
+
+Operator-operand grouping is wholly determined by the order in which they
+appear in the expression.  This makes it a easier to enter complex algebraic
+expressions in calculators with small displays. This is also true with
+straight-up polish notation where the operator comes first.  The advantage of
+reversing polish notation is every time we encounter an operator, we can
+evaluate the operation and keep the numeric result instead of storing numbers
+and operators.  This is probably why most Hewlett Packard calculators used RPN,
+including the venerable HP-12C:
+
+<img
+  src='https://upload.wikimedia.org/wikipedia/commons/9/9b/HP-12C_programmable_calculator.jpg'
+  style='width: 70%; display: block; margin: auto;' alt='HP-12C Calculator' />
+
+Undoubtedly the cognitive load required to understand RPN is substantial. I
+still remember being completely baffled when I was given my first HP-12C, but
+once you get the hang of it there is no going back.  I still reach for my HP-12C
+when I need to do some quick calculations rather than type them in finder or at
+the R prompt.
+
 # Computing on the Language
 
 One of the many remarkable things about R is that you can [compute on the
 language][1].  "Language" in this context are unevaluated R expressions of the
-type produced by `quote` or `parse`[^1]:
+type produced by `quote` or `parse`[^1].  We will use this capability to convert
+lists of RPN tokens into standard R expressions.  But before we do so we need to
+cover some of the basics.
+
+Normally, when you type an expression into the R command line, it is parsed
+and evaluated:
 
 ```{r}
-quote(6 * 7)
-typeof(quote(6 * 7))
-class(quote(6 * 7))
+6 * 7
 ```
 
-`quote` returns "call" objects, which are unevaluated function calls.  Language
-objects are structured in a manner that the R evaluation engine can readily
-interpret:
+Parsing converts what would otherwise be a text string into a data structure
+that R can interpret as a set of commands.  We can see the result of parsing
+by preventing evaluation with `quote`.  This produces "call" objects, which
+themselves are "language":
 
 ```{r}
-eval(quote(6 * 7))
+exp <- quote(6 * 7)
+class(exp)
+typeof(exp)
 ```
 
-When you type an expression at the R prompt, R will parse it into a language
-object and then evaluate it.
-
-Language objects are internally stored as lists[^2] with the first element a
-function or the name of a function, and subsequent elements the arguments.  We
-can reveal this structure by coercing to list:
+The quoted call looks just as we typed it at the terminal, but that is
+an artifice of how R chooses to display them.  In effect, the printing of a
+call undoes the parsing and returns the original string.  We can reveal the
+internal structure by coercing to list, which is how "call" objects are stored
+internally [^2]:
 
 ```{r}
-str(as.list(quote(6 * 7)))
+str(as.list(exp))
 ```
 
-In R operators are really functions disguised as operators, which explains why
-the `*` shows up as the first element of the list:
+The first element is a function or the name of a function, and subsequent
+elements the arguments.  In R operators are really functions disguised as
+operators, which explains why the `*` shows up as the first element of the list:
 
 ```{r}
 class(`*`)
@@ -50,21 +99,33 @@ R could have hidden all this language business behind the scenes, but by
 exposing it to the user it allows us to do some rather remarkable things:
 
 ```{r}
-answer <- quote(6 * 7)
-answer
-answer[[1]] <- as.name('/')
-answer
-eval(answer)
+exp
+exp[[1]] <- as.name('/')   # Yes, calls are really lists
+exp
+```
+
+Quoted calls can be evaluated:
+
+```{r}
+eval(exp)
 ```
 
 You might say: "big deal, I could have done that with regular expressions on the
 text of the expression".  In this specific case you could have, but generally
 speaking you need the semantic context of a language object to properly
-manipulate it, as in [this example][2] where we replace assignment `=` with `<-`
-without also replacing `=`s that are not assignment.
+manipulate it.  Supposed you wanted to replace assignment `=` symbols with `<-`
+in the following expression:
 
-It is also possible to create calls out of component pieces with `call` or
-`as.call`:
+```{r eval=FALSE}
+x = c(x="x = \"x =\" y")
+```
+
+I get a headache trying to think of the regular expression that would correctly
+identify which equals is an assignment equals, and which one is not, but this
+type of substitution is trivial if you [operate on the language object][2].
+
+Another mechanism for creating call object is to use `call` or `as.call` to
+assemble them from component pieces:
 
 ```{r}
 call('/', 378, 9)
@@ -79,71 +140,41 @@ processing so it requires `as.name` to create the symbol[^3].
 typeof(as.name('/'))
 ```
 
-When symbols are evaluated in R, R looks for that symbol through the search path
-and returns the associated object.  In this case it would be the division
-function in the base environment.
-
-# Reverse Polish Notation
-
-[Reverse Polish Notation][4] (RPN henceforth) is an algebraic notation where
-operands are listed before their operators.  So `A B +` in RPN and `A + B` in
-standard notation are semantically equivalent.  The main advantage of RPN is
-that under the assumption that operators are binary, there is no precedence
-ambiguity:
-
-```
-A + B * C      # Normal
-A B C * +      # RPN
-
-(A + B) * C    # Normal
-A B + C *      # RPN
-```
-
-Operators-operand grouping is wholly determined by the order in which they
-appear in the expression.  This makes it a lot easier to enter complex algebraic
-expressions that would otherwise require nested parentheses into calculators,
-particularly so when the calculator displays were small.  This is why most
-Hewlett Packard calculators tended to use this convention, including the
-venerable HP-12C:
-
-![HP-12C Calculator][5]
-
-Undoubtedly the cognitive load required to understand RPN is greater. I still
-remember being completely baffled when I was given my first HP-12C, but once
-you get the hang of it there is no going back.  I still reach for my HP-12C when
-I need to do some quick calculations rather than type them in finder or at the R
-prompt.
+When symbols are evaluated, R looks for that symbol through the search path and
+returns the associated object.  In this case it would be the division function
+in the base environment.
 
 # Parsing RPN With R
 
+## Basic Principle
+
 Why bother with RPN now that we have nice big displays and IDEs with
-auto-completing parentheses?  Only because parsing RPN is a great example of R's
-language computation capabilities.
+auto-completing parentheses and lots of memory?  Well, parsing RPN is a great
+example of R's language computation capabilities, and that's good enough for me.
 
 First, we need to define a helper function to convert operators in character
-format to the their symbol equivalents.
+format to the their symbol equivalents[^3].
 
 ```{r}
 chr_to_name <- function(y)
   lapply(y, function(x) if(is.numeric(x)) x else as.name(x))
 ```
 
-If we we have a list containing RPN ordered tokens:
+For a single call conversion to normal form consists just of moving the operator
+to the front of the call list:
 
 ```{r}
 tokens <- chr_to_name(list(20, 22, '+'))
 str(tokens)
+exp <- as.call(tokens[c(3, 1, 2)])
+exp
+eval(exp)
 ```
 
-Converting them to the "normal" form is trivial:
+## Stack Parsing
 
-```{r}
-call <- as.call(c(tokens[3], tokens[-3]))
-call
-eval(call)
-```
-
-And it's barely any more work to build a full RPN parser:
+We can generalize the single call conversion by using a stack to build a full
+RPN parser:
 
 ```{r}
 rpn <- function(...) {
@@ -151,7 +182,7 @@ rpn <- function(...) {
   i <- 1
   while(length(L) >= i) {
     if(is.name(L[[i]])) {
-      L[[i]] <- as.call(L[i-c(0,2,1)])
+      L[[i]] <- as.call(L[i-c(0, 2, 1)])
       L[i-(1:2)] <- NULL
       i <- i-1
     } else {
@@ -160,12 +191,30 @@ rpn <- function(...) {
   }
   L[[1]]
 }
-rpn(20, 22, '+')
-rpn(3, 3, '+', 2, 5, '+', '*')
 ```
 
-You can play the evaluation of `rpn` frame by frame to get a sense of what's
-going on:
+`L` is our stack.  The key expression is:
+
+```{r, eval=FALSE}
+L[[i]] <- as.call(L[i-c(0, 2, 1)])
+```
+
+It selects three elements from our stack in relation to our counter `i`,
+orders them correctly, converts them into a call, and re-assigns them to the
+`L[[i]]` element of our stack.  The rest of the function is essentially
+bookkeeping and cleanup.  This should work with any syntactically correct list
+of RPN tokens:
+
+```{r}
+rpn(20, 22, '+')
+rpn(9, 3, '-', 2, 5, '+', '*')
+```
+
+Typical RPN calculators evaluate intermediate expressions to avoid having to
+store operators, but since memory is cheap nowadays we defer evaluation.
+
+In order to get a better sense of what is going on in `rpn` we modified it
+with `explain` and recorded the results for you to step through here:
 
 ```{r eval=FALSE, echo=FALSE}
 source('static/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/explain.R')
@@ -179,234 +228,138 @@ writeLines(
 ```
 
 <div id='bg-rpn-images' style='display: none'></div>
-<div>
+<div style='margin: auto; display: block; width: 90%;'>
 <canvas
-  id='bg-rpn-flipbook' width='675' height='370' style='margin: auto;'
+  id='bg-rpn-flipbook' width='675' height='370'
+  style='width: 100%; display: block;'
   title='Click to step forward, shift+click to step backwards.'
 >
 </canvas>
-<table>
-  <tr>
-  <td>
-    <input
-      id='bg-rpn-play' type='button' value='&#x25b6;' style='font-size: 18px;'
-    />
-  <td>
-    <input
-      id='bg-rpn-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
-      title='Stop and Reset'
-    />
-  <td>
-    <input
-      id='bg-rpn-step-b' type='button' value='&#10703;' style='font-size: 18px;'
-      title='Step Backwards'
-    />
-  <td>
-    <input
-      id='bg-rpn-step-f' type='button' value='&#10704;' style='font-size: 18px;'
-      title='Step Forwards'
-    />
-  <td>
-    FPS:
-    <input
-      id='bg-rpn-fps' type='text'
-      style='width: 2em; font-size: 18px; text-align: right;'
-      title='Set Playback Rate' value=3
-    />
-  <td>
-    Frame:
-    <input
-      id='bg-rpn-frame'
-      type='text'
-      style='width: 2em; font-size: 18px; text-align: right;' value=0
-      title='Input frame #'
-    /> / <span id='bg-rpn-frame-n'>48</span>
-</table>
+<p style='margin-top: 5px; margin-bottom: 25px;'>
+  <input
+    id='bg-rpn-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  />
+  <input
+    id='bg-rpn-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+    title='Stop and Reset'
+  />
+  &nbsp;
+  <input
+    id='bg-rpn-step-b' type='button' value='&#10703;' style='font-size: 18px;'
+    title='Step Backwards'
+  />
+  <input
+    id='bg-rpn-step-f' type='button' value='&#10704;' style='font-size: 18px;'
+    title='Step Forwards'
+  />
+  &nbsp;
+  FPS:
+  <input
+    id='bg-rpn-fps' type='text'
+    style='width: 2.5ex; font-size: 18px; text-align: right;'
+    title='Set Playback Rate' value=3
+  />
+  &nbsp;
+  Frame:
+  <input
+    id='bg-rpn-frame'
+    type='text'
+    style='width: 2.5ex; font-size: 18px; text-align: right;' value=0
+    title='Input frame #'
+  /> / <span id='bg-rpn-frame-n'>48</span>
+</p>
 </div>
 <script
   type='text/javascript'
   src='/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook.js'>
 </script>
 
-# Appendix
+## Recursive Solution
 
-This is the code used to implement `explain`.  While the concepts it uses are
-generally applicable, the logic was designed to work with the `rpn`
-function as defined in this post for expediency's sake.  It should not be
-expected to work with other functions.
+There is also a recursive solution where we use the call stack as our parsing
+stack:
 
-In order of this to work properly the `rpn` function must be loaded from a
-source file as otherwise the parse data is not accessible.
+```{r}
+rpn2 <- function(...) {
+  rpn_rec <- function(tl, hd=list())
+    if(length(tl)) {
+      hd <- if(is.numeric(tl[[1]])) c(hd, tl[1])
+      else c(head(hd, -2), list(as.call(c(tl[1], tail(hd, 2)))))
+      Recall(tl[-1], hd)
+    } else hd[[1]]
+  rpn_rec(chr_to_name(list(...)))
+}
+rpn2(9, 3, '-', 2, 5, '+', '*')
+```
+
+Unfortunately the recursive solution does not lend itself well to a step-through
+analysis.  We will not discuss this further other than to point out that since
+language objects in R are structured like lists, they are amenable to list
+programming techniques.
+
+# One More Thing
+
+The `rpn` function is a pretty basic example of what you can do with R's
+language computation facilities.  A more interesting example is `explain`.  If
+you've been wondering about the function you do so with reason: I just wrote it
+specifically for this blogpost.  In the call:
+
+```{r, eval=FALSE}
+explain(rpn)(9, 3, '-', 2, 5, '+', '*')
+```
+
+It takes the `rpn` function as its argument, and modifies it so that for
+each step in the evaluation it dumps out the debugger view showing what step of
+the code is being evaluated and what the contents of the stack `L` are.
+
+```{r, eval=FALSE}
+explain(rpn)
+```
+```{r echo=FALSE}
+root <- '../../static/script/rpn'
+source(file.path(root, 'rpn.R'), keep.source=TRUE)
+source(file.path(root, 'explain.R'), keep.source=TRUE)
+exp.chr <- capture.output(explain(rpn))
+show <- 25
+writeLines(
+  c(
+    head(exp.chr, show),
+    paste0(c("... Omitting ", length(exp.chr) - show, " lines."), collapse="")
+) )
+```
+
+As you can see when comparing to the [original function](#stack-parsing), each
+"top-level"[^4] call has been modified by adding a call to `refresh_display`.
+This is how the individual statement modification occurs:
+
+```{r}
+enmonitor_one
+```
+
+There is also a bit of work required to line up the language statement with
+their line position in the displayed output.  So for example, the parameter
+to `refresh_display(2)` is telling `explain` that the corresponding top-level
+statement is displayed as the second line of the deparsed[^5] function.  We can
+pass the line numbers to the `refresh_display` calls by using `bquote`.
+`bquote` is a variation on `bquote` that quotes everything *except* for those
+things within `.()`, so in:
 
 ```{r eval=FALSE}
-## source('rpn.R')
-
-# We're going to loop through the body, and record start and end lines of
-# the expressions.  Multi-line expressions are split into sub-expressions.
-# This is lazy as it only works correctly if all expressions except
-# "{" expressions like if, while, etc., are single line.
-
-src_lines <- function(x, dat) {
-  sub <- subset(dat, parent == x & token == 'expr')
-  rows <- nrow(sub)
-  res <- vector('list', rows)
-
-  for(i in seq_len(rows))
-    res[[i]] <-
-      with(sub[i,], if(line2 - line1 > 0) src_lines(id, dat) else line1)
-  res
-}
-# Add a monitoring function call to each sub-expression in the function
-
-enmonitor_one <- function(lang, line) {
-  call(
-    '{',
-    call('<-', quote(.res), call("(", lang)),
-    bquote(refresh_display(.(line))),
-    quote(.res)
-  )
-}
-# Recursively traverse the function code and add monitoring calls to each
-# non-while or if expression.
-
-enmonitor <- function(code, ln) {
-  i <- j <- 1
-  while(i <= length(code)) {
-    while(
-      is.name(code[[i]]) &&
-      as.character(code[[i]]) %in% c("{", "while", "if")
-    )
-      i <- i + 1
-    code[[i]] <- if(is.numeric(ln[[j]])) {
-      enmonitor_one(code[[i]], ln[[j]])
-    } else {
-      enmonitor(code[[i]], ln[[j]])
-    }
-    i <- i + 1
-    j <- j + 1
-  }
-  code
-}
-## Generate the function that is called for each expression in `rpn` to update
-## the "debugging" display
-
-make_refresh_display <- function(src, idx.name, L.name, delay=delay) {
-  L.old <- i.chr.init <- character()
-  idx.old <- 0
-
-  fun <- function(n) {
-    if(n < 3) writeLines(src)
-    L <- try(get(L.name, envir=parent.frame(), inherits=FALSE), silent=TRUE)
-    idx <- try(get(idx.name, envir=parent.frame(), inherits=FALSE), silent=TRUE)
-
-    if(inherits(L, 'try-error')) L <- list()
-    if(inherits(idx, 'try-error')) idx <- 0
-
-    L.chr <- vapply(L, deparse, width.cutoff=500, character(1L))
-    i.chr.pre <- i.chr <- if(!length(i.chr.init)) {
-      i.chr.init <<- sprintf("[[%s]]:", seq_along(L))
-      i.chr.init
-    } else i.chr.init
-
-    stopifnot(length(L.chr) <= length(src))
-
-    del <- which(!L.old %in% L.chr)   # sloppy, only works for unique
-    ins <- which(!L.chr %in% L.old)
-
-    L.chr.pre <- L.old
-    length(L.chr.pre) <- length(L.chr) <- length(i.chr) <- length(i.chr.pre) <-
-      length(src) - 1L
-    L.chr[is.na(L.chr)] <- ""
-    L.chr.pre[is.na(L.chr.pre)] <- ""
-    i.chr[is.na(i.chr)] <- ""
-    i.chr.pre[is.na(i.chr.pre)] <- ""
-
-    flash <- length(del) > 0 || length(ins) > 0 || isTRUE(idx != idx.old)
-
-    if(idx.old)
-      i.chr.pre[idx.old] <-
-      sprintf("\033[7;37m%s\033[m", i.chr.pre[idx.old])
-    if(idx) i.chr[idx] <-
-      sprintf("\033[7%sm%s\033[m", if(!flash) ";37" else "", i.chr[idx])
-    src <- src.pre <- format(src)
-    src.pre[n] <- sprintf("\033[7;37m%s\033[m", src[n])
-    src[n] <- sprintf("\033[7%sm%s\033[m", if(!flash) ";37" else "", src[n])
-
-    # Before, highlighting what's about to change
-
-    L.chr.pre[del] <- sprintf("\033[7m%s\033[m", L.chr.pre[del])
-
-    if(flash) {
-      reset(length(src), 80)
-      writeLines(
-        paste(
-          pad(src.pre), " ",
-          pad(c('`L`', i.chr.pre)),
-          pad(c('', L.chr.pre))
-        )
-      )
-      Sys.sleep(delay)
-    }
-    # After
-
-    L.old <<- L.chr[nzchar(L.chr)]
-    idx.old <<- idx
-
-    if(length(ins)) L.chr[ins] <- sprintf("\033[7m%s\033[m", L.chr[ins])
-    reset(length(src), 80)
-    writeLines(
-      paste(
-        pad(src), " ",
-        pad(c('`L`', i.chr)),
-        pad(c('', L.chr))
-      )
-    )
-    Sys.sleep(delay)
-  }
-}
-## Inject monitoring function calls to each expression
-
-explain <- function(fun, delay=.75) {
-  fun.name <- substitute(fun)
-  stopifnot(is.name(fun.name))
-  fun.name.chr <- as.character(fun.name)
-
-  dat <- getParseData(fun)
-  stopifnot(nrow(dat) > 0)
-
-  symb.parent <- subset(dat, text==fun.name.chr & token == 'SYMBOL')$parent
-  expr.parent <- subset(dat, id == symb.parent)$parent
-  expr.func <- max(subset(dat, parent == expr.parent)$id)
-  func.body.id <- max(subset(dat, parent == expr.func & token == 'expr')$id)
-
-  src.ln <- src_lines(func.body.id, dat)
-  src.ln <- rapply(
-    src.ln, function(x) x - min(unlist(src.ln)) + 2, how='replace'
-  )
-  fun2 <- fun
-  body(fun2) <- enmonitor(body(fun), src.ln)
-
-  refresh_display <- make_refresh_display(
-    deparse(fun, control='all'), 'i', 'L', delay=delay
-  )
-  environment(fun2) <- environment()
-  fun2
-}
-## Helper functions
-
-nchar2 <- function(x) nchar(gsub('\033\\[[^m]*m', '', x))
-pad <- function(x) {
-  chars <- nchar2(x)
-  paste0(x, strrep(" ", max(chars) - chars))
-}
-reset <- function(rows, cols) {
-  whiteout <- rep(strrep(" ", cols), rows)
-  cat(sprintf("\033[%dA\r", rows))
-  writeLines(whiteout)
-  cat(sprintf("\033[%dA\r", rows))
-}
-
+bquote(refresh_display(.(line)))
 ```
+
+`line` is evaluated and its value rather than the quoted symbol is inserted into
+the call.
+
+If you are interested in the gory details of how `explain` is implemented you
+can <a href='/script/rpn/explain.R'>look at the source</a>.  Please keep in mind
+that for the sake of expediency I tied the function closely to the structure of
+the `rpn`, so it will not work generally.  However, it should be possible to
+generalize it further.  Additionally, I spent little time figuring out the most
+correct way to do this so if you are looking for best practices look at
+[Jim Hester's][5] [`covr`][6] instead, which does
+something similar.  In particular `vignette('how_it_works', package='covr')`
+should be instructive.
 
 [^1]: `quote` produces a single R statement or "call", whereas `parse` produces
   a list of them, possibly of length one.  The lists of calls produced by `parse`
@@ -418,9 +371,17 @@ reset <- function(rows, cols) {
 [^3]: You can make calls with `as.call` with string function names, and even an
   anonymous function, but in those cases the language object will not rendered
   as an operator, e.g. `as.call(list('+', 1, 2))` is `"+"(1, 2)`.
+[^4]: Loosely speaking we consider top-level calls encountered first when
+  traversing the function body, except for control loop calls such as `if` and
+  `while` which are stepped into.
+[^5]: Deparsing is the opposite of parsing, whereby a language object is
+  converted back to character representation so it can be displayed.  When a
+  language object is printed, it is deparsed first so that it looks like code
+  one might type rather than a list structure.
 
 [1]: https://cran.r-project.org/doc/manuals/r-release/R-lang.html#Computing-on-the-language
 [2]: https://stackoverflow.com/a/54139497/2725969
 [3]: https://stackoverflow.com/a/29419060/2725969
 [4]: https://en.wikipedia.org/wiki/Reverse_Polish_notation
-[5]: https://upload.wikimedia.org/wikipedia/commons/9/9b/HP-12C_programmable_calculator.jpg
+[5]: https://twitter.com/jimhester_
+[6]: https://github.com/r-lib/covr
