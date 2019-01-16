@@ -165,6 +165,7 @@ of RPN tokens:</p>
 <pre><code>(9 - 3) * (2 + 5)</code></pre>
 <p>In order to get a better sense of what is going on in <code>rpn</code> we modified it
 with <code>explain</code> and recorded the results for you to step through here:</p>
+<p><a name='flipbook'></a></p>
 <div id="bg-rpn-images" style="display: none">
 
 </div>
@@ -262,7 +263,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7f8ceb9ec4d0&gt;</code></pre>
+&lt;bytecode: 0x7f88bde11ad0&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows
