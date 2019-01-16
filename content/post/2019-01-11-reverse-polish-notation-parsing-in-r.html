@@ -1,0 +1,349 @@
+---
+title: RPN Parsing in R
+author: ~
+date: '2019-01-11'
+slug: reverse-polish-notation-parsing-in-r
+categories: [r]
+tags: []
+---
+
+
+
+<div id="reverse-polish-notation" class="section level1">
+<h1>Reverse Polish Notation</h1>
+<p><a href="https://en.wikipedia.org/wiki/Reverse_Polish_notation">Reverse Polish Notation</a> (RPN henceforth) is an algebraic notation that
+orders operands ahead of their operators. <code>A + B</code> becomes <code>A B +</code> in RPN.
+One advantage of polish notation is that under the assumption that operators are
+binary, there is no precedence ambiguity:</p>
+<pre><code>A + (B * C)    # Normal
+A B C * +      # RPN
+(A (B C *) +)  # RPN, unnecessary parens for emphasis
+
+(A + B) * C    # Normal
+A B + C *      # RPN
+((A B +) C *)  # RPN, unnecessary parens for emphasis</code></pre>
+<p>In RPN as well as standard polish notation, operator-operand grouping is wholly
+determined by the order in which they appear in the expression. This makes it a
+easier to enter complex algebraic expressions in calculators with small
+displays. The additional advantage of <em>reverse</em> polish notation is every time
+we encounter an operator, we can evaluate the operation and keep only the
+numeric result instead of storing numbers and operators. This is probably why
+most Hewlett Packard calculators used RPN, including the venerable HP-12C:</p>
+<p><img
+  src='https://upload.wikimedia.org/wikipedia/commons/9/9b/HP-12C_programmable_calculator.jpg'
+  style='width: 70%; display: block; margin: auto;' alt='HP-12C Calculator' /></p>
+<p>Undoubtedly the cognitive load required to understand RPN is substantial. I
+remember being baffled when I got my first HP-12C, but once you get the hang of
+it there is no going back. I still reach for my HP-12C when I need to do some
+quick calculations rather than type them in finder or at the R prompt.</p>
+</div>
+<div id="computing-on-the-language" class="section level1">
+<h1>Computing on the Language</h1>
+<p>One of the many remarkable things about R is that you can <a href="https://cran.r-project.org/doc/manuals/r-release/R-lang.html#Computing-on-the-language">compute on the
+language</a>. “Language” in this context are unevaluated R expressions of the
+type produced by <code>quote</code> or <code>parse</code><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>. We will use this capability to
+convert lists of RPN tokens into standard R expressions. But before we do so we
+need to cover some of the basics.</p>
+<p>Normally, when you type an expression into the R command line, it is parsed
+and evaluated:</p>
+<pre class="r"><code>6 * 7</code></pre>
+<pre><code>[1] 42</code></pre>
+<p>Parsing converts what would otherwise be a text string into a data structure
+that R can interpret as a set of commands. We can see the result of parsing
+by preventing evaluation with <code>quote</code>. This produces “call” objects, which
+themselves are “language”:</p>
+<pre class="r"><code>exp &lt;- quote(6 * 7)
+class(exp)</code></pre>
+<pre><code>[1] &quot;call&quot;</code></pre>
+<pre class="r"><code>typeof(exp)</code></pre>
+<pre><code>[1] &quot;language&quot;</code></pre>
+<p>The quoted call looks just as we typed it at the terminal, but that is
+an artifice of how R chooses to display them. In effect, the printing of a
+call undoes the parsing<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> and returns the call as a string. We can
+reveal the internal list structure<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a> of calls with
+<code>as.list</code><a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>:</p>
+<pre class="r"><code>str(as.list(exp))</code></pre>
+<pre><code>List of 3
+ $ : symbol *
+ $ : num 6
+ $ : num 7</code></pre>
+<p>The first element of a call is a function or the name of a function, and
+subsequent elements the arguments. In R operators are really functions
+disguised as operators, which explains why the <code>*</code> shows up as the first element
+of the list:</p>
+<pre class="r"><code>class(`*`)</code></pre>
+<pre><code>[1] &quot;function&quot;</code></pre>
+<pre class="r"><code>`*`(6, 7)</code></pre>
+<pre><code>[1] 42</code></pre>
+<p>R could have hidden all this language business behind the scenes, but by
+exposing it to the user it allows us to do some rather remarkable things:</p>
+<pre class="r"><code>exp</code></pre>
+<pre><code>6 * 7</code></pre>
+<pre class="r"><code>exp[[1]] &lt;- as.name(&#39;/&#39;)   # Yes, calls are really lists
+exp</code></pre>
+<pre><code>6/7</code></pre>
+<p>Quoted calls can be evaluated:</p>
+<pre class="r"><code>eval(exp)</code></pre>
+<pre><code>[1] 0.857</code></pre>
+<p>Big deal, we could have done this with regex, right? In this specific case we
+could have, but generally speaking you need the context of a language
+object to properly manipulate it. Suppose you wanted to replace assignment <code>=</code>
+symbols with <code>&lt;-</code> in the following expression:</p>
+<pre class="r"><code>`x=`=TRUE
+if(`x=`) `x=`=c(x=&quot;x = \&quot;x =\&quot; y&quot;)
+`x=`</code></pre>
+<pre><code>              x 
+&quot;x = \&quot;x =\&quot; y&quot; </code></pre>
+<p>We need to deal with variable names that can contain arbitrary strings, as well
+as arbitrary character strings. I get a headache trying to think of the regex
+that would correctly identify which <code>=</code> symbols are for assignment, and which
+one are not. Yet this this type of substitution is trivial if you <a href="https://stackoverflow.com/a/54139497/2725969">operate on
+the language object</a> directly.</p>
+<p>Another mechanism for creating call objects is to use <code>call</code> or <code>as.call</code> to
+assemble them from component pieces:</p>
+<pre class="r"><code>call(&#39;/&#39;, 378, 9)</code></pre>
+<pre><code>378/9</code></pre>
+<pre class="r"><code>as.call(list(as.name(&#39;/&#39;), 378, 9))</code></pre>
+<pre><code>378/9</code></pre>
+<p><code>call</code> wants the function name in character format; internally it will convert
+it to a symbol when it assembles the call. <code>as.call</code> does less input
+processing so it requires <code>as.name</code> to create the symbol<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>.</p>
+<pre class="r"><code>typeof(as.name(&#39;/&#39;))</code></pre>
+<pre><code>[1] &quot;symbol&quot;</code></pre>
+<p>When symbols are evaluated, R looks for that symbol through the search path and
+returns the associated object. In this case it would be the division function
+in the base environment.</p>
+</div>
+<div id="parsing-rpn" class="section level1">
+<h1>Parsing RPN</h1>
+<p>Why bother with RPN now that we have nice big displays and IDEs with
+auto-completing parentheses and lots of memory? Well, parsing RPN is a great
+example of R’s language computation capabilities, and that’s good enough for me.</p>
+<p>First, we need to define a helper function to convert operators in character
+format to the their symbol equivalents<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>.</p>
+<pre class="r"><code>chr_to_name &lt;- function(y)
+  lapply(y, function(x) if(is.numeric(x)) x else as.name(x))</code></pre>
+<p>For a single call conversion to normal form consists just of moving the operator
+to the front of the call list:</p>
+<pre class="r"><code>tokens &lt;- chr_to_name(list(20, 22, &#39;+&#39;))
+str(tokens)</code></pre>
+<pre><code>List of 3
+ $ : num 20
+ $ : num 22
+ $ : symbol +</code></pre>
+<pre class="r"><code>exp &lt;- as.call(tokens[c(3, 1, 2)])
+exp</code></pre>
+<pre><code>20 + 22</code></pre>
+<pre class="r"><code>eval(exp)</code></pre>
+<pre><code>[1] 42</code></pre>
+<p>We can generalize the single call conversion by using a stack to build the full
+RPN parser:</p>
+<pre class="r"><code>rpn &lt;- function(...) {
+  L &lt;- chr_to_name(list(...))
+  i &lt;- 1
+  while(length(L) &gt;= i) {
+    if(is.name(L[[i]])) {
+      L[[i]] &lt;- as.call(L[i-c(0, 2, 1)])
+      L[i-(1:2)] &lt;- NULL
+      i &lt;- i-1
+    } else {
+      i &lt;- i+1
+    }
+  }
+  L[[1]]
+}</code></pre>
+<p><code>L</code> is both our input list and stack. The key expression is:</p>
+<pre class="r"><code>L[[i]] &lt;- as.call(L[i-c(0, 2, 1)])</code></pre>
+<p>It selects three elements from our stack in relation to our counter <code>i</code>,
+orders them correctly, converts them into a call, and re-assigns them to the
+<code>L[[i]]</code> element of our stack. The rest of the function is essentially
+bookkeeping and cleanup. This should work with any syntactically correct list
+of RPN tokens:</p>
+<pre class="r"><code>rpn(20, 22, &#39;+&#39;)</code></pre>
+<pre><code>20 + 22</code></pre>
+<pre class="r"><code>rpn(9, 3, &#39;-&#39;, 2, 5, &#39;+&#39;, &#39;*&#39;)</code></pre>
+<pre><code>(9 - 3) * (2 + 5)</code></pre>
+<p>In order to get a better sense of what is going on in <code>rpn</code> we modified it
+with <code>explain</code> and recorded the results for you to step through here:</p>
+<div id="bg-rpn-images" style="display: none">
+
+</div>
+<div style="margin: auto; display: block; width: 90%;">
+<canvas id="bg-rpn-flipbook" width="675" height="370" style="width: 100%; display: block;" title="Click to step forward, shift+click to step backwards.">
+</canvas>
+<p style="margin-top: 5px; margin-bottom: 25px;">
+<input
+    id='bg-rpn-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  />
+<input
+    id='bg-rpn-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+    title='Stop and Reset'
+  />
+ 
+<input
+    id='bg-rpn-step-b' type='button' value='&#10703;' style='font-size: 18px;'
+    title='Step Backwards'
+  />
+<input
+    id='bg-rpn-step-f' type='button' value='&#10704;' style='font-size: 18px;'
+    title='Step Forwards'
+  />
+ 
+FPS:
+<input
+    id='bg-rpn-fps' type='text'
+    style='width: 2.5ex; font-size: 18px; text-align: right;'
+    title='Set Playback Rate' value=3
+  />
+ 
+Frame:
+<input
+    id='bg-rpn-frame'
+    type='text'
+    style='width: 2.5ex; font-size: 18px; text-align: right;' value=0
+    title='Input frame #'
+  /> / <span id="bg-rpn-frame-n">48</span>
+</p>
+</div>
+<script
+  type='text/javascript'
+  src='/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook.js'>
+</script>
+<p>Part of the reason it is so easy to compute on the language in R is that since
+calls are lists, list manipulation facilities can be used on them. For example,
+there is also <a href="#recursive-solution">recursive solution for parsing RPN</a>.</p>
+</div>
+<div id="one-more-thing" class="section level1">
+<h1>One More Thing</h1>
+<p>The <code>rpn</code> function is a simple example of what you can do with R’s language
+computation facilities. A more interesting example is <code>explain</code>, which I wrote
+for this blog post. In the call:</p>
+<pre class="r"><code>explain(rpn)(9, 3, &#39;-&#39;, 2, 5, &#39;+&#39;, &#39;*&#39;)</code></pre>
+<p><code>explain</code> modifies <code>rpn</code> so that for each step in the evaluation it updates
+the debugger view to highlight the corresponding line and show the state of our
+stack <code>L</code>.</p>
+<pre class="r"><code>explain(rpn)</code></pre>
+<pre><code>function (...) 
+{
+    {
+        .res &lt;- (L &lt;- chr_to_name(list(...)))
+        refresh_display(2)
+        .res
+    }
+    {
+        .res &lt;- (i &lt;- 1)
+        refresh_display(3)
+        .res
+    }
+    while ({
+        .res &lt;- (length(L) &gt;= i)
+        refresh_display(4)
+        .res
+    }) {
+        if ({
+            .res &lt;- (is.name(L[[i]]))
+            refresh_display(5)
+            .res
+        }) {
+            {
+                .res &lt;- (L[[i]] &lt;- as.call(L[i - c(0, 2, 1)]))
+                refresh_display(6)
+... Omitting 28 lines.</code></pre>
+<p>As you can see when comparing to the <a href="#stack-parsing">original function</a>, each
+“top-level”<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a> call has been modified by adding a call to
+<code>refresh_display</code>. This was done with by applying <code>enmonitor_one</code> to each of
+them:</p>
+<pre class="r"><code>enmonitor_one</code></pre>
+<pre><code>function(lang, line) {
+  call(
+    &#39;{&#39;,
+    call(&#39;&lt;-&#39;, quote(.res), call(&quot;(&quot;, lang)),  # eval and temporarily store
+    bquote(refresh_display(.(line))),          # update debug display
+    quote(.res)                                # return temporary value
+  )
+}
+&lt;bytecode: 0x7f8ceb9ec4d0&gt;</code></pre>
+<p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
+calls themselves that like operators are displayed specially when deparsed.
+This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows
+us to add code blocks, parenthesize expressions, and manipulate control
+structures.</p>
+<p>We also need to line up each call’s position in the displayed output, and there
+is some work going on behind the scenes that computes the call line number and
+provides it to <code>refresh_display</code>. So in <code>refresh_display(2)</code>, we are telling
+<code>refresh_display</code> to highlight the second line in the function source. You can
+see we do this in <code>enmonitor_one</code> with <code>bquote</code>, which is like <code>quote</code>, except
+that it allows evaluation of expressions enclosed in <code>.()</code>.</p>
+<p>If you are interested in the gory details of how <code>explain</code> is implemented you
+can <a href='/script/rpn/explain.R'>look at the source</a>. Beware though that
+the design philosophy of that code was expediency, not elegance. It will
+almost certainly break with anything other than <code>rpn</code>, but it should
+be possible to generalize it into a terminal debugger.</p>
+<p>The call by call modification of a function is inspired by <a href="https://twitter.com/jimhester_">Jim Hester’s</a>
+fantastic <a href="https://github.com/r-lib/covr"><code>covr</code></a> package, which contains a properly implemented method for
+tracing statements in calls. If you are looking for best practices when doing
+this type of ting you will have better luck looking there.
+<code>vignette('how_it_works', package='covr')</code> is a good starting point.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>It is cute that it is easy to write an RPN parser in R. It is amazing that
+we can write a terminal debugger<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a> in R that runs in the same
+session it is created in. R’s willingness to freely expose its inner workings
+to programmers is one of its under-appreciated features.</p>
+<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="recursive-solution" class="section level2">
+<h2>Recursive Solution</h2>
+<p>There is also a recursive solution with fewer lines of code:</p>
+<pre class="r"><code>rpn2 &lt;- function(...) {
+  rpn_rec &lt;- function(tl, hd=list())
+    if(length(tl)) {
+      hd &lt;- if(is.numeric(tl[[1]])) c(hd, tl[1])
+      else c(head(hd, -2), list(as.call(c(tl[1], tail(hd, 2)))))
+      Recall(tl[-1], hd)
+    } else hd[[1]]
+  rpn_rec(chr_to_name(list(...)))
+}
+rpn2(9, 3, &#39;-&#39;, 2, 5, &#39;+&#39;, &#39;*&#39;)</code></pre>
+<pre><code>(9 - 3) * (2 + 5)</code></pre>
+<p>Unfortunately this solution does not lend itself well to a step-through
+analysis. We will not discuss this further other than to point out that since
+language objects in R are structured like lists, they are amenable to list
+programming techniques.</p>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><code>quote</code> produces a single R statement or “call”, whereas <code>parse</code> produces
+a list of them, possibly of length one. The lists of calls produced by <code>parse</code>
+are called “expression” objects.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>Deparsing is the opposite of parsing, whereby a language object is
+converted back to character representation so it can be displayed. When a
+language object is printed, it is deparsed first so that it looks like code
+one might type rather than a list structure.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>Pair list really, and even though internally these are stored in a
+manner quite different to the traditional “vector” lists we’re used to in R,
+their semantics are very similar when accessed through R. See this <a href="https://stackoverflow.com/a/29419060/2725969">SO
+answer</a> for more details.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>We know from looking at the R internals that calls are really
+stored as (pair) lists. We agree that <code>as.list(x)</code> being “list” is not
+actually proof that the underlying storage of <code>x</code> is a list.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>You can make calls with <code>as.call</code> with string function names,
+and even an anonymous function, but in those cases the language object will
+not rendered as an operator, e.g. <code>as.call(list('+', 1, 2))</code> is <code>&quot;+&quot;(1, 2)</code>.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>You can make calls with <code>as.call</code> with string function names,
+and even an anonymous function, but in those cases the language object will
+not rendered as an operator, e.g. <code>as.call(list('+', 1, 2))</code> is <code>&quot;+&quot;(1, 2)</code>.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>Loosely speaking we consider top-level calls encountered first
+when traversing the function body, except for control loop calls such as <code>if</code>
+and <code>while</code> which are stepped into.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>Granted, we haven’t really done that here, but hopefully our
+hacky <code>rpn</code> specific debugger is proof-of-concept enough that it can be done.
+Additionally, I suspect (but haven’t checked), that the Rstudio debugger is
+implemented in R as well.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+</ol>
+</div>

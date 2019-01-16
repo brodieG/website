@@ -93,7 +93,7 @@ function step() {
     // delay at end for four frames
     step_img(1);
     pause_flip();
-    setTimeout(play_all, 10 * interval);
+    setTimeout(play_all, 6 * interval);
   } else {
     step_img(1);
   }
