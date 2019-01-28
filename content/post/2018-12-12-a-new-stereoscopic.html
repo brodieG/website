@@ -3,6 +3,7 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
+image: "images/a-new-stereoscopic.png"
 categories: [r]
 tags: [optimization,visualization]
 ---
@@ -527,7 +528,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7fac30c0cac8&gt;
+&lt;bytecode: 0x7ff46a5b9228&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
@@ -881,7 +882,7 @@ other attached packages:
 [1] shadow_0.0.0.9000
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.19    bookdown_0.7    digest_0.6.15   rprojroot_1.3-2
+ [1] Rcpp_1.0.0      bookdown_0.7    digest_0.6.18   rprojroot_1.3-2
  [5] backports_1.1.2 magrittr_1.5    evaluate_0.10.1 blogdown_0.8   
  [9] stringi_1.2.3   rmarkdown_1.10  tools_3.5.2     stringr_1.3.1  
 [13] xfun_0.3        yaml_2.2.0      compiler_3.5.2  htmltools_0.3.6
@@ -1019,7 +1020,7 @@ for(i in elrows) {
 <div class="footnotes">
 <hr />
 <ol>
-<li id="fn1"><p>Why would I subject myself to this? Well, I’m as sucker for
+<li id="fn1"><p>Why would I subject myself to this? Well, I’m a sucker for
 learning new interesting things such as how 3D rendering is actually done, and
 there is no better way to learn than to do. I also believe, as an R package
 developer, that it is important to know just how far you can push base

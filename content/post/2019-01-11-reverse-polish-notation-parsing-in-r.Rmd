@@ -3,6 +3,7 @@ title: RPN Parsing in R
 author: ~
 date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
+image: 'front-img/rpn.png'
 categories: [r]
 tags: []
 ---

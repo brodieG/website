@@ -3,6 +3,7 @@ title: Is Your Matrix Running Slow? Try Lists.
 author: ~
 date: '2018-11-23'
 slug: is-your-matrix-running-slow-try-lists
+image: "front-img/is-your-matrix-running-slow.png"
 categories: [optimization]
 tags: [rstats]
 ---
