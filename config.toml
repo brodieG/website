@@ -1,4 +1,4 @@
-baseurl = "/"
+baseurl = "https://www.brodieg.com/"
 languageCode = "en-us"
 title = "Brodie Gaslam"
 theme = "hugo-lithium"
