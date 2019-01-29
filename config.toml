@@ -3,54 +3,63 @@ title = "Brodie Gaslam"
 theme = "hugo-nederburg"
 languageCode = "en-us"
 ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "_files$", "_cache$"]
+
 # Enable comments by entering your Disqus shortname
 disqusShortname = ""
 # Enable Google Analytics by entering your tracking code
 googleAnalytics = ""
+
 preserveTaxonomyNames = true
-paginate = 5 #frontpage pagination
+paginate = 5           # frontpage pagination
+summaryLength = 10     # num words in summary
 
 [permalinks]
     post = "/:year/:month/:day/:slug/"
+
 [params]
-  # options for highlight.js (version, additional languages, and theme)
-  highlightjsVersion = "9.12.0"
-  highlightjsCDN = "//cdnjs.cloudflare.com/ajax/libs"
-  highlightjsLang = ["r", "yaml"]
-  highlightjsTheme = "github"#
+    # options for highlight.js (version, additional languages, and theme)
+    highlightjsVersion = "9.12.0"
+    highlightjsCDN = "//cdnjs.cloudflare.com/ajax/libs"
+    highlightjsLang = ["r", "yaml"]
+    highlightjsTheme = "github"#
 
-  MathJaxCDN = "//cdnjs.cloudflare.com/ajax/libs"
-  MathJaxVersion = "2.7.5"  # Unmark to use post folder for images. Default is static folder.
+    MathJaxCDN = "//cdnjs.cloudflare.com/ajax/libs"
+    MathJaxVersion = "2.7.5"  
 
-  #usepostimgfolder = true
-  slogan = "Brodie G's Blog"
-  description = "Programming and Other Bits" # meta description
-  # You need to set author to have an author bio. If you have a writer in the markdown file it will override this.
-  author = "Brodie Gaslam"
-  authorLink = "https://www.brodieg.com/about/"
-  bio = [
-    "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
-  ]
-  copyright = [
-    "&copy; 2019 Brodie Gaslam",
-    "Nederburg Hugo Theme by [Appernetic](https://appernetic.io).",
-    "A port of Tracks by Compete Themes."
-  ]
+    # Unmark to use post folder for images. Default is static folder.
+    #usepostimgfolder = true
 
+    slogan = "Brodie G's Blog"
+    description = "Programming and Other Bits" # meta description
 
-  # Contact page
-     # Since this template is static, the contact form uses www.formspree.io as a
-     # proxy. The form makes a POST request to their servers to send the actual
-     # email. Visitors can send up to a 1000 emails each month for free.
-     #
-     # What you need to do for the setup?
-     #
-     # - set your email address under 'email' below (it is also used in Gravatar for the bio).
-     # - upload the generated site to your server
-     # - send a dummy email yourself to confirm your account
-     # - click the confirm link in the email from www.formspree.io
-     # - you're done. Happy mailing!
-  # email = "goran@molnsys.com"
+    # You need to set author to have an author bio. If you have a writer in the
+    # markdown file it will override this.
+
+    author = "Brodie Gaslam"
+    authorLink = "https://www.brodieg.com/about/"
+    bio = [
+      "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
+    ]
+    copyright = [
+      "&copy; 2019 Brodie Gaslam",
+      "Nederburg Hugo Theme by [Appernetic](https://appernetic.io).",
+      "A port of Tracks by Compete Themes."
+    ]
+
+    # Contact page
+    # Since this template is static, the contact form uses www.formspree.io as a
+    # proxy. The form makes a POST request to their servers to send the actual
+    # email. Visitors can send up to a 1000 emails each month for free.
+    #
+    # What you need to do for the setup?
+    #
+    # - set your email address under 'email' below (it is also used in Gravatar
+    #   for the bio).  
+    # - upload the generated site to your server
+    # - send a dummy email yourself to confirm your account
+    # - click the confirm link in the email from www.formspree.io
+    # - you're done. Happy mailing!
+    # email = "goran@molnsys.com"
 
   # Nav links in the side bar
   [[menu.main]]
@@ -73,7 +82,9 @@ paginate = 5 #frontpage pagination
   width = 50
   height = 50
   alt = "Logo"
-# this will also be in author bio if there is no writer.
+
+  # this will also be in author bio if there is no writer.
+
   [params.social]
   # facebook      = "full Social profile url in facebook"
   # googleplus    = "full profile url in googleplus"
@@ -86,34 +97,16 @@ paginate = 5 #frontpage pagination
   # pinterest     = "full profile url in pinterest"
   rss           = true
 
-# Add a writer, then use it in the markdown front matter like this: writer = "Lukas Herman"
-#   [params.writers]
-#     [params.writers."Lukas Herman"]
-#     link = "https://lherman.tk"
-#     email = "lherman.cs@gmail.com"
-#     bio = [
-#       "Lukas has a few skills up his sleve. He can fly blindfolded under a bridge while simultanous writing blog posts."
-#     ]
-#     facebook      = "full lukas profile url in facebook"
-#     googleplus    = "full profile url in googleplus"
-#     twitter       = "full profile url in twitter"
-#     linkedin      = "full profile url in linkedin"
-#     stackoverflow = "full profile url in stackoverflow"
-#     instagram     = "full profile url in instagram"
-#     github        = "full profile url in github"
-#     pinterest     = "full profile url in pinterest"
-# 
-#     [params.writers."Göran Svensson"]
-#     link = "https://appernetic.io/"
-#     email = "goran@molnsys.com"
-#     bio = [
-#       "Göran is an avid blogger and the founder of <a href='https://appernetic.io/'>Appernetic.io</a>. This is the author bio shown after posts."
-#     ]
-#     facebook      = "full Göran profile url in facebook"
-#     googleplus    = "full profile url in googleplus"
-#     twitter       = "full profile url in twitter"
-#     linkedin      = "full profile url in linkedin"
-#     stackoverflow = "full profile url in stackoverflow"
-#     instagram     = "full profile url in instagram"
-#     github        = "full profile url in github"
-#     pinterest     = "full profile url in pinterest"
+  # Add a writer, then use it in the markdown front matter like this: 
+  #   writer = "Lukas Herman"
+
+  [params.writers]
+    [params.writers."Brodie Gaslam"]
+
+    link = "https://www.brodieg.com/about/"
+    bio = [
+       "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
+     ]
+     twitter       = "https://twitter.com/BrodieGaslam"
+     stackoverflow = "https://stackoverflow.com/users/2725969/brodieg"
+     github        = "https://github.com/brodieG/"

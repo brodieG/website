@@ -61,14 +61,19 @@ background-size: 11.1%; /* This is at 6-columns -> just change this # */
 }
 
 body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -moz-font-feature-settings: "liga" on;
+}
+body {
   height: 100%;
   font-size: 100%;
   margin: 0;
   padding: 0;
-  font-family: "raleway", sans-serif;
   line-height: 1.5;
-  color: #4d4d4d;
-  background: #38312f;
+  color: #333;
+  background: #EEE;
   -webkit-font-smoothing: antialiased;
   word-wrap: break-word;
   -ms-word-wrap: break-word;
@@ -82,7 +87,7 @@ body {
 }
 
 .main {
-  background: #38312f;
+  background: #EEE;
   padding-bottom: 1.5em;
   margin: 0 auto;
 }
@@ -118,7 +123,6 @@ article a {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: "raleway", sans-serif;
   margin: 0;
   padding: 0;
   font-weight: 400;
@@ -315,7 +319,6 @@ textarea {
   min-height: 45px;
   outline: solid 1px #000;
   border: none;
-  font-family: "raleway", sans-serif;
   font-size: 0.813em;
   line-height: 1.85;
   border-radius: 0;
@@ -338,7 +341,6 @@ input[type="submit"] {
   min-height: 45px;
   outline: none;
   border: none;
-  font-family: "raleway", sans-serif;
   font-size: 0.813em;
   line-height: 1.85;
   border-radius: 0;
@@ -448,6 +450,7 @@ a img {
 .site-header .container {
   margin: 0 auto;
   max-width: 1280px;
+  background-color: #CCC;
 }
 .site-header:after {
   content: ".";
@@ -2303,7 +2306,6 @@ li.pingback:first-child {
 .gallery-caption {
   color: #8c8c8c;
   display: block;
-  font-family: "raleway", sans-serif;
   font-size: 12px;
   padding: 0.5em 0;
 }
@@ -2666,7 +2668,6 @@ li.pingback:first-child {
   min-height: 45px;
   outline: none;
   border: none;
-  font-family: "raleway", sans-serif;
   font-size: 0.813em;
   line-height: 1.85;
   border-radius: 0;
@@ -2692,4 +2693,37 @@ li.pingback:first-child {
   #bbpress-forums #bbp-search-form #bbp_search {
     width: 500px !important;
   }
+}
+/* Brodie G Customizations */
+
+body pre, body code.hljs {
+  background-color: #FAFAFA;
+  white-space: pre-wrap;    /* Wrap long lines */
+  /*border-radius: 3px;*/
+}
+pre code {font-size: 90%;}
+pre {
+  border: 2px solid #EEE;
+}
+body pre + pre:not([class]) code.hljs  {
+  background-color: #EEE;
+}
+body pre + pre:not([class]) {
+  margin-top: -19px;
+}
+.blog .main {
+  max-width: 1000px;
+}
+
+div.footnotes {
+  font-size: .8em;
+}
+h1 {font-size: 1.5em}
+h2 {font-size: 1.3em; color: #777;}
+h3 {font-size: 1.1em; color: #777;}
+h4 {font-size: 1.1em; color: #777;}
+code {
+  background-color: #EEE;
+  padding-left: 0.2em;
+  padding-right: 0.2em;
 }

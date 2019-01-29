@@ -4,6 +4,7 @@ author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
 image: "images/a-new-stereoscopic.png"
+weight: 1
 categories: [r]
 tags: [optimization,visualization]
 ---

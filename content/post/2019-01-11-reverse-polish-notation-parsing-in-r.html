@@ -4,12 +4,18 @@ author: ~
 date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
 image: 'front-img/rpn.png'
+weight: 1
 categories: [r]
 tags: []
 ---
 
 
 
+<div style="display:none">
+<p>summary: We explore R’s computation-on-the language capabilities in this post on
+reverse polish notation.
+<!--more--></p>
+</div>
 <div id="reverse-polish-notation" class="section level1">
 <h1>Reverse Polish Notation</h1>
 <p><a href="https://en.wikipedia.org/wiki/Reverse_Polish_notation">Reverse Polish Notation</a> (RPN henceforth) is an algebraic notation that
@@ -264,7 +270,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7fcad2123000&gt;</code></pre>
+&lt;bytecode: 0x7f9a1fc63d58&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows
