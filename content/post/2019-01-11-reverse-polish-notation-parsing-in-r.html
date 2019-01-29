@@ -5,6 +5,8 @@ date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
 image: 'front-img/rpn.png'
 weight: 1
+description: An examination of R's compute-on-the-language capabilities in the
+  context of a Reverse Polish Notation parser.
 categories: [r]
 tags: []
 ---
@@ -12,7 +14,7 @@ tags: []
 
 
 <div style="display:none">
-<p>summary: We explore R’s computation-on-the language capabilities in this post on
+<p>We explore R’s computation-on-the language capabilities in this post on
 reverse polish notation.
 <!--more--></p>
 </div>
@@ -270,7 +272,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7f9a1fc63d58&gt;</code></pre>
+&lt;bytecode: 0x7fea4dfea980&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows

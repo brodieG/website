@@ -1,7 +1,6 @@
 <h1 class="screen-reader-text">Posts</h1>
 
 <div id="loop-container" class="loop-container">
-  <div style='background-color: red'>Hello World!</div>
 {{ $paginator := .Paginate (where (where .Site.Pages "Type" "post") "IsPage" true) }}
     {{ range $index, $element := .Paginator.Pages }}
 
@@ -74,7 +73,11 @@
               </div>
               <div class='excerpt-content'>
               <article>
-              {{ .Summary }}
+              {{ with .Param "summary" }}
+                  {{ . }}
+              {{ else }}
+                  {{ .Summary }}
+              {{ end }}
 
                 <div class="more-link-wrapper">
                   <a class="more-link" href="{{ .Permalink }}">Read the post<span class="screen-reader-text">This is a Standard Post</span>

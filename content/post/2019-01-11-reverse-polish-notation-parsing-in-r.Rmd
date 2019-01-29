@@ -5,20 +5,20 @@ date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
 image: 'front-img/rpn.png'
 weight: 1
+description: An examination of R's compute-on-the-language capabilities in the
+  context of a Reverse Polish Notation parser.
 categories: [r]
 tags: []
 ---
 
 ```{r echo=FALSE}
-knitr::opts_chunk$set(
-  comment = "", fig.align='center'
-)
+knitr::opts_chunk$set(comment = "", fig.align='center')
 options(digits=3)
 ```
 
 <div style='display:none'>
-summary: We explore R's computation-on-the language capabilities in this post on
-  reverse polish notation.
+We explore R's computation-on-the language capabilities in this post on
+reverse polish notation.
 <!--more-->
 </div>
 

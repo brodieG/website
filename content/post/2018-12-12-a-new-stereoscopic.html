@@ -5,6 +5,8 @@ date: '2018-12-12'
 slug: three-d-pipeline
 image: "images/a-new-stereoscopic.png"
 weight: 1
+summary: Step by step implementation of a 3D rendering pipeline, from
+  projections to meshes to rasterization, using base R only.
 categories: [r]
 tags: [optimization,visualization]
 ---
@@ -529,7 +531,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7fac8314c9a0&gt;
+&lt;bytecode: 0x7fe6ebccce10&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an

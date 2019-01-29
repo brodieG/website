@@ -4,6 +4,10 @@ author: ~
 date: '2018-10-23'
 slug: do-not-shade-r
 categories: [r]
+weight: 1
+image: 'front-img/do-not-shade-shadows-single.png'
+summary: A base-R only implementation of rayshader that is competitive with
+  compiled solutions demonstrates R is not as slow as its made out to be.
 tags: [optimization,visualization]
 ---
 
@@ -135,8 +139,8 @@ microbenchmark::microbenchmark(times=10,
 )</code></pre>
 <pre><code>Unit: microseconds
                    expr   min    lq   mean median    uq     max neval
- v.sum.1 &lt;- sum_loop(v) 399.4 406.2 3079.6  435.3 543.7 26263.9    10
-      v.sum.2 &lt;- sum(v)  13.6  15.2   18.5   16.9  18.2    34.8    10</code></pre>
+ v.sum.1 &lt;- sum_loop(v) 453.6 618.2 4162.2  655.7 666.7 35794.6    10
+      v.sum.2 &lt;- sum(v)  18.1  19.7   24.2   20.2  21.7    46.9    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -295,7 +299,7 @@ between frames rendered at slightly different angles).</p>
 <div id="session-info" class="section level2">
 <h2>Session Info</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 3.5.1 (2018-07-02)
+<pre><code>R version 3.5.2 (2018-12-20)
 Platform: x86_64-apple-darwin15.6.0 (64-bit)
 Running under: macOS High Sierra 10.13.6
 
@@ -310,17 +314,17 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] ggplot2_3.0.0
+[1] ggplot2_3.1.0
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.19         pillar_1.3.0         compiler_3.5.1      
- [4] plyr_1.8.4           bindr_0.1.1          tools_3.5.1         
- [7] digest_0.6.15        evaluate_0.10.1      tibble_1.4.2        
-[10] gtable_0.2.0         pkgconfig_2.0.2      rlang_0.3.0.1       
+ [1] Rcpp_1.0.0           pillar_1.3.1         compiler_3.5.2      
+ [4] plyr_1.8.4           bindr_0.1.1          tools_3.5.2         
+ [7] digest_0.6.18        evaluate_0.10.1      tibble_2.0.0        
+[10] gtable_0.2.0         pkgconfig_2.0.2      rlang_0.3.1         
 [13] microbenchmark_1.4-4 yaml_2.2.0           blogdown_0.8        
 [16] xfun_0.3             bindrcpp_0.2.2       withr_2.1.2         
 [19] stringr_1.3.1        dplyr_0.7.6          knitr_1.20          
-[22] rprojroot_1.3-2      grid_3.5.1           tidyselect_0.2.4    
+[22] rprojroot_1.3-2      grid_3.5.2           tidyselect_0.2.5    
 [25] glue_1.3.0           R6_2.3.0             fansi_0.4.0         
 [28] rmarkdown_1.10       bookdown_0.7         purrr_0.2.5         
 [31] magrittr_1.5         backports_1.1.2      scales_1.0.0        

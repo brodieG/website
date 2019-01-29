@@ -4,6 +4,10 @@ author: ~
 date: '2018-11-23'
 slug: is-your-matrix-running-slow-try-lists
 image: "front-img/is-your-matrix-running-slow.png"
+weight: 1
+summary: List data structures can be more efficient than their matrix and array
+  counterparts.  We take advantage of this for efficient shading of triangles
+  from their vertices.
 categories: [optimization]
 tags: [rstats]
 ---

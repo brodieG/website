@@ -5,6 +5,8 @@ date: '2018-12-12'
 slug: three-d-pipeline
 image: "images/a-new-stereoscopic.png"
 weight: 1
+summary: Step by step implementation of a 3D rendering pipeline, from
+  projections to meshes to rasterization, using base R only.
 categories: [r]
 tags: [optimization,visualization]
 ---
