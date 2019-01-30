@@ -1,5 +1,5 @@
 ---
-title: Is Your Matrix Running Slow? Try Lists.
+title: Slow Matrices? Try Lists.
 author: ~
 date: '2018-11-23'
 slug: is-your-matrix-running-slow-try-lists

@@ -61,6 +61,7 @@ background-size: 11.1%; /* This is at 6-columns -> just change this # */
 }
 
 body {
+  font-family: "raleway", sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -87,6 +88,8 @@ body {
 }
 
 .main {
+  font-size: 17px;
+  line-height: 1.4;
   background: #FFF;
   padding-bottom: 1.5em;
   margin: 0 auto;
@@ -361,7 +364,7 @@ input[type="search"] {
 
 /* sticky */
 .excerpt.sticky .excerpt-container {
-  background: wheat;
+  /*background: wheat;*/
 }
 
 /* ie image border fix */
@@ -783,7 +786,9 @@ a img {
   }
 }
 .excerpt-container {
-  padding: 0 5.55%;
+  background: #FFF;
+  text-align: left;
+  padding: 0 3%;
   position: relative;
   z-index: 9;
   -webkit-backface-visibility: hidden;
@@ -823,7 +828,7 @@ a img {
 
 .excerpt-meta, .entry-meta {
   color: #aaaaaa;
-  padding-top: 1.84502em;
+  padding-top: .5em;
 }
 .excerpt-meta a, .entry-meta a {
   color: #aaaaaa;
@@ -867,7 +872,7 @@ a img {
 }
 
 .excerpt-content {
-  padding: 1.5em 0;
+  padding: 1.5em 0 0.5em 0;
 }
 
 .more-link {
@@ -937,8 +942,7 @@ a img {
   }
 
   .excerpt-container {
-    background: white;
-    padding: 0 6.2%;
+    /*padding: 0 6.2%;*/
   }
 
   .pagination {
@@ -954,8 +958,7 @@ a img {
 /* 900px */
 @media all and (min-width: 56.25em) {
   .excerpt-container {
-    width: 50%;
-    padding: 0 5.55%;
+    width: 70%;
   }
 
   .excerpt {
@@ -972,8 +975,8 @@ a img {
     -webkit-transform: translateZ(0);
             transform: translateZ(0);
     /* fixes FF glitch where image focuses & unfocuses */
-    width: 50%;
-    width: calc(50% + 2px);
+    width: 30%;
+    width: calc(30% + 2px);
     height: 100%;
     padding-bottom: 0;
     position: absolute;
@@ -1004,11 +1007,11 @@ a img {
   }
 
   .excerpt-meta, .entry-meta {
-    padding-top: 3.69004em;
+    /* padding-top: 3.69004em;*/
   }
 
   .excerpt-content {
-    padding-bottom: 3em;
+    /*padding-bottom: 3em;*/
   }
 
   .full-without-featured:not(.has-post-thumbnail):not(.has-video):not(.has-featured-slider) .excerpt-container {
