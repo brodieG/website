@@ -124,6 +124,9 @@ a:visited, a:hover, a:active, a:focus {
 article a {
   text-decoration: underline;
 }
+.excerpt-content article a {
+  text-decoration: none;
+}
 
 h1 {
   font-size: 2.625em;
@@ -844,13 +847,16 @@ a img {
   /* 21px / 16px */
   line-height: 1.143;
 }
-.excerpt-title a, .entry-title a {
+.excerpt-title a, .entry-title a, .excerpt-content a {
   color: #4d4d4d;
 }
-.excerpt-title a:link, .entry-title a:link, .excerpt-title a:visited, .entry-title a:visited {
+.excerpt-title a:link, .entry-title a:link, .excerpt-content a:link,
+.excerpt-title a:visited, .entry-title a:visited, excerpt-content a:visited {
   color: #4d4d4d;
 }
-.excerpt-title a:hover, .entry-title a:hover, .excerpt-title a:active, .entry-title a:active, .excerpt-title a:focus, .entry-title a:focus {
+.excerpt-title a:hover, .entry-title a:hover, .excerpt-content a:hover,
+.excerpt-title a:active, .entry-title a:active, .excerpt-content a:active,
+.excerpt-title a:focus, .entry-title a:focus, .excerpt-content a:focus {
   color: #38312f;
 }
 
@@ -2716,13 +2722,16 @@ body pre + pre:not([class]) {
 .blog .main {
   max-width: 800px;
 }
-
 div.post {
   max-width: 800px;
 }
 div.post.entry {
   padding: 0 2%;
 }
+div.excerpt-container {
+  min-height: 250px;
+}
+
 div.footnotes {
   font-size: .8em;
 }
