@@ -5,37 +5,52 @@
 
 
 {{ define "main" }}
-  {{ $scratch := newScratch }}
-  {{ if .Site.Params.writers }}
-    {{ $scratch.Set "writer" (index .Site.Params.writers (lower .Params.writer) | default dict) }}
-  {{ else }}
-    {{ $scratch.Set "writer" .Site.Params.social | default dict }}
-  {{ end }}
-  {{ $writer := $scratch.Get "writer" }}
-  <div id="loop-container" class="loop-container">
-    {{ if and (isset .Params "image") .Params.image }}
-    <div class="post type-post status-publish format-standard has-post-thumbnail hentry category-design tag-design tag-standard-2 tag-tagalicious tag-travel entry full-without-featured odd excerpt-1">
+    {{ $scratch := newScratch }}
+    {{ if .Site.Params.writers }}
+        {{ $scratch.Set "writer" (index .Site.Params.writers (lower .Params.writer) | default dict) }}
+    {{ else }}
+        {{ $scratch.Set "writer" .Site.Params.social | default dict }}
+    {{ end }}
+    {{ $writer := $scratch.Get "writer" }}
 
-      <div class='featured-image lazy lazy-bg-image' {{ if isset .Site.Params "usepostimgfolder" }} data-background="{{ .Permalink }}{{ .Params.image }}"{{ else }} data-background="{{ .Params.image | absURL }}"{{ end }}>
-      </div>
-      {{ else }}
+    <div id="loop-container" class="loop-container">
 
-      <div class="post type-post status-publish format-standard hentry category-standard category-travel entry full-without-featured odd excerpt-1">
+    <!--Suppressing image for now-->
+    {{ if and 0 (and (isset .Params "image") .Params.image) }}
 
-        {{ end }}
+        <div class="post type-post status-publish format-standard has-post-thumbnail hentry category-design tag-design tag-standard-2 tag-tagalicious tag-travel entry full-without-featured odd excerpt-1">
+
+            <div class='featured-image lazy lazy-bg-image'
+              {{ if isset .Site.Params "usepostimgfolder" }}
+              data-background="{{ .Permalink }}{{ .Params.image }}"
+              {{ else }} data-background="{{ .Params.image | absURL }}"
+              {{ end }}
+            >
+        </div>
+    {{ else }}
+
+        <div class="post type-post status-publish format-standard hentry category-standard category-travel entry full-without-featured odd excerpt-1">
+
+    {{ end }}
+
         <div class="entry-meta">
-          <span class="date">{{ .Date.Format "02 January" }}</span>	<span> / </span>
-
+          <span class="date">{{ .Date.Format "Jan 2 2006" }}</span>
+          {{/*
           <span class="author">
             <a href="{{ $writer.link | default "" | absURL}}" title="Posts by {{ .Params.writer | default "" }}" rel="author">{{ .Params.writer | default ""}}</a>
           </span>
-
+          */}}
 
           {{ range .Params.categories }}
           <span class="category">
             <span> / </span>
-
             <a href="/categories{{ . | relURL }}">{{ . }}</a>
+          </span>
+          {{ end }}
+          {{ range .Params.tags }}
+          <span class="tag">
+            <span> / </span>
+            <a href="/tags{{ . | relURL }}">{{ . }}</a>
           </span>
           {{ end }}
 
@@ -65,21 +80,28 @@
       <a href="https://www.competethemes.com/tracks-live-demo">Return to Blog</a>
     </p>
   </nav>-->
+    {{/*
+    <div class="entry-categories">
+        <p>
+          <span>Categories</span>
+      {{ range $index, $name := .Params.categories }}
+          <a href="{{ "/categories/" | relLangURL }}{{ $name | urlize }}"
+             title="View all posts in {{ $name }}">{{ $name }}
+          </a>
+      {{ end }}
+    </p>
+    </div>
 
-  <div class="entry-categories"><p><span>Categories</span>
-    {{ range $index, $name := .Params.categories }}
-    <a href="{{ "/categories/" | relLangURL }}{{ $name | urlize }}" title="View all posts in {{ $name }}">{{ $name }}</a>{{ end }}
-  </p>
+    <div class="entry-tags"><p><span>Tags</span>
+      {{ range $index, $name := .Params.tags }}
+        <a href="{{ "/tags/" | relLangURL }}{{ $name | urlize }}" 
+           title="View all posts tagged {{ $name }}">{{ $name }}</a>
+      {{ end }}
+
+    </p>
+    */}}
 </div>
-
-
-
-<div class="entry-tags"><p><span>Tags</span>
-  {{ range $index, $name := .Params.tags }}
-  <a href="{{ "/tags/" | relLangURL }}{{ $name | urlize }}" title="View all posts tagged {{ $name }}">{{ $name }}</a>
-  {{ end }}
-
-</p></div>	</div>
+</div>
 
 	{{ if and (isset .Site.Params "author") .Site.Params.author }}
 <div class="author-meta">
