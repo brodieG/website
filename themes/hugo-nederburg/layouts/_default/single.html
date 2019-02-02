@@ -13,8 +13,6 @@
     {{ end }}
     {{ $writer := $scratch.Get "writer" }}
 
-    <div id="loop-container" class="loop-container">
-
     <!--Suppressing image for now-->
     {{ if and 0 (and (isset .Params "image") .Params.image) }}
 
@@ -311,7 +309,6 @@ title="pinterest icon"></i>
 
 
 </section>
-</div>
 
 <!--</div>--> <!-- .main -->
 
