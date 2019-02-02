@@ -202,7 +202,8 @@ with <code>explain</code> and recorded the results for you to step through here:
 FPS:
 <input
     id='bg-rpn-fps' type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;'
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
     title='Set Playback Rate' value=3
   />
  
@@ -210,7 +211,9 @@ Frame:
 <input
     id='bg-rpn-frame'
     type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;' value=0
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
+    value=0
     title='Input frame #'
   /> / <span id="bg-rpn-frame-n">48</span>
 </p>
@@ -272,7 +275,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7fea4dfea980&gt;</code></pre>
+&lt;bytecode: 0x7fa969ca1738&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows

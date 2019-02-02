@@ -260,7 +260,8 @@ writeLines(
   FPS:
   <input
     id='bg-rpn-fps' type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;'
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
     title='Set Playback Rate' value=3
   />
   &nbsp;
@@ -268,7 +269,9 @@ writeLines(
   <input
     id='bg-rpn-frame'
     type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;' value=0
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
+    value=0
     title='Input frame #'
   /> / <span id='bg-rpn-frame-n'>48</span>
 </p>
