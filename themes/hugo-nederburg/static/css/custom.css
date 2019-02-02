@@ -1190,6 +1190,7 @@ a img {
       right: auto;
       left: -1px;
     }
+    /*
     .excerpt.even:after {
       content: ".";
       display: block;
@@ -1198,6 +1199,7 @@ a img {
       line-height: 0;
       height: 0;
     }
+    */
     .rtl .excerpt.odd .excerpt-container {
       float: right; /* force float the same for even and odd */
     }
@@ -1487,7 +1489,7 @@ li.pingback:first-child {
 .site-footer {
   color: #8c8c8c;
   text-align: center;
-  padding-top: 3em;
+  padding-top: 1em;
   overflow: hidden;
   clear: both;
 }
@@ -1597,7 +1599,7 @@ li.pingback:first-child {
   }
 
   .design-credit {
-    margin-top: 72px;
+    margin-top: 1.5em;
   }
 }
 /* 700px */

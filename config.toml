@@ -42,9 +42,7 @@ summaryLength = 10     # num words in summary
       "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
     ]
     copyright = [
-      "&copy; 2019 Brodie Gaslam",
-      "Nederburg Hugo Theme by [Appernetic](https://appernetic.io).",
-      "A port of Tracks by Compete Themes."
+      "Copyright &copy; 2019 Brodie Gaslam"
     ]
 
     # Contact page
