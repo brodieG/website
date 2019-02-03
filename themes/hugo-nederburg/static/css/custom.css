@@ -226,7 +226,9 @@ blockquote cite {
 }
 
 hr {
-  margin: 0.69em 0;
+  margin: 1.5em auto;
+  width: 60%;
+  height: 1px;
 }
 
 /* Table styles */
