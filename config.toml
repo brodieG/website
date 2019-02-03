@@ -77,9 +77,9 @@ summaryLength = 10     # num words in summary
   # weight = 3
 
   [params.logo]
-  url = "images/moon-small.png"
-  width = 42.5
-  height = 42.5
+  url = "/images/moon-small.png"
+  width = 40
+  height = 40
   alt = "Logo"
 
   # this will also be in author bio if there is no writer.
