@@ -11,7 +11,7 @@ disqusShortname = ""
 googleAnalytics = ""
 
 preserveTaxonomyNames = true
-paginate = 5           # frontpage pagination
+paginate = 7           # frontpage pagination
 summaryLength = 10     # num words in summary
 
 [permalinks]
@@ -30,7 +30,7 @@ summaryLength = 10     # num words in summary
     # Unmark to use post folder for images. Default is static folder.
     #usepostimgfolder = true
 
-    slogan = "Brodie G's Blog"
+    slogan = "Programming in R, Mostly"
     description = "Programming and Other Bits" # meta description
 
     # You need to set author to have an author bio. If you have a writer in the
@@ -61,25 +61,25 @@ summaryLength = 10     # num words in summary
     # email = "goran@molnsys.com"
 
   # Nav links in the side bar
-  [[menu.main]]
-  name = "Home"
-  url = "/"
-  weight = 1
+  # [[menu.main]]
+  # name = "Home"
+  # url = "/"
+  # weight = 1
 
   [[menu.main]]
   name = "About"
   url = "about/"
   weight = 2
 
-  [[menu.main]]
-  name = "Get in touch"
-  url = "contact/"
-  weight = 3
+  # [[menu.main]]
+  # name = "Get in touch"
+  # url = "contact/"
+  # weight = 3
 
   [params.logo]
-  url = "moon-small.png"
-  width = 50
-  height = 50
+  url = "images/moon-small.png"
+  width = 42.5
+  height = 42.5
   alt = "Logo"
 
   # this will also be in author bio if there is no writer.

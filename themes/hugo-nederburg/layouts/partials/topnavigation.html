@@ -1,9 +1,18 @@
-<div class='container'>
+<div class="container header-main">
 
   <div id="menu-secondary" class="menu-container menu-secondary" role="navigation">
-    <button id="toggle-secondary-navigation" class="toggle-secondary-navigation"><i class="fa fa-plus"></i></button>
-
+    {{/*
+    <button id="toggle-secondary-navigation" class="toggle-secondary-navigation">
+      <i class="fa fa-plus"></i>
+    </button>
+    */}}
     <div class="menu">
+      <img
+        src="{{ .Site.Params.Logo.Url }}"
+        width="{{ .Site.Params.Logo.Width }}"
+        height="{{ .Site.Params.Logo.Height }}"
+      />
+      {{/*
       <ul id="menu-secondary-items" class="menu-secondary-items">
         {{ range $name, $taxonomy := .Site.Taxonomies.categories }}
         <li
@@ -17,7 +26,7 @@
         {{ end }}
 
       </ul>
-
+      */}}
     </div>
 
   </div>

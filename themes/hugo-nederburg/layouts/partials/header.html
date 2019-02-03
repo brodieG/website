@@ -2,14 +2,15 @@
   <div id='site-title' class='site-title'>
     {{ if ( ne .Site.Title "" ) }}
     <a href="{{ .Site.BaseURL | relLangURL }}"> {{ .Site.Title }} </a>
-    {{ end }}</div>
+    {{ end }}
   </div>
-  <button id="toggle-navigation" class="toggle-navigation">
-    <i class="fa fa-bars"></i>
-  </button>
+</div>
+<button id="toggle-navigation" class="toggle-navigation">
+  <i class="fa fa-bars"></i>
+</button>
 
-  <div id="menu-primary-tracks" class="menu-primary-tracks"></div>
-  <div id="menu-primary" class="menu-container menu-primary" role="navigation">
+<div id="menu-primary-tracks" class="menu-primary-tracks"></div>
+<div id="menu-primary" class="menu-container menu-primary" role="navigation">
     {{ with .Site.Params.Slogan }}
     <p class="site-description">{{ . | default "" | safeHTML }}</p>
     {{ end }}
