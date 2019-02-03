@@ -7,11 +7,13 @@
     </button>
     */}}
     <div class="menu">
-      <img
-        src="{{ .Site.Params.Logo.Url }}"
-        width="{{ .Site.Params.Logo.Width }}"
-        height="{{ .Site.Params.Logo.Height }}"
-      />
+      <a href="{{ .Site.BaseURL | relLangURL }}">
+        <img
+          src="{{ .Site.Params.Logo.Url }}"
+          width="{{ .Site.Params.Logo.Width }}"
+          height="{{ .Site.Params.Logo.Height }}"
+        />
+      </a>
       {{/*
       <ul id="menu-secondary-items" class="menu-secondary-items">
         {{ range $name, $taxonomy := .Site.Taxonomies.categories }}
