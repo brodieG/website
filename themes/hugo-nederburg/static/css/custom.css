@@ -1872,6 +1872,12 @@ code {
 |                              MEDIA SPECIFIC SECTION                         |
 \*****************************************************************************/
 
+/*
+ * Note that the em widths probably don't match pixel widths anymore since we
+ * changed the font from raleway, and additionally since we changed some of the
+ * actual em widths as well.
+ */
+
 @media only screen and (min-device-width: 320px) and (max-device-width: 480px) and (orientation: landscape) {
   html {
     -webkit-text-size-adjust: none;
@@ -2116,8 +2122,10 @@ code {
       margin-top: 0;
     }
 }
-/* 700px */
-@media all and (min-width: 43.75em) {
+/*
+ * 700px originally 43.75em
+ * */
+@media all and (min-width: 39em) {
     .comments {
       padding: 0 0 3em;
     }
@@ -2209,9 +2217,9 @@ code {
     }
 }
 /* These seem to be the threshold at which the navigation stuff collapses */
-/* 800px */
+/* 800px originally 50em */
 
-@media all and (min-width: 50em) {
+@media all and (min-width: 42em) {
     .top-navigation {
       margin: 0 0 1.5em 0;
     }
@@ -2412,8 +2420,9 @@ code {
 }
 /*
  * 900px: This is where we transition from thumbnail side image to top/bottom
+ * originally 56.25 em
  */
-@media all and (min-width: 56.25em) {
+@media all and (min-width: 50em) {
     .comments {
       padding: 0 0 3em;
     }
