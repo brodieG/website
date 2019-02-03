@@ -434,18 +434,6 @@ a img {
   color: #fff;
 }
 
-@media only screen and (min-device-width: 320px) and (max-device-width: 480px) and (orientation: landscape) {
-  html {
-    -webkit-text-size-adjust: none;
-    /* none for no scaling */
-  }
-}
-@media only screen and (min-device-width: 768px) and (max-device-width: 1024px) and (orientation: landscape) {
-  html {
-    -webkit-text-size-adjust: none;
-    /* none for no scaling */
-  }
-}
 .site-header {
   padding: 0.75em 0;
 }
@@ -896,417 +884,34 @@ a img {
   margin-right: 0.375em;
   display: inline-block;
 }
-/*****************************************************************************\
-|                              MEDIA SPECIFIC SECTION                         |
-\*****************************************************************************/
 
-/* 600px */
-@media all and (min-width: 37.5em) {
-    .excerpt {
-      /*background: #110800;*/
-      margin-bottom: 1.5em;
-    }
-    .excerpt:first-child {
-      padding-top: 0;
-    }
-    .pagination {
-      padding: 0.75em 1.5em 3em;
-    }
-    .excerpt-title, .entry-title {
-      font-size: 1.875em;
-      /* 30px */
-      line-height: 1.2;
-    }
-    .entry {
-      width: 88.88%;
-      margin: 0 auto;
-    }
-    .entry-container {
-      padding: 0 0;
-    }
-    .further-reading p {
-      display: inline-block;
-      width: 50%;
-      vertical-align: top;
-      padding-right: 3em;
-    }
-    .further-reading .prev {
-      float: left;
-    }
-    .further-reading .next {
-      float: right;
-      text-align: right;
-      padding: 0 0 0 3em;
-    }
-    .further-reading:after {
-      content: ".";
-      display: block;
-      clear: both;
-      visibility: hidden;
-      line-height: 0;
-      height: 0;
-    }
-
-    .author-meta .author {
-      display: inline-block;
-    }
-    .author-meta .author img {
-      margin-bottom: 0;
-    }
-    .author-meta:after {
-      content: ".";
-      display: block;
-      clear: both;
-      visibility: hidden;
-      line-height: 0;
-      height: 0;
-    }
-
-    .bio {
-      float: right;
-      width: 50%;
-    }
-    .bio p {
-      margin-top: 0;
-    }
+/* top navigation styles */
+.top-navigation {
+  position: relative;
+  left: 0%;
+  right: 0%;
+  width: 100%;
+  min-height: 3em;
+  background: #110800;
+  padding: 0.375em 0;
+  margin: 0;
+  line-height: 0;
 }
-/* 700px */
-@media all and (min-width: 43.75em) {
-    .entry-container {
-      padding: 0 0;
-    }
-
-    .entry-meta,
-    .entry-header {
-      padding-left: 0;
-      padding-right: 0;
-    }
-
-    .entry-content img.full-width {
-      width: 128.6%;
-      left: -14.3%;
-    }
+.top-navigation ~ button {
+  top: 2.25em;
 }
-/* These seem to be the threshold at which the navigation stuff collapses */
-/* 800px */
-
-@media all and (min-width: 50em) {
-    .site-header {
-      position: relative;
-      z-index: 2;
-      padding: 0 0 2.25em;
-      border-top: solid 0 #110800;
-    }
-    .title-info {
-      margin-top: -0.75em;
-    }
-    .site-title img {
-      max-width: 8em;
-      max-height: 3em;
-    }
-    .loop-container {
-      padding-top: 0.75em;
-    }
-    .toggle-navigation {
-      display: none;
-    }
-    .menu-primary, .menu-primary-tracks {
-      background: none;
-      position: static;
-      width: 100%;
-      height: auto;
-      padding: 0;
-      margin: 0;
-      text-align: right;
-      min-height: 37px;
-    }
-    .menu-primary .site-description, .menu-primary-tracks .site-description {
-      position: absolute;
-      left: 0;
-      opacity: 0.6;
-    }
-    .menu-primary .site-description + div, .menu-primary-tracks .site-description + div {
-      margin-bottom: 0.75em;
-    }
-
-    .ie9 .site-description {
-      left: 5.55%;
-    }
-
-    .menu-primary-tracks {
-      display: none;
-    }
-
-    .menu-unset > ul,
-    .menu-primary-items {
-      margin: 0 0 0 3em;
-      opacity: 1;
-      /* Tier 2 */
-      /* Tier 3 */
-    }
-    .menu-unset > ul li,
-    .menu-unset > ul a,
-    .menu-primary-items li,
-    .menu-primary-items a {
-      display: inline-block;
-    }
-    .menu-unset > ul li,
-    .menu-primary-items li {
-      position: relative;
-    }
-    .menu-unset > ul > li,
-    .menu-primary-items > li {
-      font-size: 0.813em;
-      line-height: 1.85;
-    }
-    .menu-unset > ul > li:after,
-    .menu-primary-items > li:after {
-      content: '/';
-      position: absolute;
-      right: -6px;
-      top: 0;
-      color: white;
-      opacity: 0.6;
-    }
-    .menu-unset > ul > li:last-child:after,
-    .menu-primary-items > li:last-child:after {
-      display: none;
-    }
-    .menu-unset > ul > li:last-child a,
-    .menu-primary-items > li:last-child a {
-      margin-right: 0;
-    }
-    .menu-unset > ul a,
-    .menu-primary-items a {
-      opacity: 0.6;
-      margin: 0 0.75em;
-    }
-    .menu-unset > ul a:only-child,
-    .menu-primary-items a:only-child {
-      margin: 0 0.75em;
-    }
-    .menu-unset > ul ul,
-    .menu-primary-items ul {
-      position: absolute;
-      top: -9999px;
-      opacity: 0;
-      left: -70%;
-      right: -70%;
-      min-width: 100%;
-      max-width: 220px;
-      margin: 0 auto;
-      background: #110800;
-      text-align: center;
-      -webkit-transition: opacity 0.3s ease, -webkit-transform 0.3s ease;
-              transition: opacity 0.3s ease, transform 0.3s ease;
-      -webkit-transform: scale(0.95);
-              transform: scale(0.95);
-    }
-    .menu-unset > ul ul li,
-    .menu-unset > ul ul a,
-    .menu-primary-items ul li,
-    .menu-primary-items ul a {
-      display: block;
-    }
-    .menu-unset > ul ul:hover,
-    .menu-primary-items ul:hover {
-      top: 24px;
-      opacity: 1;
-      -webkit-transform: scale(1);
-              transform: scale(1);
-    }
-    .menu-unset > ul ul a,
-    .menu-primary-items ul a {
-      padding: 0 1.5em;
-    }
-    .menu-unset > ul ul li:first-child > a,
-    .menu-primary-items ul li:first-child > a {
-      padding-top: 0.75em;
-    }
-    .menu-unset > ul ul li:last-child > a,
-    .menu-primary-items ul li:last-child > a {
-      padding-bottom: 0.75em;
-    }
-    .menu-unset > ul a:hover + ul, .menu-unset > ul a:active + ul, .menu-unset > ul a:focus + ul,
-    .menu-primary-items a:hover + ul,
-    .menu-primary-items a:active + ul,
-    .menu-primary-items a:focus + ul {
-      top: 24px;
-      opacity: 1;
-      -webkit-transform: scale(1);
-              transform: scale(1);
-    }
-    .menu-unset > ul ul ul,
-    .menu-primary-items ul ul {
-      left: auto;
-      right: 100%;
-    }
-    .menu-unset > ul ul ul:hover,
-    .menu-primary-items ul ul:hover {
-      top: -0.75em;
-    }
-    .menu-unset > ul ul a:hover + ul, .menu-unset > ul ul a:active + ul, .menu-unset > ul ul a:focus + ul,
-    .menu-primary-items ul a:hover + ul,
-    .menu-primary-items ul a:active + ul,
-    .menu-primary-items ul a:focus + ul {
-      top: -0.75em;
-    }
+.top-navigation .container {
+  margin: 0 auto;
+  max-width: 1280px;
 }
-/*
- * 900px: This is where we transition from thumbnail side image to top/bottom
- */
-@media all and (min-width: 56.25em) {
-    .excerpt-container {
-      width: 65%;
-      min-height: 250px;
-      padding: 0 3%;
-    }
-    .excerpt {
-      -webkit-transform: translateZ(0);
-              transform: translateZ(0);
-      /* fix weird chrome wiggle glitch */
-      position: relative;
-      clear: both;
-      padding: 0;
-      margin-bottom: 1.5em;
-      opacity: 0.8;
-    }
-    .excerpt.post:after {
-      display: none;
-    }
-    .excerpt .featured-image {
-      -webkit-transform: translateZ(0);
-              transform: translateZ(0);
-      /* fixes FF glitch where image focuses & unfocuses */
-      width: 35%;
-      width: calc(35% + 2px);
-      height: 100%;
-      padding-bottom: 0;
-      position: absolute;
-      right: -1px;
-    }
-    .excerpt:hover {
-      opacity: 1;
-    }
-    .excerpt.even .excerpt-container {
-      float: right;
-    }
-    .excerpt.even .featured-image {
-      right: auto;
-      left: -1px;
-    }
-    /*
-    .excerpt.even:after {
-      content: ".";
-      display: block;
-      clear: both;
-      visibility: hidden;
-      line-height: 0;
-      height: 0;
-    }
-    */
-    .rtl .excerpt.odd .excerpt-container {
-      float: right; /* force float the same for even and odd */
-    }
-    .excerpt-meta, .entry-meta {
-      /* padding-top: 3.69004em;*/
-    }
-
-    .excerpt-content {
-      /*padding-bottom: 3em;*/
-    }
-
-    .full-without-featured:not(.has-post-thumbnail):not(.has-video):not(.has-featured-slider) .excerpt-container {
-      width: 100%;
-    }
-    .entry .featured-image:after {
-        position: absolute;
-      content: '';
-      background: #38312f;
-      top: 0;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      opacity: 0.2;
-      -webkit-transition: opacity 0.2s ease;
-              transition: opacity 0.2s ease;
-    }
-    .entry .featured-image:hover:after {
-      opacity: 0;
-    }
-
-    .entry-container {
-      padding: 0 0;
-    }
-
-    .entry-header h1 {
-      font-size: 2.5em;
-      line-height: 1.06;
-    }
-
-    .entry-meta {
-      font-size: 1em;
-      line-height: 1.2;
-      letter-spacing: 0.08em;
-    }
-
-    .entry-content {
-      margin-top: 2em;
-    }
-    .entry-content img.full-width {
-      width: 150%;
-      left: -25%;
-    }
+.top-navigation .container:after {
+  content: ".";
+  display: block;
+  clear: both;
+  visibility: hidden;
+  line-height: 0;
+  height: 0;
 }
-/* 1100px */
-@media all and (min-width: 68.75em) {
-    .entry-meta,
-    .entry-header {
-      padding-left: 0;
-      padding-right: 0;
-    }
-
-    .entry-container {
-      padding: 0 0;
-      position: relative;
-    }
-
-    .entry-content img.full-width {
-      width: 163.6%;
-      left: -31.8%;
-    }
-
-    .entry-meta-bottom.float .entry-tags,
-    .entry-meta-bottom.float .entry-categories {
-      position: absolute;
-      width: 16.66%;
-      left: 0;
-      top: 4.5em;
-      text-align: right;
-      padding-left: 0;
-    }
-    .entry-meta-bottom.float .entry-tags a,
-    .entry-meta-bottom.float .entry-categories a {
-      font-weight: 700;
-      text-transform: none;
-      letter-spacing: 0;
-      display: block;
-      margin-right: 0;
-    }
-}
-/* 1200px */
-@media all and (min-width: 75em) {
-    .entry-container {
-      padding: 0 0;
-    }
-    .entry-content img.full-width {
-      width: 179.9%;
-      left: -39.95%;
-    }
-}
-/*****************************************************************************\
-|                              MEDIA SPECIFIC END                             |
-\*****************************************************************************/
 
 .comments {
   background: white;
@@ -1416,12 +1021,6 @@ li.pingback:first-child {
   }
   .comment-pagination .next-comment {
     text-align: right;
-  }
-}
-/* 700px */
-@media all and (min-width: 43.75em) {
-  .comments {
-    padding: 0 0 3em;
   }
 }
 /* 900px */
@@ -1607,29 +1206,6 @@ li.pingback:first-child {
     margin-top: 1.5em;
   }
 }
-/* 700px */
-@media all and (min-width: 43.75em) {
-  .sidebar-footer {
-    margin-top: 3em;
-  }
-  .sidebar-footer:after {
-    content: ".";
-    display: block;
-    clear: both;
-    visibility: hidden;
-    line-height: 0;
-    height: 0;
-  }
-
-  .sidebar-footer:not(.active-1) .widget {
-    width: 47%;
-    float: left;
-    margin-top: 1.5em;
-  }
-  .sidebar-footer:not(.active-1) .widget:nth-child(odd) {
-    margin-right: 3%;
-  }
-}
 /* 900px */
 @media all and (min-width: 56.25em) {
   .site-footer h1 {
@@ -1808,19 +1384,6 @@ li.pingback:first-child {
 }
 
 @media all and (min-width: 50em) {
-  .site-footer .widget_search .search-form {
-    display: -webkit-box;
-    display: flex;
-  }
-  .site-footer .widget_search .search-field,
-  .site-footer .widget_search .search-submit {
-    width: auto;
-  }
-  .site-footer .widget_search .search-field {
-    margin-right: 0;
-    -webkit-box-flex: 1;
-            flex-grow: 1;
-  }
 }
 /* Footer menu styles */
 .menu-footer-items {
@@ -1845,105 +1408,28 @@ li.pingback:first-child {
 .menu-footer-items ul {
   list-style: none;
 }
-
-/* 700px */
-@media all and (min-width: 43.75em) {
-  .menu-footer-items li,
-  .menu-footer-items a {
-    display: inline-block;
-  }
-  .menu-footer-items a {
-    margin: 0 8px;
-  }
-  .menu-footer-items a:hover + ul, .menu-footer-items a:active + ul, .menu-footer-items a:focus + ul {
-    bottom: 24px;
-    opacity: 1;
-    -webkit-transform: scale(1);
-            transform: scale(1);
-  }
-  .menu-footer-items .sub-menu {
-    position: absolute;
-    background: #1A1A1A;
-    text-align: center;
-    margin: 0;
-    min-width: 100%;
-    max-width: 220px;
-    left: auto;
-    right: auto;
-    bottom: -9999px;
-    -webkit-transition: opacity 0.3s ease, -webkit-transform 0.3s ease;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-    -webkit-transform: scale(0.95);
-            transform: scale(0.95);
-  }
-  .menu-footer-items .sub-menu:hover {
-    bottom: 24px;
-    opacity: 1;
-    -webkit-transform: scale(1);
-            transform: scale(1);
-  }
-  .menu-footer-items .sub-menu a {
-    display: block;
-    margin: 0;
-    padding: 0.75em 1.5em;
-  }
-  .menu-footer-items .sub-menu .sub-menu:hover {
-    bottom: 0;
-    left: 100%;
-    right: auto;
-  }
-  .menu-footer-items .sub-menu a:hover + ul, .menu-footer-items .sub-menu a:active + ul, .menu-footer-items .sub-menu a:focus + ul {
-    bottom: 0;
-    left: 100%;
-    right: auto;
-  }
-}
-/* top navigation styles */
-.top-navigation {
-  position: relative;
-  left: 0%;
-  right: 0%;
-  width: 100%;
-  min-height: 3em;
-  background: #110800;
-  padding: 0.375em 0;
-  margin: 0;
-  line-height: 0;
-}
-.top-navigation ~ button {
-  top: 2.25em;
-}
-.top-navigation .container {
-  margin: 0 auto;
-  max-width: 1280px;
-}
-.top-navigation .container:after {
-  content: ".";
-  display: block;
-  clear: both;
-  visibility: hidden;
-  line-height: 0;
-  height: 0;
-}
-
 .rtl {
   right: -6%;
 }
 
 /* 600px */
 @media all and (min-width: 37.5em) {
+  /*
   .top-navigation {
     margin-top: 0em;
     left: 0%;
     width: 100%;
     z-index: 39;
   }
+  */
 }
 /* 800px */
 @media all and (min-width: 50em) {
+  /*
   .top-navigation {
     margin: 0 0 1.5em 0;
   }
+  */
 }
 /* secondary menu styles */
 .menu-secondary {
@@ -2409,23 +1895,6 @@ li.pingback:first-child {
 }
 /* 800px */
 @media all and (min-width: 50em) {
-  .dark-header .menu-unset > ul a,
-  .dark-header .menu-primary-items a {
-    color: #38312f;
-  }
-  .dark-header .menu-unset > ul a:link, .dark-header .menu-unset > ul a:visited,
-  .dark-header .menu-primary-items a:link,
-  .dark-header .menu-primary-items a:visited {
-    color: #38312f;
-  }
-  .dark-header .menu-unset > ul > li:after,
-  .dark-header .menu-primary-items > li:after {
-    color: #38312f;
-  }
-  .dark-header .menu-unset > ul ul,
-  .dark-header .menu-primary-items ul {
-    background: white;
-  }
 }
 /* background image styles */
 .background-image-active .background-image {
@@ -2708,13 +2177,8 @@ li.pingback:first-child {
 #bbpress-forums div.bbp-search-form {
   margin: 1px 0 12px 0;
 }
-
-@media all and (min-width: 43.75em) {
-  #bbpress-forums #bbp-search-form #bbp_search {
-    width: 500px !important;
-  }
-}
-/* Brodie G Customizations */
+/* Brodie G Customizations; original ones, this whole CSS is now a mess
+ * of customization*/
 
 body pre, body code.hljs {
   background-color: #FAFAFA;
@@ -2756,3 +2220,539 @@ code {
   padding-left: 0.2em;
   padding-right: 0.2em;
 }
+
+/*****************************************************************************\
+|                              MEDIA SPECIFIC SECTION                         |
+\*****************************************************************************/
+
+@media only screen and (min-device-width: 320px) and (max-device-width: 480px) and (orientation: landscape) {
+  html {
+    -webkit-text-size-adjust: none;
+    /* none for no scaling */
+  }
+}
+@media only screen and (min-device-width: 768px) and (max-device-width: 1024px) and (orientation: landscape) {
+  html {
+    -webkit-text-size-adjust: none;
+    /* none for no scaling */
+  }
+}
+/* 600px */
+@media all and (min-width: 37.5em) {
+    .excerpt {
+      /*background: #110800;*/
+      margin-bottom: 1.5em;
+    }
+    .excerpt:first-child {
+      padding-top: 0;
+    }
+    .pagination {
+      padding: 0.75em 1.5em 3em;
+    }
+    .excerpt-title, .entry-title {
+      font-size: 1.875em;
+      /* 30px */
+      line-height: 1.2;
+    }
+    .entry {
+      width: 88.88%;
+      margin: 0 auto;
+    }
+    .entry-container {
+      padding: 0 0;
+    }
+    .further-reading p {
+      display: inline-block;
+      width: 50%;
+      vertical-align: top;
+      padding-right: 3em;
+    }
+    .further-reading .prev {
+      float: left;
+    }
+    .further-reading .next {
+      float: right;
+      text-align: right;
+      padding: 0 0 0 3em;
+    }
+    .further-reading:after {
+      content: ".";
+      display: block;
+      clear: both;
+      visibility: hidden;
+      line-height: 0;
+      height: 0;
+    }
+
+    .author-meta .author {
+      display: inline-block;
+    }
+    .author-meta .author img {
+      margin-bottom: 0;
+    }
+    .author-meta:after {
+      content: ".";
+      display: block;
+      clear: both;
+      visibility: hidden;
+      line-height: 0;
+      height: 0;
+    }
+
+    .bio {
+      float: right;
+      width: 50%;
+    }
+    .bio p {
+      margin-top: 0;
+    }
+}
+/* 700px */
+@media all and (min-width: 43.75em) {
+    .comments {
+      padding: 0 0 3em;
+    }
+    .sidebar-footer {
+      margin-top: 3em;
+    }
+    .sidebar-footer:after {
+      content: ".";
+      display: block;
+      clear: both;
+      visibility: hidden;
+      line-height: 0;
+      height: 0;
+    }
+
+    .sidebar-footer:not(.active-1) .widget {
+      width: 47%;
+      float: left;
+      margin-top: 1.5em;
+    }
+    .sidebar-footer:not(.active-1) .widget:nth-child(odd) {
+      margin-right: 3%;
+    }
+
+    .menu-footer-items li,
+    .menu-footer-items a {
+      display: inline-block;
+    }
+    .menu-footer-items a {
+      margin: 0 8px;
+    }
+    .menu-footer-items a:hover + ul, .menu-footer-items a:active + ul, .menu-footer-items a:focus + ul {
+      bottom: 24px;
+      opacity: 1;
+      -webkit-transform: scale(1);
+              transform: scale(1);
+    }
+    .menu-footer-items .sub-menu {
+      position: absolute;
+      background: #1A1A1A;
+      text-align: center;
+      margin: 0;
+      min-width: 100%;
+      max-width: 220px;
+      left: auto;
+      right: auto;
+      bottom: -9999px;
+      -webkit-transition: opacity 0.3s ease, -webkit-transform 0.3s ease;
+              transition: opacity 0.3s ease, transform 0.3s ease;
+      -webkit-transform: scale(0.95);
+              transform: scale(0.95);
+    }
+    .menu-footer-items .sub-menu:hover {
+      bottom: 24px;
+      opacity: 1;
+      -webkit-transform: scale(1);
+              transform: scale(1);
+    }
+    .menu-footer-items .sub-menu a {
+      display: block;
+      margin: 0;
+      padding: 0.75em 1.5em;
+    }
+    .menu-footer-items .sub-menu .sub-menu:hover {
+      bottom: 0;
+      left: 100%;
+      right: auto;
+    }
+    .menu-footer-items .sub-menu a:hover + ul, .menu-footer-items .sub-menu a:active + ul, .menu-footer-items .sub-menu a:focus + ul {
+      bottom: 0;
+      left: 100%;
+      right: auto;
+    }
+
+    #bbpress-forums #bbp-search-form #bbp_search {
+      width: 500px !important;
+    }
+    .entry-container {
+      padding: 0 0;
+    }
+
+    .entry-meta,
+    .entry-header {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .entry-content img.full-width {
+      width: 128.6%;
+      left: -14.3%;
+    }
+}
+/* These seem to be the threshold at which the navigation stuff collapses */
+/* 800px */
+
+@media all and (min-width: 50em) {
+    .site-header {
+      position: relative;
+      z-index: 2;
+      padding: 0 0 2.25em;
+      border-top: solid 0 #110800;
+    }
+    .title-info {
+      margin-top: -0.75em;
+    }
+    .site-title img {
+      max-width: 8em;
+      max-height: 3em;
+    }
+    .loop-container {
+      padding-top: 0.75em;
+    }
+    .toggle-navigation {
+      display: none;
+    }
+    .menu-primary, .menu-primary-tracks {
+      background: none;
+      position: static;
+      width: 100%;
+      height: auto;
+      padding: 0;
+      margin: 0;
+      text-align: right;
+      min-height: 37px;
+    }
+    .menu-primary .site-description, .menu-primary-tracks .site-description {
+      position: absolute;
+      left: 0;
+      opacity: 0.6;
+    }
+    .menu-primary .site-description + div, .menu-primary-tracks .site-description + div {
+      margin-bottom: 0.75em;
+    }
+
+    .ie9 .site-description {
+      left: 5.55%;
+    }
+
+    .menu-primary-tracks {
+      display: none;
+    }
+
+    .menu-unset > ul,
+    .menu-primary-items {
+      margin: 0 0 0 3em;
+      opacity: 1;
+      /* Tier 2 */
+      /* Tier 3 */
+    }
+    .menu-unset > ul li,
+    .menu-unset > ul a,
+    .menu-primary-items li,
+    .menu-primary-items a {
+      display: inline-block;
+    }
+    .menu-unset > ul li,
+    .menu-primary-items li {
+      position: relative;
+    }
+    .menu-unset > ul > li,
+    .menu-primary-items > li {
+      font-size: 0.813em;
+      line-height: 1.85;
+    }
+    .menu-unset > ul > li:after,
+    .menu-primary-items > li:after {
+      content: '/';
+      position: absolute;
+      right: -6px;
+      top: 0;
+      color: white;
+      opacity: 0.6;
+    }
+    .menu-unset > ul > li:last-child:after,
+    .menu-primary-items > li:last-child:after {
+      display: none;
+    }
+    .menu-unset > ul > li:last-child a,
+    .menu-primary-items > li:last-child a {
+      margin-right: 0;
+    }
+    .menu-unset > ul a,
+    .menu-primary-items a {
+      opacity: 0.6;
+      margin: 0 0.75em;
+    }
+    .menu-unset > ul a:only-child,
+    .menu-primary-items a:only-child {
+      margin: 0 0.75em;
+    }
+    .menu-unset > ul ul,
+    .menu-primary-items ul {
+      position: absolute;
+      top: -9999px;
+      opacity: 0;
+      left: -70%;
+      right: -70%;
+      min-width: 100%;
+      max-width: 220px;
+      margin: 0 auto;
+      background: #110800;
+      text-align: center;
+      -webkit-transition: opacity 0.3s ease, -webkit-transform 0.3s ease;
+              transition: opacity 0.3s ease, transform 0.3s ease;
+      -webkit-transform: scale(0.95);
+              transform: scale(0.95);
+    }
+    .menu-unset > ul ul li,
+    .menu-unset > ul ul a,
+    .menu-primary-items ul li,
+    .menu-primary-items ul a {
+      display: block;
+    }
+    .menu-unset > ul ul:hover,
+    .menu-primary-items ul:hover {
+      top: 24px;
+      opacity: 1;
+      -webkit-transform: scale(1);
+              transform: scale(1);
+    }
+    .menu-unset > ul ul a,
+    .menu-primary-items ul a {
+      padding: 0 1.5em;
+    }
+    .menu-unset > ul ul li:first-child > a,
+    .menu-primary-items ul li:first-child > a {
+      padding-top: 0.75em;
+    }
+    .menu-unset > ul ul li:last-child > a,
+    .menu-primary-items ul li:last-child > a {
+      padding-bottom: 0.75em;
+    }
+    .menu-unset > ul a:hover + ul, .menu-unset > ul a:active + ul, .menu-unset > ul a:focus + ul,
+    .menu-primary-items a:hover + ul,
+    .menu-primary-items a:active + ul,
+    .menu-primary-items a:focus + ul {
+      top: 24px;
+      opacity: 1;
+      -webkit-transform: scale(1);
+              transform: scale(1);
+    }
+    .menu-unset > ul ul ul,
+    .menu-primary-items ul ul {
+      left: auto;
+      right: 100%;
+    }
+    .menu-unset > ul ul ul:hover,
+    .menu-primary-items ul ul:hover {
+      top: -0.75em;
+    }
+    .menu-unset > ul ul a:hover + ul, .menu-unset > ul ul a:active + ul, .menu-unset > ul ul a:focus + ul,
+    .menu-primary-items ul a:hover + ul,
+    .menu-primary-items ul a:active + ul,
+    .menu-primary-items ul a:focus + ul {
+      top: -0.75em;
+    }
+    .top-navigation {
+      margin: 0 0 1.5em 0;
+    }
+    .dark-header .menu-unset > ul a,
+    .dark-header .menu-primary-items a {
+      color: #38312f;
+    }
+    .dark-header .menu-unset > ul a:link, .dark-header .menu-unset > ul a:visited,
+    .dark-header .menu-primary-items a:link,
+    .dark-header .menu-primary-items a:visited {
+      color: #38312f;
+    }
+    .dark-header .menu-unset > ul > li:after,
+    .dark-header .menu-primary-items > li:after {
+      color: #38312f;
+    }
+    .dark-header .menu-unset > ul ul,
+    .dark-header .menu-primary-items ul {
+      background: white;
+    }
+
+    .site-footer .widget_search .search-form {
+      display: -webkit-box;
+      display: flex;
+    }
+    .site-footer .widget_search .search-field,
+    .site-footer .widget_search .search-submit {
+      width: auto;
+    }
+    .site-footer .widget_search .search-field {
+      margin-right: 0;
+      -webkit-box-flex: 1;
+              flex-grow: 1;
+    }
+
+}
+/*
+ * 900px: This is where we transition from thumbnail side image to top/bottom
+ */
+@media all and (min-width: 56.25em) {
+    .excerpt-container {
+      width: 65%;
+      min-height: 250px;
+      padding: 0 3%;
+    }
+    .excerpt {
+      -webkit-transform: translateZ(0);
+              transform: translateZ(0);
+      /* fix weird chrome wiggle glitch */
+      position: relative;
+      clear: both;
+      padding: 0;
+      margin-bottom: 1.5em;
+      opacity: 0.8;
+    }
+    .excerpt.post:after {
+      display: none;
+    }
+    .excerpt .featured-image {
+      -webkit-transform: translateZ(0);
+              transform: translateZ(0);
+      /* fixes FF glitch where image focuses & unfocuses */
+      width: 35%;
+      width: calc(35% + 2px);
+      height: 100%;
+      padding-bottom: 0;
+      position: absolute;
+      right: -1px;
+    }
+    .excerpt:hover {
+      opacity: 1;
+    }
+    .excerpt.even .excerpt-container {
+      float: right;
+    }
+    .excerpt.even .featured-image {
+      right: auto;
+      left: -1px;
+    }
+    /*
+    .excerpt.even:after {
+      content: ".";
+      display: block;
+      clear: both;
+      visibility: hidden;
+      line-height: 0;
+      height: 0;
+    }
+    */
+    .rtl .excerpt.odd .excerpt-container {
+      float: right; /* force float the same for even and odd */
+    }
+    .excerpt-meta, .entry-meta {
+      /* padding-top: 3.69004em;*/
+    }
+
+    .excerpt-content {
+      /*padding-bottom: 3em;*/
+    }
+
+    .full-without-featured:not(.has-post-thumbnail):not(.has-video):not(.has-featured-slider) .excerpt-container {
+      width: 100%;
+    }
+    .entry .featured-image:after {
+        position: absolute;
+      content: '';
+      background: #38312f;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      opacity: 0.2;
+      -webkit-transition: opacity 0.2s ease;
+              transition: opacity 0.2s ease;
+    }
+    .entry .featured-image:hover:after {
+      opacity: 0;
+    }
+
+    .entry-container {
+      padding: 0 0;
+    }
+
+    .entry-header h1 {
+      font-size: 2.5em;
+      line-height: 1.06;
+    }
+
+    .entry-meta {
+      font-size: 1em;
+      line-height: 1.2;
+      letter-spacing: 0.08em;
+    }
+
+    .entry-content {
+      margin-top: 2em;
+    }
+    .entry-content img.full-width {
+      width: 150%;
+      left: -25%;
+    }
+}
+/* 1100px */
+@media all and (min-width: 68.75em) {
+    .entry-meta,
+    .entry-header {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .entry-container {
+      padding: 0 0;
+      position: relative;
+    }
+
+    .entry-content img.full-width {
+      width: 163.6%;
+      left: -31.8%;
+    }
+
+    .entry-meta-bottom.float .entry-tags,
+    .entry-meta-bottom.float .entry-categories {
+      position: absolute;
+      width: 16.66%;
+      left: 0;
+      top: 4.5em;
+      text-align: right;
+      padding-left: 0;
+    }
+    .entry-meta-bottom.float .entry-tags a,
+    .entry-meta-bottom.float .entry-categories a {
+      font-weight: 700;
+      text-transform: none;
+      letter-spacing: 0;
+      display: block;
+      margin-right: 0;
+    }
+}
+/* 1200px */
+@media all and (min-width: 75em) {
+    .entry-container {
+      padding: 0 0;
+    }
+    .entry-content img.full-width {
+      width: 179.9%;
+      left: -39.95%;
+    }
+}
+/*****************************************************************************\
+|                              MEDIA SPECIFIC END                             |
+\*****************************************************************************/
