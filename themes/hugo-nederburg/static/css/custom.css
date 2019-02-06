@@ -638,6 +638,7 @@ a img {
   -webkit-backface-visibility: hidden;
           backface-visibility: hidden;
 }
+/* separator between posts in pagination */
 .excerpt.post:after {
   content: '';
   /* position: absolute;*/
@@ -645,7 +646,7 @@ a img {
   width: 4.5em;
   height: 0.375em;
   margin: 0.5em auto;
-  display: block;
+  display: none;
 }
 .excerpt {
   text-align: center;
@@ -1887,6 +1888,12 @@ code {
 .twitter-share-button, .twitter-follow-button, .twitter-mention-button {
   vertical-align: middle;
 }
+.post-excerpt-wide {
+  display: none;
+}
+.post-excerpt-narrow {
+  display: block;
+}
 
 /*****************************************************************************\
 |                              MEDIA SPECIFIC SECTION                         |
@@ -2503,17 +2510,21 @@ code {
       -webkit-transform: none;
               transform: none;
     }
-
     .ie9 .excerpt {
       opacity: 1;
     }
     .ie9 .excerpt:hover {
       opacity: 1;
     }
-
+    .post-excerpt-wide {
+      display: block;
+    }
+    .post-excerpt-narrow {
+      display: none;
+    }
     .excerpt-container {
-      width: 65%;
       min-height: 250px;
+      width: 65%;
       padding: 0 3%;
     }
     .excerpt {

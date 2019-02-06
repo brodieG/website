@@ -37,45 +37,36 @@
 
         {{ end }}
 
-          {{ if and (isset .Params "image") .Params.image }}
+    <div class="post-excerpt post-excerpt-wide">
 
-    <a class="featured-image-link" href="{{ .Permalink }}">
-        <div 
-          class='featured-image lazy lazy-bg-image' 
-          {{if isset .Site.Params "usepostimgfolder"}}data-background="{{ .Permalink }}{{ .Params.image }}"
-          {{- else }}data-background="{{ .Params.image | absURL }}"{{ end }}
-        >
-        </div>
-    </a>
+        {{ if and (isset .Params "image") .Params.image }}
+
+            {{ partial "excerpt/image.html" . }}
 
         {{ end }}
-    <div class="excerpt-container">
-        <div class="excerpt-meta">
-            <span class="date">{{ .Date.Format "Jan 02 2006" }}</span>
 
-        {{ range .Params.categories }}
-            <span> / </span>
-            <span class="category">
-            <a href="/categories{{ . | relURL }}">{{ . }}</a>
-            </span>
+        <div class="excerpt-container">
+          {{ partial "excerpt/meta.html" . }}
+          {{ partial "excerpt/content.html" . }}
+        </div>
+
+    </div>
+    <div class="post-excerpt post-excerpt-narrow">
+
+        <div class="excerpt-container">
+            {{ partial "excerpt/meta.html" . }}
+        </div>
+
+        {{ if and (isset .Params "image") .Params.image }}
+
+            {{ partial "excerpt/image.html" . }}
+
         {{ end }}
+
+        <div class="excerpt-container">
+            {{ partial "excerpt/content.html" . }}
         </div>
-        <div class='excerpt-header'>
-            <h2 class='excerpt-title'>
-                <a href="{{ .Permalink }} "> {{ .Title }} </a>
-            </h2>
-        </div>
-        <div class='excerpt-content'>
-            <article>
-                <a href="{{ .Permalink }}">
-        {{ with .Param "summary" }}
-            {{ . }}
-        {{ else }}
-            {{ .Summary }}
-        {{ end }}
-                </a>
-            </article>
-        </div>
+
     </div>
 </div>
     {{ end }}
