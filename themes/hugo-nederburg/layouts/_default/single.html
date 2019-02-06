@@ -24,7 +24,7 @@
               {{ else }} data-background="{{ .Params.image | absURL }}"
               {{ end }}
             >
-        </div>
+            </div>
     {{ else }}
 
         <div class="post type-post status-publish format-standard hentry category-standard category-travel entry full-without-featured odd excerpt-1">
@@ -318,5 +318,6 @@ title="pinterest icon"></i>
 
 <!--</div>--> <!-- .main -->
 
+{{ partial "feedback.html" . }}
 
 {{ end }}

@@ -1308,7 +1308,28 @@ footnotes and appendix.
 All the illustrations in this post were generated with base R graphics.  You can
 see the [source for this post on Github][14].
 
-Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
+Liked the post?  <a 
+  href="https://twitter.com/share?ref_src=twsrc%5Etfw" 
+  class="twitter-share-button" 
+
+  data-text="Checkout this blogpost: "
+
+  data-url="{{ .Name }}" 
+  data-via="brodiegaslam" 
+  data-dnt="true" data-show-count="false">share</a> about it.
+<a 
+  href="https://twitter.com/brodiegaslam?ref_src=twsrc%5Etfw" 
+  class="twitter-follow-button" 
+  data-show-screen-name="false" 
+  data-show-count="false"
+>Follow @brodiegaslam</a> me for updates and new posts.  Questions?  Comments?
+<a 
+  href="https://twitter.com/intent/tweet?screen_name=brodiegaslam&ref_src=twsrc%5Etfw" 
+  class="twitter-mention-button"
+  data-show-count="false">@ Me</a>.
+
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
 
 # Appendix
 

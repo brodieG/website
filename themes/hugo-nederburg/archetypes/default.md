@@ -1,2 +1,25 @@
-+++
-+++
+---
+image: /front-img/default.png
+weight: 1
+summary: "Front page summary"
+---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", error=TRUE)
+```
+
+# Header 1
+
+<img
+  id='front-img' src='/front-img/default.png'
+  style='float: left; margin: 5px 15px 5px 0;' width='250'
+/>
+
+# Conclusions
+
+<div id='feedback-cont'></div>
+
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+# Appendix

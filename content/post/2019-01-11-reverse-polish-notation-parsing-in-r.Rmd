@@ -356,8 +356,7 @@ we can write a terminal debugger[^debug-caveat] in R that runs in the same
 session it is created in.  R's willingness to freely expose its inner workings
 to programmers is one of its under-appreciated features.
 
-```{r child='./../../static/chunks/q-c.Rmd'}
-```
+<div id='feedback-cont'></div>
 
 # Appendix
 
