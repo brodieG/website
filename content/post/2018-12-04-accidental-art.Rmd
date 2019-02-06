@@ -4,6 +4,7 @@ author: ~
 date: '2018-12-29'
 slug: accidental-art
 image: 'front-img/stormy-night-1.png'
+summary: "Trying to render volcano in 3D generated much accidental art."
 categories: [r]
 weight: 1
 tags: [visualization]
@@ -147,6 +148,13 @@ plot(as.raster(elcolor))
 ```
 
 [Code](#orthogonal-code).
+
+# Conclusions
+
+It's hard to intentionally reproduce accidental art.  If you get something cool
+be sure to save the code.
+
+<div id='feedback-cont'></div>
 
 # Appendix
 

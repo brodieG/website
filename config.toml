@@ -1,6 +1,11 @@
-baseurl = "https://www.brodieg.com/"
-title = "Brodie Gaslam"
+# While technically this is using hugo-nederburg, the theme has been extensibly
+# modified, and rarely with an eye towards re-use.  If you try to use it, don't
+# be surprised to find ugly stuff hardcoded.
+
 theme = "hugo-nederburg"
+
+baseURL = "/"
+title = "Brodie Gaslam"
 languageCode = "en-us"
 ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "_files$", "_cache$"]
 

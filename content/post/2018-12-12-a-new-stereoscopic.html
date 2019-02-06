@@ -531,7 +531,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7fc90658c680&gt;
+&lt;bytecode: 0x7fdaeaea1790&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
@@ -775,13 +775,13 @@ polygon artifacts:</p>
 <img
     alt='Raster based render of elevation map'
     src='/images/three-d-pipeline-pixel.png'
-    style='max-width: 600px; display: block; margin: auto' />
+    style='width: 100%; max-width: 600px; display: block; margin: auto' />
 </a>
 <a title='click for full size' href='/images/three-d-pipeline-polygon.png' >
 <img
     alt='Polygon based render of elevation map'
     src='/images/three-d-pipeline-polygon.png'
-    style='max-width: 600px; display: block; margin: auto' />
+    style='width: 100%; max-width: 600px; display: block; margin: auto' />
 </a></p>
 </div>
 <div id="stereoscopy" class="section level1">
@@ -860,26 +860,9 @@ in the fact that you probably overshot and had to scroll back through the
 footnotes and appendix.</p>
 <p>All the illustrations in this post were generated with base R graphics. You can
 see the <a href="https://github.com/brodieG/website/blob/master/content/post/2018-12-12-a-new-stereoscopic.Rmd">source for this post on Github</a>.</p>
-<p>Liked the post? <a 
-  href="https://twitter.com/share?ref_src=twsrc%5Etfw" 
-  class="twitter-share-button" 
+<div id="feedback-cont">
 
-  data-text="Checkout this blogpost: "
-
-  data-url="{{ .Name }}" 
-  data-via="brodiegaslam" 
-  data-dnt="true" data-show-count="false">share</a> about it.
-<a 
-  href="https://twitter.com/brodiegaslam?ref_src=twsrc%5Etfw" 
-  class="twitter-follow-button" 
-  data-show-screen-name="false" 
-  data-show-count="false"
->Follow <span class="citation">@brodiegaslam</span></a> me for updates and new posts. Questions? Comments?
-<a 
-  href="https://twitter.com/intent/tweet?screen_name=brodiegaslam&ref_src=twsrc%5Etfw" 
-  class="twitter-mention-button"
-  data-show-count="false">@ Me</a>.</p>
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</div>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>

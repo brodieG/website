@@ -18,8 +18,7 @@ knitr::opts_chunk$set(comment = "", error=TRUE)
 
 # Conclusions
 
+<!-- this is populated by JS in feedback.html partial -->
 <div id='feedback-cont'></div>
-
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
 # Appendix

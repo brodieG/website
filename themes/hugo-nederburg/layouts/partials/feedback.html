@@ -1,20 +1,25 @@
 
 <p id='feedback-data' style='display: none;'>
-Questions, comments, or just want to share this post?  <a 
-  href="https://twitter.com/share?ref_src=twsrc%5Etfw" 
-  class="twitter-share-button" 
+  Questions, comments, or just want to share this post?
+  <a
+    href="https://twitter.com/share?ref_src=twsrc%5Etfw"
+    class="twitter-share-button"
+    data-text="Check out this post &quot;{{ .Title }}&quot; "
+    data-url="https://www.brodieg.com{{ .Permalink }}"
+    data-via="brodiegaslam"
+    data-dnt="true" data-show-count="false"
+  >
+    share
+  </a> it.
+  <a
+    href="https://twitter.com/brodiegaslam?ref_src=twsrc%5Etfw"
+    class="twitter-follow-button"
+    data-show-screen-name="false"
+    data-show-count="false"
+  >
+    Follow
+  </a> me for updates and/or new post notifications.
 
-  data-text="Check out this blogpost: {{ .Permalink }}"
-
-  data-url="{{ .Name }}" 
-  data-via="brodiegaslam" 
-  data-dnt="true" data-show-count="false">share</a> it.
-<a 
-  href="https://twitter.com/brodiegaslam?ref_src=twsrc%5Etfw" 
-  class="twitter-follow-button" 
-  data-show-screen-name="false" 
-  data-show-count="false"
->Follow @brodiegaslam</a> me for updates and/or new post notifications.
 </p>
 
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
