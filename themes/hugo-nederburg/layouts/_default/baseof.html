@@ -17,13 +17,11 @@
     </header>
 
     <div id="main" class="main" role="main">
-
       {{ block "main" . }}
       {{ end }}
     </div>
-
-    {{ partial "footer.html" . }}
   </div>
+  {{ partial "footer.html" . }}
   {{ partial "scripts.html" . }}
 </body>
 </html>

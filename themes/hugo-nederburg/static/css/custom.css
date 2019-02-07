@@ -59,7 +59,19 @@ background-size: 11.1%; /* This is at 6-columns -> just change this # */
 *, *:before, *:after {
   box-sizing: border-box;
 }
-
+html, body {
+  height: 100%;
+}
+body {
+  display: flex;
+  flex-direction: column;
+}
+#overflow-container {
+  flex: 1 0 auto;
+}
+#site-footer {
+  flex-shrink: 0;
+}
 body {
   font-family: "raleway", sans-serif;
   text-rendering: optimizeLegibility;
@@ -68,7 +80,6 @@ body {
   -moz-font-feature-settings: "liga" on;
 }
 body {
-  height: 100%;
   font-size: 100%;
   margin: 0;
   padding: 0;
@@ -120,7 +131,7 @@ a:link {
   color: #38312f;
 }
 a:visited, a:hover, a:active, a:focus {
-  color: black;
+  /*color: black;*/
 }
 
 article a {
