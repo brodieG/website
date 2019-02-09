@@ -7,14 +7,14 @@ categories: [r]
 summary: "A side by side comparison of the most popular R data.frame
 manipulation packages."
 weight: 1
-image: /front-img/datatable-vs-dplyr.png
+image: "/front-img/datatable-vs-dplyr2.png"
 tags: [data.table, dplyr]
 ---
 
 # Overview
 
 <img
-src='/front-img/datatable-vs-dplyr.png'
+src='/front-img/datatable-vs-dplyr2.png'
 style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 
 In this post I will compare the use and performance of `dplyr` and `data.table` for the purposes of "split apply combine" style analysis, with some comparisons to base R methods.
