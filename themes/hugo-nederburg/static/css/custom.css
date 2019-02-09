@@ -229,7 +229,7 @@ code {
 blockquote {
   margin: 1.5em 0;
   padding: 0 1.5em;
-  border-left: solid 0.75em #38312f;
+  border-left: solid 0.25em #CCCCCC;
 }
 blockquote cite {
   display: block;
@@ -880,7 +880,7 @@ a img {
 }
 
 .author-meta {
-  background: #38312f;
+  background: #110800;
   color: white;
   padding: 1.5em;
   margin: 3em 0 0;
@@ -1051,11 +1051,11 @@ li.pingback:first-child {
           transition: opacity 0.2s ease;
 }
 .site-footer h1:hover, .site-footer h1:active, .site-footer h1:focus {
-  opacity: 0.9;
+  opacity: 1;
 }
 .site-footer p {
   margin: 0 0 1.5em;
-  opacity: 0.6;
+  opacity: 1;
 }
 .site-footer .social-media-icons {
   margin: 0.75em 0 1.5em;
@@ -2546,7 +2546,7 @@ code {
       clear: both;
       padding: 0;
       margin-bottom: 1.5em;
-      opacity: 0.8;
+      opacity: 1;
     }
     .excerpt.post:after {
       display: none;

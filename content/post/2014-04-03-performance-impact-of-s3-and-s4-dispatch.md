@@ -3,6 +3,8 @@ title: Performance Impact of S3 and S4 Dispatch
 author: Brodie Gaslam
 date: '2014-04-03'
 slug: performance-impact-of-s3-and-s4-dispatch
+summary: Is the S3 and S4 method dispatch penalty sufficient to matter?
+weight: 1
 categories: [r]
 tags: [optimization]
 ---
@@ -143,6 +145,8 @@ Some might argue that there is no benefit whatsoever to the S4 approach so the s
 Most of the time you won't have to worry about S3/S4 dispatch, but if you plan on developing with S3 or S4 make sure you carefully think through the use cases to ensure there won't be any that will cause the extra overhead from method dispatch to add up to substantial extra time.
 
 One big caveat is that we are using fairly simple S4 dispatch here.  It is possible that with complex webs of S4 classes dispatch times could become an issue in more traditional use cases.
+
+<div id='feedback-cont'></div>
 
 ---
 <div class="footnotes">
