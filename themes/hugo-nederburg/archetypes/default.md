@@ -2,6 +2,7 @@
 image: /front-img/default.png
 imagemrgvt: "0%"
 imagemrghz: "0%"
+draft: true
 weight: 1
 summary: "Front page summary"
 ---
