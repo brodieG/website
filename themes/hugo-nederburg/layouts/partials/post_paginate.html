@@ -1,0 +1,73 @@
+
+<h1 class="screen-reader-text">Posts</h1>
+
+<div id="loop-container" class="loop-container">
+
+{{ $paginator := .Paginate (where (where .Data.Pages "Type" "post") "IsPage" true) }}
+    {{ range $index, $element := .Paginator.Pages }}
+
+        {{ $scratch := newScratch }}
+
+        {{ if .Site.Params.writers }}
+            {{ $scratch.Set "writer" (index .Site.Params.writers (lower .Params.writer) | default dict) }}
+        {{ else }}
+            {{ $scratch.Set "writer" .Site.Params.social | default dict }}
+        {{ end }}
+
+        {{ $writer := $scratch.Get "writer" }}
+
+        {{ if and (isset .Params "image") .Params.image }}
+            {{ if eq (mod $index 2) 0 }}
+    <!--
+      modifed odd to even here; also messed with the CSS; used to be that the
+      images would flip from being on left side to right side with even/odd
+    -->
+
+<div class="post type-post status-publish format-standard has-post-thumbnail hentry category-design tag-memories tag-normal-post tag-standard-2 excerpt zoom full-without-featured even excerpt">
+
+            {{ else }}
+
+<div class="post type-post status-publish format-standard has-post-thumbnail hentry category-design tag-memories tag-normal-post tag-standard-2 excerpt zoom full-without-featured even excerpt">
+
+            {{ end }}
+
+        {{ else }}
+
+<div class="post type-post status-publish format-standard hentry category-standard category-travel excerpt zoom full-without-featured odd excerpt">
+
+        {{ end }}
+
+    <div class="post-excerpt post-excerpt-wide">
+
+        {{ if and (isset .Params "image") .Params.image }}
+
+            {{ partial "excerpt/image_wide.html" . }}
+
+        {{ end }}
+
+        <div class="excerpt-container">
+          {{ partial "excerpt/meta.html" . }}
+          {{ partial "excerpt/content.html" . }}
+        </div>
+
+    </div>
+    <div class="post-excerpt post-excerpt-narrow">
+
+        <div class="excerpt-container">
+            {{ partial "excerpt/meta.html" . }}
+        </div>
+
+        {{ if and (isset .Params "image") .Params.image }}
+
+            {{ partial "excerpt/image_narrow.html" . }}
+
+        {{ end }}
+
+        <div class="excerpt-container">
+            {{ partial "excerpt/content.html" . }}
+        </div>
+
+    </div>
+</div>
+    {{ end }}
+</div>

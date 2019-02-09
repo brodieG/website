@@ -3,6 +3,12 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
+image: "front-img/a-new-stereoscopic-2.png"
+imagemrgvt: "0%"
+imagemrghz: "15%"
+weight: 1
+summary: Step by step implementation of a 3D rendering pipeline, from
+  projections to meshes to rasterization, using base R only.
 categories: [r]
 tags: [optimization,visualization]
 ---
@@ -527,7 +533,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7fac30c0cac8&gt;
+&lt;bytecode: 0x7ffcef9de280&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
@@ -771,13 +777,13 @@ polygon artifacts:</p>
 <img
     alt='Raster based render of elevation map'
     src='/images/three-d-pipeline-pixel.png'
-    style='max-width: 600px; display: block; margin: auto' />
+    style='width: 100%; max-width: 600px; display: block; margin: auto' />
 </a>
 <a title='click for full size' href='/images/three-d-pipeline-polygon.png' >
 <img
     alt='Polygon based render of elevation map'
     src='/images/three-d-pipeline-polygon.png'
-    style='max-width: 600px; display: block; margin: auto' />
+    style='width: 100%; max-width: 600px; display: block; margin: auto' />
 </a></p>
 </div>
 <div id="stereoscopy" class="section level1">
@@ -856,7 +862,9 @@ in the fact that you probably overshot and had to scroll back through the
 footnotes and appendix.</p>
 <p>All the illustrations in this post were generated with base R graphics. You can
 see the <a href="https://github.com/brodieG/website/blob/master/content/post/2018-12-12-a-new-stereoscopic.Rmd">source for this post on Github</a>.</p>
-<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
+<div id="feedback-cont">
+
+</div>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
@@ -881,7 +889,7 @@ other attached packages:
 [1] shadow_0.0.0.9000
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.19    bookdown_0.7    digest_0.6.15   rprojroot_1.3-2
+ [1] Rcpp_1.0.0      bookdown_0.7    digest_0.6.18   rprojroot_1.3-2
  [5] backports_1.1.2 magrittr_1.5    evaluate_0.10.1 blogdown_0.8   
  [9] stringi_1.2.3   rmarkdown_1.10  tools_3.5.2     stringr_1.3.1  
 [13] xfun_0.3        yaml_2.2.0      compiler_3.5.2  htmltools_0.3.6
@@ -1013,13 +1021,12 @@ for(i in elrows) {
   plot(as.raster(elren3[[i]]))
   dev.off()
 }</code></pre>
-<hr />
 </div>
 </div>
 <div class="footnotes">
 <hr />
 <ol>
-<li id="fn1"><p>Why would I subject myself to this? Well, I’m as sucker for
+<li id="fn1"><p>Why would I subject myself to this? Well, I’m a sucker for
 learning new interesting things such as how 3D rendering is actually done, and
 there is no better way to learn than to do. I also believe, as an R package
 developer, that it is important to know just how far you can push base

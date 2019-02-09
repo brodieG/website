@@ -1,0 +1,16 @@
+
+        <div class="excerpt-meta">
+            <span class="date">{{ .Date.Format "Jan 02 2006" }}</span>
+
+        {{ range .Params.categories }}
+            <span> / </span>
+            <span class="category">
+            <a href="/categories{{ . | relURL }}">{{ . }}</a>
+            </span>
+        {{ end }}
+        </div>
+        <div class='excerpt-header'>
+            <h2 class='excerpt-title'>
+                <a href="{{ .Permalink }} "> {{ .Title }} </a>
+            </h2>
+        </div>

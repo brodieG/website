@@ -1,16 +1,49 @@
 ---
 title: "About"
 date: "2018-10-21"
+type: about
 ---
 
-I am a hobbyist programmer based on the US east coast.  I'm interested in data
-analysis and visualization.  I program primarily in R and C.
+# Me
+
+I am a hobbyist programmer based on the US east coast.  I am interested in data
+analysis and visualization.  I program primarily in R, but have learned enough C
+to understand the R internals and write the occasional R extension in C.  My
+claim to fame is that I am a minor contributor to the R sources.
+
+<a
+  href="https://twitter.com/brodiegaslam?ref_src=twsrc%5Etfw"
+  class="twitter-follow-button"
+  data-show-screen-name="false"
+  data-show-count="false"
+>
+Follow
+</a> me for updates and/or new post notifications.  Check out my
+[Github](https://github.com/brodieG) account for the R packages I develop and
+maintain.
+
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+# Site
+
+This website is built with [Hugo](https://gohugo.io/) and
+[blogdown](https://github.com/rstudio/blogdown), on a theme adapted from 
+[Nederburg](https://themes.gohugo.io/hugo-nederburg-theme/) with
+elements from [Lithium](https://themes.gohugo.io/theme/hugo-lithium-theme/).
 
 All code posted on this website is licensed under GPL-2 or GPL-3 unless
 otherwise indicated.
 
-Special thanks to [Yihui Xie](https://yihui.name/) etal and Rstudio for
-`blogdown`, Yihui Xie and [J.J.  Allaire](https://github.com/jjallaire)
-etal for [rmarkdown](https://cran.r-project.org/package=rmarkdown), and John
-MacFarlane for [pandoc](http://pandoc.org/).
+# Acknowledgments
+
+* [Yihui Xie](https://yihui.name/) etal and Rstudio for
+  [`blogdown`](https://github.com/rstudio/blogdown).
+* [Yihui Xie](https://yihui.name/) and [J.J.
+  Allaire](https://github.com/jjallaire) etal for
+  [`rmarkdown`](https://cran.r-project.org/package=rmarkdown), and John MacFarlane
+  for [`pandoc`](http://pandoc.org/).
+* Göran Svensson for porting the [Nederburg
+  theme](https://themes.gohugo.io/hugo-nederburg-theme/) to Hugo, and to
+  [Compete Themes](https://www.competethemes.com/tracks/) for creating it in the
+  first place.
 

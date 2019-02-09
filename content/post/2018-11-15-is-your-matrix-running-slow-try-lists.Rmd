@@ -1,8 +1,15 @@
 ---
-title: Is Your Matrix Running Slow? Try Lists.
+title: Slow Matrices? Try Lists.
 author: ~
 date: '2018-11-23'
 slug: is-your-matrix-running-slow-try-lists
+image: "front-img/is-your-matrix-running-slow.png"
+imagemrgvt: "0%"
+imagemrghz: "20%"
+weight: 1
+summary: List data structures can be more efficient than their matrix and array
+  counterparts.  We take advantage of this to quickly shade triangles from
+  vertex colors.
 categories: [optimization]
 tags: [rstats]
 ---
@@ -159,6 +166,25 @@ plot_shaded <- function(p, col, v=vinit) {
   )
 }
 ```
+```{r plot-shaded-2, echo=FALSE, eval=FALSE}
+# For PNG purposes
+plot_shaded2 <- function(p, col, v=vinit) {
+  png('slow-matrix.png', bg='transparent', width=600, height=600)
+  par(xpd=TRUE)
+  par(mai=rep(.5, 4))
+  plot.new()
+
+  points(p, pch=15, col=col, cex=.2)
+  polygon(v[,c('x', 'y')])
+  points(
+    vinit[,c('x', 'y')], pch=21, cex=5,
+    bg=rgb(apply(v[, c('r','g','b')], 2, unlist)), col='grey'
+  )
+  dev.off()
+}
+plot_shaded2(point.L, do.call(rgb, color.L))
+```
+
 ```{r v-shade-l, echo=FALSE}
 v_shade_L <- function(p, v) {
   ## 1) compute barycentric coords

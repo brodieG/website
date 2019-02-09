@@ -3,6 +3,10 @@ title: Adventures in R and Compiled Code
 author: ~
 date: '2018-04-06'
 slug: adventures-in-r-and-compiled-code
+summary: Wherein I learn a bit more about how to properly use valgrind, and
+  unexpectedly find a bug in base R.
+weight: 1
+image: /front-img/valgrind.png
 categories: [r]
 tags: [valgrind, debugging]
 ---
@@ -147,6 +151,8 @@ It turns out that I triggered [a bug in `base::substr`](https://stat.ethz.ch/pip
 None of the errors showing up on CRAN were actually caused by my package.  Most of these errors except for the R bug went away with different R-devel builds.  [Details for the bored](https://gist.github.com/brodieG/d364807792883c6a15006fec8d307def).
 
 However, as a result of my new found understanding of these memory errors I went back to look at an old `valgrind` error in another package of mine.  I had ignored it because I did not understand it, I could not reproduce it, nothing was obviously blowing up, and no one was yelling at me about it.  Sure enough, the error was real, and was able to fix before anyone else ran into it.
+
+<div id='feedback-cont'></div>
 
 # Acknowledgments
 

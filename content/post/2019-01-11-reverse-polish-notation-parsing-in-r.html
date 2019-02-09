@@ -3,12 +3,23 @@ title: RPN Parsing in R
 author: ~
 date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
+image: 'front-img/rpn.png'
+imagemrgvt: "0%"
+imagemrghz: "0%"
+weight: 1
+description: An examination of R's compute-on-the-language capabilities in the
+  context of a Reverse Polish Notation parser.
 categories: [r]
 tags: []
 ---
 
 
 
+<div style="display:none">
+<p>We explore R’s computation-on-the language capabilities in this post on
+reverse polish notation.
+<!--more--></p>
+</div>
 <div id="reverse-polish-notation" class="section level1">
 <h1>Reverse Polish Notation</h1>
 <p><a href="https://en.wikipedia.org/wiki/Reverse_Polish_notation">Reverse Polish Notation</a> (RPN henceforth) is an algebraic notation that
@@ -193,7 +204,8 @@ with <code>explain</code> and recorded the results for you to step through here:
 FPS:
 <input
     id='bg-rpn-fps' type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;'
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
     title='Set Playback Rate' value=3
   />
  
@@ -201,7 +213,9 @@ Frame:
 <input
     id='bg-rpn-frame'
     type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;' value=0
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
+    value=0
     title='Input frame #'
   /> / <span id="bg-rpn-frame-n">48</span>
 </p>
@@ -263,7 +277,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7f88bde11ad0&gt;</code></pre>
+&lt;bytecode: 0x7fc2a4a64510&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows
@@ -292,7 +306,9 @@ this type of ting you will have better luck looking there.
 we can write a terminal debugger<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a> in R that runs in the same
 session it is created in. R’s willingness to freely expose its inner workings
 to programmers is one of its under-appreciated features.</p>
-<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
+<div id="feedback-cont">
+
+</div>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>

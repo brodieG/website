@@ -3,6 +3,12 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
+image: "front-img/a-new-stereoscopic-2.png"
+imagemrgvt: "0%"
+imagemrghz: "15%"
+weight: 1
+summary: Step by step implementation of a 3D rendering pipeline, from
+  projections to meshes to rasterization, using base R only.
 categories: [r]
 tags: [optimization,visualization]
 ---
@@ -1194,13 +1200,13 @@ polygon artifacts:
   <img
     alt='Raster based render of elevation map'
     src='/images/three-d-pipeline-pixel.png'
-    style='max-width: 600px; display: block; margin: auto' />
+    style='width: 100%; max-width: 600px; display: block; margin: auto' />
 </a>
 <a title='click for full size' href='/images/three-d-pipeline-polygon.png' >
   <img
     alt='Polygon based render of elevation map'
     src='/images/three-d-pipeline-polygon.png'
-    style='max-width: 600px; display: block; margin: auto' />
+    style='width: 100%; max-width: 600px; display: block; margin: auto' />
 </a>
 
 # Stereoscopy
@@ -1304,7 +1310,7 @@ footnotes and appendix.
 All the illustrations in this post were generated with base R graphics.  You can
 see the [source for this post on Github][14].
 
-Questions?  Comments?  @ me on [Twitter](https://twitter.com/BrodieGaslam).
+<div id='feedback-cont'></div>
 
 # Appendix
 
@@ -1448,8 +1454,6 @@ for(i in elrows) {
   dev.off()
 }
 ```
-
----
 
 [^quixotic]: Why would I subject myself to this?  Well, I'm a sucker for
   learning new interesting things such as how 3D rendering is actually done, and

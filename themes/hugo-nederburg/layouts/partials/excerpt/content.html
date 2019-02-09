@@ -1,0 +1,12 @@
+
+        <div class='excerpt-content'>
+            <article>
+                <a href="{{ .Permalink }}">
+        {{ with .Param "summary" }}
+            {{ . }}
+        {{ else }}
+            {{ .Summary }}
+        {{ end }}
+                </a>
+            </article>
+        </div>

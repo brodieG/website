@@ -1,0 +1,11 @@
+<footer id="site-footer" class="site-footer" role="contentinfo">
+
+      <div class="design-credit">
+        {{ range .Site.Params.copyright }}
+        <p>{{ . | markdownify }}</p>
+        {{ else }}
+        {{ end }}
+        {{ partial "footer_highlightjs" . }}
+        {{ partial "footer_mathjax" . }}
+      </div>
+</footer>

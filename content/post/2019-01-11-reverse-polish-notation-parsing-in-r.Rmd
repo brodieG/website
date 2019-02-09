@@ -3,16 +3,26 @@ title: RPN Parsing in R
 author: ~
 date: '2019-01-11'
 slug: reverse-polish-notation-parsing-in-r
+image: 'front-img/rpn.png'
+imagemrgvt: "0%"
+imagemrghz: "0%"
+weight: 1
+description: An examination of R's compute-on-the-language capabilities in the
+  context of a Reverse Polish Notation parser.
 categories: [r]
 tags: []
 ---
 
 ```{r echo=FALSE}
-knitr::opts_chunk$set(
-  comment = "", fig.align='center'
-)
+knitr::opts_chunk$set(comment = "", fig.align='center')
 options(digits=3)
 ```
+
+<div style='display:none'>
+We explore R's computation-on-the language capabilities in this post on
+reverse polish notation.
+<!--more-->
+</div>
 
 # Reverse Polish Notation
 
@@ -252,7 +262,8 @@ writeLines(
   FPS:
   <input
     id='bg-rpn-fps' type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;'
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
     title='Set Playback Rate' value=3
   />
   &nbsp;
@@ -260,7 +271,9 @@ writeLines(
   <input
     id='bg-rpn-frame'
     type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right;' value=0
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
+    value=0
     title='Input frame #'
   /> / <span id='bg-rpn-frame-n'>48</span>
 </p>
@@ -345,8 +358,7 @@ we can write a terminal debugger[^debug-caveat] in R that runs in the same
 session it is created in.  R's willingness to freely expose its inner workings
 to programmers is one of its under-appreciated features.
 
-```{r child='./../../static/chunks/q-c.Rmd'}
-```
+<div id='feedback-cont'></div>
 
 # Appendix
 
