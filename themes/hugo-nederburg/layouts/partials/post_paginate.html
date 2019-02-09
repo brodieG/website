@@ -41,7 +41,7 @@
 
         {{ if and (isset .Params "image") .Params.image }}
 
-            {{ partial "excerpt/image.html" . }}
+            {{ partial "excerpt/image_wide.html" . }}
 
         {{ end }}
 
@@ -59,7 +59,7 @@
 
         {{ if and (isset .Params "image") .Params.image }}
 
-            {{ partial "excerpt/image.html" . }}
+            {{ partial "excerpt/image_narrow.html" . }}
 
         {{ end }}
 

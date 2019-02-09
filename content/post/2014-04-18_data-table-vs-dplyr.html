@@ -4,6 +4,10 @@ author: Brodie Gaslam
 date: 2014-04-18
 slug: datatable-vs-dplyr-in-split-apply-comgine
 categories: [r]
+summary: "A side by side comparison of the most popular R data.frame
+manipulation packages."
+weight: 1
+image: /front-img/datatable-vs-dplyr.png
 tags: [data.table, dplyr]
 ---
 
@@ -11,6 +15,9 @@ tags: [data.table, dplyr]
 
 <div id="overview" class="section level1">
 <h1>Overview</h1>
+<p><img
+src='/front-img/datatable-vs-dplyr.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/></p>
 <p>In this post I will compare the use and performance of <code>dplyr</code> and <code>data.table</code> for the purposes of “split apply combine” style analysis, with some comparisons to base R methods.</p>
 <p>Skip to the bottom of the post if you’re just interested in the benchmarks.</p>
 <p>Both packages offer similar functionality for “split apply combine style” analysis. Both packages also offer additional functionality (e.g. indexed merges for <code>data.table</code>, SQL data base interface for <code>dplyr</code>), but I will focus only on split apply combine analysis in this post.</p>
@@ -232,6 +239,9 @@ And the results:</code></pre>
 <h1>Conclusions</h1>
 <p>As I’ve noted previously I’m currently a <code>data.table</code> user, and based on these tests I will continue to be a <code>data.table</code> user, particularly because I am already familiar with the syntax. Under some circumstances <code>data.table</code> is definitely faster than <code>dplyr</code>, but those circumstances are narrow enough that they needn’t be the determining factor when chosing a tool to perform split apply combine style analysis.</p>
 <p>Both packages work very well and offer substantial advantages over base R functionality. You will be well served with either. If you find one of them is not able to perform the task you are trying to do, it’s probably worth your time to see if the other can do it (please comment here if you do run into that situation).</p>
+<div id="feedback-cont">
+
+</div>
 </div>
 <div id="related-links" class="section level1">
 <h1>Related Links</h1>

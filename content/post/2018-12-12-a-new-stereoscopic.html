@@ -3,7 +3,9 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
-image: "images/a-new-stereoscopic.png"
+image: "front-img/a-new-stereoscopic-2.png"
+imagemrgvt: "0%"
+imagemrghz: "15%"
 weight: 1
 summary: Step by step implementation of a 3D rendering pipeline, from
   projections to meshes to rasterization, using base R only.
@@ -531,7 +533,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7fdaeaea1790&gt;
+&lt;bytecode: 0x7ffcef9de280&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an

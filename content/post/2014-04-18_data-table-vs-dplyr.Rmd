@@ -4,10 +4,18 @@ author: Brodie Gaslam
 date: 2014-04-18
 slug: datatable-vs-dplyr-in-split-apply-comgine
 categories: [r]
+summary: "A side by side comparison of the most popular R data.frame
+manipulation packages."
+weight: 1
+image: /front-img/datatable-vs-dplyr.png
 tags: [data.table, dplyr]
 ---
 
 # Overview
+
+<img
+src='/front-img/datatable-vs-dplyr.png'
+style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 
 In this post I will compare the use and performance of `dplyr` and `data.table` for the purposes of "split apply combine" style analysis, with some comparisons to base R methods.
 
@@ -232,6 +240,8 @@ Suprisingly for non-aggregating tasks base performs remarkably well.
 As I've noted previously I'm currently a `data.table` user, and based on these tests I will continue to be a `data.table` user, particularly because I am already familiar with the syntax.  Under some circumstances `data.table` is definitely faster than `dplyr`, but those circumstances are narrow enough that they needn't be the determining factor when chosing a tool to perform split apply combine style analysis.
 
 Both packages work very well and offer substantial advantages over base R functionality.  You will be well served with either.  If you find one of them is not able to perform the task you are trying to do, it's probably worth your time to see if the other can do it (please comment here if you do run into that situation).
+
+<div id='feedback-cont'></div>
 
 # Related Links
 

@@ -3,7 +3,9 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
-image: "images/a-new-stereoscopic.png"
+image: "front-img/a-new-stereoscopic-2.png"
+imagemrgvt: "0%"
+imagemrghz: "15%"
 weight: 1
 summary: Step by step implementation of a 3D rendering pipeline, from
   projections to meshes to rasterization, using base R only.
