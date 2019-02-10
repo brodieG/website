@@ -139,8 +139,8 @@ microbenchmark::microbenchmark(times=10,
 )</code></pre>
 <pre><code>Unit: microseconds
                    expr   min    lq   mean median    uq     max neval
- v.sum.1 &lt;- sum_loop(v) 453.6 618.2 4162.2  655.7 666.7 35794.6    10
-      v.sum.2 &lt;- sum(v)  18.1  19.7   24.2   20.2  21.7    46.9    10</code></pre>
+ v.sum.1 &lt;- sum_loop(v) 408.3 424.3 3047.5  426.6 432.9 26628.5    10
+      v.sum.2 &lt;- sum(v)  14.2  14.3   14.9   14.4  14.6    17.8    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -292,7 +292,9 @@ compiled code function.</p>
 the nearest pixel in <code>shadow::ray_shade3</code>. It looks just as good and runs
 twice as fast (update: it does not work as well if you want smooth transitions
 between frames rendered at slightly different angles).</p>
-<p>Questions? Comments? @ me on <a href="https://twitter.com/BrodieGaslam">Twitter</a>.</p>
+<div id="feedback-cont">
+
+</div>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>

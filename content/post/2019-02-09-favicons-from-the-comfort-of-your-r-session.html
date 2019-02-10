@@ -43,8 +43,8 @@ Unfortunately “.ico” is a Windows icon file format of all things, and there 
 no out-of-the-box way to generate them on OS X. Even Photoshop requires a
 plug-in to generate them.</p>
 <p>The best way I found to do this on OS X is described in <a href="https://fynydd.com/blog/create-a-favicon-using-png-images/">a post by Michael
-Argentini</a>. This requires installing [<code>imagemagick</code>][] via Brew or otherwise,
-which felt like too much work to make a silly thumbnail.</p>
+Argentini</a>. This requires installing <a href="https://www.imagemagick.org/"><code>imagemagick</code></a> via Brew or
+otherwise, which felt like too much work to make a silly thumbnail.</p>
 </div>
 <div id="r-to-the-rescue" class="section level1">
 <h1>R to the Rescue</h1>
@@ -84,7 +84,6 @@ for(img in rev(img.resize)) plot(img, add=TRUE)</code></pre>
 <p><img src="/post/2019-02-09-favicons-from-the-comfort-of-your-r-session_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
 <p>We can re-read the pngs into our session as a single <code>magick</code> object:</p>
 <pre class="r"><code>imgs &lt;- image_read(files)</code></pre>
-<p>These are all loaded as a single <code>magick</code> object:</p>
 <pre class="r"><code>imgs</code></pre>
 <pre><code>  format width height colorspace matte filesize density
 1    PNG    16     16       sRGB  TRUE     1410   28x28
@@ -102,7 +101,7 @@ file contains all the thumbnails:</p>
 <p><img
   alt='Proof that favicon file actually has all thumbnails'
   src='/images/favicon-proof.png'
-  style='width: 100%; max-width: 700px; display: block; margin: auto' /></p>
+  style='width: 100%; max-width: 700px; display: block; margin: auto; -webkit-filter: drop-shadow(5px 5px 5px #222); filter: drop-shadow(5px 5px 5px #222);' /></p>
 <p>In theory if you put this at the top level of your website browsers
 will find it and use the “.ico” file as favicons. My website places them in a
 subfolder and provides <code>&lt;link&gt;</code> directives in the <code>&lt;head&gt;</code> of each page,
@@ -110,11 +109,11 @@ although that’s just because the theme I use set it up that way<a href="#fn2" 
 </div>
 <div id="conclusions" class="section level1">
 <h1>Conclusions</h1>
-<p>This is not the first time that I’ve tried to solve an annoying system problem
-only to realize R provides a great solution. Batch processing text files is
-another thing I’ve done, where at first I struggled with a bash/shell solution
-before implementing an R solution in minutes<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. I’m always amazed
-at just how much you can do with R.</p>
+<p>This is not the first time that I’ve tackled what was shaping up to be an
+annoying system problem only to realize R provides a great solution. Batch
+processing text files is another thing I’ve done, where at first I struggled
+with a bash/shell solution before implementing an R solution in
+minutes<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. I’m always amazed at just how much you can do with R.</p>
 <!-- this is populated by JS in feedback.html partial -->
 <div id="feedback-cont">
 

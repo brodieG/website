@@ -51,8 +51,8 @@ no out-of-the-box way to generate them on OS X.  Even Photoshop requires a
 plug-in to generate them.
 
 The best way I found to do this on OS X is described in [a post by Michael
-Argentini][2].  This requires installing [`imagemagick`][] via Brew or otherwise,
-which felt like too much work to make a silly thumbnail.
+Argentini][2].  This requires installing [`imagemagick`][4] via Brew or
+otherwise, which felt like too much work to make a silly thumbnail.
 
 # R to the Rescue
 
@@ -114,7 +114,6 @@ We can re-read the pngs into our session as a single `magick` object:
 ```{r}
 imgs <- image_read(files)
 ```
-These are all loaded as a single `magick` object:
 ```{r eval=FALSE}
 imgs
 ```
@@ -137,7 +136,7 @@ file contains all the thumbnails:
 <img
   alt='Proof that favicon file actually has all thumbnails'
   src='/images/favicon-proof.png'
-  style='width: 100%; max-width: 700px; display: block; margin: auto' />
+  style='width: 100%; max-width: 700px; display: block; margin: auto; -webkit-filter: drop-shadow(5px 5px 5px #222); filter: drop-shadow(5px 5px 5px #222);' />
 
 In theory if you put this at the top level of your website browsers
 will find it and use the ".ico" file as favicons.  My website places them in a
@@ -146,11 +145,11 @@ although that's just because the theme I use set it up that way[^favico-loc].
 
 # Conclusions
 
-This is not the first time that I've tried to solve an annoying system problem
-only to realize R provides a great solution.  Batch processing text files is
-another thing I've done, where at first I struggled with a bash/shell solution
-before implementing an R solution in minutes[^shell-comfort].  I'm always amazed
-at just how much you can do with R.
+This is not the first time that I've tackled what was shaping up to be an
+annoying system problem only to realize R provides a great solution.  Batch
+processing text files is another thing I've done, where at first I struggled
+with a bash/shell solution before implementing an R solution in
+minutes[^shell-comfort].  I'm always amazed at just how much you can do with R.
 
 <!-- this is populated by JS in feedback.html partial -->
 <div id='feedback-cont'></div>
