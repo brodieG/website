@@ -46,4 +46,8 @@ otherwise indicated.
   theme](https://themes.gohugo.io/hugo-nederburg-theme/) to Hugo, and to
   [Compete Themes](https://www.competethemes.com/tracks/) for creating it in the
   first place.
+* [Jeroen Ooms](https://github.com/jeroen) for
+  [magick](https://cran.r-project.org/package=magick), and by extension
+  [ImageMagick Studio](https://github.com/orgs/ImageMagick/people) LLC
+  for `imagemagick`.
 
