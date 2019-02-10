@@ -1,0 +1,133 @@
+---
+title: Favicons From the Comfort of Your R Session
+author: ~
+date: '2019-02-09'
+slug: favicons-from-the-comfort-of-your-r-session
+categories: []
+tags: []
+image: /front-img/favicon.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+summary: "Don't trust those online favicon generators?  R has you covered."
+---
+
+
+
+<div id="call-me-selectively-paranoid" class="section level1">
+<h1>Call Me Selectively Paranoid</h1>
+<p><img
+  id='front-img' src='/front-img/favicon.png'
+  style='float: left; margin: 5px 15px 5px 0;' width='250'
+/></p>
+<p>I don’t know about you, but I get skeeved out at the thought of submitting my
+photos to random websites hawking favicons. Worse, I’m supposed to download the
+converted image onto my computer. Yuck. I’ll admit, I’m not exactly consistent
+about my web hygiene, but as I sat there with my finger hovering over the submit
+button to just get the bloody favicon done with, I couldn’t do it.</p>
+<p>Surely it can’t be that difficult to make a favicon. Besides, figuring out how
+to do this felt like a great way to procrastinate from wrestling with the
+intransigent CSS in my website.</p>
+</div>
+<div id="what-is-a-favicon-anyway" class="section level1">
+<h1>What is a Favicon Anyway?</h1>
+<p>Favicons are thumbnail images that show up on web browser tabs:</p>
+<p><img
+  alt='favicon location on webpage'
+  src='/images/favicons-from-the-comfort-1.png'
+  style='width: 100%; max-width: 719px; display: block; margin: auto' /></p>
+<p>Generating them is surprisingly complicated. There are many formats you can
+use, but I settled on <a href="https://en.wikipedia.org/wiki/ICO_(file_format)">“.ico”</a> as it has the benefit of being a single file
+and appears to be the most backward compatible<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>.
+Unfortunately “.ico” is a Windows icon file format of all things, and there is
+no out-of-the-box way to generate them on OS X. Even Photoshop requires a
+plug-in to generate them.</p>
+<p>The best way I found to do this on OS X is described in <a href="https://fynydd.com/blog/create-a-favicon-using-png-images/">a post by Michael
+Argentini</a>. This requires installing [<code>imagemagick</code>][] via Brew or otherwise,
+which felt like too much work to make a silly thumbnail.</p>
+</div>
+<div id="r-to-the-rescue" class="section level1">
+<h1>R to the Rescue</h1>
+<p>It turns out that R makes it really easy to install and use <code>imagemagick</code> via
+the Jeroen Ooms <a href="https://cran.r-project.org/package=magick"><code>magick</code> package</a>:</p>
+<pre class="r"><code>install.packages(magick)</code></pre>
+<p>This is particularly straightforward for OS X and Windows as CRAN provides
+pre-compiled binaries with everything packaged up. On Linux you’ll need to do
+some extra work to compile with the <code>imagemagick</code> libraries, or find a
+repository of pre-compiled R packages.</p>
+<p>First we start with a square image larger than 64 x 64 and resize it to 64, 48,
+32, 24, and 16 pixels to the side. I have no idea if this is best
+practice, but it is what the <a href="https://fynydd.com/blog/create-a-favicon-using-png-images/">aforementioned post</a> used. Unfortunately I
+don’t know how to vectorize the resize operation directly, so I’m resorting to
+hackily writing to disk:</p>
+<pre class="r"><code>library(magick)</code></pre>
+<pre><code>Linking to ImageMagick 6.9.9.39
+Enabled features: cairo, fontconfig, freetype, lcms, pango, rsvg, webp
+Disabled features: fftw, ghostscript, x11</code></pre>
+<pre class="r"><code>img.orig &lt;- image_read(rep(&#39;~/Downloads/moon/moon-small.png&#39;, 5))
+sizes &lt;- 8 * c(2, 3, 4, 6, 8)
+img.sizes &lt;- sprintf(&quot;%dx%d&quot;, sizes, sizes)
+img.sizes</code></pre>
+<pre><code>[1] &quot;16x16&quot; &quot;24x24&quot; &quot;32x32&quot; &quot;48x48&quot; &quot;64x64&quot;</code></pre>
+<pre class="r"><code>dir &lt;- tempfile()
+dir.create(dir)
+files &lt;- file.path(dir, sprintf(&quot;moon-%s.png&quot;, sizes))
+
+img.resize &lt;- lapply(img.sizes, image_resize, image=img.orig)
+invisible(Map(image_write, img.resize, files))
+list.files(dir)</code></pre>
+<pre><code>[1] &quot;moon-16.png&quot; &quot;moon-24.png&quot; &quot;moon-32.png&quot; &quot;moon-48.png&quot; &quot;moon-64.png&quot;</code></pre>
+<p>To confirm this did what we thought:</p>
+<pre class="r"><code>par(mai=numeric(4))
+plot(img.orig)
+for(img in rev(img.resize)) plot(img, add=TRUE)</code></pre>
+<p><img src="/post/2019-02-09-favicons-from-the-comfort-of-your-r-session_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<p>We can re-read the pngs into our session as a single <code>magick</code> object:</p>
+<pre class="r"><code>imgs &lt;- image_read(files)</code></pre>
+<p>These are all loaded as a single <code>magick</code> object:</p>
+<pre class="r"><code>imgs</code></pre>
+<pre><code>  format width height colorspace matte filesize density
+1    PNG    16     16       sRGB  TRUE     1410   28x28
+2    PNG    24     24       sRGB  TRUE     1587   28x28
+3    PNG    32     32       sRGB  TRUE     2298   28x28
+4    PNG    48     48       sRGB  TRUE     4086   28x28
+5    PNG    64     64       sRGB  TRUE     6152   28x28</code></pre>
+<p>Conversion to “.ico” is trivial:</p>
+<pre class="r"><code>ico &lt;- image_convert(imgs, &#39;ico&#39;)
+image_write(ico, &#39;~/Downloads/moon/favicon.ico&#39;)
+unlink(dir, recursive=TRUE)</code></pre>
+<p>That’s it! It turns out that on OS X, preview can <em>read</em> “.ico” files, so at
+the shell <code>open ~/Downloads/moon/favicon.ico</code> confirms that indeed the “.ico”
+file contains all the thumbnails:</p>
+<p><img
+  alt='Proof that favicon file actually has all thumbnails'
+  src='/images/favicon-proof.png'
+  style='width: 100%; max-width: 700px; display: block; margin: auto' /></p>
+<p>In theory if you put this at the top level of your website browsers
+will find it and use the “.ico” file as favicons. My website places them in a
+subfolder and provides <code>&lt;link&gt;</code> directives in the <code>&lt;head&gt;</code> of each page,
+although that’s just because the theme I use set it up that way<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>This is not the first time that I’ve tried to solve an annoying system problem
+only to realize R provides a great solution. Batch processing text files is
+another thing I’ve done, where at first I struggled with a bash/shell solution
+before implementing an R solution in minutes<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. I’m always amazed
+at just how much you can do with R.</p>
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>There seems to be some debate about whether “.ico” is
+actually the right format to use for favicons nowadays. It worked for me and I
+don’t care enough to get to the bottom of it, so there you go.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>The <a href="https://www.w3.org/2005/10/howto-favicon">canonical source</a> supports using <code>&lt;link&gt;</code>.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>I am a lot more comfortable in R than I am on a ☆nix
+shell.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
