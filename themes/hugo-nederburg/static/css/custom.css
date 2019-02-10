@@ -914,6 +914,18 @@ a img {
   display: inline-block;
 }
 
+.article-duration {
+  margin-top: 0.4em;
+  float: right;
+  font-size: .6em;
+  padding: 1px 5px;
+  font-weight: bold;
+  border-radius: 3px;
+  background: #bbb;
+  color: #fff;
+  vertical-align: middle;
+}
+
 /* top navigation styles */
 .top-navigation {
   position: relative;
