@@ -35,7 +35,7 @@ summaryLength = 10     # num words in summary
     # Unmark to use post folder for images. Default is static folder.
     #usepostimgfolder = true
 
-    slogan = "Programming in R, Mostly"
+    slogan = "An #rstats Blog, Mostly"
     description = "Programming and Other Bits" # meta description
 
     # You need to set author to have an author bio. If you have a writer in the
