@@ -3,7 +3,8 @@ title: Adventures in R and Compiled Code
 author: ~
 date: '2018-04-06'
 slug: adventures-in-r-and-compiled-code
-summary: Wherein I learn a bit more about how to properly use valgrind, and
+contenttype: article
+description: Wherein I learn a bit more about how to properly use valgrind, and
   unexpectedly find a bug in base R.
 weight: 1
 image: /front-img/valgrind.png

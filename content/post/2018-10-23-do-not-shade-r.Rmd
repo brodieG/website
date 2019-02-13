@@ -6,16 +6,15 @@ slug: do-not-shade-r
 categories: [r]
 weight: 1
 image: 'front-img/do-not-shade-shadows-single.png'
-summary: A base-R only implementation of rayshader that is competitive with
+contenttype: article
+description: A base-R only implementation of rayshader that is competitive with
   compiled solutions demonstrates R is not as slow as its made out to be.
 tags: [optimization,visualization]
 ---
 
 ```{r echo=FALSE}
 options(digits=3)
-knitr::opts_chunk$set(
-  comment = ""
-)
+knitr::opts_chunk$set(comment = "")
 ```
 
 # I Got Sucked In

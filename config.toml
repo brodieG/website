@@ -35,8 +35,9 @@ summaryLength = 10     # num words in summary
     # Unmark to use post folder for images. Default is static folder.
     #usepostimgfolder = true
 
-    slogan = "An #rstats Blog, Mostly"
-    description = "Programming and Other Bits" # meta description
+    slogan = "An #rstats Blog, Mostly."
+    description = "An #rstats Blog, Mostly." # meta description
+    contenttype = "website"
 
     # You need to set author to have an author bio. If you have a writer in the
     # markdown file it will override this.
@@ -47,8 +48,9 @@ summaryLength = 10     # num words in summary
       "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
     ]
     copyright = [
-      "Copyright &copy; 2019 Brodie Gaslam"
+      "Copyright &copy; 2014-2019 Brodie Gaslam"
     ]
+    image = "/images/moon-small.png"
 
     # Contact page
     # Since this template is static, the contact form uses www.formspree.io as a

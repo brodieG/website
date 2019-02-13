@@ -2,8 +2,12 @@
 title: Elegant R Semantics
 author: ~
 date: '2019-01-01'
+contenttype: article
 slug: elegant-r-semantics
 draft: true
+weight: 2
+description: R on the surface looks like a C-style language, but it really is
+  not.  I explore how the R semantics allow for wonderfully satisfying code.
 categories: [r]
 tags: []
 ---
@@ -163,7 +167,7 @@ into the terminal thinking I had a variable defined by that name:</p>
 ##     else stopifnot(is.atomic(y))
 ##     .Call(C_cov, x, y, na.method, FALSE)
 ## }
-## &lt;bytecode: 0x7ffe4b033268&gt;
+## &lt;bytecode: 0x7fbf6d8834f8&gt;
 ## &lt;environment: namespace:stats&gt;</code></pre>
 <p>R happily went ahead and displayed the contents of the <code>var</code> function as it
 would display the contents of any “normal” variable. That functions were stored

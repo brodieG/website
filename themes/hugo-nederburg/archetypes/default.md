@@ -4,7 +4,8 @@ imagemrgvt: "0%"
 imagemrghz: "0%"
 draft: true
 weight: 1
-summary: "Front page summary"
+contenttype: article
+description: "Front page summary"
 ---
 
 ```{r echo=FALSE}

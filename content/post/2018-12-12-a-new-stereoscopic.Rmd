@@ -4,25 +4,24 @@ author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
 image: "front-img/a-new-stereoscopic-2.png"
+contenttype: article
 imagemrgvt: "0%"
 imagemrghz: "15%"
 weight: 1
-summary: Step by step implementation of a 3D rendering pipeline, from
-  projections to meshes to rasterization, using base R only.
+description: Step by step implementation of a 3D rendering pipeline, from
+  projections, to meshes, to rasterization, using base R only.
 categories: [r]
 tags: [optimization,visualization]
 ---
 ```{r echo=FALSE}
-knitr::opts_chunk$set(
-  comment = "", fig.align='center'
-)
+knitr::opts_chunk$set(comment = "", fig.align='center')
 options(digits=3)
 ```
 
 # Cool, but Not Eye Popping
 
 <img
-src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png'
+src="/front-img/a-new-stereoscopic-2.png"
 style='float: left; margin: 5px 15px 5px 0;' width='250'/>
 
 As I finished the [ray shading post](/2018/10/23/do-not-shade-r/), it occurred

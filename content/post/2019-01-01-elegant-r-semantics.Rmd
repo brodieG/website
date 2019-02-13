@@ -2,8 +2,12 @@
 title: Elegant R Semantics
 author: ~
 date: '2019-01-01'
+contenttype: article
 slug: elegant-r-semantics
 draft: true
+weight: 2
+description: R on the surface looks like a C-style language, but it really is
+  not.  I explore how the R semantics allow for wonderfully satisfying code.
 categories: [r]
 tags: []
 ---
