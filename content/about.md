@@ -38,6 +38,7 @@ otherwise indicated.
 
 * [Yihui Xie](https://yihui.name/) etal and Rstudio for
   [`blogdown`](https://github.com/rstudio/blogdown).
+* [Hugo](https://gohugo.io/) for the static site generator.
 * [Yihui Xie](https://yihui.name/) and [J.J.
   Allaire](https://github.com/jjallaire) etal for
   [`rmarkdown`](https://cran.r-project.org/package=rmarkdown), and John MacFarlane
