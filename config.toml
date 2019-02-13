@@ -23,6 +23,8 @@ summaryLength = 10     # num words in summary
     post = "/:year/:month/:day/:slug/"
 
 [params]
+    websiteURL = "https://www.brodieg.com/"
+
     # options for highlight.js (version, additional languages, and theme)
     highlightjsVersion = "9.12.0"
     highlightjsCDN = "//cdnjs.cloudflare.com/ajax/libs"
@@ -43,6 +45,7 @@ summaryLength = 10     # num words in summary
     # markdown file it will override this.
 
     author = "Brodie Gaslam"
+    twitterhandle  = "@brodiegaslam"
     authorLink = "https://www.brodieg.com/about/"
     bio = [
       "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
