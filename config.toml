@@ -23,7 +23,8 @@ summaryLength = 10     # num words in summary
     post = "/:year/:month/:day/:slug/"
 
 [params]
-    websiteURL = "https://www.brodieg.com/"
+    title = "Brodie Gaslam"  # needed for use with $.Params "title"
+    websiteURL = "https://www.brodieg.com"
 
     # options for highlight.js (version, additional languages, and theme)
     highlightjsVersion = "9.12.0"

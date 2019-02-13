@@ -5,24 +5,24 @@
 {{ with .Title }} <title>{{ . }} {{if $.IsHome}}- {{ $.Site.Params.slogan | default "" | safeHTML }}{{ end }}</title>
 {{ end }}
 
-<meta name="description" content='{{ .Param "description" }}' />
+<meta name="description" content='{{ $.Param "description" }}' />
 
 <!-- Social Cards -->
 
 <meta property="og:locale" content="en_US" />
-<meta property="og:type" content='{{ .Param "contenttype" }}' />
-<meta property="og:title" content='{{ .Param "title" }}' />
-<meta property="og:description" content='{{ .Param "description" }}' />
-<meta property="og:url" content='{{ .Param "websiteurl" }}{{ .Permalink }}' />
-<meta property="og:site_name" content="Brodie Gaslam" />
-<meta property="og:image" content='{{ .Param "image" }}' />
+<meta property="og:type" content='{{ $.Param "contenttype" }}' />
+<meta property="og:title" content='{{ $.Param "title" }}' />
+<meta property="og:description" content='{{ $.Param "description" }}' />
+<meta property="og:url" content='{{ $.Param "websiteurl" }}{{ .Permalink }}' />
+<meta property="og:site_name" content='{{ $.Param "title" }}' />
+<meta property="og:image" content='{{ $.Param "websiteurl" }}{{ $.Param "image" }}' />
 
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content='{{ .Param "title" }}' />
-<meta name="twitter:description" content='{{ .Param "description" }}' />
-<meta name="twitter:site" content='{{ .Param "websiteurl" }}{{ .Permalink }}' />
-<meta name="twitter:image" content='{{ .Param "image" }}'/>
-<meta name="twitter:creator" content="@brodiegaslam" />
+<meta name="twitter:title" content='{{ $.Param "title" }}' />
+<meta name="twitter:description" content='{{ $.Param "description" }}' />
+<meta name="twitter:site" content='{{ $.Param "websiteurl" }}{{ .Permalink }}' />
+<meta name="twitter:image" content='{{ $.Param "websiteurl" }}{{ $.Param "image" }}'/>
+<meta name="twitter:creator" content='{{ $.Param "twitterhandle" }}'/>
 <!-- Social End -->
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
