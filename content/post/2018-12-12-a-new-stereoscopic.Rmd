@@ -3,7 +3,7 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
-image: "front-img/a-new-stereoscopic-2.png"
+image: "/front-img/a-new-stereoscopic-2.png"
 contenttype: article
 imagemrgvt: "0%"
 imagemrghz: "15%"

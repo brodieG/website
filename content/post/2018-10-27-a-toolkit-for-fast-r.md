@@ -4,6 +4,7 @@ author: ~
 date: '2018-10-27'
 slug: a-toolkit-for-fast-r
 draft: true
+image: /front-img/default.png
 contenttype: article
 description: R has a reputation for being slow, which can be true if you are not
   aware of the intended use patterns.  We cover some general concepts and tips
