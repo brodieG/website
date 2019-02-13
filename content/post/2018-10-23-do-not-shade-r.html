@@ -5,7 +5,7 @@ date: '2018-10-23'
 slug: do-not-shade-r
 categories: [r]
 weight: 1
-image: 'front-img/do-not-shade-shadows-single.png'
+image: '/front-img/do-not-shade-shadows-single.png'
 contenttype: article
 description: A base-R only implementation of rayshader that is competitive with
   compiled solutions demonstrates R is not as slow as its made out to be.
@@ -140,8 +140,8 @@ microbenchmark::microbenchmark(times=10,
 )</code></pre>
 <pre><code>Unit: microseconds
                    expr   min    lq   mean median    uq   max neval
- v.sum.1 &lt;- sum_loop(v) 451.6 490.1 4857.4  536.2 614.0 43675    10
-      v.sum.2 &lt;- sum(v)  13.7  14.7   22.8   20.2  31.3    37    10</code></pre>
+ v.sum.1 &lt;- sum_loop(v) 426.5 690.2 4798.5  811.6 851.9 41257    10
+      v.sum.2 &lt;- sum(v)  14.3  17.4   22.9   17.9  28.7    44    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
