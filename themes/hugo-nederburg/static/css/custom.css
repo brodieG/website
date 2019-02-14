@@ -262,6 +262,9 @@ th {
 }
 
 /* Images */
+
+img { margin: 0 auto; }
+
 .alignright,
 .alignleft,
 .aligncenter,
@@ -286,6 +289,10 @@ th {
 .size-medium img,
 .size-thumbnail img {
   max-width: 100%;
+}
+img.aligncenter {
+  display: block;
+  margin: auto;
 }
 
 .alignleft {

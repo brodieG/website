@@ -28,6 +28,7 @@ on R’s good name is simply too much for me to ignore.</p>
 <p><strong>R is not that slow!</strong> Figure 1 below was rendered with a pure-R ray-shader:</p>
 <p><a name='fig1'></a>
 <img
+  class='aligncenter'
   src='/images/do-not-shade-shadows-single.png'
   style='width: 75%; max-width: 800px'
   alt='Fig. 1: Shaded mountains - vectorized R rendering'
@@ -44,7 +45,10 @@ pure-R code to solve a problem that on its face does not seem well suited to R.<
 article</a> (Fig
 2):</p>
 <p><a name='fig2'></a>
-<img src="/images/how-fast-is-r-benchmarks.png" /></p>
+<img 
+class='aligncenter' src='/images/how-fast-is-r-benchmarks.png' 
+alt='Fig. 2: Vollprecht Benchmarks'
+/></p>
 <p>The height of the bars represent the speed-up factor relative to the simple R
 implementation.</p>
 <p>R function calls are expensive, so any time you have nested R loops calling lots
@@ -84,7 +88,11 @@ Julia version from the <a href="https://nextjournal.com/wolfv/how-fast-is-r-with
 article</a>, but
 this time we used the more substantial data set from <a href="#fig1">figure 1</a>:</p>
 <p><a name='fig3'></a>
-<img src='/images/do-not-shade-bench2.png' style='width: 75%; max-width: 1000px'></p>
+<img
+  src='/images/do-not-shade-bench2.png'
+  style='width: 75%; max-width: 1000px'
+  class='aligncenter'
+></p>
 <p>The vectorized R version is 40-50x faster than the original for loop
 version. The Julia version is another ~2x faster. I did observe a 160x speedup
 for the smaller volcano elevation map with Julia, but it seems Julia’s advantage
@@ -108,6 +116,7 @@ supported as R.</p>
   src='/images/do-not-shade-shadows.png'
   style='width: 90%; max-width: 1000px'
   alt='Fig. 4: Mountain landscape shaded with three methods.'
+  class='aligncenter'
 ></p>
 <p>We are not showing the Julia output, but we confirmed visually that it looks
 the same. The various R versions shown here are not exactly identical, partly
@@ -139,9 +148,9 @@ microbenchmark::microbenchmark(times=10,
   v.sum.2 &lt;- sum(v)
 )</code></pre>
 <pre><code>Unit: microseconds
-                   expr   min    lq   mean median    uq   max neval
- v.sum.1 &lt;- sum_loop(v) 426.5 690.2 4798.5  811.6 851.9 41257    10
-      v.sum.2 &lt;- sum(v)  14.3  17.4   22.9   17.9  28.7    44    10</code></pre>
+                   expr   min    lq   mean median    uq     max neval
+ v.sum.1 &lt;- sum_loop(v) 435.9 436.3 4760.0  438.4 497.9 43521.8    10
+      v.sum.2 &lt;- sum(v)  14.3  14.3   15.3   14.4  15.8    18.6    10</code></pre>
 <pre class="r"><code>v.sum.1 == v.sum.2</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>The one-to-two orders of magnitude difference in timing is typical.</p>
@@ -223,7 +232,7 @@ interpolation function? Let’s visualize first the data we want to feed the
 inner function with a toy 3 x 3 example where the sun at an azimuth of 50
 degrees (figure 5):</p>
 <p><a name='fig5'></a>
-<img src="/post/2018-10-23-do-not-shade-r_files/figure-html/fig5-1.png" width="672" /></p>
+<img src="/post/2018-10-23-do-not-shade-r_files/figure-html/fig5-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>We want the coordinates of the dots along each of the colored arrows, and we
 want them all in two vectors, one for the x coordinates, and one for the y
 coordinates. These should look as follows:</p>

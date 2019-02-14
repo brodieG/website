@@ -14,7 +14,7 @@ tags: [optimization,visualization]
 
 ```{r echo=FALSE}
 options(digits=3)
-knitr::opts_chunk$set(comment = "")
+knitr::opts_chunk$set(comment = "", fig.align='center')
 ```
 
 # I Got Sucked In
@@ -34,6 +34,7 @@ on R's good name is simply too much for me to ignore.
 
 <a name='fig1'></a>
 <img
+  class='aligncenter'
   src='/images/do-not-shade-shadows-single.png'
   style='width: 75%; max-width: 800px'
   alt='Fig. 1: Shaded mountains - vectorized R rendering'
@@ -53,7 +54,10 @@ article](https://nextjournal.com/wolfv/how-fast-is-r-with-fastr-pythran) (Fig
 2):
 
 <a name='fig2'></a>
-![](/images/how-fast-is-r-benchmarks.png)
+<img 
+class='aligncenter' src='/images/how-fast-is-r-benchmarks.png' 
+alt='Fig. 2: Vollprecht Benchmarks'
+/>
 
 The height of the bars represent the speed-up factor relative to the simple R
 implementation.
@@ -102,7 +106,11 @@ article](https://nextjournal.com/wolfv/how-fast-is-r-with-fastr-pythran), but
 this time we used the more substantial data set from [figure 1](#fig1):
 
 <a name='fig3'></a>
-<img src='/images/do-not-shade-bench2.png' style='width: 75%; max-width: 1000px'>
+<img
+  src='/images/do-not-shade-bench2.png'
+  style='width: 75%; max-width: 1000px'
+  class='aligncenter'
+>
 
 The vectorized R version is 40-50x faster than the original for loop
 version.  The Julia version is another ~2x faster.  I did observe a 160x speedup
@@ -131,6 +139,7 @@ And to confirm we are actually doing the same thing:
   src='/images/do-not-shade-shadows.png'
   style='width: 90%; max-width: 1000px'
   alt='Fig. 4: Mountain landscape shaded with three methods.'
+  class='aligncenter'
 >
 
 We are not showing the Julia output, but we confirmed visually that it looks

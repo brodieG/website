@@ -10,7 +10,7 @@ description: "Front page summary"
 
 ```{r echo=FALSE}
 options(digits=3)
-knitr::opts_chunk$set(comment = "", error=TRUE)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 
 # Header 1
