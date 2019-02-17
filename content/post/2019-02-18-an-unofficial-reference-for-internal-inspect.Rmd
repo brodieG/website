@@ -1,0 +1,445 @@
+---
+title: The Secret Lives of R Objects
+author: ~
+date: '2019-02-18'
+slug: an-unofficial-reference-for-internal-inspect
+categories: [rstats]
+tags: []
+image: /front-img/ramsticks.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "A quick guide to a very useful, undocumented, and unpublicized R
+function."
+---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+
+# Why Mess With Internal Functions?
+
+<a
+  href='#image-credit'
+  title='A Pile of RAM, by Blake Patterson, under CC-BY 2.0, background removed
+and cropped.'
+><img
+  id='front-img'
+  src='/front-img/ramsticks.png'
+  style='float: left; margin: 5px 15px 5px 0; object-fit: cover; width: 250px;
+  height: 250px;'
+/></a>
+
+R does a pretty good job of abstracting away the memory management aspect of
+programming.  In addition to automatic memory allocation and garbage collection,
+R implements a [copy-on-modify][2] optimization that allows multiple variables
+to point to the same memory location until one of them is modified.  This defers
+and potentially avoids costly memory allocations if the variables are not
+modified.
+
+Sooner or later if you are attempting to optimize code you will want better
+information as to when and why objects are copied.  `tracemem` can tell us when
+the memory underlying an object is copied, but not why.  As of
+version 3.5.2 R[^ref-counting] is very conservative about deciding when to copy
+objects, so there are many situations where objects are copied when you might
+expect they would not be:
+
+<!--
+We're not running this code in the expectation that R will be updated and it
+will start working without copies, which will look silly
+-->
+```{r eval=FALSE}
+## Under R 3.5.2.
+x <- runif(1e4)
+tracemem(x)          # tracemem will print to screen when `x` is copied
+```
+```
+[1] "<0x7fcc8a9b7c00>"
+```
+```{r eval=FALSE}
+x[1] <- 0            # no copy
+invisible(identity(x))
+x[2] <- 0            # tracemem detects copy
+```
+```
+tracemem[0x7fcc8a9b7c00 -> 0x7fcc841cfc00]:
+```
+
+Clearly there is only one reference to `x` so it should be safe to modify `x` at
+the current memory location without affecting anything else.  In the first
+assignment R realizes this and does not copy `x`.  The second assignment leads
+to a copy despite the situation being essentially unchanged.  This happens
+because out of conservatism R automatically increments the "reference" count any
+time an object is passed into a closure.  This marks the object as "could be
+referenced elsewhere".  Since as of R3.5.2 reference counts are never decreased,
+R has no choice but to assume `x` is possibly referenced and copy it when it is
+modified after it has gone through `identity`.
+
+Why did I not just use `invisible(x)`?  Well, `invisible(x)` doesn't actually
+increment the "reference" count.  So how do we know when the reference count
+changes?  That's where `.Internal(inspect(...))` comes in handy:
+
+```{r echo=FALSE}
+insp.chr <- c(
+"@7ff100bab000 13 INTSXP g0c7 [NAM(1)] (len=1000, tl=0) 652,814,533,482,12,...",
+"@7ff100bab000 13 INTSXP g0c7 [NAM(1)] (len=1000, tl=0) 652,814,533,482,12,...",
+"@7ff100bab000 13 INTSXP g0c7 [NAM(3)] (len=1000, tl=0) 652,814,533,482,12,..."
+)
+insp.chr <- sub("(\\[NAM\\(.\\)\\])", "\033[43m\\1\033[m", insp.chr)
+```
+<a name=inspect-ex></a>
+```{r eval=FALSE}
+x <- sample(1e3)
+.Internal(inspect(x))
+```
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+    "<pre><code>", paste0(fansi::sgr_to_html(insp.chr[1]), collapse="\n"),
+    "</code></pre>"
+) )
+```
+```{r eval=FALSE}
+invisible(x)
+.Internal(inspect(x))
+```
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+    "<pre><code>", paste0(fansi::sgr_to_html(insp.chr[2]), collapse="\n"),
+    "</code></pre>"
+) )
+```
+```{r eval=FALSE}
+invisible(identity(x))
+.Internal(inspect(x))
+```
+```{r echo=FALSE, results='asis'}
+writeLines(
+  paste0(
+    "<pre><code>", paste0(fansi::sgr_to_html(insp.chr[3]), collapse="\n"),
+    "</code></pre>"
+) )
+```
+
+We'll breakdown what all this means shortly, but in the meantime notice the
+highlighted `[NAM(#)]` bit.  That is the "reference" counter.  `invisible(x)`
+did not increment it, but `invisible(identity(x))` did.
+
+# A Note About .Internal, and Some History
+
+`.Internal` is an interface used to call compiled C code routines.  There are
+several other interfaces that do similar things, including `.Call` and
+`.External`.  Unlike the last two, `.Internal` is not intended for "public use":
+
+<blockquote>
+Only true R wizards should even consider using this function, and only R
+developers can add to the list of internal functions.
+<cite><code>?.Internal</code>, R-core</cite>
+</blockquote>
+
+I'm probably more in the Mickey-mouse-in-Fantasia category than "Wizard", but
+specifically for `.Internal(inspect(...))`, we only use this as a read-only
+operation interactively.  There is also long precedent of actual wizards and
+non-wizards using it on the [r-devel][6] [mailing-list][7] [for][8] [just][9]
+[this purpose][10] without anyone getting yelled at as far as I can tell, so
+it's probably okay.  Don't go putting it in your packages though.
+
+As for documentation and usage guidelines, I could not find anything other than
+this informal announcement:
+
+<blockquote>
+<p>FWIW inspect is now part of R itself but as an internal function so you can either use it directly via .Internal or for compatibility
+<pre><code>inspect <- function(...) .Internal(inspect(...))</code></pre>
+<p> the arguments are (x, max.depth=-1, max.elements=5) &#91;the last one is
+only supported in R-devel&#93;.
+<footer>
+<cite>- Simon Urbanek
+  <a href='https://stat.ethz.ch/pipermail/r-devel/2010-January/056261.html'>
+on R-devel</a>
+</footer>
+</blockquote>
+
+The chatter around the quote above alludes to an `inspect` package, the only
+trace of which I can find is [on Rforge][1].  It does not show up in the CRAN
+archives, so perhaps it never made it on there.
+
+This was quietly added at revision 48129 to what was then R under development
+2.9.0:
+
+```
+$ svn log -r48129
+------------------------------------------------------------------------
+r48129 | urbaneks | 2009-03-16 11:25:35 -0400 (Mon, 16 Mar 2009) | 1 line
+
+add .inspect debugging tool
+------------------------------------------------------------------------
+```
+
+# What Does it All Mean?
+
+## Output Breakdown
+
+Let's break down the output of `.Internal(inspect(x))` from our [earlier
+example](#inspect-ex):
+
+```{r eval=FALSE}
+.Internal(inspect(x))
+```
+```
+Address          Type Name   Extra               True Length
+|                |           |                   |
++-----------+    +----+      +------+            +--+
+@7ff100bab000 13 INTSXP g0c7 [NAM(1)] (len=1000, tl=0) 652,814,533,482,12,...
+              ++        +--+          +--------+       +--------------------+
+              |         |             |                |
+              Type      GC Info       Length           Data
+```
+
+Additionally, let's look at the breakdown for a character vector as it displays
+differently:
+
+```{r eval=FALSE}
+.Internal(inspect(letters[1:2]))
+```
+```
+@7fd48ad800c8 16 STRSXP g0c2 [] (len=2, tl=0)
+  @7fd48995b920 09 CHARSXP g0c1 [MARK,gp=0x61] [ASCII] [cached] "a"
+  @7fd489a7ddb8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "b"
+```
+
+The first line represents the character vector itself, and looks a lot like the
+integer vector.  The next two indented lines represent the vector elements, so
+there is one line for "a", and one lien for "b".  Breaking down the "a" line:
+
+<pre></pre>
+```
+  Address          Type Name    Extra                  Cached
+  |                |            |                      |
+  +-----------+    +-----+      +------------+         +------+
+  @7fd48995b920 09 CHARSXP g0c1 [MARK,gp=0x61] [ASCII] [cached] "a"
+                ++         +--+                +-----+          +-+
+                |          |                   |                |
+                Type       GC Info             Encoding         Data
+```
+
+**Note**: What follows is my interpretation of what is in [R internals][15] and
+in the sources (r-devel r76003).  I could be wrong about some/all of it, and
+what I'm right about could change.  Do not make rash life decisions based on it.
+
+## Address
+
+`7ff100bab000` represents the effective memory location at which the R object
+can be found in hexadecimal notation.  There is no legitimate use within R of
+the specific memory address of an object that I know of other than to confirm
+whether two symbols point to the same underlying R object or not.
+
+One interesting point I only noticed while writing this post is that the address
+only uses 48 bits (16^12 == 2^4^12 == 2^48).  It turns out this because current
+x86-64 bit processors only [address 48 bits of memory space][11].
+
+## Type and Type Name
+
+In R internals object types are categorized with integer values.  For example,
+`NULL` objects are type 0, with type name `NILSXP`, and integer vectors are type
+13, with type name `INTSXP`.  Generally the types have corresponding values as
+returned by the `typeof` R function although some types like `CHARSXP` are not
+typically visible from R.
+
+For a full listing of the types and type names see the [appendix](#appendix) or
+the [SEXP section of the R Internals Manual][12].
+
+## Garbage Collection (GC) Info
+
+Software like R that manages memory allocation will be responsible for freeing
+previously-allocated-but-no-longer-used memory for re-use.  This process is
+known as garbage collection.  R's garbage collector is [generational][13]
+meaning that it adjusts collection frequency depending on object age.  The idea
+is that "most objects die young"[^die-young] so you can improve garbage
+collection performance by first collecting the younger generation.
+
+The  first two characters _partly_ encode the generation of the R object, denoted
+by the "g" and then either a 0 or 1 representing the value of the `gcgen` bit
+that is part of the R object.  R also uses the [`mark` bit][16] which is
+displayed in the next section of the output to track up to three generations of
+objects, where objects that have a 1 value for the `mark` bit are considered
+older than those that don't.
+
+The next two characters starting with a "c" and followed by a number in 0-7
+represent the "node class" of the R object, which appears to be a rough measure
+of size:
+
+* `c == 0`: Non-vector nodes (e.g. NULL, pairlists, closures, etc.).
+* `0 < c < 6`: Small vectors of size `8 * 2 ^ c` bytes.
+* `c == 6`: Vectors with custom allocators (i.e. memory is not managed by R;
+  these are rare).
+* `c == 7`: Vectors larger than `8 * 2 ^ 5` bytes.
+
+Each of the node classes in 0 through 5 are allocated from memory pages that are
+approximately 2,000 or 8,000 bytes[^page-size].  This means that you can request
+new objects of those sizes with very small performance penalty until you fill
+the page for that class, at which point a new page has to be requested from the
+OS.  Large vector allocations are requested directly from the OS.  Custom
+allocators will obviously depend on their implementation.
+
+## Extra
+
+A comma separated list of tokens with additional information.  The meanings of
+the tokens if they appear follow:
+
+* **OBJ**: Has a "class" attribute.
+* **NAM(#)**: The "named" value of the object, a heuristic used to determine
+  whether the memory underlying and object needs to be copied if the object is
+  modified.  If `# == 0` it will not appear in the `inspect()` output and it is
+  safe to modify the memory in-place as there are no references to it.  
+  If `# == 1` the memory is referenced by one symbol (variable) and can be
+  modified in-place by some primitive functions.  If `# > 1` the memory must be
+  copied if it is modified.  Note that constants have `# > 1` so that there
+  values cannot be changed[^constants-named].  "named" values on an object can
+  only ever be incremented.  This token is mutually exclusive with the "REF"
+  token discussed next.
+* **REF(#)**: A true reference counter that can be both incremented and
+  decremented.  In particular this resolves one of the biggest drawbacks of the
+  "named" heuristic: when variables are passed to closure functions their
+  "named" value automatically becomes greater than one, requiring copy for any
+  modifications that happen later, even though there likely are no references
+  remaining after the closure is done evaluating.  This could be implemented as
+  early as R3.6.0, and would replace the "named" system.  This token is mutually
+  exclusive with the "NAME" token discussed previously.
+* **DBG**: (closures only) has been `debug`ged.
+* **TR**: (closure only) has been `trace`d.
+* **STP**: (closure only) has been `debugonce`d, but once reference counting is
+  implemented used to designate that references should not be counted on
+  non-closure objects.
+* **S4**: Is S4 (also implicit in the "gp" code).
+* **AB**: Is an active binding (also implicit in "gp" code), i.e. does typing
+  the symbol name trigger an action.
+* **LCK**: Is a locked environment (also implicit in "gp" code), e.g. package
+  namespaces.
+* **gp=0x####**: Hexadecimal, value of the "General Purpose" 16 bit code
+  associated with the object.  This is used to encode things such as whether a
+  promise has been seen, the encoding of a character string, whether an object
+  is S4, and others[^gp].  Some of the values are captured by other tokens.
+* **GL**: Is the Global Environment.
+* **ATT**: Has attributes.
+
+## Length And True Length
+
+The length of vectors.  For true length:
+
+## Encoding
+
+Can be "bytes", "latin1", "UTF8", or "ASCII".
+
+## Cache
+
+Whether a string is part of the global string hash table.  Should be present for
+all end-user facing strings.
+
+## Data
+
+A small snippet of the data.
+
+<blockquote>
+<p>
+This is almost unused. The only current use is for hash tables of environments (VECSXPs), where length is the size of the table and truelength is the number of primary slots in use, and for the reference hash tables in serialization (VECSXPs), where truelength is the number of slots in use.
+<footer>
+<cite>- R Core
+  <a
+  href='https:////cran.r-project.org/doc/manuals/r-release/R-ints.html#FOOT3'>
+in R Internals</a>
+</cite>
+</footer>
+</blockquote>
+
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Acknowledgements
+
+## Image Credit
+
+A Pile of RAM, by [Blake Patterson][4], under [CC-BY 2.0][5], background removed
+and cropped.
+
+## Other
+
+Jim Hester for pointing me to the named/reference discussion on R-devel:
+
+```{r echo=FALSE}
+blogdown::shortcode('tweet', '1067105621294686208')
+```
+
+# Appendix
+
+A full listing of the internal type table from R-devel
+(r76003)/src/includes/Rinternals.h:
+
+```
+#define NILSXP	     0	  /* nil = NULL */
+#define SYMSXP	     1	  /* symbols */
+#define LISTSXP	     2	  /* lists of dotted pairs */
+#define CLOSXP	     3	  /* closures */
+#define ENVSXP	     4	  /* environments */
+#define PROMSXP	     5	  /* promises: [un]evaluated closure arguments */
+#define LANGSXP	     6	  /* language constructs (special lists) */
+#define SPECIALSXP   7	  /* special forms */
+#define BUILTINSXP   8	  /* builtin non-special forms */
+#define CHARSXP	     9	  /* "scalar" string type (internal only)*/
+#define LGLSXP	    10	  /* logical vectors */
+/* 11 and 12 were factors and ordered factors in the 1990s */
+#define INTSXP	    13	  /* integer vectors */
+#define REALSXP	    14	  /* real variables */
+#define CPLXSXP	    15	  /* complex variables */
+#define STRSXP	    16	  /* string vectors */
+#define DOTSXP	    17	  /* dot-dot-dot object */
+#define ANYSXP	    18	  /* make "any" args work.
+			     Used in specifying types for symbol
+			     registration to mean anything is okay  */
+#define VECSXP	    19	  /* generic vectors */
+#define EXPRSXP	    20	  /* expressions vectors */
+#define BCODESXP    21    /* byte code */
+#define EXTPTRSXP   22    /* external pointer */
+#define WEAKREFSXP  23    /* weak reference */
+#define RAWSXP      24    /* raw bytes */
+#define S4SXP       25    /* S4, non-vector */
+```
+
+[^ref-counting]: Future versions of R will implement more sophisticated
+[reference counting][3] that will better detect whether objects truly need to be
+copied or not.
+[^die-young]: Imagine a script that calls many functions sequentially.  Each of
+those calls is likely to generate many internal R objects that are no longer
+needed as soon as the function ends evaluation.  Only the return values are
+preserved in variables.  These function specific objects are likely to be the
+younger generation that is eliminated first.  Preserved objects in variables
+will then be aged into an older generation and only be reviewed for freeing if
+eliminating the young generation is insufficient.
+[^constants-named]: This came up in the [Matt Dowle - Peter Daalgard thread][18].
+[^page-size]: There some small overhead for each page, and also some rounding to
+multiples of the underlying R object sizes.  Systems with long vector support
+(64 bit?) appear to use the 8000 byte base page size.
+[^gp]: For a full accounting of the general purpose bits see [R Internals][17].
+
+
+
+[1]: https://www.rforge.net/inspect/files/
+[2]: https://stackoverflow.com/questions/15759117/
+[3]: https://stat.ethz.ch/pipermail/r-devel/2018-September/076760.html
+[4]: https://www.flickr.com/photos/blakespot/
+[5]: https://creativecommons.org/licenses/by/2.0/
+[6]: https://stat.ethz.ch/pipermail/r-devel/2012-March/063485.html
+[7]: https://stat.ethz.ch/pipermail/r-devel/2018-April/075899.html
+[8]: https://stat.ethz.ch/pipermail/r-devel/2013-March/066195.html
+[9]: https://stat.ethz.ch/pipermail/r-devel/2013-July/067043.html
+[10]: https://stat.ethz.ch/pipermail/r-devel/2011-November/062653.html
+[11]: https://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details
+[12]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#SEXPTYPEs
+[13]: https://en.wikipedia.org/wiki/Tracing_garbage_collection#Generational_GC_(ephemeral_GC)
+[14]: http://homepage.stat.uiowa.edu/~luke/R/gengcnotes.html
+[15]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html
+[16]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#The-write-barrier
+[17]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Rest-of-header
+[18]: https://stat.ethz.ch/pipermail/r-devel/2011-November/062654.html
