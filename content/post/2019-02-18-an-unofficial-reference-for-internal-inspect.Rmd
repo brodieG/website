@@ -5,6 +5,7 @@ date: '2019-02-18'
 slug: an-unofficial-reference-for-internal-inspect
 categories: [rstats]
 tags: []
+draft: true
 image: /front-img/ramsticks.png
 imagemrgvt: 0%
 imagemrghz: 0%
@@ -422,7 +423,6 @@ eliminating the young generation is insufficient.
 multiples of the underlying R object sizes.  Systems with long vector support
 (64 bit?) appear to use the 8000 byte base page size.
 [^gp]: For a full accounting of the general purpose bits see [R Internals][17].
-
 
 
 [1]: https://www.rforge.net/inspect/files/
