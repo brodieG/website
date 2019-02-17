@@ -485,11 +485,13 @@ microbenchmark(times=25,
 
 The expression is both easier to type, and faster!
 
-There are a couple of "gotchas" with `do.call`, but they only crop up if you try
+There are a couple of "gotchas" with `do.call`, particularly if you try
 to pass quoted language as part of the argument list (e.g. `quote(a + b)`).  If
 you are just using normal R data objects then the one drawback that I am
 aware of is that the call stack can get messy if you ever invoke `traceback()`
-or `sys.calls()` from a function called by `do.call`.
+or `sys.calls()` from a function called by `do.call`.  An issue related to this
+is that `do.call` calls that error can become very slow.  So long as you are
+sure the `do.call` call is valid there should be no problem.
 
 Remember that data frames are lists, so you can do things like:
 
