@@ -5,12 +5,20 @@ date: '2019-01-01'
 contenttype: article
 slug: elegant-r-semantics
 draft: true
-weight: 2
+weight: 1
+image: /front-img/default.png
+imagemrgvt: "0%"
+imagemrghz: "0%"
 description: R on the surface looks like a C-style language, but it really is
   not.  I explore how the R semantics allow for wonderfully satisfying code.
 categories: [r]
 tags: []
 ---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
 
 # R Semantics are Wonderful
 
@@ -30,21 +38,20 @@ computationally inefficient.  All of this can make for a trying experience for
 first-time users wanting to do some quick analysis.
 
 A way to cope with this is to embrace frameworks such as the [Tidyverse][1] that
-mask much of the apparent complexity of the language.  This allows beginners to
-produce "useful" analysis faster[^2].  For many this will be the right
-trade-off, but it is a trade-off.  The primary issue is that the Tidyverse runs
-in R, so it is inevitable that sooner or later Tidyverse users will have to deal
-with R semantics.  This means learning two sets of possibly conflicting
-semantics.
+mask much of the apparent complexity of the language behind a veneer of
+consistency.  This allows beginners to produce "useful" analysis faster[^2].
+For many this will be the right trade-off, but it is a trade-off.  The primary
+issue is that the Tidyverse runs in R, so it is inevitable that sooner or later
+Tidyverse users will have to deal with R semantics.  This means learning two
+sets of possibly conflicting semantics.
 
 Another approach is to invest time and effort to understand the foundational
 concepts behind R semantics.  This too is a trade-off as a basic understanding
 of R semantics alone is insufficient to do "useful" analysis.  You will need to
-build off of those.  But the reward is to recognize the seeming bewildering
+build on those.  But the reward is to recognize the seeming bewildering
 idiosyncrasies of R as the elegant interactions of the foundational concepts of
-the language.  The beauty of it is that the foundational concepts are simple.
-
-WHEN ONE APPROACH MAKES MORE SENSE THAN THE OTHER?
+the language[^wtf].  The beauty of it is that the foundational concepts are
+simple.
 
 This blog post looks to highlight some of the interesting ways one can extend
 the basic R principles into useful higher level calculations.  For a detailed
@@ -62,8 +69,8 @@ vec
 
 `vec` is stored in memory as twelve 32-bit[^3] contiguous sections of memory.
 
-One of the foundational principles of R is that vectors can be interpreted as
-complex data structures by attaching meta-data to them without changing the
+One of the key principles of R is that vectors can be interpreted as
+complex data structures by attaching meta-data to them, without changing the
 underlying vector.  This is a simple and elegant alternative to defining custom
 C-level data structures.
 
@@ -102,17 +109,18 @@ Or row-wise with transposition or repetition:
 
 ```{r}
 t(t(mx) + (1:4) * 100)
-mx + rep(1:4, each=nrow(mx))
+mx + rep(1:4 * 100, each=nrow(mx))
 ```
 
 The "dual" nature of matrices and arrays[^6] provides many opportunities for
 creative manipulation.
 
 We have been looking primary at numeric vectors, but there are several others.
-There are logical vectors, and character vectors, and also list vectors:
+There are logical vectors, character vectors, and also list vectors:
 
 ```{r}
-list(1, list(1,2), 'hello')
+l <- list(1, 1:3, c('hello', 'world'), TRUE)
+str(l)
 ```
 
 But how can lists be vectors if vectors are supposed to be a sequence of
@@ -120,7 +128,35 @@ contiguous, equal-size, equal-type elements?  It is because the list proper is a
 vector of pointers that link to the actual contents.  The pointers themselves
 are equal size and equal type, even though the "contents" are not.  If this
 seems odd, realize that character vectors are the same.  They are vectors of
-pointers to strings which themselves are often different sizes.
+pointers to strings which themselves are often different sizes.  This is
+apparent if we inspect the inner structure of the list:
+
+```{r eval=FALSE}
+.Internal(inspect(l))
+```
+```{r echo=FALSE}
+l.insp <- capture.output(.Internal(inspect(l)))
+writeLines(l.insp)
+```
+
+`VECSXP`, `REALSXP`, `INTSXP`, and `STRXSP`, and `LGLSXP`  are the internal R
+names of respectively list, numeric, integer, and character vectors.  The
+numbers preceded by "@" represent memory locations.  So the actual contents of
+the list `l` are the "@" values highlighted here:
+
+```{r echo=FALSE, results='asis'}
+l.insp <- sub("^  (@[0-9a-f]+) ", "  \033[32;7m\\1\033[m ", l.insp)
+writeLines(
+  paste0(
+    "<pre><code>", paste0(fansi::sgr_to_html(l.insp), collapse="\n"),
+    "</code></pre>"
+) )
+```
+
+Notice how
+our character vector, the `STRSXP` element, has child elements just like the
+list `VECSXP`[^vecsxp] element.  These child elements are the `CHARSXP` objects,
+which are not directly in R.
 
 Since lists are vectors, we can also add dim attributes to them and get
 meaningful results:
@@ -133,14 +169,55 @@ l
 l[[3, 2]]
 ```
 
-While list-matrices are a bit odd they do have uses we'll discuss shortly.  The
-important point for now is that we started with the simple concept of vectors
-and attributes, and ended up with strange but useful list-matrices.  R allowed
-us to combine simple concepts to create useful complexity.
+While list-matrices are a bit odd they do have uses.  The important point for
+now is that we started with the simple concept of vectors and attributes, and
+ended up with strange but useful list-matrices.  R allowed us to combine simple
+concepts to create useful complexity.
 
-DATAFRAMES?  `lapply` over columns?
+Data frames are another complex structure derived from simpler ones by the
+addition of meta data, in this case lists interpreted as tabular structures by
+the addition of the "class" and "row.names" attributes.
 
-# Everything is Data
+```{r}
+df <- data.frame(a=1:6, b=letters[1:6])
+df
+class(df)
+str(unclass(df))
+```
+
+It used to be a source of consternation to me when I first picked
+up R that `length` did not return the number of rows in the data frame:
+
+```{r}
+length(df)
+nrow(df)
+```
+
+Since the date frame "container" is a list of the columns, it is natural from
+R's perspective that `length` should return the number of columns.
+
+Everything is not perfect though.  R's treatment of different data structures
+is not seamless.  In order for functions to behave as expected they need to be
+designed with the data structures they will operate on in mind.  The `length`
+function does not do this [^length-rows]: it simply returns the length of the
+underlying vector whether for atomic vectors, matrices, or list vectors.  The
+`head` function on the other hand is aware of the different semantics of each
+structure:
+
+```{r}
+head(l, 1)
+head(mx, 1)
+head(df, 1)
+```
+
+For both `mx` and `df`, `head` returned the first row instead of
+the first element from the underlying structures.  There is no trivial way to
+know which functions will treat objects as their meta-data augmented selves, or
+as the underlying structure.  This can lead to surprises, but if you understand
+what the underlying data structure is then you are prepared to recognize and
+adapt to them when they happen.
+
+# Everything is Data - Part I
 
 Certainly this is true of anything that happens on a computer, but R embraces
 this wholeheartedly in a way that many programming languages don't.  I still
@@ -164,63 +241,88 @@ variance(var)
 ```
 
 This was before I fully appreciated that while R can behave like a traditional
-imperative language, it has a strong functional bent.  The simple example is the
-venerable `lapply`:
+imperative language, it has a strong functional bent.  For example, if we wish
+to sort each element of a list `l`:
 
 ```{r}
-lapply(list(sample(5), 3:1), FUN=sort)
+l <- list(sample(5), 3:1)
 ```
 
-While this is no faster than a `for` loop, it does create the return structure
-for you which is convenient.  More generally, R defines several functions that
-will loop over data structures in a particular way with a deterministic return
-structure[^6], and allows you to substitute the processing logic by providing
-a function as an input.
-
-Of course we can always loop over simple lists with `lapply`, but more
-interesting possibilities are available when we understand the underlying vector
-structure of the object that we're dealing with.
-
-Another source of consternation for me when I first picked up R was data frames.
-I really expected the two expressions to be equivalent:
+We can use the `lapply` to apply a function to each element of the list:
 
 ```{r}
-length(USArrests)
-nrow(USArrests)
+lapply(l, sort)
 ```
 
-Obviously these are different because data frames are really lists of vectors
-with a class attribute that allows them to be interpreted as two dimensional
-tables:
+Each element of `l` was sorted with `sort`, and the results were collected into
+a list.  This is no faster than and semantically equivalent to[^list-init]:
 
 ```{r}
-str(unclass(USArrests))
+l2 <- list()
+for(i in seq_along(l)) l2[[i]] <- sort(l[[i]])
+l2
 ```
 
-There is no special internal data frame structure.  We're just re-using the
-existing vector structures.  Since the date frame "container" is a list of the
-columns, it is completely natural that `length` should return the number of
-columns.  More generally we can exploit that dual nature as we did with
-matrices.  For example, to compute column-wise statistics we can just run:
+But the simplicity and grace of the `lapply` version is undeniable.
+
 
 ```{r}
-lapply(iris[1:4], sd)
+lapply(iris[1:4], sd)   # use the standard deviation statistic
 ```
 
+This is the type of thing that is a real head scratcher if you think of data
+frames as internally represented by tabular structures, but just right
+if you realize they are just lists of atomic vectors.
 
+<!-- Does this go elsewhere? Needs some serious copy edits -->
 
-But now that I realize that the R way is all about vectors and attributes, and
-that data frames are lists of equal length vectors passing themselves off as
-tables, I know that 
+Complexity in R is mostly combinatorial: simple foundational concepts are
+assembled into complex data structures and ideas.  It is limitless, but also
+tractable because the building blocks are simple and well thought out.
+Understanding the foundational concepts is the key to truly enjoying R.
 
-
-
-It is also possible to manipulate functions to modify their behavior just as you
-might manipulate data to change its value:
+Since functions are data it follows that you can manipulate functions to modify
+their behavior just as you might change the value of "traditional" data:
 
 ```{r}
-Negate(is.na)(NA)
+Negate(isTRUE)(FALSE)
 ```
+
+And while functions[^fun-closure] are not strictly vectors, they can be made
+into them to be manipulated as such.  More importantly, vectors can be turned
+back into functions:
+
+```{r}
+var(c(1, 2, 3, NA))
+var.list <- as.list(stats::var)
+str(var.list)
+```
+
+The list form of the function has as named elements the parameter list, and the
+last unnamed elements the code of the function.  We can then manipulate the list
+as we would a data list, and turn it back into a function:
+
+```{r}
+var.list$na.rm <- TRUE  # change na.rm default to TRUE
+var2 <- as.function(var.list, envir=environment(stats::var))
+var2(c(1, 2, 3, NA))
+```
+
+Even the code of the function can be manipulated:
+
+```{r}
+var.list[[length(var.list)]][[2]] <- quote(stop("we broke the function"))
+var3 <- as.function(var.list, envir=environment(stats::var))
+var3  # notice the first line
+var3(c(1, 2, 3, NA))
+```
+
+The examples here are not particularly useful on their own right other than to
+illustrate the data-nature of code in R.  You can do some pretty remarkable
+things by exploiting this aspect of R.  For example [`covr`][3] computes test
+coverage by injecting instrumentation into package functions.  For more details
+and examples of what you can do see the [RPN Parsing post][4].
+
 
 
 ```{r}
@@ -268,8 +370,6 @@ like operators.
 
 
 # Functions are Data
-
-# Everything is a List Or Can Be Made Into One
 
 # Computing on the Language
 
@@ -355,8 +455,6 @@ principles that extend elegantly.
 
 # List-Matrices
 
-# Everything is a List
-
 [^1]: Degree of exhilaration may vary.  Perhaps I don't get out much.
 [^2]: My initial experience with R predates the tidyverse, so I don't have
   personal experience with this.  Nor have I done A/B testing with beginners
@@ -369,6 +467,22 @@ principles that extend elegantly.
   Language Definition][2] for details.
 [^6]: Arrays are matrices generalized to three or more dimensions.
 [^7]: The `*apply` family of functions, `outer`.
+[^wtf]: And yes, the occasional WTF.
+[^list-init]: Better would be `l2 <- vector(type='list', length=2)`
+[^fun-closure]: This only works for "closures", which are one of the types of
+  functions in R.  For efficiency R implements different types of functions that
+  are faster, but cannot be manipulated like closures can.
+[^length-rows]: There is really no right answer for what the length of a two
+  dimensional structure should be, so R returning the underlying length is as
+  appropriate as anything else.  Since `length` is a generic function, it could
+  in be extended to give different answers for different data structures.
+[^vecsxp]: Vector lists are a newer (c.a. 1998) addition.  The list structure
+  prior to that was a linked list, a.k.a. `LISTSXP` a.k.a. pairlist, so
+  presumably that is why vector lists are called `VECSXP` internally since the
+  `LISTSXP` name was taken.  `LISTSXP` are still used extensively in internal r
+  code, but are mostly hidden from sight in regular use.
 
 [1]: https://cran.r-project.org/doc/manuals/R-lang.html#Vector-objects
 [2]: (https://cran.r-project.org/doc/manuals/R-lang.html#Object_002doriented-programming)
+[3]: https://cran.r-project.org/package=covr
+[4]: /2019/01/11/reverse-polish-notation-parsing-in-r/

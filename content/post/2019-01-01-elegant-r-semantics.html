@@ -5,7 +5,10 @@ date: '2019-01-01'
 contenttype: article
 slug: elegant-r-semantics
 draft: true
-weight: 2
+weight: 1
+image: /front-img/default.png
+imagemrgvt: "0%"
+imagemrghz: "0%"
 description: R on the surface looks like a C-style language, but it really is
   not.  I explore how the R semantics allow for wonderfully satisfying code.
 categories: [r]
@@ -31,19 +34,19 @@ bewildering number of ways you can accomplish any given task, many of which are
 computationally inefficient. All of this can make for a trying experience for
 first-time users wanting to do some quick analysis.</p>
 <p>A way to cope with this is to embrace frameworks such as the <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Vector-objects">Tidyverse</a> that
-mask much of the apparent complexity of the language. This allows beginners to
-produce “useful” analysis faster<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>. For many this will be the right
-trade-off, but it is a trade-off. The primary issue is that the Tidyverse runs
-in R, so it is inevitable that sooner or later Tidyverse users will have to deal
-with R semantics. This means learning two sets of possibly conflicting
-semantics.</p>
+mask much of the apparent complexity of the language behind a veneer of
+consistency. This allows beginners to produce “useful” analysis faster<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>.
+For many this will be the right trade-off, but it is a trade-off. The primary
+issue is that the Tidyverse runs in R, so it is inevitable that sooner or later
+Tidyverse users will have to deal with R semantics. This means learning two
+sets of possibly conflicting semantics.</p>
 <p>Another approach is to invest time and effort to understand the foundational
 concepts behind R semantics. This too is a trade-off as a basic understanding
 of R semantics alone is insufficient to do “useful” analysis. You will need to
-build off of those. But the reward is to recognize the seeming bewildering
+build on those. But the reward is to recognize the seeming bewildering
 idiosyncrasies of R as the elegant interactions of the foundational concepts of
-the language. The beauty of it is that the foundational concepts are simple.</p>
-<p>WHEN ONE APPROACH MAKES MORE SENSE THAN THE OTHER?</p>
+the language<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>. The beauty of it is that the foundational concepts are
+simple.</p>
 <p>This blog post looks to highlight some of the interesting ways one can extend
 the basic R principles into useful higher level calculations. For a detailed
 review of the principles please read the criminally under-rated <a href="" title="https://cran.r-project.org/doc/manuals/R-lang.html#Object_002doriented-programming">R Language
@@ -54,190 +57,290 @@ Definition</a>.</p>
 <p>The basic data structure in R is the vector:</p>
 <pre class="r"><code>vec &lt;- 1:12
 vec</code></pre>
-<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10 11 12</code></pre>
-<p><code>vec</code> is stored in memory as twelve 32-bit<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> contiguous sections of memory.</p>
-<p>One of the foundational principles of R is that vectors can be interpreted as
-complex data structures by attaching meta-data to them without changing the
+<pre><code> [1]  1  2  3  4  5  6  7  8  9 10 11 12</code></pre>
+<p><code>vec</code> is stored in memory as twelve 32-bit<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a> contiguous sections of memory.</p>
+<p>One of the key principles of R is that vectors can be interpreted as
+complex data structures by attaching meta-data to them, without changing the
 underlying vector. This is a simple and elegant alternative to defining custom
 C-level data structures.</p>
-<p>We can turn our vector into an matrix by adding a ‘dim’ attribute<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>:</p>
+<p>We can turn our vector into an matrix by adding a ‘dim’ attribute<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>:</p>
 <pre class="r"><code>mx &lt;- vec
 attr(mx, &#39;dim&#39;) &lt;- c(3, 4)
 mx</code></pre>
-<pre><code>##      [,1] [,2] [,3] [,4]
-## [1,]    1    4    7   10
-## [2,]    2    5    8   11
-## [3,]    3    6    9   12</code></pre>
+<pre><code>     [,1] [,2] [,3] [,4]
+[1,]    1    4    7   10
+[2,]    2    5    8   11
+[3,]    3    6    9   12</code></pre>
 <p>Even though the underlying data is unchanged, its semantics change. R
 comes with several built-in special attributes like ‘dim’ that induce
 data-structure specific semantics. Additionally the ‘class’ attribute can be
 used in combination with generic functions to attach any interpretation
-imaginable<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a> to data.</p>
+imaginable<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a> to data.</p>
 <p>The mere addition of the ‘dim’ attribute allows magic like matrix multiplication
 on what are really one dimensional vectors. At the same time, R can re-use all
 its internal C vector code for matrices for cases where the semantics are the
 same as in simple arithmetic operations:</p>
 <pre class="r"><code>vec + 1</code></pre>
-<pre><code>##  [1]  2  3  4  5  6  7  8  9 10 11 12 13</code></pre>
+<pre><code> [1]  2  3  4  5  6  7  8  9 10 11 12 13</code></pre>
 <pre class="r"><code>c(mx + 1)   # `c` drops the dim attribute</code></pre>
-<pre><code>##  [1]  2  3  4  5  6  7  8  9 10 11 12 13</code></pre>
+<pre><code> [1]  2  3  4  5  6  7  8  9 10 11 12 13</code></pre>
 <p>And anyone aware of the underlying vector structure of matrices (and recycling
 semantics) realizes that you can add vectors column-wise to matrices:</p>
 <pre class="r"><code>mx + (1:3) * 100</code></pre>
-<pre><code>##      [,1] [,2] [,3] [,4]
-## [1,]  101  104  107  110
-## [2,]  202  205  208  211
-## [3,]  303  306  309  312</code></pre>
+<pre><code>     [,1] [,2] [,3] [,4]
+[1,]  101  104  107  110
+[2,]  202  205  208  211
+[3,]  303  306  309  312</code></pre>
 <p>Or row-wise with transposition or repetition:</p>
 <pre class="r"><code>t(t(mx) + (1:4) * 100)</code></pre>
-<pre><code>##      [,1] [,2] [,3] [,4]
-## [1,]  101  204  307  410
-## [2,]  102  205  308  411
-## [3,]  103  206  309  412</code></pre>
-<pre class="r"><code>mx + rep(1:4, each=nrow(mx))</code></pre>
-<pre><code>##      [,1] [,2] [,3] [,4]
-## [1,]    2    6   10   14
-## [2,]    3    7   11   15
-## [3,]    4    8   12   16</code></pre>
-<p>The “dual” nature of matrices and arrays<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a> provides many opportunities for
+<pre><code>     [,1] [,2] [,3] [,4]
+[1,]  101  204  307  410
+[2,]  102  205  308  411
+[3,]  103  206  309  412</code></pre>
+<pre class="r"><code>mx + rep(1:4 * 100, each=nrow(mx))</code></pre>
+<pre><code>     [,1] [,2] [,3] [,4]
+[1,]  101  204  307  410
+[2,]  102  205  308  411
+[3,]  103  206  309  412</code></pre>
+<p>The “dual” nature of matrices and arrays<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a> provides many opportunities for
 creative manipulation.</p>
 <p>We have been looking primary at numeric vectors, but there are several others.
-There are logical vectors, and character vectors, and also list vectors:</p>
-<pre class="r"><code>list(1, list(1,2), &#39;hello&#39;)</code></pre>
-<pre><code>## [[1]]
-## [1] 1
-## 
-## [[2]]
-## [[2]][[1]]
-## [1] 1
-## 
-## [[2]][[2]]
-## [1] 2
-## 
-## 
-## [[3]]
-## [1] &quot;hello&quot;</code></pre>
+There are logical vectors, character vectors, and also list vectors:</p>
+<pre class="r"><code>l &lt;- list(1, 1:3, c(&#39;hello&#39;, &#39;world&#39;), TRUE)
+str(l)</code></pre>
+<pre><code>List of 4
+ $ : num 1
+ $ : int [1:3] 1 2 3
+ $ : chr [1:2] &quot;hello&quot; &quot;world&quot;
+ $ : logi TRUE</code></pre>
 <p>But how can lists be vectors if vectors are supposed to be a sequence of
 contiguous, equal-size, equal-type elements? It is because the list proper is a
 vector of pointers that link to the actual contents. The pointers themselves
 are equal size and equal type, even though the “contents” are not. If this
 seems odd, realize that character vectors are the same. They are vectors of
-pointers to strings which themselves are often different sizes.</p>
+pointers to strings which themselves are often different sizes. This is
+apparent if we inspect the inner structure of the list:</p>
+<pre class="r"><code>.Internal(inspect(l))</code></pre>
+<pre><code>@7f9272639be8 19 VECSXP g0c3 [NAM(3)] (len=4, tl=0)
+  @7f92750e8380 14 REALSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1
+  @7f9273a362f8 13 INTSXP g0c0 [NAM(3)]  1 : 3 (compact)
+  @7f9272b952c8 16 STRSXP g0c2 [NAM(3)] (len=2, tl=0)
+    @7f92750e82a0 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] &quot;hello&quot;
+    @7f92750e81f8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] &quot;world&quot;
+  @7f92750e8188 10 LGLSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</code></pre>
+<p><code>VECSXP</code>, <code>REALSXP</code>, <code>INTSXP</code>, and <code>STRXSP</code>, and <code>LGLSXP</code> are the internal R
+names of respectively list, numeric, integer, and character vectors. The
+numbers preceded by “@” represent memory locations. So the actual contents of
+the list <code>l</code> are the “@” values highlighted here:</p>
+<pre><code>@7f9272639be8 19 VECSXP g0c3 [NAM(3)] (len=4, tl=0)
+  <span style='background-color: #00BB00;'>@7f92750e8380</span><span> 14 REALSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</span>
+  <span style='background-color: #00BB00;'>@7f9273a362f8</span><span> 13 INTSXP g0c0 [NAM(3)]  1 : 3 (compact)</span>
+  <span style='background-color: #00BB00;'>@7f9272b952c8</span><span> 16 STRSXP g0c2 [NAM(3)] (len=2, tl=0)</span>
+    @7f92750e82a0 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "hello"
+    @7f92750e81f8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "world"
+  <span style='background-color: #00BB00;'>@7f92750e8188</span><span> 10 LGLSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</span></code></pre>
+<p>Notice how
+our character vector, the <code>STRSXP</code> element, has child elements just like the
+list <code>VECSXP</code><a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a> element. These child elements are the <code>CHARSXP</code> objects,
+which are not directly in R.</p>
 <p>Since lists are vectors, we can also add dim attributes to them and get
 meaningful results:</p>
 <pre class="r"><code>set.seed(42)
 l &lt;- replicate(12, runif(10), simplify=FALSE)
 dim(l) &lt;- c(3, 4)
 l</code></pre>
-<pre><code>##      [,1]       [,2]       [,3]       [,4]      
-## [1,] Numeric,10 Numeric,10 Numeric,10 Numeric,10
-## [2,] Numeric,10 Numeric,10 Numeric,10 Numeric,10
-## [3,] Numeric,10 Numeric,10 Numeric,10 Numeric,10</code></pre>
+<pre><code>     [,1]       [,2]       [,3]       [,4]      
+[1,] Numeric,10 Numeric,10 Numeric,10 Numeric,10
+[2,] Numeric,10 Numeric,10 Numeric,10 Numeric,10
+[3,] Numeric,10 Numeric,10 Numeric,10 Numeric,10</code></pre>
 <pre class="r"><code>l[[3, 2]]</code></pre>
-<pre><code>##  [1] 0.33342721 0.34674825 0.39848541 0.78469278 0.03893649 0.74879539
-##  [7] 0.67727683 0.17126433 0.26108796 0.51441293</code></pre>
-<p>While list-matrices are a bit odd they do have uses we’ll discuss shortly. The
-important point for now is that we started with the simple concept of vectors
-and attributes, and ended up with strange but useful list-matrices. R allowed
-us to combine simple concepts to create useful complexity.</p>
-<p>DATAFRAMES? <code>lapply</code> over columns?</p>
+<pre><code> [1] 0.3334 0.3467 0.3985 0.7847 0.0389 0.7488 0.6773 0.1713 0.2611 0.5144</code></pre>
+<p>While list-matrices are a bit odd they do have uses. The important point for
+now is that we started with the simple concept of vectors and attributes, and
+ended up with strange but useful list-matrices. R allowed us to combine simple
+concepts to create useful complexity.</p>
+<p>Data frames are another complex structure derived from simpler ones by the
+addition of meta data, in this case lists interpreted as tabular structures by
+the addition of the “class” and “row.names” attributes.</p>
+<pre class="r"><code>df &lt;- data.frame(a=1:6, b=letters[1:6])
+df</code></pre>
+<pre><code>  a b
+1 1 a
+2 2 b
+3 3 c
+4 4 d
+5 5 e
+6 6 f</code></pre>
+<pre class="r"><code>class(df)</code></pre>
+<pre><code>[1] &quot;data.frame&quot;</code></pre>
+<pre class="r"><code>str(unclass(df))</code></pre>
+<pre><code>List of 2
+ $ a: int [1:6] 1 2 3 4 5 6
+ $ b: Factor w/ 6 levels &quot;a&quot;,&quot;b&quot;,&quot;c&quot;,&quot;d&quot;,..: 1 2 3 4 5 6
+ - attr(*, &quot;row.names&quot;)= int [1:6] 1 2 3 4 5 6</code></pre>
+<p>It used to be a source of consternation to me when I first picked
+up R that <code>length</code> did not return the number of rows in the data frame:</p>
+<pre class="r"><code>length(df)</code></pre>
+<pre><code>[1] 2</code></pre>
+<pre class="r"><code>nrow(df)</code></pre>
+<pre><code>[1] 6</code></pre>
+<p>Since the date frame “container” is a list of the columns, it is natural from
+R’s perspective that <code>length</code> should return the number of columns.</p>
+<p>Everything is not perfect though. R’s treatment of different data structures
+is not seamless. In order for functions to behave as expected they need to be
+designed with the data structures they will operate on in mind. The <code>length</code>
+function does not do this <a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a>: it simply returns the length of the
+underlying vector whether for atomic vectors, matrices, or list vectors. The
+<code>head</code> function on the other hand is aware of the different semantics of each
+structure:</p>
+<pre class="r"><code>head(l, 1)</code></pre>
+<pre><code>     [,1]       [,2]       [,3]       [,4]      
+[1,] Numeric,10 Numeric,10 Numeric,10 Numeric,10</code></pre>
+<pre class="r"><code>head(mx, 1)</code></pre>
+<pre><code>     [,1] [,2] [,3] [,4]
+[1,]    1    4    7   10</code></pre>
+<pre class="r"><code>head(df, 1)</code></pre>
+<pre><code>  a b
+1 1 a</code></pre>
+<p>For both <code>mx</code> and <code>df</code>, <code>head</code> returned the first row instead of
+the first element from the underlying structures. There is no trivial way to
+know which functions will treat objects as their meta-data augmented selves, or
+as the underlying structure. This can lead to surprises, but if you understand
+what the underlying data structure is then you are prepared to recognize and
+adapt to them when they happen.</p>
 </div>
-<div id="everything-is-data" class="section level1">
-<h1>Everything is Data</h1>
+<div id="everything-is-data---part-i" class="section level1">
+<h1>Everything is Data - Part I</h1>
 <p>Certainly this is true of anything that happens on a computer, but R embraces
 this wholeheartedly in a way that many programming languages don’t. I still
 recall my consternation when I first started using R and typed the following
 into the terminal thinking I had a variable defined by that name:</p>
 <pre class="r"><code>var    # my actual variable was var1</code></pre>
-<pre><code>## function (x, y = NULL, na.rm = FALSE, use) 
-## {
-##     if (missing(use)) 
-##         use &lt;- if (na.rm) 
-##             &quot;na.or.complete&quot;
-##         else &quot;everything&quot;
-##     na.method &lt;- pmatch(use, c(&quot;all.obs&quot;, &quot;complete.obs&quot;, &quot;pairwise.complete.obs&quot;, 
-##         &quot;everything&quot;, &quot;na.or.complete&quot;))
-##     if (is.na(na.method)) 
-##         stop(&quot;invalid &#39;use&#39; argument&quot;)
-##     if (is.data.frame(x)) 
-##         x &lt;- as.matrix(x)
-##     else stopifnot(is.atomic(x))
-##     if (is.data.frame(y)) 
-##         y &lt;- as.matrix(y)
-##     else stopifnot(is.atomic(y))
-##     .Call(C_cov, x, y, na.method, FALSE)
-## }
-## &lt;bytecode: 0x7fbf6d8834f8&gt;
-## &lt;environment: namespace:stats&gt;</code></pre>
+<pre><code>function (x, y = NULL, na.rm = FALSE, use) 
+{
+    if (missing(use)) 
+        use &lt;- if (na.rm) 
+            &quot;na.or.complete&quot;
+        else &quot;everything&quot;
+    na.method &lt;- pmatch(use, c(&quot;all.obs&quot;, &quot;complete.obs&quot;, &quot;pairwise.complete.obs&quot;, 
+        &quot;everything&quot;, &quot;na.or.complete&quot;))
+    if (is.na(na.method)) 
+        stop(&quot;invalid &#39;use&#39; argument&quot;)
+    if (is.data.frame(x)) 
+        x &lt;- as.matrix(x)
+    else stopifnot(is.atomic(x))
+    if (is.data.frame(y)) 
+        y &lt;- as.matrix(y)
+    else stopifnot(is.atomic(y))
+    .Call(C_cov, x, y, na.method, FALSE)
+}
+&lt;bytecode: 0x7f92747323c0&gt;
+&lt;environment: namespace:stats&gt;</code></pre>
 <p>R happily went ahead and displayed the contents of the <code>var</code> function as it
 would display the contents of any “normal” variable. That functions were stored
 in variables as any other data felt more like a curiosity or even an annoyance
 than anything else:</p>
 <pre class="r"><code>var(1:10)</code></pre>
-<pre><code>## [1] 9.166667</code></pre>
+<pre><code>[1] 9.17</code></pre>
 <pre class="r"><code>variance &lt;- var
 var &lt;- 1:10
 variance(var)</code></pre>
-<pre><code>## [1] 9.166667</code></pre>
+<pre><code>[1] 9.17</code></pre>
 <p>This was before I fully appreciated that while R can behave like a traditional
-imperative language, it has a strong functional bent. The simple example is the
-venerable <code>lapply</code>:</p>
-<pre class="r"><code>lapply(list(sample(5), 3:1), FUN=sort)</code></pre>
-<pre><code>## [[1]]
-## [1] 1 2 3 4 5
-## 
-## [[2]]
-## [1] 1 2 3</code></pre>
-<p>While this is no faster than a <code>for</code> loop, it does create the return structure
-for you which is convenient. More generally, R defines several functions that
-will loop over data structures in a particular way with a deterministic return
-structure<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>, and allows you to substitute the processing logic by providing
-a function as an input.</p>
-<p>Of course we can always loop over simple lists with <code>lapply</code>, but more
-interesting possibilities are available when we understand the underlying vector
-structure of the object that we’re dealing with.</p>
-<p>Another source of consternation for me when I first picked up R was data frames.
-I really expected the two expressions to be equivalent:</p>
-<pre class="r"><code>length(USArrests)</code></pre>
-<pre><code>## [1] 4</code></pre>
-<pre class="r"><code>nrow(USArrests)</code></pre>
-<pre><code>## [1] 50</code></pre>
-<p>Obviously these are different because data frames are really lists of vectors
-with a class attribute that allows them to be interpreted as two dimensional
-tables:</p>
-<pre class="r"><code>str(unclass(USArrests))</code></pre>
-<pre><code>## List of 4
-##  $ Murder  : num [1:50] 13.2 10 8.1 8.8 9 7.9 3.3 5.9 15.4 17.4 ...
-##  $ Assault : int [1:50] 236 263 294 190 276 204 110 238 335 211 ...
-##  $ UrbanPop: int [1:50] 58 48 80 50 91 78 77 72 80 60 ...
-##  $ Rape    : num [1:50] 21.2 44.5 31 19.5 40.6 38.7 11.1 15.8 31.9 25.8 ...
-##  - attr(*, &quot;row.names&quot;)= chr [1:50] &quot;Alabama&quot; &quot;Alaska&quot; &quot;Arizona&quot; &quot;Arkansas&quot; ...</code></pre>
-<p>There is no special internal data frame structure. We’re just re-using the
-existing vector structures. Since the date frame “container” is a list of the
-columns, it is completely natural that <code>length</code> should return the number of
-columns. More generally we can exploit that dual nature as we did with
-matrices. For example, to compute column-wise statistics we can just run:</p>
-<pre class="r"><code>lapply(iris[1:4], sd)</code></pre>
-<pre><code>## $Sepal.Length
-## [1] 0.8280661
-## 
-## $Sepal.Width
-## [1] 0.4358663
-## 
-## $Petal.Length
-## [1] 1.765298
-## 
-## $Petal.Width
-## [1] 0.7622377</code></pre>
-<p>But now that I realize that the R way is all about vectors and attributes, and
-that data frames are lists of equal length vectors passing themselves off as
-tables, I know that</p>
-<p>It is also possible to manipulate functions to modify their behavior just as you
-might manipulate data to change its value:</p>
-<pre class="r"><code>Negate(is.na)(NA)</code></pre>
-<pre><code>## [1] FALSE</code></pre>
+imperative language, it has a strong functional bent. For example, if we wish
+to sort each element of a list <code>l</code>:</p>
+<pre class="r"><code>l &lt;- list(sample(5), 3:1)</code></pre>
+<p>We can use the <code>lapply</code> to apply a function to each element of the list:</p>
+<pre class="r"><code>lapply(l, sort)</code></pre>
+<pre><code>[[1]]
+[1] 1 2 3 4 5
+
+[[2]]
+[1] 1 2 3</code></pre>
+<p>Each element of <code>l</code> was sorted with <code>sort</code>, and the results were collected into
+a list. This is no faster than and semantically equivalent to<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a>:</p>
+<pre class="r"><code>l2 &lt;- list()
+for(i in seq_along(l)) l2[[i]] &lt;- sort(l[[i]])
+l2</code></pre>
+<pre><code>[[1]]
+[1] 1 2 3 4 5
+
+[[2]]
+[1] 1 2 3</code></pre>
+<p>But the simplicity and grace of the <code>lapply</code> version is undeniable.</p>
+<pre class="r"><code>lapply(iris[1:4], sd)   # use the standard deviation statistic</code></pre>
+<pre><code>$Sepal.Length
+[1] 0.828
+
+$Sepal.Width
+[1] 0.436
+
+$Petal.Length
+[1] 1.77
+
+$Petal.Width
+[1] 0.762</code></pre>
+<p>This is the type of thing that is a real head scratcher if you think of data
+frames as internally represented by tabular structures, but just right
+if you realize they are just lists of atomic vectors.</p>
+<!-- Does this go elsewhere? Needs some serious copy edits -->
+<p>Complexity in R is mostly combinatorial: simple foundational concepts are
+assembled into complex data structures and ideas. It is limitless, but also
+tractable because the building blocks are simple and well thought out.
+Understanding the foundational concepts is the key to truly enjoying R.</p>
+<p>Since functions are data it follows that you can manipulate functions to modify
+their behavior just as you might change the value of “traditional” data:</p>
+<pre class="r"><code>Negate(isTRUE)(FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>And while functions<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a> are not strictly vectors, they can be made
+into them to be manipulated as such. More importantly, vectors can be turned
+back into functions:</p>
+<pre class="r"><code>var(c(1, 2, 3, NA))</code></pre>
+<pre><code>[1] NA</code></pre>
+<pre class="r"><code>var.list &lt;- as.list(stats::var)
+str(var.list)</code></pre>
+<pre><code>List of 5
+ $ x    : symbol 
+ $ y    : NULL
+ $ na.rm: logi FALSE
+ $ use  : symbol 
+ $      : language {  if (missing(use)); use &lt;- if (na.rm); &quot;na.or.complete&quot;; else &quot;everything&quot;; na.method &lt;- pmatch(use, c(&quot;all.obs| __truncated__</code></pre>
+<p>The list form of the function has as named elements the parameter list, and the
+last unnamed elements the code of the function. We can then manipulate the list
+as we would a data list, and turn it back into a function:</p>
+<pre class="r"><code>var.list$na.rm &lt;- TRUE  # change na.rm default to TRUE
+var2 &lt;- as.function(var.list, envir=environment(stats::var))
+var2(c(1, 2, 3, NA))</code></pre>
+<pre><code>[1] 1</code></pre>
+<p>Even the code of the function can be manipulated:</p>
+<pre class="r"><code>var.list[[length(var.list)]][[2]] &lt;- quote(stop(&quot;we broke the function&quot;))
+var3 &lt;- as.function(var.list, envir=environment(stats::var))
+var3  # notice the first line</code></pre>
+<pre><code>function (x, y = NULL, na.rm = TRUE, use) 
+{
+    stop(&quot;we broke the function&quot;)
+    na.method &lt;- pmatch(use, c(&quot;all.obs&quot;, &quot;complete.obs&quot;, &quot;pairwise.complete.obs&quot;, 
+        &quot;everything&quot;, &quot;na.or.complete&quot;))
+    if (is.na(na.method)) 
+        stop(&quot;invalid &#39;use&#39; argument&quot;)
+    if (is.data.frame(x)) 
+        x &lt;- as.matrix(x)
+    else stopifnot(is.atomic(x))
+    if (is.data.frame(y)) 
+        y &lt;- as.matrix(y)
+    else stopifnot(is.atomic(y))
+    .Call(C_cov, x, y, na.method, FALSE)
+}
+&lt;environment: namespace:stats&gt;</code></pre>
+<pre class="r"><code>var3(c(1, 2, 3, NA))</code></pre>
+<pre><code>Error in var3(c(1, 2, 3, NA)): we broke the function</code></pre>
+<p>The examples here are not particularly useful on their own right other than to
+illustrate the data-nature of code in R. You can do some pretty remarkable
+things by exploiting this aspect of R. For example <a href="https://cran.r-project.org/package=covr"><code>covr</code></a> computes test
+coverage by injecting instrumentation into package functions. For more details
+and examples of what you can do see the <a href="/2019/01/11/reverse-polish-notation-parsing-in-r/">RPN Parsing post</a>.</p>
 <pre class="r"><code>Reduce(setdiff, list(1:3, 2:5, 4:8))</code></pre>
-<pre><code>## [1] 1</code></pre>
+<pre><code>[1] 1</code></pre>
 <ul>
 <li>Reduce</li>
 <li>do.call</li>
@@ -259,7 +362,7 @@ might manipulate data to change its value:</p>
 <p>I believe the latter approach is better if you intend to use R on a regular
 basis.</p>
 <p>And once
-you fully grasp the key building blocks the freedom is exhilarating<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>.</p>
+you fully grasp the key building blocks the freedom is exhilarating<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a>.</p>
 <p>It would take more than a blog post to teach the foundational blocks of R
 semantics. Instead, I will go through a few examples that illustrate how you
 can build useful complexity out of simple in an effort to demonstrate that you
@@ -277,9 +380,6 @@ like operators.</p>
 </div>
 <div id="functions-are-data" class="section level1">
 <h1>Functions are Data</h1>
-</div>
-<div id="everything-is-a-list-or-can-be-made-into-one" class="section level1">
-<h1>Everything is a List Or Can Be Made Into One</h1>
 </div>
 <div id="computing-on-the-language" class="section level1">
 <h1>Computing on the Language</h1>
@@ -318,11 +418,11 @@ rpn &lt;- function(...) {
 
 
 rpn(3, 4, &#39;+&#39;, 5, &#39;*&#39;, pi, 2, &#39;-&#39;, &#39;/&#39;)</code></pre>
-<pre><code>## (3 + 4) * 5/(3.14159265358979 - 2)</code></pre>
+<pre><code>(3 + 4) * 5/(3.14159265358979 - 2)</code></pre>
 <pre class="r"><code>l &lt;- list(3, 4, as.name(&#39;+&#39;), 5, as.name(&#39;*&#39;), pi, 2, as.name(&#39;-&#39;), as.name(&#39;/&#39;))
 
 rpn(3, 4, &#39;+&#39;, 5, &#39;*&#39;)</code></pre>
-<pre><code>## (3 + 4) * 5</code></pre>
+<pre><code>(3 + 4) * 5</code></pre>
 <pre class="r"><code>rpn &lt;- function(...) {
   l &lt;- lapply(list(...), function(x) if(is.numeric(x)) x else as.name(x))
   for(i in seq(2, length(l), 1))
@@ -365,23 +465,33 @@ principles that extend elegantly.</p>
 <div id="list-matrices" class="section level1">
 <h1>List-Matrices</h1>
 </div>
-<div id="everything-is-a-list" class="section level1">
-<h1>Everything is a List</h1>
-</div>
 <div class="footnotes">
 <hr />
 <ol>
 <li id="fn1"><p>My initial experience with R predates the tidyverse, so I don’t have
 personal experience with this. Nor have I done A/B testing with beginners
 that use the tidyverse vs. not, but I have no reason to doubt the assertion.<a href="#fnref1" class="footnote-back">↩</a></p></li>
-<li id="fn2"><p>As of this writing this is the case.<a href="#fnref2" class="footnote-back">↩</a></p></li>
-<li id="fn3"><p>A safer way to create matrices is with the <code>matrix</code> constructor, although
+<li id="fn2"><p>And yes, the occasional WTF.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>As of this writing this is the case.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>A safer way to create matrices is with the <code>matrix</code> constructor, although
 ultimately what makes an R matrix a matrix is the presence of the ‘dim’
-attribute.<a href="#fnref3" class="footnote-back">↩</a></p></li>
-<li id="fn4"><p>We won’t cover the details here, but see the <a href="" title="https://cran.r-project.org/doc/manuals/R-lang.html#Object_002doriented-programming">objects chapter of the R
-Language Definition</a> for details.<a href="#fnref4" class="footnote-back">↩</a></p></li>
-<li id="fn5"><p>Arrays are matrices generalized to three or more dimensions.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+attribute.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>We won’t cover the details here, but see the <a href="" title="https://cran.r-project.org/doc/manuals/R-lang.html#Object_002doriented-programming">objects chapter of the R
+Language Definition</a> for details.<a href="#fnref5" class="footnote-back">↩</a></p></li>
 <li id="fn6"><p>Arrays are matrices generalized to three or more dimensions.<a href="#fnref6" class="footnote-back">↩</a></p></li>
-<li id="fn7"><p>Degree of exhilaration may vary. Perhaps I don’t get out much.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>Vector lists are a newer (c.a. 1998) addition. The list structure
+prior to that was a linked list, a.k.a. <code>LISTSXP</code> a.k.a. pairlist, so
+presumably that is why vector lists are called <code>VECSXP</code> internally since the
+<code>LISTSXP</code> name was taken. <code>LISTSXP</code> are still used extensively in internal r
+code, but are mostly hidden from sight in regular use.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>There is really no right answer for what the length of a two
+dimensional structure should be, so R returning the underlying length is as
+appropriate as anything else. Since <code>length</code> is a generic function, it could
+in be extended to give different answers for different data structures.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p>Better would be <code>l2 &lt;- vector(type='list', length=2)</code><a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p>This only works for “closures”, which are one of the types of
+functions in R. For efficiency R implements different types of functions that
+are faster, but cannot be manipulated like closures can.<a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>Degree of exhilaration may vary. Perhaps I don’t get out much.<a href="#fnref11" class="footnote-back">↩</a></p></li>
 </ol>
 </div>
