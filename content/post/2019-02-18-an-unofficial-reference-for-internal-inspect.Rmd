@@ -5,7 +5,6 @@ date: '2019-02-18'
 slug: an-unofficial-reference-for-internal-inspect
 categories: [r,wiki]
 tags: []
-draft: true
 image: /front-img/ramsticks.png
 imagemrgvt: 0%
 imagemrghz: 0%
@@ -34,7 +33,7 @@ writeFansi <- function(x) {
 }
 ```
 
-# Should We Care About Internal Details of R Objects?
+# Should We Care About R Object Internals?
 
 <a
   href='#image-credit'
@@ -87,27 +86,28 @@ c(x)                 # 'touch' x, with no changes
  [1]  0  2  1  9  3  5  7 10  8  6
 ```
 ```{r eval=FALSE}
-x[1] <- 0            # no copy
+x[1] <- 0
 ```
 We know the memory referenced by  `x` was not copied despite being modified
-because `tracemem` was quiet.  Let's try again, slightly differently:
+because `tracemem` was quiet.  Let's try again:
 
 ```{r eval=FALSE}
-identity(x)          # 'touch' again, with more emotion
+identity(x)          # 'touch', with more emotion
 ```
 ```
  [1]  0  2  1  9  3  5  7 10  8  6
 ```
 ```{r eval=FALSE}
-x[2] <- 0            # tracemem detects copy
+x[2] <- 0
 ```
 ```
 tracemem[0x7fcc8a9b7c00 -> 0x7fcc841cfc00]:
 ```
 
-What we really need is a mechanism to understand why the first assignment
-did not lead to a copy, but the second one did.  In both cases there
-is only one reference to `x` so it should be safe to modify `x` without copy.
+This time there was a copy as evidenced by the `tracemem` output.  What we
+really need is a mechanism to understand why the first assignment did not lead
+to a copy, but the second one did.  In both cases there is only one reference to
+`x` so it should be safe to modify `x` without copy.
 
 `.Internal(inspect(...))` allows us to inspect the guts of our R objects:
 
@@ -156,8 +156,8 @@ detail shortly.  In essence, it is internal meta data associated with the R
 object.  For now notice the highlighted `[NAM(#)]` bit.  That is the "reference"
 counter.  `c(x)` did not increment it, but `identity(x)` did[^inc-size].  `x`
 was copied on the second assignment because by that point the `NAM` reference
-counting heuristic suggests there _could_ be more than one reference to the
-object.
+counting heuristic[^ref-counting] suggests there _could_ be more than one
+reference to the object.
 
 It turns out that there is a substantive difference between `c` and `identity`.
 The former is a primitive function, while the latter is a closure function:
@@ -167,17 +167,19 @@ c
 typeof(identity)
 ```
 
-Closures always increment the `NAM` counter because R does not currently track
-whether their environment is indeed destroyed on exit, so it assumes there could
-possibly still be a reference to the parameter.  Primitives are
-straight-to-compiled C code functions that have full control of memory and
-reference count so they can leave it unchanged when warranted.
+Closures are complex.  Among other things they each have their own evaluation
+frame.  Because R does not currently track whether this frame is destroyed on
+function exit, R assumes it could persist along with its references to the
+parameters.  For this reason the "NAM" value on arguments to closures is always
+incremented.  Primitives on the other hand are straight-to-compiled C code
+functions that have full control of memory and reference count so they can leave
+it unchanged when warranted.
 
 And what about `.Internal(inspect(...))`?  It's the R equivalent of a
 speakeasy: undocumented, unpublicized, and as shown here occasionally useful to
-know about.  Only the cool kids on [r-devel][22] are clued in, and I only know
-about it because my older cousin's college room mate's brother is one of the
-cool kids.
+know about.  Only the cool kids on [r-devel][22] are clued in, and I happen to
+know about it because my older cousin's college room mate's brother is one of
+the cool kids.
 
 # A Note About .Internal, and Some History
 
@@ -200,6 +202,7 @@ long precedent of actual wizards and non-wizards using it on the [r-devel][6]
 The `inspect` internal was quietly added by Simon Urbanek at revision 48129 to
 what was then R under development 2.9.0:
 
+<pre></pre>
 ```
 $ svn log -r48129
 ------------------------------------------------------------------------
@@ -618,6 +621,7 @@ non-referenced object, it kind of make sense that the distinction between 0 and
 [^custom-alloc]: It is possible to implement custom memory allocators, but in
 that case R is no longer responsible for managing the memory.
 [^symbol-hash]: This distinct from the string pool hash table.
+[^gc-gen]: The `gcgen` bit is part of the [rest of header][17] meta-data.
 
 [1]: https://www.rforge.net/inspect/files/
 [2]: https://stackoverflow.com/questions/15759117/

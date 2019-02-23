@@ -5,7 +5,6 @@ date: '2019-02-18'
 slug: an-unofficial-reference-for-internal-inspect
 categories: [r,wiki]
 tags: []
-draft: true
 image: /front-img/ramsticks.png
 imagemrgvt: 0%
 imagemrghz: 0%
@@ -21,8 +20,8 @@ use."
 
 
 
-<div id="should-we-care-about-internal-details-of-r-objects" class="section level1">
-<h1>Should We Care About Internal Details of R Objects?</h1>
+<div id="should-we-care-about-r-object-internals" class="section level1">
+<h1>Should We Care About R Object Internals?</h1>
 <p><a
   href='#image-credit'
   title='A Pile of RAM, by Blake Patterson, under CC-BY 2.0, background removed
@@ -59,16 +58,17 @@ tracemem(x)          # tracemem will print to screen when `x` is copied</code></
 <pre><code>[1] &quot;&lt;0x7fcc8a9b7c00&gt;&quot;</code></pre>
 <pre class="r"><code>c(x)                 # &#39;touch&#39; x, with no changes</code></pre>
 <pre><code> [1]  0  2  1  9  3  5  7 10  8  6</code></pre>
-<pre class="r"><code>x[1] &lt;- 0            # no copy</code></pre>
+<pre class="r"><code>x[1] &lt;- 0</code></pre>
 <p>We know the memory referenced by <code>x</code> was not copied despite being modified
-because <code>tracemem</code> was quiet. Let’s try again, slightly differently:</p>
-<pre class="r"><code>identity(x)          # &#39;touch&#39; again, with more emotion</code></pre>
+because <code>tracemem</code> was quiet. Let’s try again:</p>
+<pre class="r"><code>identity(x)          # &#39;touch&#39;, with more emotion</code></pre>
 <pre><code> [1]  0  2  1  9  3  5  7 10  8  6</code></pre>
-<pre class="r"><code>x[2] &lt;- 0            # tracemem detects copy</code></pre>
+<pre class="r"><code>x[2] &lt;- 0</code></pre>
 <pre><code>tracemem[0x7fcc8a9b7c00 -&gt; 0x7fcc841cfc00]:</code></pre>
-<p>What we really need is a mechanism to understand why the first assignment
-did not lead to a copy, but the second one did. In both cases there
-is only one reference to <code>x</code> so it should be safe to modify <code>x</code> without copy.</p>
+<p>This time there was a copy as evidenced by the <code>tracemem</code> output. What we
+really need is a mechanism to understand why the first assignment did not lead
+to a copy, but the second one did. In both cases there is only one reference to
+<code>x</code> so it should be safe to modify <code>x</code> without copy.</p>
 <p><code>.Internal(inspect(...))</code> allows us to inspect the guts of our R objects:</p>
 <pre class="r"><code>x &lt;- sample(10)
 .Internal(inspect(x))</code></pre>
@@ -89,24 +89,26 @@ detail shortly. In essence, it is internal meta data associated with the R
 object. For now notice the highlighted <code>[NAM(#)]</code> bit. That is the “reference”
 counter. <code>c(x)</code> did not increment it, but <code>identity(x)</code> did<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>. <code>x</code>
 was copied on the second assignment because by that point the <code>NAM</code> reference
-counting heuristic suggests there <em>could</em> be more than one reference to the
-object.</p>
+counting heuristic<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a> suggests there <em>could</em> be more than one
+reference to the object.</p>
 <p>It turns out that there is a substantive difference between <code>c</code> and <code>identity</code>.
 The former is a primitive function, while the latter is a closure function:</p>
 <pre class="r"><code>c</code></pre>
 <pre><code>function (...)  .Primitive(&quot;c&quot;)</code></pre>
 <pre class="r"><code>typeof(identity)</code></pre>
 <pre><code>[1] &quot;closure&quot;</code></pre>
-<p>Closures always increment the <code>NAM</code> counter because R does not currently track
-whether their environment is indeed destroyed on exit, so it assumes there could
-possibly still be a reference to the parameter. Primitives are
-straight-to-compiled C code functions that have full control of memory and
-reference count so they can leave it unchanged when warranted.</p>
+<p>Closures are complex. Among other things they each have their own evaluation
+frame. Because R does not currently track whether this frame is destroyed on
+function exit, R assumes it could persist along with its references to the
+parameters. For this reason the “NAM” value on arguments to closures is always
+incremented. Primitives on the other hand are straight-to-compiled C code
+functions that have full control of memory and reference count so they can leave
+it unchanged when warranted.</p>
 <p>And what about <code>.Internal(inspect(...))</code>? It’s the R equivalent of a
 speakeasy: undocumented, unpublicized, and as shown here occasionally useful to
-know about. Only the cool kids on <a href="https://stat.ethz.ch/pipermail/r-devel/">r-devel</a> are clued in, and I only know
-about it because my older cousin’s college room mate’s brother is one of the
-cool kids.</p>
+know about. Only the cool kids on <a href="https://stat.ethz.ch/pipermail/r-devel/">r-devel</a> are clued in, and I happen to
+know about it because my older cousin’s college room mate’s brother is one of
+the cool kids.</p>
 </div>
 <div id="a-note-about-.internal-and-some-history" class="section level1">
 <h1>A Note About .Internal, and Some History</h1>
@@ -125,6 +127,7 @@ long precedent of actual wizards and non-wizards using it on the <a href="https:
 <a href="https://stat.ethz.ch/pipermail/r-devel/2018-April/075899.html">mailing-list</a> <a href="https://stat.ethz.ch/pipermail/r-devel/2013-March/066195.html">for</a> <a href="https://stat.ethz.ch/pipermail/r-devel/2013-July/067043.html">just</a> <a href="https://stat.ethz.ch/pipermail/r-devel/2011-November/062653.html">this purpose</a>.</p>
 <p>The <code>inspect</code> internal was quietly added by Simon Urbanek at revision 48129 to
 what was then R under development 2.9.0:</p>
+<pre></pre>
 <pre><code>$ svn log -r48129
 ------------------------------------------------------------------------
 r48129 | urbaneks | 2009-03-16 11:25:35 -0400 (Mon, 16 Mar 2009) | 1 line
@@ -174,7 +177,7 @@ invisible(gc(full=FALSE))   # run garbage collector.
 of the underlying C-level representation of the R object. We’ll review each
 piece of output next.</p>
 <p><strong>Note</strong>: What follows is my interpretation of what is in <a href="https://cran.r-project.org/doc/manuals/r-release/R-ints.html">R internals</a> and
-in the sources<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>. I could be wrong about some or all of it, and what
+in the sources<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>. I could be wrong about some or all of it, and what
 I’m right about could change in the future. Do not make rash life decisions
 based on what follows.</p>
 </div>
@@ -209,14 +212,14 @@ R Internals Manual</a>.</p>
 previously-allocated-but-no-longer-used memory for re-use. This process is
 known as garbage collection (GC). R’s garbage collector is <a href="https://en.wikipedia.org/wiki/Tracing_garbage_collection#Generational_GC_(ephemeral_GC)">generational</a>:
 it adjusts collection frequency depending on object age. The idea is that “most
-objects die young”<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a> so you can improve garbage collection performance
+objects die young”<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a> so you can improve garbage collection performance
 by first collecting the younger generation in the hopes that frees up enough
 memory to continue without further collection.</p>
 <p>The first two highlighted characters <em>partly</em> encode the generation of the R
 object. The 0 or 1 following the “g” corresponds to the value of the <code>gcgen</code>
 bit of the meta data. Additionally, R uses the <a href="https://cran.r-project.org/doc/manuals/r-release/R-ints.html#The-write-barrier"><code>mark</code> bit</a>, and whether it
 is set is shown by the “MARK” token appearing as highlighted here. This allows
-tracking of up to three generations of objects<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a>, where objects that
+tracking of up to three generations of objects<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a>, where objects that
 have a 1 value for the <code>mark</code> bit are considered older than those that don’t.</p>
 <p>The <code>mark</code> bit is set on an object if at the time the garbage collector runs the
 object is referenced by a variable. I ran <code>gc()</code> in the <a href="#inspect-ex">example</a>
@@ -231,12 +234,12 @@ of size:</p>
 <ul>
 <li><code>c == 0</code>: Non-vector nodes (e.g. NULL, pairlists, closures, etc.).</li>
 <li><code>0 &lt; c &lt; 6</code>: Small vectors of size up to <code>$8 \times 2 ^ {c - 1}$</code> bytes.</li>
-<li><code>c == 6</code>: Vectors with custom allocators<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a> (rare).</li>
+<li><code>c == 6</code>: Vectors with custom allocators<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a> (rare).</li>
 <li><code>c == 7</code>: Vectors larger than <code>$8 \times 2 ^ {c - 1}$</code> bytes (&gt; length 32
 logical/integers, &gt; length 16 numerics/character/lists).</li>
 </ul>
 <p>Each of the node classes in 0 through 5 are allocated from memory pages that are
-approximately 2,000 or 8,000 bytes<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a> depending on the system. New
+approximately 2,000 or 8,000 bytes<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a> depending on the system. New
 objects can be created from these pages quickly, at least until the page for
 that class is filled and a new one needs to be allocated by the OS. Large
 vector allocations are requested directly from the OS. Custom allocators will
@@ -258,7 +261,7 @@ safe to modify the memory in-place as there are no references to it.
 If <code># == 1</code> the memory is referenced by one symbol (variable) and can be
 modified in-place by some primitive functions. If <code># &gt; 1</code> the memory must be
 copied if it is modified. Note that constants have <code># &gt; 1</code> so that there
-values cannot be changed<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a>. “named” values on an object can
+values cannot be changed<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>. “named” values on an object can
 only ever be incremented. This token is mutually exclusive with the “REF”
 token discussed next.</li>
 <li><code>REF(#)</code>: A true reference counter that can be both incremented and
@@ -282,7 +285,7 @@ namespaces.</li>
 <li><code>gp=0x####</code>: Hexadecimal, value of the “General Purpose” 16 bit code
 associated with the object. This is used to encode things such as whether a
 promise has been seen, the encoding of a character string, whether an object
-is S4, and others<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>. Many of the flags that are implied by these codes
+is S4, and others<a href="#fn13" class="footnote-ref" id="fnref13"><sup>13</sup></a>. Many of the flags that are implied by these codes
 also are highlighted by other flags, so in some ways this is redundant except
 for the more unusual gp bit combinations.</li>
 <li><code>GL</code>: Is the Global Environment.</li>
@@ -345,7 +348,7 @@ global string cache (as it should be) and that it is ASCII encoded. That is
 obviously true of both strings. What about the additional <code>$2^{0}$</code> present in
 the 0x61, but only for “a”? This is probably related to symbol names (a.k.a.
 variable names) of loaded environments, which are hashed for faster
-lookup<a href="#fn13" class="footnote-ref" id="fnref13"><sup>13</sup></a>. However, because the symbol names are also stored in the
+lookup<a href="#fn14" class="footnote-ref" id="fnref14"><sup>14</sup></a>. However, because the symbol names are also stored in the
 string pool, if you use a string that happens to be associated with a hashed
 symbol, it will show up marked in the <code>$2^{0}$</code> general purpose bit:</p>
 <pre class="r"><code>b &lt;- 42
@@ -369,7 +372,7 @@ instead of an integer vector:</p>
 just records that a sequence starting at 1 and ending at 1e8 in 1 increments is
 implicitly represented by the object. Some functions can take advantage of this
 to sequentially or otherwise use the values of the vector without allocating the
-memory required to hold it in its entirety<a href="#fn14" class="footnote-ref" id="fnref14"><sup>14</sup></a>.</p>
+memory required to hold it in its entirety<a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a>.</p>
 <p>Another use of ALTREP is storing the sorted and missingness state in a wrapper:</p>
 <pre class="r"><code>.Internal(inspect(sort(c(3, 1, 2))))</code></pre>
 <pre></pre>
@@ -386,22 +389,22 @@ just by consulting the meta data instead of scanning the entire vector.</p>
 recursively. You can control the depth of the recursion with the first
 parameter:</p>
 <pre class="r"><code>.Internal(inspect(getNamespace(&#39;stats&#39;), max.depth=1))</code></pre>
-<pre><code>@7fe00307caa8 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000] &lt;namespace:stats&gt;
+<pre><code>@7feb058deea8 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000] &lt;namespace:stats&gt;
 ENCLOS:
-  @7fe003080088 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000,ATT] &lt;0x7fe003080088&gt;
+  @7feb058e2488 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000,ATT] &lt;0x7feb058e2488&gt;
   ATTRIB:
-    @7fe00307c808 02 LISTSXP g1c0 [MARK] 
+    @7feb058dec08 02 LISTSXP g1c0 [MARK] 
 HASHTAB:
-  @7fe00336d400 19 VECSXP g1c7 [MARK] (len=1018, tl=720)</code></pre>
+  @7feb06f65e00 19 VECSXP g1c7 [MARK] (len=1018, tl=720)</code></pre>
 <p>Absent the <code>max.depth</code> parameter you would risk substantial screen output.
 There are some slight differences in output here from what we have seen before,
 primarily from inspect labeling different components of the complex object.</p>
 <p>There is also the <code>max.elements</code> parameter, although in order to pass it you
 must also pass <code>max.depth</code> as the <code>.Internal</code> call will only match positionally:</p>
 <pre class="r"><code>.Internal(inspect(as.list(1:1e3), max.depth=-1, max.elements=2))</code></pre>
-<pre><code>@7fe0037cf600 19 VECSXP g0c7 [] (len=1000, tl=0)
-  @7fe00475de00 13 INTSXP g0c1 [] (len=1, tl=0) 1
-  @7fe00475ddc8 13 INTSXP g0c1 [] (len=1, tl=0) 2
+<pre><code>@7feb08263a00 19 VECSXP g0c7 [] (len=1000, tl=0)
+  @7feb08254728 13 INTSXP g0c1 [] (len=1, tl=0) 1
+  @7feb082546f0 13 INTSXP g0c1 [] (len=1, tl=0) 2
   ...</code></pre>
 <p>Aside: notice how similar the structure of the vector list above is to the
 character vector structure.</p>
@@ -449,29 +452,32 @@ whether objects truly need to be copied or not.<a href="#fnref4" class="footnote
 <li id="fn5"><p>For the NAM (named) reference counting heuristic, the amount of
 the increment doesn’t matter, only whether it is incremented to be greater than
 one or not.<a href="#fnref5" class="footnote-back">↩</a></p></li>
-<li id="fn6"><p>I looked primarily in <code>src/main/inspect.c</code> and <code>src/main/memory.c</code>
-of the r-devel sources at revision 76003 (2019-01-21).<a href="#fnref6" class="footnote-back">↩</a></p></li>
-<li id="fn7"><p>Imagine a script that calls many functions sequentially. Each of
+<li id="fn6"><p>Future versions of R, possibly as early as R3.6.0, will
+implement more sophisticated <a href="https://stat.ethz.ch/pipermail/r-devel/2018-September/076760.html">reference counting</a> that will better detect
+whether objects truly need to be copied or not.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>I looked primarily in <code>src/main/inspect.c</code> and <code>src/main/memory.c</code>
+of the r-devel sources at revision 76003 (2019-01-21).<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>Imagine a script that calls many functions sequentially. Each of
 those calls is likely to generate many internal R objects that are no longer
 needed as soon as the function ends evaluation. Only the return values are
 preserved in variables. These function specific objects are likely to be the
 younger generation that is eliminated first. Preserved objects in variables
 will then be aged into an older generation and only be reviewed for freeing if
-eliminating the young generation is insufficient.<a href="#fnref7" class="footnote-back">↩</a></p></li>
-<li id="fn8"><p>As best I can tell the generations are “not marked”, “marked and
+eliminating the young generation is insufficient.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p>As best I can tell the generations are “not marked”, “marked and
 gen bit is 0”, “marked and gen bit is 1”. Since the generations are changed by
 the garbage collector, and the garbage collector has no reason to preserve any
 non-referenced object, it kind of make sense that the distinction between 0 and
-1 for the gen bit is meaningless if an object is not also considered marked.<a href="#fnref8" class="footnote-back">↩</a></p></li>
-<li id="fn9"><p>It is possible to implement custom memory allocators, but in
-that case R is no longer responsible for managing the memory.<a href="#fnref9" class="footnote-back">↩</a></p></li>
-<li id="fn10"><p>There some small overhead for each page, and also some rounding to
+1 for the gen bit is meaningless if an object is not also considered marked.<a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p>It is possible to implement custom memory allocators, but in
+that case R is no longer responsible for managing the memory.<a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>There some small overhead for each page, and also some rounding to
 multiples of the underlying R object sizes. Systems with long vector support
-(64 bit?) appear to use the 8000 byte base page size.<a href="#fnref10" class="footnote-back">↩</a></p></li>
-<li id="fn11"><p>This came up in the <a href="https://stat.ethz.ch/pipermail/r-devel/2011-November/062654.html">Matt Dowle - Peter Daalgard thread</a>.<a href="#fnref11" class="footnote-back">↩</a></p></li>
-<li id="fn12"><p>For a full accounting of the general purpose bits see <a href="https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Rest-of-header">R Internals</a>.<a href="#fnref12" class="footnote-back">↩</a></p></li>
-<li id="fn13"><p>This distinct from the string pool hash table.<a href="#fnref13" class="footnote-back">↩</a></p></li>
-<li id="fn14"><p>e.g. <code>for</code> can loop through the values of an ALTREP sequence
-without materializing the full vector.<a href="#fnref14" class="footnote-back">↩</a></p></li>
+(64 bit?) appear to use the 8000 byte base page size.<a href="#fnref11" class="footnote-back">↩</a></p></li>
+<li id="fn12"><p>This came up in the <a href="https://stat.ethz.ch/pipermail/r-devel/2011-November/062654.html">Matt Dowle - Peter Daalgard thread</a>.<a href="#fnref12" class="footnote-back">↩</a></p></li>
+<li id="fn13"><p>For a full accounting of the general purpose bits see <a href="https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Rest-of-header">R Internals</a>.<a href="#fnref13" class="footnote-back">↩</a></p></li>
+<li id="fn14"><p>This distinct from the string pool hash table.<a href="#fnref14" class="footnote-back">↩</a></p></li>
+<li id="fn15"><p>e.g. <code>for</code> can loop through the values of an ALTREP sequence
+without materializing the full vector.<a href="#fnref15" class="footnote-back">↩</a></p></li>
 </ol>
 </div>
