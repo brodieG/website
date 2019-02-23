@@ -29,9 +29,8 @@ use."
 and cropped.'
 ><img
   id='front-img'
+  class='post-inset-image'
   src='/front-img/ramsticks.png'
-  style='float: left; margin: 5px 15px 5px 0; object-fit: cover; width: 250px;
-  height: 250px;'
 /></a></p>
 <p>R does a pretty good job of abstracting away the memory management aspect of
 programming. We don’t need to know anything about <code>malloc</code>, <code>free</code>, memory
@@ -387,22 +386,22 @@ just by consulting the meta data instead of scanning the entire vector.</p>
 recursively. You can control the depth of the recursion with the first
 parameter:</p>
 <pre class="r"><code>.Internal(inspect(getNamespace(&#39;stats&#39;), max.depth=1))</code></pre>
-<pre><code>@7faa651370a8 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000] &lt;namespace:stats&gt;
+<pre><code>@7fe00307caa8 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000] &lt;namespace:stats&gt;
 ENCLOS:
-  @7faa6513a688 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000,ATT] &lt;0x7faa6513a688&gt;
+  @7fe003080088 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000,ATT] &lt;0x7fe003080088&gt;
   ATTRIB:
-    @7faa65136e08 02 LISTSXP g1c0 [MARK] 
+    @7fe00307c808 02 LISTSXP g1c0 [MARK] 
 HASHTAB:
-  @7faa65e51c00 19 VECSXP g1c7 [MARK] (len=1018, tl=720)</code></pre>
+  @7fe00336d400 19 VECSXP g1c7 [MARK] (len=1018, tl=720)</code></pre>
 <p>Absent the <code>max.depth</code> parameter you would risk substantial screen output.
 There are some slight differences in output here from what we have seen before,
 primarily from inspect labeling different components of the complex object.</p>
 <p>There is also the <code>max.elements</code> parameter, although in order to pass it you
 must also pass <code>max.depth</code> as the <code>.Internal</code> call will only match positionally:</p>
 <pre class="r"><code>.Internal(inspect(as.list(1:1e3), max.depth=-1, max.elements=2))</code></pre>
-<pre><code>@7faa67842000 19 VECSXP g0c7 [] (len=1000, tl=0)
-  @7faa67836fc8 13 INTSXP g0c1 [] (len=1, tl=0) 1
-  @7faa67836f90 13 INTSXP g0c1 [] (len=1, tl=0) 2
+<pre><code>@7fe0037cf600 19 VECSXP g0c7 [] (len=1000, tl=0)
+  @7fe00475de00 13 INTSXP g0c1 [] (len=1, tl=0) 1
+  @7fe00475ddc8 13 INTSXP g0c1 [] (len=1, tl=0) 2
   ...</code></pre>
 <p>Aside: notice how similar the structure of the vector list above is to the
 character vector structure.</p>

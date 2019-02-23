@@ -295,6 +295,13 @@ img.aligncenter {
   margin: auto;
 }
 
+img.post-inset-image {
+  float: left;
+  margin: 5px 15px 5px 0;
+  object-fit: cover;
+  width: 200px;
+  height: 200px;
+}
 .alignleft {
   float: left;
   margin: 0 1.5em 1.5em 0;
@@ -1949,6 +1956,10 @@ code {
 }
 /* 600px */
 @media all and (min-width: 37.5em) {
+    img.post-inset-image {
+      width: 250px;
+      height: 250px;
+    }
     .return-top {
       display: block;
       position: fixed;
