@@ -2,7 +2,11 @@
         <div class='excerpt-content'>
             <article>
                 <a href="{{ .Permalink }}">
-                  {{ $.Param "description" }}
+    {{ if $.Param "descriptionlong" }}
+      {{ $.Param "descriptionlong" }}
+    {{ else }}
+      {{ $.Param "description" }}
+    {{ end}}
                 </a>
             </article>
         </div>
