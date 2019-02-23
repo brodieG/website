@@ -20,3 +20,10 @@ correct command just got too complicated.  It seems that the archetype has to
 match down to the extension?  We even tried to make a folder with a name like
 'post-img.md' but that didn't work.  So we give up on bundled archetypes for
 now.
+
+Maybe the problem is that the path is "post" but the kind is "post-img"?
+
+[Allison Hill][2] notes that Academic does have [bundle archetypes][1]:
+
+[1]: https://github.com/gcushen/hugo-academic/tree/master/archetypes
+[2]: https://twitter.com/apreshill/status/1098696759377780736
