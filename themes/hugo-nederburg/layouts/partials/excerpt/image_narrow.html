@@ -2,9 +2,20 @@
 <a class="featured-image-link" href="{{ .Permalink }}">
     <div
       style='margin: 0 {{ .Params.imagemrghz }};'
-      class='featured-image lazy lazy-bg-image' 
-      {{if isset .Site.Params "usepostimgfolder"}}data-background="{{ .Permalink }}{{ .Params.image }}"
-      {{- else }}data-background="{{ .Params.image | absURL }}"{{ end }}
+      class='featured-image lazy lazy-bg-image'
+      {{if isset .Site.Params "usepostimgfolder"}}
+         {{ if .Params.imagerect }}
+         data-background="{{ .Permalink }}{{ .Params.imagerect }}"
+         {{ else }}
+         data-background="{{ .Permalink }}{{ .Params.image }}"
+         {{ end  }}
+      {{ else }}
+         {{ if .Params.imagerect }}
+         data-background="{{ .Params.imagerect | absURL }}"
+         {{ else }}
+         data-background="{{ .Params.image | absURL }}"
+         {{ end  }}
+      {{ end }}
     >
     </div>
 </a>

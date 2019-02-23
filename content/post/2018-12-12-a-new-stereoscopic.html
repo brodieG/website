@@ -3,10 +3,11 @@ title: A New Stereoscopic Mount Spectacular
 author: ~
 date: '2018-12-12'
 slug: three-d-pipeline
-image: "/front-img/a-new-stereoscopic-2.png"
+image: "/front-img/stereoscopic-square.png"
+imagerect: "/front-img/stereoscopic-rect.png"
 contenttype: article
 imagemrgvt: "0%"
-imagemrghz: "15%"
+imagemrghz: "10%"
 weight: 1
 description: Step by step implementation of a 3D rendering pipeline, from
   projections, to meshes, to rasterization, using base R only.
@@ -19,8 +20,9 @@ tags: [optimization,visualization]
 <div id="cool-but-not-eye-popping" class="section level1">
 <h1>Cool, but Not Eye Popping</h1>
 <p><img
-src="/front-img/a-new-stereoscopic-2.png"
-style='float: left; margin: 5px 15px 5px 0;' width='250'/></p>
+src="/front-img/stereoscopic-square.png"
+class="post-inset-image"
+/></p>
 <p>As I finished the <a href="/2018/10/23/do-not-shade-r/">ray shading post</a>, it occurred
 to me that it would be pretty cool if we could make these awesome 3D-looking
 reliefs actually 3D, or at least stereoscopic. After all, how hard could it
@@ -534,7 +536,7 @@ looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7f918c8ea920&gt;
+&lt;bytecode: 0x7f8ee6bccf08&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
@@ -926,7 +928,7 @@ persp(
 )</code></pre>
 <pre><code>Warning in persp.default(x = seq_len(nrow(volcano)), y =
 seq_len(ncol(volcano)), : surface extends beyond the box</code></pre>
-<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-63-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-64-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>I left the box in on purpose to highlight that I had to go to ridiculous lengths
 to get <code>persp</code> to fit the viewport the way I wanted. Finding the correct <code>xlim</code>
 and <code>ylim</code> values to achieve the desired effect was an exercise in almost futile
@@ -951,7 +953,7 @@ persp(
   ylim=c(2,52), xlim=c(6,46), theta=-65, phi=70,
   col=gray(tile.col), border=NA, r=1e7, scale=FALSE, box=FALSE
 )</code></pre>
-<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-64-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/unnamed-chunk-65-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>This doesn’t look great: it’s blocky, and there is no <a href="https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors">good way to
 get rid of the anti-aliasing lines</a>. I also used our <code>mesh.tile</code>
 list-matrix to compute the shading of the tiles, which requires a fair bit of

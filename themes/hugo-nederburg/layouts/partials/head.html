@@ -21,7 +21,13 @@
 <meta name="twitter:title" content='{{ $.Param "title" }}' />
 <meta name="twitter:description" content='{{ $.Param "description" }}' />
 <meta name="twitter:site" content='{{ $.Param "websiteurl" }}{{ .Permalink }}' />
+
+{{ if $.Param "imagerect" }}
+<meta name="twitter:image" content='{{ $.Param "websiteurl" }}{{ $.Param "imagerect" }}'/>
+{{ else }}
 <meta name="twitter:image" content='{{ $.Param "websiteurl" }}{{ $.Param "image" }}'/>
+{{ end }}
+
 <meta name="twitter:creator" content='{{ $.Param "twitterhandle" }}'/>
 <!-- Social End -->
 
