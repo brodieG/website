@@ -1,5 +1,6 @@
 ---
 image: /front-img/default.png
+imagerect:
 imagemrgvt: "0%"
 imagemrghz: "0%"
 draft: true

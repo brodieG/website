@@ -1,0 +1,83 @@
+---
+title: A Strategy for Faster Group Statisitics
+author: ~
+date: '2019-02-24'
+slug: a-strategy-for-faster-group-statisitics
+categories: []
+tags: []
+image: /front-img/default.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+---
+
+
+
+<div id="header-1" class="section level1">
+<h1>Header 1</h1>
+<!-- this needs to become a shortcode -->
+<p><img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/></p>
+<p>A well known limitation of R is that there is substantial overhead to evaluate R
+expressions. Fast code will pass R objects to compiled C routines as early as
+possible so that the computations can be carried out without the associated
+R overhead. Normally this isn’t a big deal so long as you avoid explicitly
+looping over long vectors with <code>for</code> or the <code>*pply</code> family of functions. If you
+do be prepared for delays on the order of two orders of magnitude.</p>
+<pre><code>short &lt;- runif(1)
+long &lt;- runif(1e7)
+grp &lt;- sample(1:1e6, 1e7, replace=TRUE)
+
+microbenchmark::microbenchmark(sum(short), sum(long))
+options(datatable.verbose = TRUE)
+
+DT &lt;- data.table(a=long, b=grp)
+options(datatable.optimize=Inf)
+system.time(DT[, sum(a), b])
+
+short &lt;- runif(1)
+long &lt;- runif(1e7)
+grp &lt;- sample(1:1e6, 1e7, replace=TRUE)
+
+n &lt;- 1e7
+grp.size &lt;- 10
+set.seed(42)
+DT &lt;- data.table(
+  x=runif(n), y=runif(n),
+  grp=sample(floor(n / grp.size), n, replace=TRUE)
+)
+DT[, `:=`(ux=mean(x), uy=mean(y)), grp]
+DT[, ux:=sum(x), grp]
+
+
+      ux &lt;- mean(x)
+      uy &lt;- mean(y)
+      slope &lt;- sum((x - ux) * (y - uy)) / sum((x - ux) ^ 2)
+      list(slope=slope, intercept=uy - slope * ux)
+
+DT &lt;- data.table(a=1:10, grp=c(T, F))
+options(datatable.verbose = TRUE)
+options(datatable.optimize=Inf)
+DT[, sum(a), grp]
+DT[, suma:=sum(a), grp]
+
+</code></pre>
+<p><span class="math display">\[\frac{\sum(x_i - \bar{x})\sum(y_i - \bar{y})}{\sum(x_i -
+\bar{x})^{2}}\]</span></p>
+<pre><code></code></pre>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+</div>
