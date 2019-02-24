@@ -109,7 +109,7 @@ really need is a mechanism to understand why the first assignment did not lead
 to a copy, but the second one did.  In both cases there is only one reference to
 `x` so it should be safe to modify `x` without copy.
 
-`.Internal(inspect(...))` allows us to inspect the guts of our R objects:
+`.Internal(inspect(...))` comes in handy here; it allows us to inspect the guts of our R objects:
 
 ```{r echo=FALSE}
 insp.chr <- c(
@@ -282,10 +282,10 @@ writeFansi(
 offset.  I know of no legitimate use within R of this number other
 than to confirm whether two symbols point to the same R object or not.
 
-One interesting point I only noticed while writing this post is that the address
+One interesting point I noticed while writing this post is that the address
 only uses 12 hexadecimal digits, or 48 bits (`$16^{12} = (2^{4})^{12} =
 2^{48}$`), despite my processor being 64 bit.  It turns out this because current
-x86-64 bit processors only [address 48 bits of memory space][11].
+x86-64 bit processors [address 48 bits of memory space][11].
 
 ## Type and Type Name Tokens
 
@@ -321,11 +321,12 @@ by first collecting the younger generation in the hopes that frees up enough
 memory to continue without further collection.
 
 The first two highlighted characters _partly_ encode the generation of the R
-object.  The 0 or 1 following the "g" corresponds to the value of the `gcgen`
-bit of the meta data.  Additionally, R uses the [`mark` bit][16], and whether it
-is set is shown by the "MARK" token appearing as highlighted here.  This allows
-tracking of up to three generations of objects[^gen-count], where objects that
-have a 1 value for the `mark` bit are considered older than those that don't.
+object.  The 0 or 1 following the "g" corresponds to the value of the
+`gcgen`[^gc-gen] bit of the meta data.  Additionally, R uses the [`mark`
+bit][16], and whether it is set is shown by the "MARK" token appearing as
+highlighted here.  This allows tracking of up to three generations of
+objects[^gen-count], where objects that have a 1 value for the `mark` bit are
+considered older than those that don't.
 
 The `mark` bit is set on an object if at the time the garbage collector runs the
 object is referenced by a variable.  I ran `gc()` in the [example](#inspect-ex)
@@ -535,6 +536,10 @@ I haven't looked at the specifics of how this is implemented, but functions that
 are ALTREP aware should be able to tell that the vector is sorted and has no NAs
 just by consulting the meta data instead of scanning the entire vector.
 
+As ALTREP becomes more prevalent, understanding what objects are ALTREPs and
+which functions can use them without materializing them will become increasingly
+important to write more efficient code.
+
 # Inspecting Complex Objects
 
 `.Internal(inspect(...))` will dump out the meta data for recursive objects
@@ -599,7 +604,8 @@ whether objects truly need to be copied or not.
 [^inc-size]: For the NAM (named) reference counting heuristic, the amount of
 the increment doesn't matter, only whether it is incremented to be greater than
 one or not.
-[^die-young]: Imagine a script that calls many functions sequentially.  Each of
+[^die-young]: I unfortunately cannot recall exactly where that quote comes from.
+That aside: Imagine a script that calls many functions sequentially.  Each of
 those calls is likely to generate many internal R objects that are no longer
 needed as soon as the function ends evaluation.  Only the return values are
 preserved in variables.  These function specific objects are likely to be the
@@ -620,8 +626,12 @@ non-referenced object, it kind of make sense that the distinction between 0 and
 1 for the gen bit is meaningless if an object is not also considered marked.
 [^custom-alloc]: It is possible to implement custom memory allocators, but in
 that case R is no longer responsible for managing the memory.
-[^symbol-hash]: This distinct from the string pool hash table.
-[^gc-gen]: The `gcgen` bit is part of the [rest of header][17] meta-data.
+[^symbol-hash]: This distinct from the string pool hash table.  I am not certain
+of this, but presumably the symbol hash returns the address of the object it is
+bound to, as opposed to the global string pool, which just returns the `CHARSXP`
+with the same string value.
+[^gc-gen]: The `gcgen` and `mark` bits are part of the [rest of header][17]
+meta-data.
 
 [1]: https://www.rforge.net/inspect/files/
 [2]: https://stackoverflow.com/questions/15759117/
