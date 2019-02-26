@@ -31,6 +31,9 @@ manifestation of the powerful philosophy underlying the language:
 * Everything is data.
 * Freedom.
 
+Related John Chamber's "Everything that exists is an object, Everything that
+happens is a function call" [user2014][].
+
 On the surface R looks like a traditional C style language, but the first two
 principles above make it something entirely different.  Freedom means there is a
 bewildering number of ways you can accomplish any given task, many of which are
@@ -482,7 +485,10 @@ principles that extend elegantly.
   `LISTSXP` name was taken.  `LISTSXP` are still used extensively in internal r
   code, but are mostly hidden from sight in regular use.
 
+
 [1]: https://cran.r-project.org/doc/manuals/R-lang.html#Vector-objects
 [2]: (https://cran.r-project.org/doc/manuals/R-lang.html#Object_002doriented-programming)
 [3]: https://cran.r-project.org/package=covr
 [4]: /2019/01/11/reverse-polish-notation-parsing-in-r/
+[5]: http://user2014.r-project.org/files/chambers.pdf
+[6]: http://www.win-vector.com/blog/2019/02/if-you-were-an-r-function-what-function-would-you-be/

@@ -34,18 +34,144 @@ there are no problems so long as you avoid looping over long vectors with `for`,
 the `*pply` family of functions, or otherwise.
 
 Unfortunately there is one common use case where such looping is required:
-computing statistics 
+computing statistics
 
 There
 is one common use case
 
+```{r eval=FALSE}
+slope <- function(x, y) {
+  ux <- mean.default(x)
+  uy <- mean.default(y)
+  sum((x - ux) * (y - uy)) / sum((x - ux) ^ 2)
+}
+n <- 1e7
+grp.size <- 10
+set.seed(42)
+grp <- sample(floor(n / grp.size), n, replace=TRUE)
+x <- runif(n)
+y <- runif(n)
+id <- seq_len(n)
+library(data.table)
+library(dplyr)
+DF <- tibble(grp, x, y)
+DT.raw <- data.table(grp, x, y)
+
+
+system.time(DF %>% group_by(grp) %>% summarise(sum(x)))
+#    user  system elapsed
+#  10.352   0.674  12.332
+DT <- copy(DT.raw)
+system.time(DT[, sum(x), grp])
+#    user  system elapsed
+#   2.743   0.500   1.040
+
+# Single thread timings seem a bit all over the place, in particular the first
+# timing like below is slow; others vary
+
+setDTthreads(1)
+system.time(DT[, sum(x), grp])
+#   user  system elapsed
+#  1.523   0.306   1.875
+
+# Interesting, dplyr detects `sum` correctly despite name change, datatable does
+# not, but still wipes the floor with dplyr
+
+sum2 <- sum
+system.time(DF %>% group_by(grp) %>% summarise(sum2(x)))
+#   user  system elapsed
+# 10.802   0.621  11.698
+system.time(DT[, sum2(x), grp])
+#   user  system elapsed
+#  2.447   0.087   2.571
+
+# oddly runs much slower with verbose=TRUE??
+system.time(DT[, sum2(x), grp, verbose=TRUE])
+
+
+setDTthreads(1)
+DT <- copy(DT.raw)
+system.time(setkey(DT, grp))
+#   user  system elapsed
+#  1.637   0.157   1.857
+system.time(DT[, sum(x), grp])
+#   user  system elapsed
+#  0.215   0.040   0.270
+system.time(sum(DT$x))
+#    user  system elapsed
+#   0.019   0.000   0.020
+
+# One somewhat dissapointing realization is that
+x2 <- runif(100)
+microbenchmark::microbenchmark(sum(x2))
+
+# one question here is whether the initial creation of the names in the
+# split call is an issue, but it doesn't seem to be.  These are the basic calls
+
+system.time({
+  id.split <- split(id, grp)
+  res <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+#    user  system elapsed
+#  14.393   0.540  15.273
+system.time({
+  x.split <- split(x, grp)
+  res <- vapply(x.split, sum, 0)
+})
+#    user  system elapsed
+#   7.987   0.469   8.686
+
+# truly remarkable that we're comparing 0.270 for data.table with single
+# thread and pre-sorting to 0.788 for vapply(., sum)
+
+system.time(x.split <- split(x, grp))
+#   user  system elapsed
+#  7.728   0.601   8.791
+system.time(res <- vapply(x.split, sum, 0))
+#    user  system elapsed
+#   0.742   0.040   0.788
+system.time(res <- vapply(x.split, mean.default, 0))
+#   user  system elapsed
+#  1.810   0.107   1.938
+system.time({
+  res <- numeric(length(x.split))
+  for(i in seq_along(x.split)) res[i] <- .Internal(mean(x.split[[i]]))
+})
+#   user  system elapsed
+#  0.254   0.003   0.260
+system.time(id.split <- split(id, grp))
+system.time({
+  res <- numeric(length(id.split))
+  for(i in seq_along(id.split)) res[i] <- sum(x[id.split[[i]]])
+})
+
+
+
+# part of what's going on with dplyr is that the grouping is very slow,
+# but even the hybrid eval piece is just unremarkable
+
+system.time(DFg <- DF %>% group_by(grp))
+#    user  system elapsed
+#  10.002   0.382  10.655
+system.time(summarise(DFg, sum(x)))
+#    user  system elapsed
+#   0.487   0.010   0.529
+system.time(summarise(DFg, mean(x)))
+#   user  system elapsed 
+#  0.504   0.006   0.520 
+
+```{r}
 ```
+
+
+```{r eval=FALSE}
 short <- runif(1)
 long <- runif(1e7)
 grp <- sample(1:1e6, 1e7, replace=TRUE)
 
 microbenchmark::microbenchmark(sum(short), sum(long))
 options(datatable.verbose = TRUE)
+
 
 DT <- data.table(a=long, b=grp)
 options(datatable.optimize=Inf)
@@ -55,20 +181,9 @@ short <- runif(1)
 long <- runif(1e7)
 grp <- sample(1:1e6, 1e7, replace=TRUE)
 
-n <- 1e7
-grp.size <- 10
-set.seed(42)
-grp <- sample(floor(n / grp.size), n, replace=TRUE)
-x <- runif(n)
-y <- runif(n)
-id <- seq_len(n)
 
 ## Hmm, vapply/split faster than expected?
 
-system.time({
-  id.split <- split(id, grp)
-  res3 <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
-})
 
 library(data.table)
 DT.raw <- data.table(grp, x, y)
@@ -76,11 +191,6 @@ DT.raw <- data.table(grp, x, y)
 # DT[, `:=`(ux=mean(x), uy=mean(y)), grp]
 # DT[, ux:=sum(x), grp]
 
-slope <- function(x, y) {
-  ux <- mean.default(x)
-  uy <- mean.default(y)
-  sum((x - ux) * (y - uy)) / sum((x - ux) ^ 2)
-}
 DT <- copy(DT.raw)
 system.time(res.old <- DT[, slope(x, y), keyby=grp])
 system.time(res.old2 <- with(DT, tapply(slope(x, y), grp)))
@@ -151,6 +261,21 @@ $$\frac{\sum(x_i - \bar{x})\sum(y_i - \bar{y})}{\sum(x_i -
 ```
 ```
 
+# dplyr Hybrid Eval
+
+[0.7.3 Hybrid Eval Vignette][2]:
+
+* Used to work on sub-expressions e.g. `summarize(foo(flights))`, but does not
+  seem to anymore.
+* Used to be extensible.
+
+Completely redesigned in [0.8.0][3]:
+
+* Seems like complex expressions no longer allowed?
+
+AFAICT hybrid evaluation is completely within C++.
+
+
 # Conclusions
 
 <!-- this needs to become a shortcode -->
@@ -160,3 +285,5 @@ $$\frac{\sum(x_i - \bar{x})\sum(y_i - \bar{y})}{\sum(x_i -
 # Appendix
 
 [1]: https://stackoverflow.com/a/29806540/2725969
+[2]: https://s3.amazonaws.com/assets.rdocumentation.org/rpackages/unarchived/dplyr/0.7.3/vignettes/hybrid-evaluation.html
+[3]: https://github.com/tidyverse/dplyr/blob/235d07643c0b82862a50f9459124694471a31076/vignettes/future/dplyr_0.8.0_new_hybrid.Rmd
