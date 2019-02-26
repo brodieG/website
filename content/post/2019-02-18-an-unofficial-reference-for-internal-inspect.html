@@ -208,7 +208,8 @@ R Internals Manual</a>.</p>
 <h2>GC Info Token, Part 1: Generation Data</h2>
 <pre></pre>
 <pre><code>@7fa582fa7248 13 INTSXP <span style='background-color: #BBBB00;'>g0</span><span>c4 [</span><span style='background-color: #BBBB00;'>MARK</span><span>,NAM(1)] (len=10, tl=0) 10,9,2,6,5,...</span></code></pre>
-<p>Software like R that manages memory allocation will be responsible for freeing
+<p><a name='generation-data'></a>
+Software like R that manages memory allocation will be responsible for freeing
 previously-allocated-but-no-longer-used memory for re-use. This process is
 known as garbage collection (GC). R’s garbage collector is <a href="https://en.wikipedia.org/wiki/Tracing_garbage_collection#Generational_GC_(ephemeral_GC)">generational</a>:
 it adjusts collection frequency depending on object age. The idea is that “most
@@ -273,6 +274,10 @@ modifications that happen later, even though there likely are no references
 remaining after the closure is done evaluating. This could be implemented as
 early as R3.6.0, and would replace the “named” system. This token is mutually
 exclusive with the “NAM” token discussed previously.</li>
+<li><code>MARK</code>: The object was referenced by a variable at the time of garbage
+collection, i.e. it could not be collected because it was in use. In
+conjunction with the rest of the <a href="#generation-data">GC info</a> data this helps
+define the garbage collection generation of the object.</li>
 <li><code>DBG</code>: (closures only) has been <code>debug</code>ged.</li>
 <li><code>TR</code>: (closure only) has been <code>trace</code>d.</li>
 <li><code>STP</code>: (closure only) has been <code>debugonce</code>d, but once full reference counting
@@ -309,6 +314,19 @@ in R Internals</a>
 </cite>
 </footer>
 </blockquote>
+<p><a name='growable'></a>
+Additionally, <a href="https://github.com/wch/r-source/commit/12aa371f88e5ece5015246e4f4b3e0b2b7f21639">as of R3.4.0</a> R will over-allocate vectors that have values
+assigned past the end to try to mitigate the growing vectors<a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a> problem:</p>
+<pre class="r"><code>x &lt;- sample(100)
+.Internal(inspect(x))</code></pre>
+<pre><code>@7f8529893de0 13 INTSXP g0c7 [NAM(1)] (len=100, tl=0) 41,97,16,65,49,...</code></pre>
+<pre class="r"><code>x[101] &lt;- 101L
+.Internal(inspect(x))</code></pre>
+<pre></pre>
+<pre><code>@7f85245b0f70 13 INTSXP g0c7 [NAM(1),<span style='background-color: #BBBB00;'>gp=0x20</span><span>] (len=101, </span><span style='background-color: #BBBB00;'>tl=106</span><span>) 41,97,16,65,49,...</span></code></pre>
+<p>Currently the default is to grow the vector to 1.05 times the length. The fifth
+<code>gp</code> bit is set (<code>$0x20 = 2^5$</code>) presumably marking that this vector is
+“growable”.</p>
 </div>
 <div id="data-token" class="section level2">
 <h2>Data Token</h2>
@@ -349,7 +367,7 @@ global string cache (as it should be) and that it is ASCII encoded. That is
 obviously true of both strings. What about the additional <code>$2^{0}$</code> present in
 the 0x61, but only for “a”? This is probably related to symbol names (a.k.a.
 variable names) of loaded environments, which are hashed for faster
-lookup<a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a>. However, because the symbol names are also stored in the
+lookup<a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a>. However, because the symbol names are also stored in the
 string pool, if you use a string that happens to be associated with a hashed
 symbol, it will show up marked in the <code>$2^{0}$</code> general purpose bit:</p>
 <pre class="r"><code>b &lt;- 42
@@ -373,7 +391,7 @@ instead of an integer vector:</p>
 just records that a sequence starting at 1 and ending at 1e8 in 1 increments is
 implicitly represented by the object. Some functions can take advantage of this
 to sequentially or otherwise use the values of the vector without allocating the
-memory required to hold it in its entirety<a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a>.</p>
+memory required to hold it in its entirety<a href="#fn17" class="footnote-ref" id="fnref17"><sup>17</sup></a>.</p>
 <p>Another use of ALTREP is storing the sorted and missingness state in a wrapper:</p>
 <pre class="r"><code>.Internal(inspect(sort(c(3, 1, 2))))</code></pre>
 <pre></pre>
@@ -393,22 +411,22 @@ important to write more efficient code.</p>
 recursively. You can control the depth of the recursion with the first
 parameter:</p>
 <pre class="r"><code>.Internal(inspect(getNamespace(&#39;stats&#39;), max.depth=1))</code></pre>
-<pre><code>@7fb2088df2a8 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000] &lt;namespace:stats&gt;
+<pre><code>@7fe2431e40a8 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000] &lt;namespace:stats&gt;
 ENCLOS:
-  @7fb2088e2888 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000,ATT] &lt;0x7fb2088e2888&gt;
+  @7fe2431e7688 04 ENVSXP g1c0 [MARK,NAM(3),LCK,gp=0x4000,ATT] &lt;0x7fe2431e7688&gt;
   ATTRIB:
-    @7fb2088df008 02 LISTSXP g1c0 [MARK] 
+    @7fe2431e3e08 02 LISTSXP g1c0 [MARK] 
 HASHTAB:
-  @7fb208e2d000 19 VECSXP g1c7 [MARK] (len=1018, tl=720)</code></pre>
+  @7fe243affa00 19 VECSXP g1c7 [MARK] (len=1018, tl=720)</code></pre>
 <p>Absent the <code>max.depth</code> parameter you would risk substantial screen output.
 There are some slight differences in output here from what we have seen before,
 primarily from inspect labeling different components of the complex object.</p>
 <p>There is also the <code>max.elements</code> parameter, although in order to pass it you
 must also pass <code>max.depth</code> as the <code>.Internal</code> call will only match positionally:</p>
 <pre class="r"><code>.Internal(inspect(as.list(1:1e3), max.depth=-1, max.elements=2))</code></pre>
-<pre><code>@7fb209f7fa00 19 VECSXP g0c7 [] (len=1000, tl=0)
-  @7fb209f6be30 13 INTSXP g0c1 [] (len=1, tl=0) 1
-  @7fb209f6bdf8 13 INTSXP g0c1 [] (len=1, tl=0) 2
+<pre><code>@7fe247a3ec00 19 VECSXP g0c7 [] (len=1000, tl=0)
+  @7fe2471eea20 13 INTSXP g0c1 [] (len=1, tl=0) 1
+  @7fe2471ee9e8 13 INTSXP g0c1 [] (len=1, tl=0) 2
   ...</code></pre>
 <p>Aside: notice how similar the structure of the vector list above is to the
 character vector structure.</p>
@@ -424,9 +442,19 @@ character vector structure.</p>
 <div id="acknowledgements" class="section level1">
 <h1>Acknowledgements</h1>
 <ul>
-<li>Jim Hester for pointing me to the <a href="https://twitter.com/jimhester_/status/1067105621294686208">named/reference discussion on R-devel</a>.</li>
+<li>Jim Hester for pointing me to the <a href="https://twitter.com/jimhester_/status/1067105621294686208">named/reference discussion on R-devel</a>
+and to the new usage of <code>truelength</code> for <a href="https://github.com/wch/r-source/commit/12aa371f88e5ece5015246e4f4b3e0b2b7f21639">over-allocated vectors</a>.</li>
 <li>Image Credit: A Pile of RAM, by <a href="https://www.flickr.com/photos/blakespot/">Blake Patterson</a>, under <a href="https://creativecommons.org/licenses/by/2.0/">CC-BY 2.0</a>,
 background removed and cropped.</li>
+</ul>
+</div>
+<div id="updates" class="section level1">
+<h1>Updates</h1>
+<ul>
+<li>2/25/19 8pm: added docs for <code>MARK</code> in <a href="#extra-token">extra section</a> (h/t Jim
+Hester).</li>
+<li>2/25/19 8pm: <code>truelength</code> is also used for <a href="#growable">growable</a> vectors (h/t
+Jim Hester).</li>
 </ul>
 </div>
 <div class="footnotes">
@@ -460,7 +488,7 @@ one or not.<a href="#fnref5" class="footnote-back">↩</a></p></li>
 implement more sophisticated <a href="https://stat.ethz.ch/pipermail/r-devel/2018-September/076760.html">reference counting</a> that will better detect
 whether objects truly need to be copied or not.<a href="#fnref6" class="footnote-back">↩</a></p></li>
 <li id="fn7"><p>I looked primarily in <code>src/main/inspect.c</code> and <code>src/main/memory.c</code>
-of the r-devel sources at revision 76003 (2019-01-21).<a href="#fnref7" class="footnote-back">↩</a></p></li>
+of the r-devel sources at revision 76003 (R-devel 3.6.0 2019-01-21).<a href="#fnref7" class="footnote-back">↩</a></p></li>
 <li id="fn8"><p>I unfortunately cannot recall exactly where that quote comes from.
 That aside: Imagine a script that calls many functions sequentially. Each of
 those calls is likely to generate many internal R objects that are no longer
@@ -478,16 +506,22 @@ non-referenced object, it kind of make sense that the distinction between 0 and
 1 for the gen bit is meaningless if an object is not also considered marked.<a href="#fnref10" class="footnote-back">↩</a></p></li>
 <li id="fn11"><p>It is possible to implement custom memory allocators, but in
 that case R is no longer responsible for managing the memory.<a href="#fnref11" class="footnote-back">↩</a></p></li>
-<li id="fn12"><p>There some small overhead for each page, and also some rounding to
-multiples of the underlying R object sizes. Systems with long vector support
+<li id="fn12"><p>There is some small overhead for each page, and also some rounding
+to multiples of the underlying R object sizes. Systems with long vector support
 (64 bit?) appear to use the 8000 byte base page size.<a href="#fnref12" class="footnote-back">↩</a></p></li>
 <li id="fn13"><p>This came up in the <a href="https://stat.ethz.ch/pipermail/r-devel/2011-November/062654.html">Matt Dowle - Peter Daalgard thread</a>.<a href="#fnref13" class="footnote-back">↩</a></p></li>
 <li id="fn14"><p>For a full accounting of the general purpose bits see <a href="https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Rest-of-header">R Internals</a>.<a href="#fnref14" class="footnote-back">↩</a></p></li>
-<li id="fn15"><p>This distinct from the string pool hash table. I am not certain
+<li id="fn15"><p>Growing vectors as in <code>x &lt;- 0; for(i in 1:100) x[i] &lt;- i</code> used to
+require allocating a new vector at each assignment, copying the old vector, and
+appending the new value. This is pretty slow. As of R3.4.0 R allocates some
+extra memory to the vector each time we write to the end, so that re-allocation
+is not necessary at each assignment. The improvement helps but growing vectors
+this way is still bad practice compared to e.g.: <code>x &lt;- numeric(100); for(i in 1:100) x[i] &lt;- i</code>.<a href="#fnref15" class="footnote-back">↩</a></p></li>
+<li id="fn16"><p>This distinct from the string pool hash table. I am not certain
 of this, but presumably the symbol hash returns the address of the object it is
 bound to, as opposed to the global string pool, which just returns the <code>CHARSXP</code>
-with the same string value.<a href="#fnref15" class="footnote-back">↩</a></p></li>
-<li id="fn16"><p>e.g. <code>for</code> can loop through the values of an ALTREP sequence
-without materializing the full vector.<a href="#fnref16" class="footnote-back">↩</a></p></li>
+with the same string value.<a href="#fnref16" class="footnote-back">↩</a></p></li>
+<li id="fn17"><p>e.g. <code>for</code> can loop through the values of an ALTREP sequence
+without materializing the full vector.<a href="#fnref17" class="footnote-back">↩</a></p></li>
 </ol>
 </div>

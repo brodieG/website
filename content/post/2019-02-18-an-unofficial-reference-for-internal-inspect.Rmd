@@ -312,6 +312,7 @@ writeFansi(
 )
 ```
 
+<a name='generation-data'></a>
 Software like R that manages memory allocation will be responsible for freeing
 previously-allocated-but-no-longer-used memory for re-use.  This process is
 known as garbage collection (GC).  R's garbage collector is [generational][13]:
@@ -387,6 +388,10 @@ of the sub-tokens if they appear follow:
   remaining after the closure is done evaluating.  This could be implemented as
   early as R3.6.0, and would replace the "named" system.  This token is mutually
   exclusive with the "NAM" token discussed previously.
+* `MARK`: The object was referenced by a variable at the time of garbage
+  collection, i.e. it could not be collected because it was in use.  In
+  conjunction with the rest of the [GC info](#generation-data) data this helps
+  define the garbage collection generation of the object.
 * `DBG`: (closures only) has been `debug`ged.
 * `TR`: (closure only) has been `trace`d.
 * `STP`: (closure only) has been `debugonce`d, but once full reference counting
@@ -426,6 +431,28 @@ in R Internals</a>
 </cite>
 </footer>
 </blockquote>
+
+<a name='growable'></a>
+Additionally, [as of R3.4.0][23] R will over-allocate vectors that have values
+assigned past the end to try to mitigate the growing vectors[^grow-vec] problem:
+
+```{r eval=FALSE}
+x <- sample(100)
+.Internal(inspect(x))
+```
+```
+@7f8529893de0 13 INTSXP g0c7 [NAM(1)] (len=100, tl=0) 41,97,16,65,49,...
+```
+```{r eval=FALSE}
+x[101] <- 101L
+.Internal(inspect(x))
+```{r echo=FALSE, results='asis'}
+writeFansi("@7f85245b0f70 13 INTSXP g0c7 [NAM(1),\033[43mgp=0x20\033[m] (len=101, \033[43mtl=106\033[m) 41,97,16,65,49,...")
+```
+
+Currently the default is to grow the vector to 1.05 times the length.  The fifth
+`gp` bit is set (`$0x20 = 2^5$`) presumably marking that this vector is
+"growable".
 
 ## Data Token
 
@@ -573,9 +600,17 @@ While I wrote this mostly as a reference to myself, I hope it will be useful to 
 
 # Acknowledgements
 
-* Jim Hester for pointing me to the [named/reference discussion on R-devel][21].
+* Jim Hester for pointing me to the [named/reference discussion on R-devel][21]
+  and to the new usage of `truelength` for [over-allocated vectors][23].
 * Image Credit: A Pile of RAM, by [Blake Patterson][4], under [CC-BY 2.0][5],
   background removed and cropped.
+
+# Updates
+
+* 2/25/19 8pm: added docs for `MARK` in [extra section](#extra-token) (h/t Jim
+  Hester).
+* 2/25/19 8pm: `truelength` is also used for [growable](#growable) vectors (h/t
+  Jim Hester).
 
 [^frame]: I use the term "frame" somewhat loosely to mean the location were
 variables reside, and you can use the term to mean "environment".  The "frame"
@@ -593,7 +628,7 @@ x` then there would be two references to the object, `x` and `y`.  If I call
 `var(x)` then there will be an additional reference inside the `var` function
 while it is evaluating.
 [^sources]: I looked primarily in `src/main/inspect.c` and `src/main/memory.c`
-of the r-devel sources at revision 76003 (2019-01-21).
+of the r-devel sources at revision 76003 (R-devel 3.6.0 2019-01-21).
 [^call-by-val]: [Call-by-value][19] means that the value of arguments
 passed to functions is not changed in the frame that calls the function, even if
 it is changed in the function frame.  Contrast to call-by-reference where any
@@ -613,8 +648,8 @@ younger generation that is eliminated first.  Preserved objects in variables
 will then be aged into an older generation and only be reviewed for freeing if
 eliminating the young generation is insufficient.
 [^constants-named]: This came up in the [Matt Dowle - Peter Daalgard thread][18].
-[^page-size]: There some small overhead for each page, and also some rounding to
-multiples of the underlying R object sizes.  Systems with long vector support
+[^page-size]: There is some small overhead for each page, and also some rounding
+to multiples of the underlying R object sizes.  Systems with long vector support
 (64 bit?) appear to use the 8000 byte base page size.
 [^gp]: For a full accounting of the general purpose bits see [R Internals][17].
 [^alt-seq-ex]: e.g. `for` can loop through the values of an ALTREP sequence
@@ -632,6 +667,13 @@ bound to, as opposed to the global string pool, which just returns the `CHARSXP`
 with the same string value.
 [^gc-gen]: The `gcgen` and `mark` bits are part of the [rest of header][17]
 meta-data.
+[^grow-vec]: Growing vectors as in `x <- 0; for(i in 1:100) x[i] <- i` used to
+require allocating a new vector at each assignment, copying the old vector, and
+appending the new value.  This is pretty slow.  As of R3.4.0 R allocates some
+extra memory to the vector each time we write to the end, so that re-allocation
+is not necessary at each assignment.  The improvement helps but growing vectors
+this way is still bad practice compared to e.g.: `x <- numeric(100); for(i in
+1:100) x[i] <- i`.
 
 [1]: https://www.rforge.net/inspect/files/
 [2]: https://stackoverflow.com/questions/15759117/
@@ -655,3 +697,5 @@ meta-data.
 [20]: https://www.rforge.net/doc/packages/inspect/inspect.html
 [21]: https://twitter.com/jimhester_/status/1067105621294686208
 [22]: https://stat.ethz.ch/pipermail/r-devel/
+[23]: https://github.com/wch/r-source/commit/12aa371f88e5ece5015246e4f4b3e0b2b7f21639
+
