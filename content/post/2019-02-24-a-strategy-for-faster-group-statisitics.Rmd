@@ -156,7 +156,7 @@ system.time(ord <- order(grp))
 #   user  system elapsed
 #  0.288   0.027   0.318
 
-# Note: this only does na.rm doesn't handle NAs, as per WinVector
+# Note: adapted to handle na.rm as per winvector
 
 sum_g2 <- function(x, grp, na.rm=FALSE) {
   ord <- order(grp)
@@ -166,12 +166,22 @@ sum_g2 <- function(x, grp, na.rm=FALSE) {
   grp.rle <- rle(grp.ord)
   grp.rle.c <- cumsum(grp.rle[['lengths']])
   x.ord <- x[ord]
-  na.x <- is.na(x.ord)
-  x.ord[na.x] <- 0
+  has.na <- anyNA(x)
+
+  if(has.na) {
+    na.x <- is.na(x)
+    x.ord[na.x] <- 0
+  } else na.x <- logical()
+
   x.grp.c <- cumsum(x.ord)[grp.rle.c]
   x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[1L:(length(x.grp.c) - 1L)]
-  x.grp.c
+
+  if(!na.rm && has.na)
+    x.grp.c[match(grp.ord[na.x], grp.rle[['values']])] <- NA
+
+  structure(x.grp.c, groups=grp.rle[['values']])
 }
+
 DT <- copy(DT.raw)
 system.time(res.ref <- DT[, sum(x), keyby=grp][['V1']])
 #   user  system elapsed
@@ -179,7 +189,7 @@ system.time(res.ref <- DT[, sum(x), keyby=grp][['V1']])
 system.time(res <- sum_g2(x, grp))
 #   user  system elapsed
 #  1.286   0.309   1.692
-all.equal(res, res.ref)
+all.equal(res, res.ref, check.attributes=FALSE) # TRUE
 
 
 sum_winvector <- function(DF) {
