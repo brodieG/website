@@ -133,19 +133,76 @@ system.time(res <- vapply(x.split, sum, 0))
 system.time(res <- vapply(x.split, mean.default, 0))
 #   user  system elapsed
 #  1.810   0.107   1.938
+
+# .Internal very fast if called directly, .Primitive not so much
+
 system.time({
   res <- numeric(length(x.split))
   for(i in seq_along(x.split)) res[i] <- .Internal(mean(x.split[[i]]))
 })
 #   user  system elapsed
 #  0.254   0.003   0.260
+
 system.time(id.split <- split(id, grp))
+#    user  system elapsed
+#   6.555   0.371   7.140
 system.time({
   res <- numeric(length(id.split))
   for(i in seq_along(id.split)) res[i] <- sum(x[id.split[[i]]])
 })
+#   user  system elapsed
+#  0.988   0.017   1.039
+system.time(ord <- order(grp))
+#   user  system elapsed
+#  0.288   0.027   0.318
+
+# Note: this only does na.rm doesn't handle NAs, as per WinVector
+
+sum_g2 <- function(x, grp, na.rm=FALSE) {
+  ord <- order(grp)
+  id <- seq_along(grp)
+  id.ord <- id[ord]
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.rle.c <- cumsum(grp.rle[['lengths']])
+  x.ord <- x[ord]
+  na.x <- is.na(x.ord)
+  x.ord[na.x] <- 0
+  x.grp.c <- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[1L:(length(x.grp.c) - 1L)]
+  x.grp.c
+}
+DT <- copy(DT.raw)
+system.time(res.ref <- DT[, sum(x), keyby=grp][['V1']])
+#   user  system elapsed
+#  1.071   0.134   1.216
+system.time(res <- sum_g2(x, grp))
+#   user  system elapsed
+#  1.286   0.309   1.692
+all.equal(res, res.ref)
 
 
+sum_winvector <- function(DF) {
+  odata <- DF[order(DF$grp),,drop=FALSE]
+  first_indices <- mark_first_in_each_group(odata, "grp")
+  sum_g(odata[['x']], first_indices)
+}
+
+#   user  system elapsed
+#  1.810   0.740   2.651
+microbenchmark::microbenchmark(times=10,
+{
+  ord <- order(grp)
+  id <- seq_along(grp)
+  id.ord <- id[ord]
+  id.rle <- rle(id.ord)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.rle.c <- cumsum(grp.rle[['lengths']])
+  x.ord <- x[ord]
+  x.grp.c <- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[1L:(length(x.grp.c) - 1L)]
+})
 
 # part of what's going on with dplyr is that the grouping is very slow,
 # but even the hybrid eval piece is just unremarkable
@@ -157,8 +214,8 @@ system.time(summarise(DFg, sum(x)))
 #    user  system elapsed
 #   0.487   0.010   0.529
 system.time(summarise(DFg, mean(x)))
-#   user  system elapsed 
-#  0.504   0.006   0.520 
+#   user  system elapsed
+#  0.504   0.006   0.520
 
 ```{r}
 ```

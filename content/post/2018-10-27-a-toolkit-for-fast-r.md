@@ -48,3 +48,8 @@ tags: [rstats]
 * Group max
 * Multiply
 
+# References
+
+WinVector's [FastBaseR][1]
+
+[1]: https://github.com/WinVector/FastBaseR
