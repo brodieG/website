@@ -28,6 +28,8 @@ manifestation of the powerful philosophy underlying the language:</p>
 <li>Everything is data.</li>
 <li>Freedom.</li>
 </ul>
+<p>Related John Chamber’s “Everything that exists is an object, Everything that
+happens is a function call” [user2014][].</p>
 <p>On the surface R looks like a traditional C style language, but the first two
 principles above make it something entirely different. Freedom means there is a
 bewildering number of ways you can accomplish any given task, many of which are
@@ -121,24 +123,24 @@ seems odd, realize that character vectors are the same. They are vectors of
 pointers to strings which themselves are often different sizes. This is
 apparent if we inspect the inner structure of the list:</p>
 <pre class="r"><code>.Internal(inspect(l))</code></pre>
-<pre><code>@7f9272639be8 19 VECSXP g0c3 [NAM(3)] (len=4, tl=0)
-  @7f92750e8380 14 REALSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1
-  @7f9273a362f8 13 INTSXP g0c0 [NAM(3)]  1 : 3 (compact)
-  @7f9272b952c8 16 STRSXP g0c2 [NAM(3)] (len=2, tl=0)
-    @7f92750e82a0 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] &quot;hello&quot;
-    @7f92750e81f8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] &quot;world&quot;
-  @7f92750e8188 10 LGLSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</code></pre>
+<pre><code>@7fb4a10eb188 19 VECSXP g0c3 [NAM(3)] (len=4, tl=0)
+  @7fb4a16fd230 14 REALSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1
+  @7fb4a273aa40 13 INTSXP g0c0 [NAM(3)]  1 : 3 (compact)
+  @7fb4a379ea88 16 STRSXP g0c2 [NAM(3)] (len=2, tl=0)
+    @7fb4a16fd150 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] &quot;hello&quot;
+    @7fb4a16fd0a8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] &quot;world&quot;
+  @7fb4a16fd038 10 LGLSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</code></pre>
 <p><code>VECSXP</code>, <code>REALSXP</code>, <code>INTSXP</code>, and <code>STRXSP</code>, and <code>LGLSXP</code> are the internal R
 names of respectively list, numeric, integer, and character vectors. The
 numbers preceded by “@” represent memory locations. So the actual contents of
 the list <code>l</code> are the “@” values highlighted here:</p>
-<pre><code>@7f9272639be8 19 VECSXP g0c3 [NAM(3)] (len=4, tl=0)
-  <span style='background-color: #00BB00;'>@7f92750e8380</span><span> 14 REALSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</span>
-  <span style='background-color: #00BB00;'>@7f9273a362f8</span><span> 13 INTSXP g0c0 [NAM(3)]  1 : 3 (compact)</span>
-  <span style='background-color: #00BB00;'>@7f9272b952c8</span><span> 16 STRSXP g0c2 [NAM(3)] (len=2, tl=0)</span>
-    @7f92750e82a0 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "hello"
-    @7f92750e81f8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "world"
-  <span style='background-color: #00BB00;'>@7f92750e8188</span><span> 10 LGLSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</span></code></pre>
+<pre><code>@7fb4a10eb188 19 VECSXP g0c3 [NAM(3)] (len=4, tl=0)
+  <span style='background-color: #00BB00;'>@7fb4a16fd230</span><span> 14 REALSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</span>
+  <span style='background-color: #00BB00;'>@7fb4a273aa40</span><span> 13 INTSXP g0c0 [NAM(3)]  1 : 3 (compact)</span>
+  <span style='background-color: #00BB00;'>@7fb4a379ea88</span><span> 16 STRSXP g0c2 [NAM(3)] (len=2, tl=0)</span>
+    @7fb4a16fd150 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "hello"
+    @7fb4a16fd0a8 09 CHARSXP g0c1 [MARK,gp=0x60] [ASCII] [cached] "world"
+  <span style='background-color: #00BB00;'>@7fb4a16fd038</span><span> 10 LGLSXP g0c1 [MARK,NAM(3)] (len=1, tl=0) 1</span></code></pre>
 <p>Notice how
 our character vector, the <code>STRSXP</code> element, has child elements just like the
 list <code>VECSXP</code><a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a> element. These child elements are the <code>CHARSXP</code> objects,
@@ -234,7 +236,7 @@ into the terminal thinking I had a variable defined by that name:</p>
     else stopifnot(is.atomic(y))
     .Call(C_cov, x, y, na.method, FALSE)
 }
-&lt;bytecode: 0x7f92747323c0&gt;
+&lt;bytecode: 0x7fb4a2a91a30&gt;
 &lt;environment: namespace:stats&gt;</code></pre>
 <p>R happily went ahead and displayed the contents of the <code>var</code> function as it
 would display the contents of any “normal” variable. That functions were stored
