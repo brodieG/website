@@ -15,7 +15,7 @@ description: Front page summary
 ---
 
 ```{r echo=FALSE}
-options(digits=3)
+options(digits=3, datatable.print.topn=2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 ```{r, echo=FALSE}
@@ -29,7 +29,7 @@ writeFansi <- function(x) {
 }
 ```
 
-# Grouped Stats
+# Group Statics in R
 
 <!-- this needs to become a shortcode -->
 <img
@@ -39,61 +39,68 @@ writeFansi <- function(x) {
 
 A well known limitation of R is that there is substantial overhead to evaluate R
 expressions.  This is not as bad as it sounds as the key workhorse R functions
-quickly hand off to compiled C routines and avoid excessive overhead.  Generally
-there are no problems so long as you avoid repeated calls to R functions, as
-might happen if you apply them to each element of a long vector in a loop, with
-`for`, the `*pply` family of functions[^for-ply], or otherwise[^purrr].
+quickly hand off to pre-compiled routines, thereby avoiding this overhead.
+As long as you avoid large numbers of calls to R functions as might happen in
+R-level loops over long vectors, performance should be adequate.  Do note that
+the `*pply` family[^for-ply] and similar[^purrr] functions are R-level loops.
 
-Unfortunately there is one common use case[^sac-on-so] where this limitation is
+Unfortunately there is one common use case where this limitation is
 difficult to avoid: computation of group statistics on data sets with many
-groups.  This will require an R function call for each group.  <span
+groups[^sac-on-so].  This will require an R function call for each group.  <span
 id='split-bad'></span>Worse, we will need to split the input such that each
 group becomes its own R object that we can call the function on.
 
 For example, in:
 
-```{r eval=FALSE}
-x   <- c(1, 2, 3, 4, 5, 6)
+```{r}
+x   <- c(1, 2, 3, 4, 6, 8)
 grp <- rep(1:2, each=3)
-tapply(x, grp, mean)
+tapply(x, grp, var)
 ```
 
-`tapply` breaks up `x` according to the groups in `grp` and applies the `mean`
-function to each of them.  Here we illustrate with an example with 10 million
-values and 1 million groups[^exaggerate]:
+`tapply` breaks up `x` according to the groups in `grp` and applies the `var`
+function to each of them.  The result is a vector[^tapply-return] with as many
+elements as there are groups and with the groups as the names.  Here we
+illustrate with an example with 10 million values and ~1 million
+groups[^exaggerate]:
 
 ```{r eval=FALSE}
-set.seed(42)
+RNGversion("3.5.2"); set.seed(42)
 n     <- 1e7
 n.grp <- 1e6
 grp   <- sample(n.grp, n, replace=TRUE)
 x     <- runif(n)
 
-system.time(x.grp <- tapply(x, grp, mean))
+system.time(x.grp <- tapply(x, grp, var))
 ```
 ```
    user  system elapsed
- 11.191   0.289  11.654
+ 48.933   0.787  50.474
 ```
 
 Compare with:
 
 ```{r eval=FALSE}
-system.time(mean(x))
+system.time(var(x))
 ```
 ```
    user  system elapsed
-  0.036   0.000   0.036
+  0.061   0.001   0.062
 ```
 
-Even though both commands are running the same number[^num-calc] of computations
-in compiled code, the version that calls the R level function once is several
-orders of magnitude faster than the one that calls it for each group.
+**Note**: _Throughout this post I only show one run from `system.time`, but I
+have run the timings several times to confirm they are stable, and I show
+a representative run[^rep-bench]._
 
-As alluded to [earlier][#split-bad] R call overhead is not the only difference
+Even though both commands are running a similar number[^num-calc] of
+computations in compiled code, the version that calls the R level function once
+is several orders of magnitude faster than the one that calls it for each group.
+
+As alluded to [earlier](#split-bad) R call overhead is not the only difference
 between the two examples. `tapply` must also split the input vector into groups.
-To evaluate this effect, we can break up the `tapply` into the `split` and
-`apply` components[^tapply-approx]:
+To evaluate the relative contributions of each task, we can break up the
+`tapply` call into its `split` and `*pply` components[^tapply-approx].  `split`
+breaks up the input vector into a list with one element for each group:
 
 ```{r eval=FALSE}
 system.time(x.split <- split(x, grp))
@@ -102,182 +109,178 @@ system.time(x.split <- split(x, grp))
    user  system elapsed
   7.124   0.617   7.966
 ```
-<span id='mean-orig'></span>
 ```{r eval=FALSE}
-system.time(vapply(x.split, mean, 0))
+str(x.split[1:3])   # show first 3 groups:
+```
+```
+List of 3
+ $ 1: num [1:11] 0.216 0.537 0.849 0.847 0.347 ...
+ $ 2: num [1:7] 0.0724 0.1365 0.5364 0.0517 0.1887 ...
+ $ 3: num [1:7] 0.842 0.323 0.325 0.49 0.342 ...
+```
+
+`vapply` then collapses each group into one number with the `var` statistic:
+<span id='var-orig'></span>
+```{r eval=FALSE}
+system.time(x.grp.2 <- vapply(x.split, var, 0))
 ```
 ```
    user  system elapsed
-  3.428   0.122   3.568
+ 40.001   0.629  41.921
+```
+```{r eval=FALSE}
+str(x.grp.2)
+```
+```
+ Named num [1:999953] 0.079 0.0481 0.0715 0.0657 0.0435 ...
+ - attr(*, "names")= chr [1:999953] "1" "2" "3" "4" ...
+```
+```{r eval=FALSE}
+all.equal(c(x.grp), x.grp.2)
+```
+```
+[1] TRUE
 ```
 
-While the `split` part of the process accounts for the bulk of the elapsed
-time, the `mean` computation is still two orders of magnitude slower in groups
-than in a single call.  With more complex statistics the function application
-part of the process becomes limiting.
+While the `var` computation accounts for the bulk  of the elapsed time, the
+splitting can become significant with functions that are faster than
+`var`[^var-speed].
 
-# Third Party Packages to the Rescue
+`tapply` is not the only function that computes group statistics in R, but it is
+one of the simpler and faster ones.
 
-Two third party packages stand out in data munging field: `data.table` and
-`dplyr`.  Both of them offer solutions to the problem.
+# `data.table` to the Rescue
 
-*Note:* I turned off parallelization for `data.table` as it did not make a huge
-difference and it muddied the benchmarks[^parallel].
+Thankfully the `data.table` package implements several optimizations to assist
+with this problem.
+
 
 ```{r eval=FALSE}
-library(dplyr)       # 0.8.0.1
 library(data.table)  # 1.12.0
 setDTthreads(1)      # turn off data.table parallelization
+```
 
+**Note**: _I turned off parallelization for `data.table` as it did not make a
+significance difference in this particular example, and it muddied the
+benchmarks[^parallel]_.
+
+```{r eval=FALSE}
 DT <- data.table(grp, x)
-TB <- tibble(grp, x)
+DT
+```
+```
+             grp     x
+       1: 914807 0.116
+       2: 937076 0.734
+      ---
+ 9999999: 714619 0.547
+10000000: 361639 0.442
+```
 
-system.time(x.grp.dt <-    DT[, mean(x), keyby=grp][['V1']])
+In order to compute a group statistic with `data.table` we use:
+
+```{r eval=FALSE}
+DT[, var(x), keyby=grp]
+```
+```
+            grp     V1
+     1:       1 0.0790
+     2:       2 0.0481
+    ---
+999952:  999999 0.1707
+999953: 1000000 0.0667
+```
+
+`keyby` instructs `data.table` to group _and_ to order the return table by the
+groups, which matches what `tapply` does.  Timings are a different story:
+
+
+```{r eval=FALSE}
+system.time(x.grp.dt <- DT[, var(x), keyby=grp][['V1']])
 ```
 ```
    user  system elapsed
-  1.393   0.258   1.758
+  1.821   0.062   1.909
 ```
 ```{r eval=FALSE}
-system.time(x.grp.dplyr <- (TB %>% group_by(grp) %>% summarise(mean(x)))[[2]])
-```
-```
-   user  system elapsed
-  9.774   0.457  10.953
-```
-```{r eval=FALSE}
-all.equal(c(x.grp), x.grp.dplyr, check.attributes=FALSE)
+all.equal(c(x.grp), x.grp.dt, check.attributes=FALSE)
 ```
 ```
 [1] TRUE
 ```
-```{r eval=FALSE}
-all.equal(c(x.grp.dt), x.grp.dplyr, check.attributes=FALSE)
-```
-```
-[1] TRUE
-```
 
-We've reproduced the same results with both `data.table` and `dplyr`.
-`data.table` is over an order of magnitude faster.  `dplyr` is actually about
-the same speed as `tapply`.  This seems to be because `dplyr` is relatively slow
-at computing groups:
+We've reproduced the same results at ~25x the speed.
 
-```{r eval=FALSE}
-system.time(TB.g <- TB %>% group_by(grp))
-```
-```
-   user  system elapsed
-  9.259   0.308   9.677
-```
-
-I don't know why the group computation is slow for `dplyr`, or whether this
-result is representative of broader performance characteristics[^benchmarks].
-Keep in mind that this particular calculation puts a lot of emphasis on
-efficient grouping.  Calculations on more columns, bigger groups, and/or more
-complex statistics will naturally spend more time doing things other than
-grouping so the penalty grouping slowness may not be as marked important then.
-
-I will not explore this grouping issue further in this post.  What I'm
-interested in is what happens after the grouping:
-<span id=grp-bench></span>
-```{r eval=FALSE}
-system.time(TB.g %>% summarize(mean(x)))
-```
-```
-   user  system elapsed
-  0.500   0.009   0.543
-```
-
-The actual `mean` computation is 7x faster than our [`vapply`
-approach](#mean-orig).
-
-It is not possible to separate out the grouping operation in
-`data.table`[^dt-verbose], but we can approximate it as follows:
+It is not possible to separate out the statistic computation cleanly from the
+grouping in `data.table`[^dt-verbose], but we can get a rough idea by setting a
+key on `grp`.  This orders the table by the group, which is most of the overhead
+of grouping.
 
 ```{r eval=FALSE}
 setkey(DT, grp)   # grouping takes advantage of this key
-system.time(DT[, mean(x), keyby=grp])
+DT                # notice the table is now ordered by group
 ```
 ```
-   user  system elapsed
-  0.226   0.060   0.288
+              grp     x
+       1:       1 0.216
+       2:       1 0.537
+      ---
+ 9999999: 1000000 0.180
+10000000: 1000000 0.919
 ```
 
-`data.table` is faster still, though the gap between either of these
-implementations and `vapply` is much wider than the gap between the two.
-
-# What is this Sorcery?
-
-All of the group computations that we reviewed need to call the `mean` R
-function a million times.  So how can both `data.table` and `dplyr` be so much
-faster?  `vapply` adds some overhead, but not that much as shown when
-run with the very low overhead unary `+`[^null-op]:
-
-```{r eval=FALSE}
-system.time(vapply(1:1e6, `+`, 0L))  # use unary `+` as approximately "null-op"
-```
-```
-   user  system elapsed
-  0.358   0.006   0.365
-```
-
-So what is going on?  It turns out we are being lied to.  Neither `data.table`
-nor `dplyr` call the R `mean` function.  Instead, they engage in Non
-Standard Evaluation (NSE) to capture the call `mean(x)`.  It is then analyzed,
-and if it is a call to `mean` on a column of the data compiled code
-routines are used to compute the result in one pass[^one-pass]. `data.table`
-calls this "gforce"[^gforce], and `dplyr` calls this "Hybrid
-Evaluation"[^hybrid-eval].  For convenience we will call both of these "Special
-Eval" going forward.  Special eval requires a compiled code equivalent of the
-each of the R-level functions[^fun-diff] they replace.
-
-Both `data.table` and `dplyr` provide special versions of the "base" R
-functions[^base-r] `min`, `max`, `mean`, `sum`, `var`, `sd`.  `data.table` also
-provides `prod`, `head`, `median`, `tail`, and `[`, while `dplyr` provides
-`%in%`.  Additionally `data.table` provides special versions of its own
-`first` and `last` functions, and `dplyr` adds special versions of its own
-`n`, `group_indices`, `row_number`, `first`, `last`, `nth`, `ntile`, `min_rank`,
-`percent_rank`, `dense_rank`, `cume_dist`, `lead`, `lag`, `n_distinct`
-functions.
-
-If you need a different function you'll have be content with falling
-back to standard evaluation.  Additionally, both "gforce" and "Hybrid Eval" are
-picky about what they will interpret.  For example simple modifications such
-as `+var(x)` instead of `var(x)` will cause both[^early-dplyr]
-of them to fall back to standard evaluation:
+What remains is presumably the statistic computation:
 
 ```{r eval=FALSE}
 system.time(DT[, var(x), keyby=grp])
 ```
 ```
    user  system elapsed
-  0.399   0.009   0.411
+  0.458   0.017   0.477
 ```
+
+This is close to two orders of magnitude faster than with [`vapply`](#var-orig).
+
+# What is this Sorcery?
+
+How is it that `data.table` runs the R `var` function so much faster than
+`vapply`?  `vapply` adds some overhead, but that is small as shown when run with
+the essentially NULL-op unary `+`[^null-op]:
+
+```{r eval=FALSE}
+system.time(vapply(1:1e6, `+`, 0L))
+```
+```
+   user  system elapsed
+  0.358   0.006   0.365
+```
+
+It turns out we are being lied to.  `data.table` does not call the R `var`
+function ~1 million times.  Instead it intercepts the call `var(x)` and
+substitutes it with a compiled code routine that computes the ~1 million groups
+without any intervening R-level evaluations. The `data.table` authors call this
+substitution "GForce"[^gforce] optimization.
+
+The substitution is only possible if there is a pre-existing compiled code
+equivalent for the R-level function.  `data.table` ships with such
+equivalents for the "base" R functions[^base-r] `min`, `max`, `mean`, `median`,
+`prod`, `sum`, `sd`, `var`, `head`, `tail`, and `[`, as well as for the
+`data.table` functions `first` and `last`.
+
+Additionally, the substitution only happens with the simplest of calls.  Adding
+a mere unary `+` call causes it to fail:
+
 ```{r eval=FALSE}
 system.time(DT[, +var(x), keyby=grp])
 ```
 ```
    user  system elapsed
  42.564   0.628  45.394
- ```
+```
 
-Gasp!  That's a Two order of magnitude penalty. Same thing with `dplyr`:
-
-```{r eval=FALSE}
-system.time(TB.g %>% summarise(var(x)))
-```
-```
-   user  system elapsed
-  0.554   0.005   0.566
-```
-```{r eval=FALSE}
-system.time(TB.g %>% summarise(+var(x)))
-```
-```
-   user  system elapsed
- 64.526   1.863  80.071
-```
+If you need a different function or an expression other than `FUN(col)` where
+`FUN` is one of the "GForce" functions, and `col` is one of the data columns,
+you'll have be content with falling back to standard evaluation.
 
 Obviously whether special evaluation is used or not can have an enormous impact
 on performance.  You can check whether `data.table` uses it by setting the
@@ -311,26 +314,6 @@ Old mean optimization is on, left j unchanged.
 Making each group and running j (\033[43mGForce FALSE\033[m)")
 ```
 
-`dplyr` provides `hybrid_call`:
-
-```{r eval=FALSE}
-TB.g %>% hybrid_call(var(x))
-```
-```{r echo=FALSE, results='asis'}
-writeFansi(
-"<\033[43mhybrid evaluation\033[m>
-  call      : stats::var(x)
-  C++ class : \033[43mdplyr::hybrid::internal::SimpleDispatchImpl<14, false, dplyr::GroupedDataFrame, dplyr::hybrid::internal::VarImpl\033[m>")
-```
-```{r eval=FALSE}
-TB.g %>% hybrid_call(+var(x))
-```
-```{r echo=FALSE, results='asis'}
-writeFansi(
-"<\033[43mstandard evaluation\033[m>
-  call      : +var(x)")
-```
-
 # Making the Most Out Of It
 
 Everything is hunky dory until you need to compute a statistic that does not
@@ -340,52 +323,47 @@ slope of a bi-variate least squares regression.  The formula is:
 $$\frac{\sum(x_i - \bar{x})\sum(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
 
-The R equivalent is:
+The R equivalent is:<span id='slope-ex'></a>
 
 ```{r eval=FALSE}
 slope <- function(x, y) {
-  ux <- mean(x)
+  xux <- x - mean(x)
   uy <- mean(y)
-  sum((x - ux) * (y - uy)) / sum((x - ux) ^ 2)
-}
-slope2 <- function(x, y) {
-  xux <- x - mean.default(x)
-  uy <- mean.default(y)
   sum(xux * (y - uy)) / sum(xux ^ 2)
 }
 ```
 
-While both `sum` and `mean` have special evaluation counterparts, neither
-`data.table` nor `dplyr` can use special evaluation on complex expressions like
-this.  For this section we will focus on `data.table`:
+While both `sum` and `mean` have "GForce" counterparts, `data.table` cannot use
+them in complex expressions like this:
 
 ```{r eval=FALSE}
 y <- runif(n)
 DT <- data.table(grp, x, y)
-system.time(DT[, slope(x, y), grp])
-DT <- data.table(grp, x, y)
-system.time(DT[, slope2(x, y), grp])
-```
-```
-   user  system elapsed 
- 11.501   0.136  11.679 
-```
-```{r eval=FALSE}
-TB <- tibble(grp, x, y)
-system.time(TB %>% group_by(grp) %>% summarise(slope(x, y)))
+system.time(res.slope <- DT[, slope(x, y), keyby=grp])
 ```
 ```
    user  system elapsed
- 34.254   1.808  36.616
+ 11.501   0.136  11.679
+```
+
+This is faster than the base equivalent, but by a narrower margin than when
+"GForce" is an option:
+
+```{r eval=FALSE}
+system.time({
+  id <- seq_along(grp)
+  id.split <- split(id, grp)
+  res <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+```
+```
+   user  system elapsed
+ 17.745   0.318  18.453
 ```
 
 So, what are we to do?  Well, with a little work we can break up the
-computation into pieces and take advantage of special eval.  What about
-operators like `*`, `-` and `/` that do not have special eval equivalents?
-Because those produce the same result whether computed on groups or across the
-entire table we don't need special eval for them.
-
-Ideally, this is what we would do in `data.table`[^data-table-only]:
+computation into pieces and take advantage of "GForce".  Ideally, this is what
+we would do in `data.table`:
 
 ```{r eval=FALSE}
 DT <- data.table(grp, x, y)
@@ -393,38 +371,39 @@ DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
 DT[, `:=`(xux=x - ux, yuy=y - uy)]
 DT[, `:=`(xuxy=xux * yuy, xux2=xux^2)]
 DTsum <- DT[, .(xuxy=sum(xuxy), xux2=sum(xux2)), keyby=grp]
-res <- DTsum[, .(grp, xuxy/xux2)]
+res.slope3 <- DTsum[, .(grp, xuxy/xux2)]
 ```
 
-The calls with `keyby=grp` involve only calls to "gforce" supported functions.
-The operators `*`, `-`, `/`, and `^` do not have "gforce" equivalents, but
-they will produce the same results whether run in groups or not, so we run them
-without groups to avoid the performance penalty.  This produces the
-same result:
+The calls with `keyby=grp` involve only calls to "GForce" supported functions.
+The other calls use the operators `*`, `-`, `/`, and `^` without groups because
+the **results are the same whether computed with or without groups**.  It
+follows that the lack of "GForce" counterparts for the operators is a non-issue.
+
+This produces the same result:
 
 ```{r eval=FALSE}
-all.equal(res, DT[, slope(x, y), grp], check.attributes=FALSE)
+all.equal(res.slope3, res.slope, check.attributes=FALSE)
 ```
 ```
 [1] TRUE
 ```
 
 Unfortunately it isn't quite as simple as this.  We do get a noticeable
-performance gain, but it is smaller than I would like:
+performance gain[^false-gain], but it is smaller than I would like:
 
 ```{r eval=FALSE}
+DT <- data.table(grp, x, y)
 system.time({
-  DT <- data.table(grp, x, y)
   DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
   DT[, `:=`(xux=x - ux, yuy=y - uy)]
   DT[, `:=`(xuxy=xux * yuy, xux2=xux^2)]
   DTsum <- DT[, .(xuxy=sum(xuxy), xux2=sum(xux2)), keyby=grp]
-  res <- DTsum[, .(grp, xuxy/xux2)]
+  res.slope3 <- DTsum[, .(grp, xuxy/xux2)]
 })
 ```
 ```
-   user  system elapsed 
-  7.749   0.335   8.143 
+   user  system elapsed
+  7.749   0.335   8.143
 ```
 
 The problem is that the call:
@@ -433,9 +412,8 @@ The problem is that the call:
 DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
 ```
 
-Does not benefit from "gforce" optimization because `data.table` does not
-implement it within `:=`. <span style='background-color: red'>ADD
-REFERENCE</span>.
+Does not benefit from "GForce" optimization because [`data.table` does not
+implement it within `:=`][12].
 
 All is not lost though.  We can work around this issue by computing
 `$\bar{x}` and `$\bar{y}$` values into a separate table:
@@ -446,11 +424,21 @@ setkey(DT, grp)
 DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
 ```
 
-And updating the original table via a join.  We use `setkey` above so that
-it used for faster grouping, and also because we need it for the join below:
+We use `setkey` above so that it used for faster grouping, and also because we
+need it for the join below that updates the original table with the `$x -
+\bar{x}$` and `$y - \bar{y}$` values:
 
 ```{r eval=FALSE}
 DT[DTsum, `:=`(xux=x - ux, yuy=y - uy)]
+DT
+```
+```
+              grp     x     y     xux    yuy
+       1:       1 0.216 0.950 -0.3353 0.5058
+       2:       1 0.537 0.914 -0.0146 0.4697
+      ---
+ 9999999: 1000000 0.180 0.589 -0.3681 0.0109
+10000000: 1000000 0.919 0.914  0.3711 0.3359
 ```
 
 From this point we can resume the same logic as before:
@@ -458,8 +446,8 @@ From this point we can resume the same logic as before:
 ```{r eval=FALSE}
 DT[, `:=`(xuxy=xux * yuy, xux2=xux^2)]
 DTsum <- DT[, .(xuxy=sum(xuxy), xux2=sum(xux2)), keyby=grp]
-res2 <- DTsum[, .(grp, V1=xuxy / xux2)]
-all.equal(res, res)
+res.slope4 <- DTsum[, .(grp, V1=xuxy / xux2)]
+all.equal(res.slope3, res.slope4, check.attributes=FALSE)
 ```
 ```
 [1] TRUE
@@ -475,15 +463,15 @@ system.time({
   DT[DTsum, `:=`(xux=x - ux, yuy=y - uy)]
   DT[, `:=`(xuxy=xux * yuy, xux2=xux^2)]
   DTsum <- DT[, .(xuxy=sum(xuxy), xux2=sum(xux2)), keyby=grp]
-  res2 <- DTsum[, .(grp, V1=xuxy / xux2)]
+  res.slope4 <- DTsum[, .(grp, V1=xuxy / xux2)]
 })
 ```
 ```
-   user  system elapsed 
-  3.036   0.466   3.540 
+   user  system elapsed
+  3.278   0.403   3.697
 ```
 
-Now we're talking: about a 3x improvement over the original.
+Now we're talking: a ~3x improvement over the original[^false-gain-2].
 
 ```{r eval=FALSE}
 ## Compute x and y means by group
@@ -526,8 +514,8 @@ system.time(
 system.time( DT[, slope(x, y), grp])
 ```
 ```
-   user  system elapsed 
- 11.501   0.136  11.679 
+   user  system elapsed
+ 11.501   0.136  11.679
 ```
 ```{r eval=FALSE}
 DT <- copy(DT.raw)
@@ -793,7 +781,96 @@ DT[, suma:=sum(a), grp]
 
 ```
 
-# dplyr Hybrid Eval
+# What About `dplyr`
+
+```{r eval=FALSE}
+library(dplyr)
+TB <- tibble(grp, x)
+system.time(x.grp.dplyr <- (TB %>% group_by(grp) %>% summarise(var(x)))[[2]])
+```
+```
+   user  system elapsed
+  9.774   0.457  10.953
+```
+```{r eval=FALSE}
+all.equal(c(x.grp), x.grp.dplyr, check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+The `dplyr` equivalent of "GForce" is called Hybrid Evaluation.  It can be used
+
+```{r eval=FALSE}
+system.time(TB.g <- TB %>% group_by(grp))
+```
+```
+   user  system elapsed
+  9.259   0.308   9.677
+```
+
+I don't know why the group computation is slow for `dplyr`, or whether this
+result is representative of broader performance characteristics[^benchmarks].
+Keep in mind that this particular calculation puts a lot of emphasis on
+efficient grouping.  Calculations on more columns, bigger groups, and/or more
+complex statistics will naturally spend more time doing things other than
+grouping so the penalty grouping slowness may not be as marked important then.
+
+I will not explore this grouping issue further in this post.  What I'm
+interested in is what happens after the grouping:
+<span id=grp-bench></span>
+```{r eval=FALSE}
+system.time(TB.g %>% summarize(mean(x)))
+```
+```
+   user  system elapsed
+  0.500   0.009   0.543
+```
+
+`dplyr` is actually about
+the same speed as `tapply`.  This seems to be because `dplyr` is relatively slow
+at computing groups:
+
+are used to compute the result in one pass. `data.table`
+calls this "GForce", and `dplyr` calls this "Hybrid
+Evaluation"[^hybrid-eval].  For convenience we will call both of these "Special
+Eval" going forward.  Special eval requires a compiled code equivalent of the
+each of the R-level functions[^fun-diff] they replace.
+
+Both `data.table` and `dplyr` provide special versions of the "base" R
+functions[^base-r] `min`, `max`, `mean`, `sum`, `var`, `sd`.  `data.table` also
+provides `prod`, `head`, `median`, `tail`, and `[`, while `dplyr` provides
+`%in%`.  Additionally `data.table` provides special versions of its own
+`first` and `last` functions, and `dplyr` adds special versions of its own
+`n`, `group_indices`, `row_number`, `first`, `last`, `nth`, `ntile`, `min_rank`,
+`percent_rank`, `dense_rank`, `cume_dist`, `lead`, `lag`, `n_distinct`
+functions.
+
+Additionally, both "GForce" and "Hybrid Eval" are
+picky about what they will interpret.  For example simple modifications such
+as `+var(x)` instead of `var(x)` will cause both[^early-dplyr]
+of them to fall back to standard evaluation:
+
+
+Gasp!  That's a Two order of magnitude penalty. Same thing with `dplyr`:
+
+```{r eval=FALSE}
+system.time(TB.g %>% summarise(var(x)))
+```
+```
+   user  system elapsed
+  0.554   0.005   0.566
+```
+```{r eval=FALSE}
+system.time(TB.g %>% summarise(+var(x)))
+```
+```
+   user  system elapsed
+ 64.526   1.863  80.071
+```
+y <- runif(n)
+DT <- data.table(grp, x, y)
+system.time(DT[, slope(x, y), keyby=grp])
 
 [0.7.3 Hybrid Eval Vignette][2]:
 
@@ -816,11 +893,42 @@ AFAICT hybrid evaluation is completely within C++.
 
 # Appendix
 
-## A Simple Optimization
+## Exposed Mean Optimization
 
-We can get a good part of the savings by using:
+Prior to the implementation of "GForce", the `data.table` team introduced an
+optimization for `mean` that can still be used in cases where "GForce" cannot.
+For example, in:
 
 ```{r eval=FALSE}
+DT[, +mean(x), keyby=grp]
+```
+
+The original optimization is used since "GForce" is not available.  There are
+still ~1 million R-level calls, but instead of calling the relatively slow R
+`mean` function, `data.table` uses a faster version.  `mean`, unlike `sum`, is
+an S3 generic closure, which adds R-level S3 dispatch that is much slower for
+when not actually needed than the corresponding compiled code level S3 dispatch.
+
+Going back to the [`slope` example](#slope-ex), we can get some of the
+performance benefits by exposing the body of the function so that `data.table`
+can replace the `mean` calls with the faster version:
+
+```{r eval=FALSE}
+DT <- data.table(grp, x, y)
+system.time(
+  res.slope.5 <-DT[,
+    {
+      xux <- x - mean(x)
+      uy <- mean(y)
+      sum(xux * (y - uy)) / sum(xux ^ 2)
+    },
+    keyby=grp
+  ]
+)
+```
+```
+   user  system elapsed 
+  7.983   0.067   8.089 
 ```
 
 [^gforce]: See `?'datatable-optimize'` for additional details.
@@ -836,12 +944,11 @@ seq_len(100)) res[i] <- f(i)`.
 third party libraries like [purrr][4].
 [^vec-size]: Numeric vectors require 8 bytes per element plus some overhead for
 the object meta data.
-[^num-calc]: The grouped calculation will run one more division per group than
-the non-grouped one, but because of the precision improving algorithm used by
-`mean` in R, there are `$n + 1$` compiled code divisions for a vector of length
-`$n$`.  As such the overall number of compiled code calculations is only
-about 10% larger for the grouped versions when `$n \approx 10$` not that
-much larger for the grouped version.
+[^num-calc]: The grouped calculation will require `$3(g - 1)$` more divisions
+than the non-grouped version, where `$g$` is the number of groups.  However,
+since there are over 60 arithmetic operations involved in a `$n = 10$` group the
+overall additional time due to the extra calculations will not dominate even
+with the relatively expensive division operation.
 [^tapply-approx]: This approximation is semantically equivalent for the simple
 example shown here, but will not generalize for more complex inputs.
 [^exaggerate]: Using a large number of small groups is designed to exaggerate
@@ -851,11 +958,9 @@ Stack Overflow can attest that computing statistics on groups is probably the
 single most common question people ask.
 [^parallel]: In particular, we ended up with benchmarks that had `user` times
 greater than `ellapsed` due to the multi-core processing.  Anecdotally on my
-two core system the benchmarks were roughly 10-20% faster with parallelization
+two core system the benchmarks were roughly 20-30% faster with parallelization
 on.  It is worth noting that parallelization is reasonably effective for the
-`gforce` step where it close to doubles the processing speed, but because that
-step is a small portion of the overall evaluation time the overall effectiveness
-of the parallelization is limited.
+`gforce` step where it close to doubles the processing speed.
 [^dplyr-vs-dt]: Four years ago I did compare [dplyr vs. data.table][5] in split
 apply combine analysis, and while the narrow results here are in line with what
 I observed than, much has changed for both packages so I do not want to
@@ -864,15 +969,13 @@ generalize without further testing.
 time is attributable to `vapply`.
 [^benchmarks]: The `data.table` team has run [a broad set of benchmarks][6]
 across multiple different data munging applications.
-[^one-pass]: By one pass I mean all the groups are computed without any
-intervening R-level evaluations.
 [^fun-diff]: You might recall that the `data.table` [`mean` group
 computation](#grp-bench) was ~2x faster than the `dplyr` one.  Partly this is
 because `dplyr` uses the same [more precise algorithm][8] as the [base R][9]
 function, whereas `data.table` uses the simpler [`sum(x) / length(x)`][10],
 although that is likely only a small part of the difference.  You can reduce the
 optimization level on `data.table` to use a version of `mean` that aligns with
-the base version, but that version does not use "gforce" so is substantially
+the base version, but that version does not use "GForce" so is substantially
 slower.
 [^base-r]: By "base" R I mean the packages that are loaded by default in a clean
 R session, including `base`, `stats`, etc.
@@ -891,6 +994,17 @@ also affect the timings, so I do not rely on it.
 found that the additional overhead of `dplyr` defeated the optimization.  If you
 are looking for additional speed you should consider just switching to
 `data.table`.
+[^var-speed]: `var` is particularly slow in R3.5.2 due to the [`stopifnot` calls
+that it uses][11].
+[^tapply-return]: The return value is actually an array, although in this case
+it only has one dimension.
+[^rep-bench]: Normally I would let the knitting process run the benchmarks, but
+it becomes awkward with relatively slow benchmarks like those in this post.
+[^false-gain]: This is somewhat misleading as the performance comes primarily
+from a [lesser optimization of `mean`](#exposed-mean-optimization) that becomes
+available when `data.table` can "see" the mean call as it can here.   We could
+have written our initial slope calculation outside of a function body to get the
+same effect.  We're eliding this detail for the sake of the narrative arc.
 
 [1]: https://stackoverflow.com/a/29806540/2725969
 [2]: https://s3.amazonaws.com/assets.rdocumentation.org/rpackages/unarchived/dplyr/0.7.3/vignettes/hybrid-evaluation.html
@@ -902,3 +1016,5 @@ are looking for additional speed you should consider just switching to
 [8]: https://github.com/tidyverse/dplyr/blob/v0.8.0.1/inst/include/dplyr/hybrid/scalar_result/mean_sd_var.h#L122
 [9]: https://github.com/wch/r-source/blob/tags/R-3-5-2/src/main/summary.c#L485
 [10]: https://github.com/Rdatatable/data.table/blob/1.12.0/src/gsumm.c#L460
+[11]: https://github.com/HenrikBengtsson/Wishlist-for-R/issues/70
+[12]: https://github.com/Rdatatable/data.table/issues/1414
