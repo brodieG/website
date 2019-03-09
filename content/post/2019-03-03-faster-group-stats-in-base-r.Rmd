@@ -99,7 +99,7 @@ sum_winvector <- function(DF) {
   user  system elapsed
  1.810   0.740   2.651
 ```
-
+Note on vector size[^vec-size].
 
 
 # Conclusions
@@ -109,3 +109,6 @@ sum_winvector <- function(DF) {
 <div id='feedback-cont'></div>
 
 # Appendix
+
+[^vec-size]: Numeric vectors require 8 bytes per element plus some overhead for
+the object meta data.
