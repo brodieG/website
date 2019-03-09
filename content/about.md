@@ -36,6 +36,8 @@ otherwise indicated.
 
 # Acknowledgments
 
+* [R-core](https://www.r-project.org/contributors.html) for creating and
+  maintaining R, without which most of the content in this blog would not exist.
 * [Yihui Xie](https://yihui.name/) etal and Rstudio for
   [`blogdown`](https://github.com/rstudio/blogdown).
 * [Hugo](https://gohugo.io/) for the static site generator.
