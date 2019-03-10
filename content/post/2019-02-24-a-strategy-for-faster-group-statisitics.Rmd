@@ -9,7 +9,7 @@ draft: true
 image: /front-img/strategy-for-groups.png
 imagerect: /front-img/strategy-for-groups-wide.png
 imagemrgvt: 0%
-imagemrghz: 0%
+imagemrghz: 20%
 weight: 1
 contenttype: article
 description: Front page summary
@@ -44,7 +44,7 @@ Mostly this is not an issue because the key workhorse functions hand off quickly
 to lean pre-compiled routines.  We must be careful though when we use R-level
 loops such as `for`, or `*pply` family[^for-ply] and similar[^purrr].   So long
 as the number of iterations is small relative to the data size, there is no
-problem.  For example, looping through the _columns_ of a 1M row x 10 column
+problem.  For example, looping through the _columns_ of a 1,000,000 row x 10 column
 data frame is fine, but looping through the _rows_ less so.
 
 A common use case where this limitation is difficult to avoid is the computation
@@ -63,7 +63,8 @@ tapply(x, grp, var)
 
 `tapply` breaks up `x` according to the groups in `grp` and applies the `var`
 function to each of the resulting pieces of `x`.  Conceptually you can visualize
-that as follows:
+that as follows, with individual colored squares representing vector values and
+their colors the groups:
 
 <img
     alt='A Graphical Approximation of the Steps in `tapply`'
@@ -74,8 +75,8 @@ While this is not exactly what `tapply` is doing internally, particularly in the
 grouping step, the semantics are roughly the same.  There is no requirement that
 the applied function should return a single value per group, although for the
 purposes of this post we are focusing on that type of function.  The result of
-a ll this vector[^tapply-return] with as many elements as there are groups and
-with the groups as the names.
+all this is a vector with as many elements as there are groups and
+with the groups as the names[^tapply-return].
 
 Let's try it again with something closer to "real data" size, in this case 10
 million values and ~1 million groups[^exaggerate]:
@@ -115,8 +116,8 @@ several orders of magnitude faster than the one that calls it for each group.
 As alluded to [earlier](#split-bad) R call overhead is not the only difference
 between the two examples. `tapply` must also split the input vector into groups.
 To evaluate the relative cost of each task, we can separate the `tapply` call
-into its `split` and `*pply` components[^tapply-approx].  `split` breaks up the
-input vector into a list with one element for each group:
+into its grouping (`split`) and apply components[^tapply-approx].  `split` breaks
+up the input vector into a list with one element for each group:
 
 ```{r eval=FALSE}
 system.time(x.split <- split(x, grp))
@@ -355,6 +356,9 @@ GForce \033[43moptimized j to 'gvar(x)'\033[m
 Making each group and running j (\033[43mGForce TRUE\033[m) ..."
 )
 ```
+
+Adding the unary `+` disables "GForce":
+
 ```{r eval=FALSE}
 DT[, +var(x), keyby=grp]
 ```
@@ -573,7 +577,7 @@ system.time({
 
 Now we're talking: a ~3x improvement over the original.
 
-```{r echo=FALSE}
+```{r dt-optim, echo=FALSE}
 times <- data.frame(
   Function=c('base - slope', 'data.table - slope', 'data.table - slope'),
   Version=c('normal', 'normal', 'optim'),
@@ -588,7 +592,7 @@ ggplot(times, aes(x=Version, y=time)) +
 ```
 
 With a little extra work we are able to get "GForce"-like performance in an
-application were at first blush one might assume it is not possible.
+application where at first blush one might assume it is not possible.
 Should `data.table` add "GForce" support for `:=` I estimate the timings could
 get down to 2.5 seconds or less[^no-setkey].  Hopefully the authors will see fit
 to implement this feature.
