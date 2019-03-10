@@ -12,7 +12,11 @@ imagemrgvt: 0%
 imagemrghz: 20%
 weight: 1
 contenttype: article
-description: Front page summary
+description: "The challenges of group statistics in R, 3rd party packages that
+resolve them, and further optimizations."
+descriptionlong: "Group statistics are particularly challenging for R.  We
+demystify some of the optimizations used by data.table and dplyr, and present a
+solution for when those optimizations fail."
 ---
 
 ```{r echo=FALSE}
@@ -320,9 +324,9 @@ system.time(vapply(1:1e6, `+`, 0L))
 
 It turns out we are being lied to: `data.table` does not call the R `var`
 function ~1 million times.  Instead it intercepts the call `var(x)` and
-substitutes it with a compiled code routine that computes all the groups without
-intervening R-level evaluations. The `data.table` authors call this "GForce"
-optimization[^gforce].
+substitutes it with a compiled code routine.  This routine computes all the
+groups without intervening R-level evaluations. The `data.table` authors call
+this "GForce" optimization[^gforce].
 
 The substitution is only possible if there is a pre-existing compiled code
 equivalent for the R-level function.  `data.table` ships with such
@@ -399,6 +403,8 @@ In order to use this function with the base `split`/`*pply` paradigm we need a
 little additional manipulation:
 
 ```{r eval=FALSE}
+y <- runif(n)
+
 system.time({
   id <- seq_along(grp)
   id.split <- split(id, grp)
@@ -416,7 +422,6 @@ subset each variable.
 `data.table` makes this type of computation easy:<span id=dt-no-optim></span>
 
 ```{r eval=FALSE}
-y <- runif(n)
 DT <- data.table(grp, x, y)
 system.time(res.slope.dt1 <- DT[, slope(x, y), keyby=grp])
 ```
@@ -437,7 +442,8 @@ the computation into pieces and take advantage of "GForce".  The idea is to
 compute intermediate values with `mean` and `sum` in simple calls that can use
 "GForce", and carry out the rest of the calculations separately.
 
-In this case, the other calculations use the operators `*`, `-`, `/`, and `^`.
+In this case, the rest of the calculations use the operators `*`, `-`, `/`, and
+`^`.
 
 > These arithmetic operators have the property that their **results are the
 same whether computed with or without groups**.  It follows that the lack of
@@ -481,7 +487,7 @@ DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
 ```
 
 While this works, it is much slower because it cannot use "GForce" as
-[`data.table` does not currently implement "GForce" within `:=`][12].  So
+[`data.table` does not implement it within `:=`][12].  So
 instead we are stuck with the group to `DTsum` and the join to update `DT`.
 
 If you [look back](#optim-start) you can see that we used `setkey` right before
@@ -751,11 +757,11 @@ the attention to detail the `dplyr` team applied here.
 
 # Conclusions
 
-The optimization we reviewed in this post is not intended for day to day usage.
-It requires a fair bit of work to get right, and 2-3x improvements over baseline
-results may not always warrant the effort.  In a context where the manipulation
-is written once and used repeatedly as in a package or a production
-process, it could be worthwhile.
+With a little thought and care we were able to squeeze out some extra
+performance out of the super optimized `data.table` package.  While a 2-3x
+performance improvement may not warrant the work required to get it in
+day-to-day usage, it could come in handy in circumstances where the optimization
+is written once and re-used over and over.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -824,7 +830,8 @@ all.equal(res.slope.base, res.slope.dt3[[2]], check.attributes=FALSE)
 [1] TRUE
 ```
 
-This comes at the cost of losing "GForce" for this step:
+This comes at the cost of losing "GForce" for this step
+as [`data.table` does not currently implement "GForce" within `:=`][12]:
 
 ```{r eval=FALSE}
 DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
@@ -935,6 +942,8 @@ all.equal(res.slope.base, res.dplyr3[[2]], check.attributes=FALSE)
 ```
 [1] TRUE
 ```
+
+This is because we need to use `group_by` twice.
 
 
 [^gforce]: See `?'datatable-optimize'` for additional details.
