@@ -1,0 +1,673 @@
+---
+title: A Strategy for Faster Group Statisitics
+author: ~
+date: '2019-02-24'
+slug: a-strategy-for-faster-group-statisitics
+categories: [r]
+tags: [optim, rdatatable, dplyr]
+image: /front-img/strategy-for-groups.png
+imagerect: /front-img/strategy-for-groups-wide-2.png
+imagemrgvt: 0%
+imagemrghz: 20%
+weight: 1
+contenttype: article
+description: "The challenges of group statistics in R, 3rd party packages that
+resolve them, and further optimizations."
+descriptionlong: "Group statistics are particularly challenging for R.  We
+demystify some of the optimizations used by data.table and dplyr, and present a
+solution for when those optimizations fail."
+---
+
+
+
+<div id="group-statics-in-r" class="section level1">
+<h1>Group Statics in R</h1>
+<!-- this needs to become a shortcode -->
+<!--
+<img
+  id='front-img' src='/front-img/strategy-for-groups.png'
+  class='post-inset-image'
+/>
+-->
+<p>A known limitation of R is the substantial overhead to evaluate R expressions.
+Most workhorse functions hand off quickly to lean pre-compiled routines so this
+is usually not a problem, but we must be careful with R-level loops such as
+<code>for</code>, or <code>*pply</code> family<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>. So long as the number of iterations is
+small relative to the data size, there is no problem. For example, looping
+through the <em>columns</em> of a 1,000,000 row by 10 column data frame is fine, but
+looping through the <em>rows</em> probably won’t be.</p>
+<p>A common use case where this limitation is difficult to avoid is the computation
+of group statistics on data sets with many groups<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>. This requires a
+minimum of one R function call for each group, <span id="split-bad"></span>and
+the additional overhead of splitting the input into groups in R objects.</p>
+<p>For example, in:</p>
+<pre class="r"><code>x   &lt;- c(1, 2, 3, 4, 6, 8, 16)
+grp &lt;- c(&#39;A&#39;, &#39;B&#39;, &#39;A&#39;, &#39;C&#39;, &#39;A&#39;, &#39;B&#39;, &#39;C&#39;)
+tapply(x, grp, var)</code></pre>
+<pre><code>    A     B     C 
+ 6.33 18.00 72.00 </code></pre>
+<p><code>tapply</code> breaks up <code>x</code> according to the groups in <code>grp</code> and applies the <code>var</code>
+function to each of the resulting pieces of <code>x</code>. Conceptually you can visualize
+it as follows, with individual colored squares representing vector values and
+their colors the groups:</p>
+<p><img
+    alt='A Graphical Approximation of the Steps in `tapply`'
+    src='/front-img/strategy-for-groups-wide-2.png'
+    style='width: 100%; max-width: 600px; display: block; margin: auto' /></p>
+<p>While this is not exactly what <code>tapply</code> is doing internally, particularly in the
+grouping step, the semantics are roughly the same. There is no requirement that
+the applied function should return a single value per group, although for the
+purposes of this post we are focusing on that type of function. The result of
+all this is a vector with as many elements as there are groups and
+with the groups as the names<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>.</p>
+<p>Let’s try it again with something closer to “real data” size, in this case 10
+million values and ~1 million groups<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>:</p>
+<pre class="r"><code>RNGversion(&quot;3.5.2&quot;); set.seed(42)
+n     &lt;- 1e7
+n.grp &lt;- 1e6
+grp   &lt;- sample(n.grp, n, replace=TRUE)
+x     &lt;- runif(n)
+
+system.time(x.grp &lt;- tapply(x, grp, var))</code></pre>
+<pre><code>   user  system elapsed
+ 48.933   0.787  50.474</code></pre>
+<p>Compare with:</p>
+<pre class="r"><code>system.time(var(x))</code></pre>
+<pre><code>   user  system elapsed
+  0.061   0.001   0.062</code></pre>
+<p><strong>Note</strong>: <em>Throughout this post I only show one run from <code>system.time</code>, but I
+have run the timings several times to confirm they are stable, and I show
+a representative run<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>.</em></p>
+<p>Even though both commands are running a similar number of computations in
+compiled code<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>, the version that calls the R-level function once is
+several orders of magnitude faster than the one that calls it for each group.</p>
+<p>As alluded to <a href="#split-bad">earlier</a> R call overhead is not the only difference
+between the two examples. <code>tapply</code> must also split the input vector into groups.
+To evaluate the relative cost of each task, we can separate the <code>tapply</code> call
+into its grouping (<code>split</code>) and apply components<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>. <code>split</code> breaks
+up the input vector into a list with one element for each group:</p>
+<pre class="r"><code>system.time(x.split &lt;- split(x, grp))</code></pre>
+<pre><code>   user  system elapsed
+  7.124   0.617   7.966</code></pre>
+<pre class="r"><code>str(x.split[1:3])   # show first 3 groups:</code></pre>
+<pre><code>List of 3
+ $ 1: num [1:11] 0.216 0.537 0.849 0.847 0.347 ...
+ $ 2: num [1:7] 0.0724 0.1365 0.5364 0.0517 0.1887 ...
+ $ 3: num [1:7] 0.842 0.323 0.325 0.49 0.342 ...</code></pre>
+<p><code>vapply</code> then collapses each group into one number with the <code>var</code> statistic:
+<span id="var-orig"></span></p>
+<pre class="r"><code>system.time(x.grp.2 &lt;- vapply(x.split, var, 0))</code></pre>
+<pre><code>   user  system elapsed
+ 40.001   0.629  41.921</code></pre>
+<pre class="r"><code>str(x.grp.2)</code></pre>
+<pre><code> Named num [1:999953] 0.079 0.0481 0.0715 0.0657 0.0435 ...
+ - attr(*, &quot;names&quot;)= chr [1:999953] &quot;1&quot; &quot;2&quot; &quot;3&quot; &quot;4&quot; ...</code></pre>
+<pre class="r"><code>all.equal(c(x.grp), x.grp.2)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>While the <code>var</code> computation accounts for the bulk of the elapsed time, the
+splitting can become significant with functions that are faster than
+<code>var</code><a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a>. For example, with <code>sum</code> which is one of the lowest overhead
+statistics in R, the grouping becomes the limiting element:</p>
+<pre class="r"><code>system.time(vapply(x.split, sum, 0))</code></pre>
+<pre><code>   user  system elapsed
+  0.605   0.011   0.620</code></pre>
+<p>A side-by-side comparison of the two timings makes this obvious. The “group”
+timing is the same for both functions.</p>
+<p><img src="/post/2019-02-24-a-strategy-for-faster-group-statisitics_files/figure-html/base-times-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><code>tapply</code> is not the only function that computes group statistics in R, but it is
+one of the simpler and faster ones.</p>
+</div>
+<div id="data.table-to-the-rescue" class="section level1">
+<h1><code>data.table</code> to the Rescue</h1>
+<p>Thankfully the <code>data.table</code> package implements several optimizations to assist
+with this problem.</p>
+<pre class="r"><code>library(data.table)  # 1.12.0
+setDTthreads(1)      # turn off data.table parallelization</code></pre>
+<p><strong>Note</strong>: <em>I turned off parallelization for <code>data.table</code> as it did not make a
+significance difference in this particular example, and it muddied the
+benchmarks<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a></em>.</p>
+<pre class="r"><code>DT &lt;- data.table(grp, x)
+DT</code></pre>
+<pre><code>             grp     x
+       1: 914807 0.116
+       2: 937076 0.734
+      ---
+ 9999999: 714619 0.547
+10000000: 361639 0.442</code></pre>
+<p>In order to compute a group statistic with <code>data.table</code> we use:</p>
+<pre class="r"><code>DT[, var(x), keyby=grp]</code></pre>
+<pre><code>            grp     V1
+     1:       1 0.0790
+     2:       2 0.0481
+    ---
+999952:  999999 0.1707
+999953: 1000000 0.0667</code></pre>
+<p>We use <code>keyby</code> instead of the traditional <code>by</code> because it instructs <code>data.table</code>
+to group <em>and</em> to order the return table by the groups, which matches what
+<code>tapply</code> does<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a>. Timings are a different story:
+<span id="dt-var"></span></p>
+<pre class="r"><code>system.time(x.grp.dt &lt;- DT[, var(x), keyby=grp][[&#39;V1&#39;]])</code></pre>
+<pre><code>   user  system elapsed
+  1.821   0.062   1.909</code></pre>
+<pre class="r"><code>all.equal(c(x.grp), x.grp.dt, check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>We’ve reproduced the same results at ~25x the speed.</p>
+<p>It is not possible to separate out the statistic computation cleanly from the
+grouping in <code>data.table</code><a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a>, but we can get a rough idea by setting a
+key on <code>grp</code>. This orders the table by the group, which is most of the overhead
+of grouping.</p>
+<pre class="r"><code>setkey(DT, grp)   # grouping takes advantage of this key
+DT                # notice the table is now ordered by group</code></pre>
+<pre><code>              grp     x
+       1:       1 0.216
+       2:       1 0.537
+      ---
+ 9999999: 1000000 0.180
+10000000: 1000000 0.919</code></pre>
+<p>What remains is mostly the statistic computation:</p>
+<pre class="r"><code>system.time(DT[, var(x), keyby=grp])</code></pre>
+<pre><code>   user  system elapsed
+  0.458   0.017   0.477</code></pre>
+<p>That step is close to two orders of magnitude faster than with
+<a href="#var-orig"><code>vapply</code></a>.</p>
+<p>A summary of the timings:</p>
+<p><img src="/post/2019-02-24-a-strategy-for-faster-group-statisitics_files/figure-html/var-dt-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="what-is-this-sorcery" class="section level1">
+<h1>What is this Sorcery?</h1>
+<p>How is it that <code>data.table</code> runs the R <code>var</code> function so much faster than
+<code>vapply</code>? <code>vapply</code> adds some overhead, but not much as shown when run with the
+essentially NULL-op unary <code>+</code><a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>:</p>
+<pre class="r"><code>system.time(vapply(1:1e6, `+`, 0L))</code></pre>
+<pre><code>   user  system elapsed
+  0.358   0.006   0.365</code></pre>
+<p>It turns out we are being lied to: <code>data.table</code> does not call the R <code>var</code>
+function ~1 million times. Instead it intercepts the call <code>var(x)</code> and
+substitutes it with a compiled code routine. This routine computes all the
+groups without intervening R-level evaluations. The <code>data.table</code> authors call
+this “GForce” optimization<a href="#fn13" class="footnote-ref" id="fnref13"><sup>13</sup></a>.</p>
+<p>The substitution is only possible if there is a pre-existing compiled code
+equivalent for the R-level function. <code>data.table</code> ships with such
+equivalents for the “base” R<a href="#fn14" class="footnote-ref" id="fnref14"><sup>14</sup></a> functions <code>min</code>, <code>max</code>,
+<code>mean</code><a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a>, <code>median</code>, <code>prod</code>, <code>sum</code>, <code>sd</code>, <code>var</code>, <code>head</code>, <code>tail</code>, and
+<code>[</code><a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a> as well as for the <code>data.table</code> functions <code>first</code> and
+<code>last</code>.</p>
+<p>Additionally, the substitution only happens with the simplest of calls. Adding
+a mere unary <code>+</code> call causes it to fail:</p>
+<pre class="r"><code>system.time(DT[, +var(x), keyby=grp])</code></pre>
+<pre><code>   user  system elapsed
+ 42.564   0.628  45.394</code></pre>
+<p>If you need a different function or a non-trivial expression you’ll have be
+content with falling back to standard evaluation. You can check whether
+<code>data.table</code> uses it by setting the verbose option<a href="#fn17" class="footnote-ref" id="fnref17"><sup>17</sup></a>:</p>
+<pre class="r"><code>options(datatable.verbose=TRUE)
+DT[, var(x), keyby=grp]</code></pre>
+<pre></pre>
+<pre><code>Detected that j uses these columns: x
+Finding groups using uniqlist on key ... 0.113s elapsed (0.045s cpu)
+Finding group sizes from the positions (can be avoided to save RAM) ... 0.020s elapsed (0.012s cpu)
+lapply optimization is on, j unchanged as 'var(x)'
+GForce <span style='background-color: #BBBB00;'>optimized j to 'gvar(x)'</span><span>
+Making each group and running j (</span><span style='background-color: #BBBB00;'>GForce TRUE</span><span>) ...</span></code></pre>
+<p>And to confirm that adding the unary <code>+</code> disables “GForce”:</p>
+<pre class="r"><code>DT[, +var(x), keyby=grp]</code></pre>
+<pre></pre>
+<pre><code>Detected that j uses these columns: x
+Finding groups using uniqlist on key ... 0.034s elapsed (0.029s cpu)
+Finding group sizes from the positions (can be avoided to save RAM) ... 0.009s elapsed (0.009s cpu)
+lapply optimization is on, j unchanged as '+var(x)'
+GForce is on, <span style='background-color: #BBBB00;'>left j unchanged</span><span>
+Old mean optimization is on, left j unchanged.
+Making each group and running j (</span><span style='background-color: #BBBB00;'>GForce FALSE</span><span>)</span></code></pre>
+</div>
+<div id="blood-from-a-turnip" class="section level1">
+<h1>Blood From a Turnip</h1>
+<p>Imagine we wish to compute the slope of a bi-variate least squares regression.
+The formula is:</p>
+<p><span class="math display">\[\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
+\bar{x})^{2}}\]</span></p>
+<p>The R equivalent is:<span id='slope-ex'></a></p>
+<pre class="r"><code>slope &lt;- function(x, y) {
+  x_ux &lt;- x - mean(x)
+  uy &lt;- mean(y)
+  sum(x_ux * (y - uy)) / sum(x_ux ^ 2)
+}</code></pre>
+<p>In order to use this function with the base <code>split</code>/<code>*pply</code> paradigm we need a
+little additional manipulation:</p>
+<pre class="r"><code>y &lt;- runif(n)
+
+system.time({
+  id &lt;- seq_along(grp)
+  id.split &lt;- split(id, grp)
+  res.slope.base &lt;- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})</code></pre>
+<pre><code>   user  system elapsed
+ 17.745   0.318  18.453</code></pre>
+<p>Instead of splitting a single variable, we split an index that we then use to
+subset each variable.</p>
+<p><code>data.table</code> makes this type of computation easy:<span id="dt-no-optim"></span></p>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+system.time(res.slope.dt1 &lt;- DT[, slope(x, y), keyby=grp])</code></pre>
+<pre><code>   user  system elapsed
+ 11.501   0.136  11.679</code></pre>
+<p>The timings improve over base, but not by the margins we saw previously. This
+is because <code>data.table</code> cannot use the <code>sum</code> and <code>mean</code> “GForce”
+counterparts when they are inside another function, or even when they are part
+of complex expressions.</p>
+<p>So, what are we to do? Are we stuck writing custom compiled code?</p>
+<p>Fortunately for us there is one last resort: with a little work we can break up
+the computation into pieces and take advantage of “GForce”. The idea is to
+compute intermediate values with <code>mean</code> and <code>sum</code> in simple calls that can use
+“GForce”, and carry out the rest of the calculations separately.</p>
+<p>In this case, the rest of the calculations use the operators <code>*</code>, <code>-</code>, <code>/</code>, and
+<code>^</code>.</p>
+<blockquote>
+<p>These arithmetic operators have the property that their <strong>results are the
+same whether computed with or without groups</strong>. It follows that the lack of
+“GForce” counterparts for the operators is a non-issue.</p>
+</blockquote>
+<p>We start by computing <code>$\bar{x}$</code> and <code>$\bar{y}$</code>:
+<span id="optim-start"></span></p>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+setkey(DT, grp)   # more on this in a moment
+DTsum &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]</code></pre>
+<p>Then we compute the <code>$(x - \bar{x})$</code> and <code>$(y - \bar{y})$</code> values by joining
+(a.k.a merging) our original table <code>DT</code> to the summary table <code>DTsum</code> with the
+<code>$\bar{x}$</code> and <code>$\bar{y}$</code> values. In <code>data.table</code> this can be done by
+subsetting for rows with another <code>data.table</code><a href="#fn18" class="footnote-ref" id="fnref18"><sup>18</sup></a>:</p>
+<pre class="r"><code>DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+DT</code></pre>
+<pre><code>              grp     x     y    x_ux   y_uy
+       1:       1 0.216 0.950 -0.3353 0.5058
+       2:       1 0.537 0.914 -0.0146 0.4697
+      ---
+ 9999999: 1000000 0.180 0.589 -0.3681 0.0109
+10000000: 1000000 0.919 0.914  0.3711 0.3359</code></pre>
+<p>The <code>`:=`(…)</code> call adds columns to <code>DT</code> with the results of
+the computations, recycling the <code>$\bar{x}$</code> and <code>$\bar{y}$</code> from <code>DTsum</code>. In
+effect this is equivalent to a join-and-update. We could have achieved the same
+with the simpler:</p>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]</code></pre>
+<p>While this works, it is much slower because it cannot use “GForce” as
+<a href="https://github.com/Rdatatable/data.table/issues/1414"><code>data.table</code> does not implement it within <code>:=</code></a>. So
+instead we are stuck with the group to <code>DTsum</code> and the join to update <code>DT</code>.</p>
+<p>If you <a href="#optim-start">look back</a> you can see that we used <code>setkey</code> right before
+computing <code>DTsum</code><a href="#fn19" class="footnote-ref" id="fnref19"><sup>19</sup></a>. We did this for two reasons:</p>
+<ol style="list-style-type: decimal">
+<li><code>setkey</code> tells <code>data.table</code> what column to join on when we subset with
+another <code>data.table</code> as above, and it makes the join fast.</li>
+<li>Keys can also be used to make grouping faster, so by setting the key early we
+used it both for the group and the join.</li>
+</ol>
+<p>The rest is relatively straightforward:</p>
+<pre class="r"><code>DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+res.slope.dt2 &lt;- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]</code></pre>
+<p>And we get the same result as with the base solution:</p>
+<pre><code>all.equal(res.slope.base, res.slope.dt2[[2]], check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Let’s time the whole thing:</p>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+system.time({
+  setkey(DT, grp)
+  DTsum &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 &lt;- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})</code></pre>
+<pre><code>   user  system elapsed
+  3.278   0.403   3.697</code></pre>
+<p>A ~3x improvement over the unoptimized <code>data.table</code> solution, and a ~5x
+improvement over the base solution.</p>
+<p>By carefully separating the computations into steps that can use “GForce” and
+steps that don’t need it to be fast, we are able to get “GForce”-like
+performance in an application for which that may seem impossible at first blush.</p>
+<p><img src="/post/2019-02-24-a-strategy-for-faster-group-statisitics_files/figure-html/dt-optim-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Should <code>data.table</code> add “GForce” support for <code>:=</code> I estimate the timings could
+get down to 2.5 seconds or less<a href="#fn20" class="footnote-ref" id="fnref20"><sup>20</sup></a> with the <a href="#alternate-data.table-solution">cleaner but currently
+“GForce”-less alternate solution</a>. Hopefully
+the authors will see it fit to implement this feature.</p>
+</div>
+<div id="what-about-dplyr" class="section level1">
+<h1>What About <code>dplyr</code>?</h1>
+<p>Like <code>data.table</code>, <code>dplyr</code> implements a “GForce” style evaluation. <code>dplyr</code>
+calls this “Hybrid Evaluation”<a href="#fn21" class="footnote-ref" id="fnref21"><sup>21</sup></a>. For slow functions like
+<code>var</code><a href="#fn22" class="footnote-ref" id="fnref22"><sup>22</sup></a> this leads to substantial performance improvements over the
+base solution:</p>
+<pre class="r"><code>library(dplyr)
+TB &lt;- tibble(grp, x)
+system.time(TB %&gt;% group_by(grp) %&gt;% summarize(var(x)))</code></pre>
+<pre><code>   user  system elapsed
+  9.823   0.609  10.639</code></pre>
+<p>Performance-wise the “Hybrid Evaluation” component is comparable to
+<code>data.table</code>’s “Gforce” and is responsible for the improvements over base’s
+performance:</p>
+<pre class="r"><code>TB.g &lt;- TB %&gt;% group_by(grp)
+system.time(TB.g %&gt;% summarize(var(x)))</code></pre>
+<pre><code>   user  system elapsed
+  0.521   0.003   0.527</code></pre>
+<p>On the whole <code>dplyr</code> underperforms <code>data.table</code> despite the competitive special
+evaluation because its grouping step is slower.</p>
+<p><img src="/post/2019-02-24-a-strategy-for-faster-group-statisitics_files/figure-html/var-dt-dplyr-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Since the <code>dplyr</code> “Hybrid Evaluation” is effective, we should be able to apply
+the same strategy as with <code>data.table</code> to optimize the computation of <code>slope</code>.
+Unfortunately it is an uphill battle as shown by the times of the baseline run:</p>
+<pre class="r"><code>TB &lt;- tibble(grp, x, y)
+system.time(res.dplyr1 &lt;- TB %&gt;% group_by(grp) %&gt;% summarise(slope(x, y)))</code></pre>
+<pre><code>   user  system elapsed
+  32.65    1.39   34.51</code></pre>
+<p>With no attempted optimizations <code>dplyr</code> is ~3x slower than the equivalent
+<code>data.table</code> call and close to ~2x slower than the base version.</p>
+<p>Due to the performance impact of <code>group_by</code> the best solution I found is
+somewhat convoluted. We’ll go through it in steps. First we compute the groups
+(<code>TB.g</code>) and <code>$\bar{x}$</code> and <code>$\bar{y}$</code>. We save <code>TB.g</code> as we will re-use it
+later:</p>
+<pre class="r"><code>TB.g &lt;- TB %&gt;% group_by(grp)
+TB.u &lt;- TB.g %&gt;% summarize(ux=mean(x), uy=mean(y))</code></pre>
+<p>Next is the join and computation of ungrouped stats:</p>
+<pre class="r"><code>TB.s &lt;- TB %&gt;%
+  inner_join(TB.u, by=&#39;grp&#39;) %&gt;%
+  mutate(x_ux=x-ux, y_uy=y-uy, x_ux.y_uy=x_ux*y_uy, x_ux2=x_ux^2) %&gt;%
+  select(x_ux.y_uy, x_ux2)</code></pre>
+<pre><code># A tibble: 10,000,000 x 2
+  x_ux.y_uy  x_ux2
+      &lt;dbl&gt;  &lt;dbl&gt;
+1   -0.0488 0.0157
+2    0.0401 0.0212
+# … with 1e+07 more rows</code></pre>
+<p>So far this is similar to what we did with <code>data.table</code> except we saved the
+intermediate statistics into their own table <code>TB.s</code>. We use that in the next
+step:</p>
+<pre class="r"><code>res.dplyr2 &lt;- bind_cols(TB.g, TB.s) %&gt;%
+  summarise(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)) %&gt;%
+  ungroup %&gt;%
+  mutate(slope=x_ux.y_uy / x_ux2) %&gt;%
+  select(grp, slope)
+res.dplyr2</code></pre>
+<pre><code># A tibble: 999,953 x 2
+    grp  slope
+  &lt;int&gt;  &lt;dbl&gt;
+1     1 -0.706
+2     2  0.134
+# … with 1e+06 more rows</code></pre>
+<pre class="r"><code>all.equal(res.slope.base, res.dplyr2[[2]], check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Rather than calling <code>group_by</code> on <code>TB.s</code> at the cost of ~10 seconds, we bind it
+to <code>TB.g</code> to re-use that tibble’s groups. This only works if the order of rows
+in <code>TB.g</code> and <code>TB.s</code> is the same. As far as I can tell <code>dplyr</code> does not support
+a group-ungroup-regroup<a href="#fn23" class="footnote-ref" id="fnref23"><sup>23</sup></a> mechanism that would allow us to avoid
+the explicit re-grouping without having to resort to <code>bind_cols</code>.</p>
+<p>Let’s time a slightly reworked but equivalent single-pipeline version:</p>
+<pre class="r"><code>system.time({
+  TB.g &lt;- TB %&gt;% group_by(grp)
+  res.dplyr2a &lt;- TB.g %&gt;%
+    summarise(ux=mean(x), uy=mean(y)) %&gt;%
+    inner_join(TB, ., by=&#39;grp&#39;) %&gt;%
+    mutate(x_ux=x-ux, y_uy=y-uy, x_ux.y_uy=x_ux*y_uy, x_ux2=x_ux^2) %&gt;%
+    select(x_ux.y_uy, x_ux2) %&gt;%
+    bind_cols(TB.g, .) %&gt;%
+    summarise(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)) %&gt;%
+    ungroup %&gt;%
+    mutate(slope=x_ux.y_uy / x_ux2) %&gt;%
+    select(grp, slope)
+})</code></pre>
+<pre><code>   user  system elapsed
+ 16.256   0.974  17.591</code></pre>
+<p>This is slightly faster than the base solution.</p>
+<p>I also tried a <a href="#join-dplyr-optimization">direct translation of the <code>data.table</code>
+optimization</a>, but the repeated <code>group_by</code> makes it
+too slow. I also tried to avoid the join by using <code>mutate</code> instead of
+<code>summarise</code> for the first grouped calculation but it appears “Hybrid Eval” is
+not available or is ineffective for <a href="#mutate-dplyr-optimization"><code>mean</code> within
+<code>mutate</code></a>, similar to how “GForce” is not available
+within <code>:=</code>.</p>
+<p>We can now compare all the timings:</p>
+<p><img src="/post/2019-02-24-a-strategy-for-faster-group-statisitics_files/figure-html/slope-all-times-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><code>data.table</code> benefits a lot more from enabling “GForce” because the group
+management portion of the execution is small. Since <code>dplyr</code> is less efficient
+with groups it does not benefit as much, and for this particular task ends up
+barely faster than base.</p>
+<p>Certainly this test with many groups and few values per group punishes
+systems that manage groups and joins with any inefficiency. The <code>data.table</code>
+team has produced a <a href="https://h2oai.github.io/db-benchmark/groupby.html">broader set of benchmarks</a> that you can refer to for
+some idea of performance for <code>dplyr</code> and <code>data.table</code> under different
+circumstances.</p>
+<p>I should point out that “Hybrid Evaluation” is better than “GForce” at
+respecting the semantics of the calls. For example, <code>dplyr</code> checks that symbols
+that look like the base summary functions such as <code>mean</code> actually reference
+those functions. If you do things like <code>mean &lt;- i_am_not_the_mean</code>, <code>dplyr</code>
+will recognize this and fall back to standard evaluation. Alternatively, if you
+use <code>mean2 &lt;- base::mean</code>, <code>dplyr</code> will still use “Hybrid Evaluation”. Finally,
+if a data column actually has a class attribute, <code>dplyr</code> will fall back to
+standard eval and let dispatch occur. <code>data.table</code> does not handle those cases
+correctly. This is unlikely to be an issue in typical use cases, but I do like
+the attention to detail the <code>dplyr</code> team applied here.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>With a little thought and care we were able to squeeze out some extra
+performance out of the super optimized <code>data.table</code> package. While a 2-3x
+performance improvement may not warrant the work required to get it in
+day-to-day usage, it could come in handy in circumstances where the optimization
+is written once and re-used over and over.</p>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="acknowledgments" class="section level2">
+<h2>Acknowledgments</h2>
+<ul>
+<li><a href="https://twitter.com/michael_chirico/status/1099807071363452928">Michael Chirico</a> for pointing me to the <a href="https://github.com/Rdatatable/data.table/issues/1414">“GForce” in <code>:=</code> issue</a>.</li>
+<li><a href="https://github.com/mattdowle">Matt Dowle</a> and the other <a href="https://cran.r-project.org/web/packages/data.table/index.html"><code>data.table</code> authors</a> for the fastest
+data-munging package in R.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code> with which
+I made the plots in this post.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/dplyr/index.html"><code>dplyr</code> authors</a> for <code>dplyr</code>.</li>
+</ul>
+</div>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.5.2 (2018-12-20)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS High Sierra 10.13.6
+
+Matrix products: default
+BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base
+
+other attached packages:
+[1] dplyr_0.8.0.1     data.table_1.12.0 ggplot2_3.1.0
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.0       magrittr_1.5     devtools_1.13.6  tidyselect_0.2.5
+ [5] munsell_0.5.0    colorspace_1.3-2 R6_2.3.0         rlang_0.3.1
+ [9] fansi_0.4.0      plyr_1.8.4       tools_3.5.2      grid_3.5.2
+[13] gtable_0.2.0     utf8_1.1.4       cli_1.0.1        withr_2.1.2
+[17] lazyeval_0.2.1   digest_0.6.18    assertthat_0.2.0 tibble_2.0.1
+[21] crayon_1.3.4     purrr_0.2.5      memoise_1.1.0    glue_1.3.0
+[25] compiler_3.5.2   pillar_1.3.1     scales_1.0.0     pkgconfig_2.0.2</code></pre>
+</div>
+<div id="alternate-data.table-solution" class="section level2">
+<h2>Alternate <code>data.table</code> Solution</h2>
+<p>We can avoid the join by computing the means directly in <code>DT</code>:</p>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
+DT[, `:=`(x_ux=x - ux, y_uy=y - uy)]
+DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+res.slope.dt3 &lt;- DTsum[, .(grp, x_ux.y_uy/x_ux2)]</code></pre>
+<pre class="r"><code>all.equal(res.slope.base, res.slope.dt3[[2]], check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>This comes at the cost of losing “GForce” for this step
+as <a href="https://github.com/Rdatatable/data.table/issues/1414"><code>data.table</code> does not currently implement “GForce” within <code>:=</code></a>:</p>
+<pre class="r"><code>DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]</code></pre>
+<p>There happens to be a small performance gain relative to the <a href="#dt-no-optim">unoptimized
+<code>data.table</code> solution</a>, but it is not inherent to this method:</p>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+system.time({
+  DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 &lt;- DTsum[, .(grp, x_ux.y_uy/x_ux2)]
+})</code></pre>
+<pre><code>   user  system elapsed
+  7.749   0.335   8.143</code></pre>
+<p>Prior to the implementation of “GForce”, the <code>data.table</code> team introduced an
+optimization for <code>mean</code> that can still be used in cases where “GForce” is not
+available. So in this case because <code>data.table</code> can see the <code>mean</code> call, it
+replaces it with on optimized but still R-level version of <code>mean</code>. There are
+still ~1 million R-level calls, but because the base <code>mean</code> function is slow due
+to the R-level S3 dispatch, replacing it with a slimmer R-level equivalent saves
+about 3 seconds.</p>
+</div>
+<div id="mutate-dplyr-optimization" class="section level2">
+<h2>Mutate <code>dplyr</code> Optimization</h2>
+<p>Forsaking “Hybrid Eval” for the first <code>mutate</code> in order to avoid the join,
+as it is <a href="#join-comparison">slower than in <code>data.table</code></a>, makes things a little
+slower:</p>
+<pre class="r"><code>system.time({
+  res.dplyr3 &lt;- TB %&gt;%
+    group_by(grp) %&gt;%
+    mutate(ux=mean(x), uy=mean(y)) %&gt;%
+    ungroup %&gt;%
+    mutate(x_ux=x - ux, y_uy=y - uy, x_ux.y_uy = x_ux * y_uy, x_ux2 = x_ux^2) %&gt;%
+    group_by(grp) %&gt;%
+    summarize(sx_ux.y_uy=sum(x_ux.y_uy), sx_ux2=sum(x_ux2)) %&gt;%
+    ungroup %&gt;%
+    mutate(slope= sx_ux.y_uy / sx_ux2) %&gt;%
+    select(grp, slope)
+})</code></pre>
+<pre><code>   user  system elapsed
+  30.00    1.03   31.71</code></pre>
+</div>
+<div id="join-comparison" class="section level2">
+<h2>Join Comparison</h2>
+<pre class="r"><code>DT &lt;- data.table(grp, x, y)
+DT.g &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+
+system.time({
+  setkey(DT, grp)
+  DT[DT.g]
+})</code></pre>
+<pre><code>   user  system elapsed
+  2.305   0.169   2.496</code></pre>
+<pre class="r"><code>TB &lt;- tibble(grp, x, y)
+TB.g &lt;- TB %&gt;% group_by(grp) %&gt;% summarise(ux=mean(x), uy=mean(y))
+system.time(TB %&gt;% inner_join(TB.g))</code></pre>
+<pre><code>   user  system elapsed
+  4.888   0.471   5.836</code></pre>
+</div>
+<div id="join-dplyr-optimization" class="section level2">
+<h2>Join <code>dplyr</code> Optimization</h2>
+<p>Using the same methodology that we optimized <code>data.table</code> with we get some
+improvement, but we are still slower than the base method:</p>
+<pre class="r"><code>system.time({
+  res.dplyr3 &lt;- TB %&gt;%
+    group_by(grp) %&gt;%
+    summarize(ux=mean(x), uy=mean(y)) %&gt;%
+    inner_join(TB, ., by=&#39;grp&#39;) %&gt;%
+    mutate(x_ux=x-ux, y_uy=y-uy, x_ux.y_uy=x_ux*y_uy, x_ux2=x_ux^2) %&gt;%
+    group_by(grp) %&gt;%
+    summarize(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)) %&gt;%
+    ungroup %&gt;%
+    mutate(slope=x_ux.y_uy / x_ux2) %&gt;%
+    select(grp, slope)
+})</code></pre>
+<pre><code>   user  system elapsed
+  26.07    1.45   28.34</code></pre>
+<pre class="r"><code>all.equal(res.slope.base, res.dplyr3[[2]], check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>This is because we need to use <code>group_by</code> twice.</p>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Even though there is much ado about the differences between explicit
+loops such as <code>for</code> and <code>while</code>, vs the implicit ones in the <code>*pply</code> family,
+from a performance perspective they are essentially the same so long as the
+explicit loops pre-allocate the result vector (e.g. <code>res &lt;- numeric(100); for(i in seq_len(100)) res[i] &lt;- f(i)</code>.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>Anyone who has spent any time answering R tagged questions on
+Stack Overflow can attest that computing statistics on groups is probably the
+single most common question people ask.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>The return value is actually an array, although in this case
+it only has one dimension.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>Using a large number of small groups is designed to exaggerate
+the computational issues in this type of calculation.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>Normally I would let the knitting process run the benchmarks, but
+it becomes awkward with relatively slow benchmarks like those in this post.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>The grouped calculation will require <code>$3(g - 1)$</code> more divisions
+than the non-grouped version, where <code>$g$</code> is the number of groups. However,
+since there are over 60 arithmetic operations involved in a <code>$n = 10$</code> group the
+overall additional time due to the extra calculations will not dominate even
+with the relatively expensive division operation.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>This approximation is semantically “close enough” for the
+simple example shown here, but will not generalize for more complex inputs.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p><code>var</code> is particularly slow in R3.5.2 due to the <a href="https://github.com/HenrikBengtsson/Wishlist-for-R/issues/70"><code>stopifnot</code> calls
+that it uses</a>. It should <a href="https://stat.ethz.ch/pipermail/r-devel/2019-March/077449.html">become faster in R3.6.0</a>.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p>In particular, we ended up with benchmarks that had <code>user</code> times
+greater than <code>ellapsed</code> due to the multi-core processing. Anecdotally on my
+two core system the benchmarks were roughly 20-30% faster with parallelization
+on. It is worth noting that parallelization is reasonably effective for the
+<code>gforce</code> step where it close to doubles the processing speed.<a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p>For more details see the <a href="https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html">“Aggregation” section of that <code>data.table</code>
+intro vignette</a>.<a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>Setting <code>options(datatable.verbose=TRUE)</code> will actually return
+this information, but unfortunately in my single threaded testing it seemed to
+also affect the timings, so I do not rely on it.<a href="#fnref11" class="footnote-back">↩</a></p></li>
+<li id="fn12"><p>Even the unary <code>+</code> operator will have some overhead, so not all that
+time is attributable to <code>vapply</code>.<a href="#fnref12" class="footnote-back">↩</a></p></li>
+<li id="fn13"><p>See <code>?'datatable-optimize'</code> for additional details.<a href="#fnref13" class="footnote-back">↩</a></p></li>
+<li id="fn14"><p>By “base” R I mean the packages that are loaded by default in a clean
+R session, including <code>base</code>, <code>stats</code>, etc.<a href="#fnref14" class="footnote-back">↩</a></p></li>
+<li id="fn15"><p>“GForce” <code>mean</code> uses the simpler <a href="https://github.com/Rdatatable/data.table/blob/1.12.0/src/gsumm.c#L460"><code>sum(x) / length(x)</code></a>
+calculation, instead of the more precise mean algorithm used by <a href="https://github.com/wch/r-source/blob/tags/R-3-5-2/src/main/summary.c#L485">base R</a>.
+<code>dplyr</code> also uses the <a href="https://github.com/tidyverse/dplyr/blob/v0.8.0.1/inst/include/dplyr/hybrid/scalar_result/mean_sd_var.h#L122">more precise algorithm</a>. You can reduce the
+optimization level on <code>data.table</code> to use a version of <code>mean</code> that aligns with
+the base version, but that version does not use “GForce” so is substantially
+slower, although still faster than the base <code>mean</code> function.<a href="#fnref15" class="footnote-back">↩</a></p></li>
+<li id="fn16"><p>For single constant indices e.g. <code>x[3]</code> but not <code>x[1:3]</code> or
+<code>x[y]</code>.<a href="#fnref16" class="footnote-back">↩</a></p></li>
+<li id="fn17"><p>Setting <code>options(datatable.verbose=TRUE)</code> will actually return
+this information, but unfortunately in my single threaded testing it seemed to
+also affect the timings, so I do not rely on it.<a href="#fnref17" class="footnote-back">↩</a></p></li>
+<li id="fn18"><p>Alternatively we can use <code>merge.data.table</code>, although internally
+that is just a wrapper around <code>[.data.table</code>, though there is the benefit of a
+familiar interface for those that are used to <code>base::merge</code>.<a href="#fnref18" class="footnote-back">↩</a></p></li>
+<li id="fn19"><p>One drawback of using <code>setkey</code> is that it sorts the entire
+table, which is potentially costly if you have many columns. You should
+consider subsetting down to the required columns before you use <code>setkey</code>.
+Another option if you are not looking to join tables is to use <code>setindex</code>.<a href="#fnref19" class="footnote-back">↩</a></p></li>
+<li id="fn20"><p>Another benefit of “GForce” in <code>:=</code> is that we can then use
+<code>setindex</code> instead of <code>setkey</code> to accelerate the group computations. The group
+computation will be a little slower with <code>setindex</code>, but <code>setkey</code> is
+substantially slower than <code>setindex</code>, so on the whole this should lead to a
+performance improvement.<a href="#fnref20" class="footnote-back">↩</a></p></li>
+<li id="fn21"><p>Hybrid eval has evolved a bit between the 0.7.x and 0.8.x
+releases. The <a href="https://www.tidyverse.org/articles/2018/12/dplyr-0-8-0-release-candidate/#redesigned-hybrid-evaluation">0.8.0 release notes</a> has good details, as well
+as the currently unreleased <a href="https://github.com/tidyverse/dplyr/blob/235d07643c0b82862a50f9459124694471a31076/vignettes/future/dplyr_0.8.0_new_hybrid.Rmd">hybrid evaluation vignette</a>. The <a href="https://s3.amazonaws.com/assets.rdocumentation.org/rpackages/unarchived/dplyr/0.7.3/vignettes/hybrid-evaluation.html">0.7.3
+vignette</a> has some historical context, and highlights that the original
+hybrid eval could handle more complex expressions, but that was dropped because
+the performance improvements did not warrant the additional complexity.<a href="#fnref21" class="footnote-back">↩</a></p></li>
+<li id="fn22"><p><code>var</code> is particularly slow in R3.5.2 due to the <a href="https://github.com/HenrikBengtsson/Wishlist-for-R/issues/70"><code>stopifnot</code> calls
+that it uses</a>. It should <a href="https://stat.ethz.ch/pipermail/r-devel/2019-March/077449.html">become faster in R3.6.0</a>.<a href="#fnref22" class="footnote-back">↩</a></p></li>
+<li id="fn23"><p>In theory it should be trivial to mark a tibble as <code>ungrouped</code>
+and have the internal code ignore the groups, and then unmark it later to be
+treated as grouped again. That’s pure speculation though; I’m not familiar
+enough with the <code>dplyr</code> internals to be certain.<a href="#fnref23" class="footnote-back">↩</a></p></li>
+</ol>
+</div>

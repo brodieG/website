@@ -5,7 +5,6 @@ date: '2019-02-24'
 slug: a-strategy-for-faster-group-statisitics
 categories: [r]
 tags: [optim, rdatatable, dplyr]
-draft: true
 image: /front-img/strategy-for-groups.png
 imagerect: /front-img/strategy-for-groups-wide-2.png
 imagemrgvt: 0%
@@ -954,10 +953,10 @@ vignette][2] has some historical context, and highlights that the original
 hybrid eval could handle more complex expressions, but that was dropped because
 the performance improvements did not warrant the additional complexity.
 [^for-ply]: Even though there is much ado about the differences between explicit
-loops such as `for` and `while`, vs implicit ones vs `*pply`, from a performance
-perspective they are essentially the same so long as the explicit loops
-pre-allocate the result vector (e.g. `res <- numeric(100); for(i in
-seq_len(100)) res[i] <- f(i)`.
+loops such as `for` and `while`, vs the implicit ones in the `*pply` family,
+from a performance perspective they are essentially the same so long as the
+explicit loops pre-allocate the result vector (e.g. `res <- numeric(100); for(i
+in seq_len(100)) res[i] <- f(i)`.
 [^num-calc]: The grouped calculation will require `$3(g - 1)$` more divisions
 than the non-grouped version, where `$g$` is the number of groups.  However,
 since there are over 60 arithmetic operations involved in a `$n = 10$` group the
