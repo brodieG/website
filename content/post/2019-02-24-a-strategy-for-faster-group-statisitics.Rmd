@@ -8,7 +8,7 @@ tags: [optim, rdatatable, dplyr]
 image: /front-img/strategy-for-groups.png
 imagerect: /front-img/strategy-for-groups-wide-2.png
 imagemrgvt: 0%
-imagemrghz: 20%
+imagemrghz: 0%
 weight: 1
 contenttype: article
 description: "The challenges of group statistics in R, 3rd party packages that
