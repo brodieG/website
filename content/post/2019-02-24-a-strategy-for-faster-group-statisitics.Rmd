@@ -1,5 +1,5 @@
 ---
-title: A Strategy for Faster Group Statisitics
+title: A Strategy for Faster Group Statistics
 author: ~
 date: '2019-02-24'
 slug: a-strategy-for-faster-group-statisitics
@@ -34,7 +34,7 @@ writeFansi <- function(x) {
 }
 ```
 
-# Group Statics in R
+# Group Statistics in R
 
 <!-- this needs to become a shortcode -->
 <!--
@@ -776,6 +776,8 @@ is written once and re-used over and over.
 * [Hadley Wickham][18] and the [`ggplot2` authors][19] for `ggplot2` with which
   I made the plots in this post.
 * [Hadley Wickham][18] and the [`dplyr` authors][16] for `dplyr`.
+* [Barry Rowlison][https://twitter.com/geospacedman] for privately reporting
+  large-font typos.
 
 ## Session Info
 
