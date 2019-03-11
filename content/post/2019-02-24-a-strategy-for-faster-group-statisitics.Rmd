@@ -776,8 +776,8 @@ is written once and re-used over and over.
 * [Hadley Wickham][18] and the [`ggplot2` authors][19] for `ggplot2` with which
   I made the plots in this post.
 * [Hadley Wickham][18] and the [`dplyr` authors][16] for `dplyr`.
-* [Barry Rowlison][https://twitter.com/geospacedman] for privately reporting
-  large-font typos.
+* [Barry Rowlison](https://twitter.com/geospacedman) and [Dirk
+  Eddelbuettel](https://twitter.com/eddelbuettel) for reporting typos.
 
 ## Session Info
 
