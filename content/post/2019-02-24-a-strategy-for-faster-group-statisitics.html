@@ -189,9 +189,9 @@ this “GForce” optimization<a href="#fn13" class="footnote-ref" id="fnref13">
 <p>The substitution is only possible if there is a pre-existing compiled code
 equivalent for the R-level function. <code>data.table</code> ships with such
 equivalents for the “base” R<a href="#fn14" class="footnote-ref" id="fnref14"><sup>14</sup></a> functions <code>min</code>, <code>max</code>,
-<code>mean</code><a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a>, <code>median</code>, <code>prod</code>, <code>sum</code>, <code>sd</code>, <code>var</code>, <code>head</code>, <code>tail</code>, and
-<code>[</code><a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a> as well as for the <code>data.table</code> functions <code>first</code> and
-<code>last</code>.</p>
+<code>mean</code><a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a>, <code>median</code>, <code>prod</code>, <code>sum</code>, <code>sd</code>, <code>var</code>, <code>head</code>,
+<code>tail</code><a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a>, and <code>[</code><a href="#fn17" class="footnote-ref" id="fnref17"><sup>17</sup></a> as well as for the
+<code>data.table</code> functions <code>first</code> and <code>last</code>.</p>
 <p>Additionally, the substitution only happens with the simplest of calls. Adding
 a mere unary <code>+</code> call causes it to fail:</p>
 <pre class="r"><code>system.time(DT[, +var(x), keyby=grp])</code></pre>
@@ -199,7 +199,7 @@ a mere unary <code>+</code> call causes it to fail:</p>
  42.564   0.628  45.394</code></pre>
 <p>If you need a different function or a non-trivial expression you’ll have be
 content with falling back to standard evaluation. You can check whether
-<code>data.table</code> uses it by setting the verbose option<a href="#fn17" class="footnote-ref" id="fnref17"><sup>17</sup></a>:</p>
+<code>data.table</code> uses it by setting the verbose option<a href="#fn18" class="footnote-ref" id="fnref18"><sup>18</sup></a>:</p>
 <pre class="r"><code>options(datatable.verbose=TRUE)
 DT[, var(x), keyby=grp]</code></pre>
 <pre></pre>
@@ -274,7 +274,7 @@ DTsum &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]</code></pre>
 <p>Then we compute the <code>$(x - \bar{x})$</code> and <code>$(y - \bar{y})$</code> values by joining
 (a.k.a merging) our original table <code>DT</code> to the summary table <code>DTsum</code> with the
 <code>$\bar{x}$</code> and <code>$\bar{y}$</code> values. In <code>data.table</code> this can be done by
-subsetting for rows with another <code>data.table</code><a href="#fn18" class="footnote-ref" id="fnref18"><sup>18</sup></a>:</p>
+subsetting for rows with another <code>data.table</code><a href="#fn19" class="footnote-ref" id="fnref19"><sup>19</sup></a>:</p>
 <pre class="r"><code>DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
 DT</code></pre>
 <pre><code>              grp     x     y    x_ux   y_uy
@@ -293,7 +293,7 @@ DT[, `:=`(ux=mean(x), uy=mean(y)), keyby=grp]</code></pre>
 <a href="https://github.com/Rdatatable/data.table/issues/1414"><code>data.table</code> does not implement it within <code>:=</code></a>. So
 instead we are stuck with the group to <code>DTsum</code> and the join to update <code>DT</code>.</p>
 <p>If you <a href="#optim-start">look back</a> you can see that we used <code>setkey</code> right before
-computing <code>DTsum</code><a href="#fn19" class="footnote-ref" id="fnref19"><sup>19</sup></a>. We did this for two reasons:</p>
+computing <code>DTsum</code><a href="#fn20" class="footnote-ref" id="fnref20"><sup>20</sup></a>. We did this for two reasons:</p>
 <ol style="list-style-type: decimal">
 <li><code>setkey</code> tells <code>data.table</code> what column to join on when we subset with
 another <code>data.table</code> as above, and it makes the join fast.</li>
@@ -326,15 +326,15 @@ steps that don’t need it to be fast, we are able to get “GForce”-like
 performance in an application for which that may seem impossible at first blush.</p>
 <p><img src="/post/2019-02-24-a-strategy-for-faster-group-statisitics_files/figure-html/dt-optim-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>Should <code>data.table</code> add “GForce” support for <code>:=</code> I estimate the timings could
-get down to 2.5 seconds or less<a href="#fn20" class="footnote-ref" id="fnref20"><sup>20</sup></a> with the <a href="#alternate-data.table-solution">cleaner but currently
+get down to 2.5 seconds or less<a href="#fn21" class="footnote-ref" id="fnref21"><sup>21</sup></a> with the <a href="#alternate-data.table-solution">cleaner but currently
 “GForce”-less alternate solution</a>. Hopefully
 the authors will see it fit to implement this feature.</p>
 </div>
 <div id="what-about-dplyr" class="section level1">
 <h1>What About <code>dplyr</code>?</h1>
 <p>Like <code>data.table</code>, <code>dplyr</code> implements a “GForce” style evaluation. <code>dplyr</code>
-calls this “Hybrid Evaluation”<a href="#fn21" class="footnote-ref" id="fnref21"><sup>21</sup></a>. For slow functions like
-<code>var</code><a href="#fn22" class="footnote-ref" id="fnref22"><sup>22</sup></a> this leads to substantial performance improvements over the
+calls this “Hybrid Evaluation”<a href="#fn22" class="footnote-ref" id="fnref22"><sup>22</sup></a>. For slow functions like
+<code>var</code><a href="#fn23" class="footnote-ref" id="fnref23"><sup>23</sup></a> this leads to substantial performance improvements over the
 base solution:</p>
 <pre class="r"><code>library(dplyr)
 TB &lt;- tibble(grp, x)
@@ -397,7 +397,7 @@ res.dplyr2</code></pre>
 <p>Rather than calling <code>group_by</code> on <code>TB.s</code> at the cost of ~10 seconds, we bind it
 to <code>TB.g</code> to re-use that tibble’s groups. This only works if the order of rows
 in <code>TB.g</code> and <code>TB.s</code> is the same. As far as I can tell <code>dplyr</code> does not support
-a group-ungroup-regroup<a href="#fn23" class="footnote-ref" id="fnref23"><sup>23</sup></a> mechanism that would allow us to avoid
+a group-ungroup-regroup<a href="#fn24" class="footnote-ref" id="fnref24"><sup>24</sup></a> mechanism that would allow us to avoid
 the explicit re-grouping without having to resort to <code>bind_cols</code>.</p>
 <p>Let’s time a slightly reworked but equivalent single-pipeline version:</p>
 <pre class="r"><code>system.time({
@@ -471,6 +471,15 @@ I made the plots in this post.</li>
 <li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/dplyr/index.html"><code>dplyr</code> authors</a> for <code>dplyr</code>.</li>
 <li><a href="https://twitter.com/geospacedman">Barry Rowlingson</a> and <a href="https://twitter.com/eddelbuettel">Dirk
 Eddelbuettel</a> for reporting typos.</li>
+<li><a href="https://github.com/franknarf1">Frank</a> for reading the footnotes and pointing
+out that <code>head</code> and <code>tail</code> “GForce” counterparts only work in e.g. <code>head(x, 1)</code> form.</li>
+</ul>
+</div>
+<div id="updates" class="section level2">
+<h2>Updates</h2>
+<ul>
+<li>2019-03-11: typos, some blindingly horrible.</li>
+<li>2019-03-12: clarified footnotes, added caveat about “GForce” <code>head</code>/<code>tail</code>.</li>
 </ul>
 </div>
 <div id="session-info" class="section level2">
@@ -642,34 +651,37 @@ calculation, instead of the more precise mean algorithm used by <a href="https:/
 optimization level on <code>data.table</code> to use a version of <code>mean</code> that aligns with
 the base version, but that version does not use “GForce” so is substantially
 slower, although still faster than the base <code>mean</code> function.<a href="#fnref15" class="footnote-back">↩</a></p></li>
-<li id="fn16"><p>For single constant indices e.g. <code>x[3]</code> but not <code>x[1:3]</code> or
-<code>x[y]</code>.<a href="#fnref16" class="footnote-back">↩</a></p></li>
-<li id="fn17"><p>Setting <code>options(datatable.verbose=TRUE)</code> will actually return
+<li id="fn16"><p>the “GForce” implementations of <code>head</code> and <code>tail</code> only
+support <code>head(x, 1)</code> and <code>tail(x, 1)</code> usage, and are effectively equivalent to
+<code>first</code> and <code>last</code>.<a href="#fnref16" class="footnote-back">↩</a></p></li>
+<li id="fn17"><p>For single constant indices e.g. <code>x[3]</code> but not <code>x[1:3]</code> or
+<code>x[y]</code>.<a href="#fnref17" class="footnote-back">↩</a></p></li>
+<li id="fn18"><p>Setting <code>options(datatable.verbose=TRUE)</code> will actually return
 this information, but unfortunately in my single threaded testing it seemed to
-also affect the timings, so I do not rely on it.<a href="#fnref17" class="footnote-back">↩</a></p></li>
-<li id="fn18"><p>Alternatively we can use <code>merge.data.table</code>, although internally
+also affect the timings, so I do not rely on it.<a href="#fnref18" class="footnote-back">↩</a></p></li>
+<li id="fn19"><p>Alternatively we can use <code>merge.data.table</code>, although internally
 that is just a wrapper around <code>[.data.table</code>, though there is the benefit of a
-familiar interface for those that are used to <code>base::merge</code>.<a href="#fnref18" class="footnote-back">↩</a></p></li>
-<li id="fn19"><p>One drawback of using <code>setkey</code> is that it sorts the entire
+familiar interface for those that are used to <code>base::merge</code>.<a href="#fnref19" class="footnote-back">↩</a></p></li>
+<li id="fn20"><p>One drawback of using <code>setkey</code> is that it sorts the entire
 table, which is potentially costly if you have many columns. You should
 consider subsetting down to the required columns before you use <code>setkey</code>.
-Another option if you are not looking to join tables is to use <code>setindex</code>.<a href="#fnref19" class="footnote-back">↩</a></p></li>
-<li id="fn20"><p>Another benefit of “GForce” in <code>:=</code> is that we can then use
+Another option if you are not looking to join tables is to use <code>setindex</code>.<a href="#fnref20" class="footnote-back">↩</a></p></li>
+<li id="fn21"><p>Another benefit of “GForce” in <code>:=</code> is that we can then use
 <code>setindex</code> instead of <code>setkey</code> to accelerate the group computations. The group
 computation will be a little slower with <code>setindex</code>, but <code>setkey</code> is
 substantially slower than <code>setindex</code>, so on the whole this should lead to a
-performance improvement.<a href="#fnref20" class="footnote-back">↩</a></p></li>
-<li id="fn21"><p>Hybrid eval has evolved a bit between the 0.7.x and 0.8.x
+performance improvement when there is more than one grouping operations.<a href="#fnref21" class="footnote-back">↩</a></p></li>
+<li id="fn22"><p>Hybrid eval has evolved a bit between the 0.7.x and 0.8.x
 releases. The <a href="https://www.tidyverse.org/articles/2018/12/dplyr-0-8-0-release-candidate/#redesigned-hybrid-evaluation">0.8.0 release notes</a> has good details, as well
 as the currently unreleased <a href="https://github.com/tidyverse/dplyr/blob/235d07643c0b82862a50f9459124694471a31076/vignettes/future/dplyr_0.8.0_new_hybrid.Rmd">hybrid evaluation vignette</a>. The <a href="https://s3.amazonaws.com/assets.rdocumentation.org/rpackages/unarchived/dplyr/0.7.3/vignettes/hybrid-evaluation.html">0.7.3
 vignette</a> has some historical context, and highlights that the original
 hybrid eval could handle more complex expressions, but that was dropped because
-the performance improvements did not warrant the additional complexity.<a href="#fnref21" class="footnote-back">↩</a></p></li>
-<li id="fn22"><p><code>var</code> is particularly slow in R3.5.2 due to the <a href="https://github.com/HenrikBengtsson/Wishlist-for-R/issues/70"><code>stopifnot</code> calls
-that it uses</a>. It should <a href="https://stat.ethz.ch/pipermail/r-devel/2019-March/077449.html">become faster in R3.6.0</a>.<a href="#fnref22" class="footnote-back">↩</a></p></li>
-<li id="fn23"><p>In theory it should be trivial to mark a tibble as <code>ungrouped</code>
+the performance improvements did not warrant the additional complexity.<a href="#fnref22" class="footnote-back">↩</a></p></li>
+<li id="fn23"><p><code>var</code> is particularly slow in R3.5.2 due to the <a href="https://github.com/HenrikBengtsson/Wishlist-for-R/issues/70"><code>stopifnot</code> calls
+that it uses</a>. It should <a href="https://stat.ethz.ch/pipermail/r-devel/2019-March/077449.html">become faster in R3.6.0</a>.<a href="#fnref23" class="footnote-back">↩</a></p></li>
+<li id="fn24"><p>In theory it should be trivial to mark a tibble as <code>ungrouped</code>
 and have the internal code ignore the groups, and then unmark it later to be
 treated as grouped again. That’s pure speculation though; I’m not familiar
-enough with the <code>dplyr</code> internals to be certain.<a href="#fnref23" class="footnote-back">↩</a></p></li>
+enough with the <code>dplyr</code> internals to be certain.<a href="#fnref24" class="footnote-back">↩</a></p></li>
 </ol>
 </div>

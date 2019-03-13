@@ -330,9 +330,9 @@ this "GForce" optimization[^gforce].
 The substitution is only possible if there is a pre-existing compiled code
 equivalent for the R-level function.  `data.table` ships with such
 equivalents for the "base" R[^base-r] functions `min`, `max`,
-`mean`[^mean-diff], `median`, `prod`, `sum`, `sd`, `var`, `head`, `tail`, and
-`[`[^subset-gforce] as well as for the `data.table` functions `first` and
-`last`.
+`mean`[^mean-diff], `median`, `prod`, `sum`, `sd`, `var`, `head`,
+`tail`[^head-tail-limited], and `[`[^subset-gforce] as well as for the
+`data.table` functions `first` and `last`.
 
 Additionally, the substitution only happens with the simplest of calls.  Adding
 a mere unary `+` call causes it to fail:
@@ -778,6 +778,14 @@ is written once and re-used over and over.
 * [Hadley Wickham][18] and the [`dplyr` authors][16] for `dplyr`.
 * [Barry Rowlingson](https://twitter.com/geospacedman) and [Dirk
   Eddelbuettel](https://twitter.com/eddelbuettel) for reporting typos.
+* [Frank](https://github.com/franknarf1) for reading the footnotes and pointing
+  out that `head` and `tail` "GForce" counterparts only work in e.g. `head(x,
+  1)` form.
+
+## Updates
+
+* 2019-03-11: typos, some blindingly horrible.
+* 2019-03-12: clarified footnotes, added caveat about "GForce" `head`/`tail`.
 
 ## Session Info
 
@@ -1007,7 +1015,7 @@ Another option if you are not looking to join tables is to use `setindex`.
 `setindex` instead of `setkey` to accelerate the group computations.  The group
 computation will be a little slower with `setindex`, but `setkey` is
 substantially slower than `setindex`, so on the whole this should lead to a
-performance improvement.
+performance improvement when there is more than one grouping operations.
 [^dt-merge]: Alternatively we can use `merge.data.table`, although internally
 that is just a wrapper around `[.data.table`, though there is the benefit of a 
 familiar interface for those that are used to `base::merge`.
@@ -1015,6 +1023,9 @@ familiar interface for those that are used to `base::merge`.
 and have the internal code ignore the groups, and then unmark it later to be
 treated as grouped again.  That's pure speculation though; I'm not familiar
 enough with the `dplyr` internals to be certain.
+[^head-tail-limited]: the "GForce" implementations of `head` and `tail` only
+support `head(x, 1)` and `tail(x, 1)` usage, and are effectively equivalent to
+`first` and `last`.
 
 [1]: https://stackoverflow.com/a/29806540/2725969
 [2]: https://s3.amazonaws.com/assets.rdocumentation.org/rpackages/unarchived/dplyr/0.7.3/vignettes/hybrid-evaluation.html
