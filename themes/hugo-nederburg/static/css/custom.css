@@ -711,10 +711,13 @@ a img {
 
 .excerpt-meta, .entry-meta {
   color: #aaaaaa;
-  padding-top: .5em;
+  padding-top: 0;
 }
-.entry-meta, {
-  padding-top: 1.5em;
+.excerpt-meta {
+  margin-bottom: .25em;
+}
+.entry-meta {
+  margin-bottom: .65em;
 }
 .excerpt-meta a, .entry-meta a {
   color: #aaaaaa;

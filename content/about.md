@@ -53,4 +53,5 @@ otherwise indicated.
   [magick](https://cran.r-project.org/package=magick), and by extension
   [ImageMagick Studio](https://github.com/orgs/ImageMagick/people) LLC
   for `imagemagick`.
-
+* [Dirk Eddelbuettel](http://dirk.eddelbuettel.com/) for feedback on this
+  style of this website.
