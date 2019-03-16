@@ -20,13 +20,118 @@ options(digits=3)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 
-# Header 1
+# blah blah
 
 <!-- this needs to become a shortcode -->
 <img
   id='front-img' src='/front-img/default.png'
   class='post-inset-image'
 />
+
+# Baseline
+
+```{r eval=FALSE}
+RNGversion("3.5.2"); set.seed(42)
+n     <- 1e7
+n.grp <- 1e6
+grp   <- sample(n.grp, n, replace=TRUE)
+x     <- runif(n)
+y     <- runif(n)
+
+system.time(x.grp <- tapply(x, grp, sum))
+```
+```
+   user  system elapsed
+  8.539   0.321   9.030
+```
+```{r}
+library(data.table)
+DT <- data.table(grp, x)
+setDTthreads(1)
+system.time(DT[, sum(x), keyby=grp])
+```
+```
+   user  system elapsed
+  1.056   0.061   1.126
+```
+
+# Simple But Limited
+
+Our first solution uses `base::rowsum`.  As the semantic capitalization and text
+decoration conventions tell us, `base::rowsum` is completely different to
+`base::rowSums`.  The singular lower case form indicates `base::rowsum`
+collapses rows within groups, but preserves the columns.  Conversely, the plural
+upper case form indicates that each row is collapsed into a single column, but
+the row count is preserved.  The currently unimplemented `base::row.sum` and
+`base::RowSums` will resolve world hunger and climate change respectively.
+Other permutations of text decorations are reserved for future use.
+
+As we've all read the "Semantics of Text Decoration in R Names" memo this is
+obvious, but let's illustrate for completeness:
+
+```{r}
+mx <- matrix(1:8, 4, byrow=TRUE) * 10 ^ (0:3)
+mx
+```
+```{r}
+rowSums(mx)
+```
+
+`rowSums` turned Our 4 x 2 matrix into a 4 x 1 "column", or vector.
+
+```{r}
+rowsum(mx, group=rep(c('odd', 'even'), 2))
+```
+
+On the other hand `rowsum` preserved the two columns, collapsed the rows by the
+`group` value.
+
+You did get the memo, right?  Good.  I still shudder at the thought of the poor
+sod that posted "gday" instead of "g.Day" in the _public_ R slack
+channel[^love-r-but].
+
+
+
+
+```{r eval=FALSE}
+system.time(x.grp.2 <- rowsum(x, grp))
+```
+```
+   user  system elapsed 
+  2.505   0.096   2.626 
+```
+```{r eval=FALSE}
+system.time({
+  o <- order(grp)
+  x.grp.2 <- rowsum(x[o], grp[o])
+})
+```
+```
+   user  system elapsed 
+  1.408   0.113   1.556 
+```
+```{r}
+system.time({
+  go <- order(grp)
+  xo <- x[o]
+  xs <- rowsum(xo, go)
+  xn <- rowsum(rep(1L, length(go)), go)
+  xi <- rep(seq_along(xs), xn)
+  xu <- (xs/xn)[xi]
+
+  yo <- y[o]
+  ys <- rowsum(yo, go)
+  yu <- (ys/xn)[xi]
+
+  x_ux <- xo - xu
+  y_uy <- yo - yu
+
+  rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
+})
+```
+
+
+
 ```{r eval=FALSE}
 # Note: adapted to handle na.rm as per winvector, don't necessarily
 # handle corner cases correctly (0, 1 length vectors, others?)
@@ -112,3 +217,8 @@ Note on vector size[^vec-size].
 
 [^vec-size]: Numeric vectors require 8 bytes per element plus some overhead for
 the object meta data.
+[^love-r-but]: I love R, but the maddness around [text decoration
+conventions][1] is something that I could do without.  Sorry for the rant, but I
+was particularly triggered by this example.
+
+[1]: https://twitter.com/BrodieGaslam/status/976616435836510210
