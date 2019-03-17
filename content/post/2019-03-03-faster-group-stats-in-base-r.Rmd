@@ -110,26 +110,30 @@ system.time({
    user  system elapsed 
   1.408   0.113   1.556 
 ```
+Slope:
 ```{r}
 system.time({
-  go <- order(grp)
-  xo <- x[o]
-  xs <- rowsum(xo, go)
-  xn <- rowsum(rep(1L, length(go)), go)
-  xi <- rep(seq_along(xs), xn)
-  xu <- (xs/xn)[xi]
+o <- order(grp)
+go <- grp[o]
+xo <- x[o]
+xs <- rowsum(xo, go)
+xn <- rowsum(rep(1L, length(go)), go)
+xi <- rep(seq_along(xs), xn)
+xu <- (xs/xn)[xi]
 
-  yo <- y[o]
-  ys <- rowsum(yo, go)
-  yu <- (ys/xn)[xi]
+yo <- y[o]
+ys <- rowsum(yo, go)
+yu <- (ys/xn)[xi]
+x_ux <- xo - xu
+y_uy <- yo - yu
 
-  x_ux <- xo - xu
-  y_uy <- yo - yu
-
-  rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
+rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
 })
 ```
-
+```
+   user  system elapsed 
+  4.655   0.772   5.516 
+```
 
 
 ```{r eval=FALSE}
@@ -157,8 +161,50 @@ sum_g2 <- function(x, grp, na.rm=FALSE) {
   if(!na.rm && has.na)
     x.grp.c[match(grp.ord[na.x], grp.rle[['values']])] <- NA
 
-  structure(x.grp.c, groups=grp.rle[['values']])
+  structure(x.grp.c, groups=grp.rle[['values']], n=grp.rle[['lengths']])
 }
+system.time(sum_g2(x, grp))
+```
+```
+   user  system elapsed 
+  1.186   0.374   1.634 
+```
+Try slope:
+```{r eval=FALSE}
+system.time({
+  ord <- order(grp)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.rle.c <- cumsum(grp.rle[['lengths']])
+  x.ord <- x[ord]
+  y.ord <- y[ord]
+
+  x.grp.c <- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
+
+  y.grp.c <- cumsum(y.ord)[grp.rle.c]
+  y.grp.c[-1L] <- y.grp.c[-1L] - y.grp.c[-length(y.grp.c)]
+
+  ux <- x.grp.c / grp.rle[['lengths']]
+  uy <- y.grp.c / grp.rle[['lengths']]
+
+  xi <- rep(seq_along(ux), grp.rle[['lengths']])
+  x_ux <- x.ord - ux[xi]
+  y_uy <- y.ord - uy[xi]
+
+  x_ux.y_uy <- cumsum(x_ux * y_uy)[grp.rle.c]
+  x_ux.y_uy[-1L] <- x_ux.y_uy[-1L] - x_ux.y_uy[-length(x_ux.y_uy)]
+  x_ux2 <- cumsum(x_ux ^ 2)[grp.rle.c]
+  x_ux2[-1L] <- x_ux2[-1L] - x_ux2[-length(x_ux2)]
+})
+```
+```
+   user  system elapsed 
+  2.049   0.805   2.871 
+   user  system elapsed 
+  1.186   0.374   1.634 
+```
+```{r eval=FALSE}
 sum_g3 <- function(x, grp, na.rm=TRUE) {
   ord <- order(grp)
   id.ord <- id[ord]
@@ -180,6 +226,13 @@ sum_g3 <- function(x, grp, na.rm=TRUE) {
   res[id] <- x[ord]
   structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
 }
+system.time(sum_g3(x, grp))
+```
+```
+   user  system elapsed 
+  1.186   0.374   1.634 
+```
+```{r eval=FALSE}
 
 DT <- copy(DT.raw)
 system.time(res.ref <- DT[, sum(x), keyby=grp][['V1']])
