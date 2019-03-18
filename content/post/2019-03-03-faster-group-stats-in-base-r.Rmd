@@ -141,6 +141,7 @@ rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
 # handle corner cases correctly (0, 1 length vectors, others?)
 
 # Note: this stuff is only fast because order(, method="radix") is fast
+# Doesn't handle Infinite values
 
 sum_g2 <- function(x, grp, na.rm=FALSE) {
   ord <- order(grp)
@@ -172,16 +173,16 @@ system.time(sum_g2(x, grp))
 Try slope:
 ```{r eval=FALSE}
 
-sum_grp_int <- function(x, last.in.group) {
+sum_grp1_int <- function(x, last.in.group) {
   x.g <- cumsum(x)[last.in.group]
   x.g[-1L] <- x.g[-1L] - x.g[-length(x.g)]
   x.g
 }
-sum_grp <- function(x, last.in.group, precise=FALSE){
-  x.grp <- sum_grp_int(x, last.in.group)
+sum_grp1 <- function(x, last.in.group, precise=FALSE){
+  x.grp <- sum_grp1_int(x, last.in.group)
   if(precise) {
     x[last.in.group] <- x[last.in.group] - x.grp
-    x.grp + sum_grp_int(x, last.in.group)
+    x.grp + sum_grp1_int(x, last.in.group)
   } else x.grp
 }
 slope1 <- function(x, y, grp, precise=FALSE) {
@@ -192,8 +193,8 @@ slope1 <- function(x, y, grp, precise=FALSE) {
   x.ord <- x[ord]
   y.ord <- y[ord]
 
-  x.grp.c <- sum_grp(x.ord, grp.rle.c, precise=precise)
-  y.grp.c <- sum_grp(y.ord, grp.rle.c, precise=precise)
+  x.grp.c <- sum_grp1(x.ord, grp.rle.c, precise=precise)
+  y.grp.c <- sum_grp1(y.ord, grp.rle.c, precise=precise)
 
   ux <- x.grp.c / grp.rle[['lengths']]
   uy <- y.grp.c / grp.rle[['lengths']]
@@ -202,9 +203,9 @@ slope1 <- function(x, y, grp, precise=FALSE) {
   x_ux <- x.ord - ux[xi]
   y_uy <- y.ord - uy[xi]
 
-  x_ux.y_uy <- sum_grp(x_ux * y_uy, grp.rle.c, precise=precise)
-  x_ux2 <- sum_grp(x_ux ^ 2, grp.rle.c, precise=precise)
-  res4 <- x_ux.y_uy / x_ux2
+  x_ux.y_uy <- sum_grp1(x_ux * y_uy, grp.rle.c, precise=precise)
+  x_ux2 <- sum_grp1(x_ux ^ 2, grp.rle.c, precise=precise)
+  x_ux.y_uy / x_ux2
 }
 system.time(slope1(x, y, grp, precise=FALSE))
 ```
@@ -226,6 +227,9 @@ system.time(slope1(x, y, grp, precise=TRUE))
 ```
    user  system elapsed 
   2.481   1.087   3.754 
+  # second faster timing was from a fresh session, repeated several times
+   user  system elapsed 
+  2.399   0.933   3.348 
 ```
 
 ```{r eval=FALSE}
@@ -235,6 +239,8 @@ sum_g3 <- function(x, grp, na.rm=TRUE) {
   grp.ord <- grp[ord]
   grp.rle <- rle(grp.ord)
   max.grp <- max(grp.rle[['lengths']])
+
+  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
 
   res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
 
@@ -255,6 +261,57 @@ system.time(sum_g3(x, grp))
 ```
    user  system elapsed 
   1.186   0.374   1.634 
+```
+```{r eval=FALSE}
+# lens: how long each group is
+# maxlen: longest group
+sum_grp2 <- function(x, lens, maxlen, mode='sum') {
+
+  res <- matrix(NA_real_, ncol=length(lens), nrow=maxlen)
+
+  # Generate indices that will map to the correct spots in `res` from `x`,
+  # which means add whatever padding we need to the index value for the next
+  # column
+
+  grp.pad <- maxlen - lens
+  id.raw <- rep(1L, length(x))
+  id.raw[(cumsum(lens) + 1L)[-length(lens)]] <- grp.pad[-length(lens)] + 1L
+  id <- cumsum(id.raw)
+
+  # Inject the x values according to these indices that should place each gropu
+  # in a column
+
+  res[id] <- x
+  if(identical(mode, 'sum')) colSums(res, na.rm=TRUE)
+  else if(identical(mode, 'mean')) colMeans(res, na.rm=TRUE)
+  else stop("Invalid mode")
+}
+slope2 <- function(x, y, grp) {
+  ord <- order(grp)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.len <- grp.rle[['lengths']]
+  max.grp <- max(grp.len)
+
+  xo <- x[ord]
+  xi <- rep(seq_along(grp.len), grp.len)
+  xu <- sum_grp2(xo, grp.len, max.grp, 'mean')
+  x_ux <- xo - xu[xi]
+
+  yo <- y[ord]
+  yu <- sum_grp2(yo, grp.len, max.grp, 'mean')
+  y_uy <- yo - yu[xi]
+
+  x_ux.y_uy <- sum_grp2(x_ux * y_uy, grp.len, max.grp, 'sum')
+  x_ux2 <- sum_grp2(x_ux ^ 2, grp.len, max.grp, 'sum')
+
+  x_ux.y_uy / x_ux2
+}
+system.time(slope2(x, y, grp))
+```
+```
+   user  system elapsed 
+  2.827   0.932   3.807 
 ```
 ```{r eval=FALSE}
 
