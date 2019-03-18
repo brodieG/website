@@ -171,7 +171,20 @@ system.time(sum_g2(x, grp))
 ```
 Try slope:
 ```{r eval=FALSE}
-system.time({
+
+sum_grp_int <- function(x, last.in.group) {
+  x.g <- cumsum(x)[last.in.group]
+  x.g[-1L] <- x.g[-1L] - x.g[-length(x.g)]
+  x.g
+}
+sum_grp <- function(x, last.in.group, precise=FALSE){
+  x.grp <- sum_grp_int(x, last.in.group)
+  if(precise) {
+    x[last.in.group] <- x[last.in.group] - x.grp
+    x.grp + sum_grp_int(x, last.in.group)
+  } else x.grp
+}
+slope1 <- function(x, y, grp, precise=FALSE) {
   ord <- order(grp)
   grp.ord <- grp[ord]
   grp.rle <- rle(grp.ord)
@@ -179,12 +192,8 @@ system.time({
   x.ord <- x[ord]
   y.ord <- y[ord]
 
-  x.ord.c <- cumsum(x.ord)
-  x.grp.c <- cumsum(x.ord)[grp.rle.c]
-  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
-
-  y.grp. <- cumsum(y.ord)[grp.rle.c]
-  y.grp.c[-1L] <- y.grp.c[-1L] - y.grp.c[-length(y.grp.c)]
+  x.grp.c <- sum_grp(x.ord, grp.rle.c, precise=precise)
+  y.grp.c <- sum_grp(y.ord, grp.rle.c, precise=precise)
 
   ux <- x.grp.c / grp.rle[['lengths']]
   uy <- y.grp.c / grp.rle[['lengths']]
@@ -193,14 +202,11 @@ system.time({
   x_ux <- x.ord - ux[xi]
   y_uy <- y.ord - uy[xi]
 
-  # precision improvement?
-
-  x_ux.y_uy <- cumsum(x_ux * y_uy)[grp.rle.c]
-  x_ux.y_uy[-1L] <- x_ux.y_uy[-1L] - x_ux.y_uy[-length(x_ux.y_uy)]
-  x_ux2 <- cumsum(x_ux ^ 2)[grp.rle.c]
-  x_ux2[-1L] <- x_ux2[-1L] - x_ux2[-length(x_ux2)]
+  x_ux.y_uy <- sum_grp(x_ux * y_uy, grp.rle.c, precise=precise)
+  x_ux2 <- sum_grp(x_ux ^ 2, grp.rle.c, precise=precise)
   res4 <- x_ux.y_uy / x_ux2
-})
+}
+system.time(slope1(x, y, grp, precise=FALSE))
 ```
 ```
    user  system elapsed 
@@ -213,6 +219,15 @@ Precision is garbage though:
 > all.equal(res.slope.dt1[[2]], res4, tol=1e-3)
 [1] FALSE
 ```
+But we can make it precise
+```{r eval=FALSE}
+system.time(slope1(x, y, grp, precise=TRUE))
+```
+```
+   user  system elapsed 
+  2.481   1.087   3.754 
+```
+
 ```{r eval=FALSE}
 sum_g3 <- function(x, grp, na.rm=TRUE) {
   ord <- order(grp)
