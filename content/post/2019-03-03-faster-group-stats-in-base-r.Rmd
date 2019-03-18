@@ -179,10 +179,11 @@ system.time({
   x.ord <- x[ord]
   y.ord <- y[ord]
 
+  x.ord.c <- cumsum(x.ord)
   x.grp.c <- cumsum(x.ord)[grp.rle.c]
   x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
 
-  y.grp.c <- cumsum(y.ord)[grp.rle.c]
+  y.grp. <- cumsum(y.ord)[grp.rle.c]
   y.grp.c[-1L] <- y.grp.c[-1L] - y.grp.c[-length(y.grp.c)]
 
   ux <- x.grp.c / grp.rle[['lengths']]
@@ -192,17 +193,25 @@ system.time({
   x_ux <- x.ord - ux[xi]
   y_uy <- y.ord - uy[xi]
 
+  # precision improvement?
+
   x_ux.y_uy <- cumsum(x_ux * y_uy)[grp.rle.c]
   x_ux.y_uy[-1L] <- x_ux.y_uy[-1L] - x_ux.y_uy[-length(x_ux.y_uy)]
   x_ux2 <- cumsum(x_ux ^ 2)[grp.rle.c]
   x_ux2[-1L] <- x_ux2[-1L] - x_ux2[-length(x_ux2)]
+  res4 <- x_ux.y_uy / x_ux2
 })
 ```
 ```
    user  system elapsed 
   2.049   0.805   2.871 
-   user  system elapsed 
-  1.186   0.374   1.634 
+```
+Precision is garbage though:
+```
+> all.equal(res.slope.dt1[[2]], res4, tol=1e-2)
+[1] TRUE
+> all.equal(res.slope.dt1[[2]], res4, tol=1e-3)
+[1] FALSE
 ```
 ```{r eval=FALSE}
 sum_g3 <- function(x, grp, na.rm=TRUE) {
