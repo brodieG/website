@@ -38,7 +38,7 @@ grp   <- sample(n.grp, n, replace=TRUE)
 x     <- runif(n)
 y     <- runif(n)
 
-system.time(x.grp <- tapply(x, grp, sum))
+system.time(x.ref <- c(tapply(x, grp, sum)))
 ```
 ```
    user  system elapsed
@@ -48,7 +48,7 @@ system.time(x.grp <- tapply(x, grp, sum))
 library(data.table)
 DT <- data.table(grp, x)
 setDTthreads(1)
-system.time(DT[, sum(x), keyby=grp])
+system.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
 ```
 ```
    user  system elapsed
@@ -57,49 +57,89 @@ system.time(DT[, sum(x), keyby=grp])
 
 # Simple But Limited
 
-Our first solution uses `base::rowsum`.  As the semantic capitalization and text
-decoration conventions tell us, `base::rowsum` is completely different to
-`base::rowSums`.  The singular lower case form indicates `base::rowsum`
-collapses rows within groups, but preserves the columns.  Conversely, the plural
-upper case form indicates that each row is collapsed into a single column, but
-the row count is preserved.  The currently unimplemented `base::row.sum` and
-`base::RowSums` will resolve world hunger and climate change respectively.
-Other permutations of text decorations are reserved for future use.
+Our first solution uses `base::rowsum`.  As is clearly indicated by the lack of
+capitalization and pluralization, `base::rowsum` is completely different from
+`base::rowSums`.  Further, anyone who has read the "Semantics of Capitalization,
+Punctuation, and Pluralization in R Function Names" memo can infer that the
+former sums rows within groups, and the latter sums columns within rows.
 
-As we've all read the "Semantics of Text Decoration in R Names" memo this is
-obvious, but let's illustrate for completeness:
+You did get the memo, right?  Good.
+
+Even though the function names are completely self explanatory, we will
+illustrate for completeness:
 
 ```{r}
 mx <- matrix(1:8, 4, byrow=TRUE) * 10 ^ (0:3)
 mx
 ```
 ```{r}
-rowSums(mx)
-```
-
-`rowSums` turned Our 4 x 2 matrix into a 4 x 1 "column", or vector.
-
-```{r}
 rowsum(mx, group=rep(c('odd', 'even'), 2))
 ```
 
-On the other hand `rowsum` preserved the two columns, collapsed the rows by the
-`group` value.
+`rowsum` preserved the two columns, but collapsed the rows by the `group` value.
 
-You did get the memo, right?  Good.  I still shudder at the thought of the poor
-sod that posted "gday" instead of "g.Day" in the _public_ R slack
-channel[^love-r-but].
+```{r}
+rowSums(mx)
+```
 
+`rowSums` collapsed the columns but preserved the rows.  You can think of the
+resulting vector as a 4 x 1 "column".
 
+I have known about `rowSums` for a long time, and I only more recently
+discovered `rowsum`.  It probably says more about me than I care to admit, but
+when I first realized what `rowsum` _actually_ does I was about as excited
+as a taxidermist might be when they first realize the just delivered cadaver is
+not a dead white cat, but rather an albino possum.
 
+How can a base R function possibly compete for excitement with a dead possum?
+Well, there are many base R functions that compute on arbitrary groups, and many
+base R functions that work directly in compiled code, but as far as I
+know base R functions that compute on arbitrary groups in compiled code are few
+and far between[^knowledge-caveat].  And this is very useful:
 
 ```{r eval=FALSE}
-system.time(x.grp.2 <- rowsum(x, grp))
+system.time(x.rs <- rowsum(x, grp))
 ```
 ```
    user  system elapsed
   2.505   0.096   2.626
 ```
+```{r eval=FALSE}
+all.equal(c(x.ref), c(x.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+Almost four times faster 
+
+I've attempted to measure the relative popularity of the
+two functions, but try doing that in a search engine...  Thankfully years of
+using "R" as a search term have inured me to this type of disappointment.  So I
+don't if I'm just the loser that didn't get the memo or if `rowsum` is generally
+less known.
+
+
+
+if others typically run into `rowsum` far enough into their R learning
+curve to be excited by what it is.
+
+
+So I'm going on a limb based purely on anecdotal evidence that `rowSums` is far
+more well known than `rowsum`.
+
+
+
+I mean, c'mon, it's bad enough
+that we have to search for "R", and now I'm trying to get differential hits for
+"rowsum" vs "rowSums".
+
+Jkk
+Jkk
+When I first
+Before I proceed I want to point out how remarkable `rowsum` is
+
+
 ```{r eval=FALSE}
 system.time({
   o <- order(grp)
@@ -273,15 +313,18 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
   # which means add whatever padding we need to the index value for the next
   # column
 
-  grp.pad <- (maxlen + 1L) - lens[-length(lens)]
+  len_1 <- lens[-length(lens)]
+  grp.pad <- (maxlen + 1L) - len_1
   id.raw <- rep(1L, length(x))
-  id.raw[cumsum(lens) + 1L] <- grp.pad
-  id <- cumsum(id.raw)[-length(id.raw)]
+  len_1[1L] <- len_1[1L] + 1L
+  id.raw[cumsum(len_1)] <- grp.pad
+  id <- cumsum(id.raw)
 
   # Inject the x values according to these indices that should place each gropu
   # in a column
 
   res[id] <- x
+
   if(identical(mode, 'sum')) colSums(res, na.rm=TRUE)
   else if(identical(mode, 'mean')) colMeans(res, na.rm=TRUE)
   else stop("Invalid mode")
@@ -370,6 +413,10 @@ slope2a <- function(x, y, grp, splits=5) {
   res.fin
 }
 system.time(slope2(x, y, grp))
+RNGversion("3.5.2"); set.seed(42)
+x2 <- runif(100)
+y2 <- runif(100)
+g2 <- sample(1:10, 100, rep=T)
 ```
 ```
    user  system elapsed
@@ -377,6 +424,7 @@ system.time(slope2(x, y, grp))
   # can't reproduce the earlier timings...
    user  system elapsed
   3.185   1.285   4.783
+  # now I can ...
 ```
 ```{r eval=FALSE}
 system.time(slope2a(x, y, grp))
@@ -432,6 +480,9 @@ Note on vector size[^vec-size].
 
 # Appendix
 
+[^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
+is fair to question whether I would know whether there are many other functions
+of this kind out there or not.
 [^vec-size]: Numeric vectors require 8 bytes per element plus some overhead for
 the object meta data.
 [^love-r-but]: I love R, but the maddness around [text decoration
