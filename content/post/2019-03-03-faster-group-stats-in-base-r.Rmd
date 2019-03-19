@@ -307,12 +307,95 @@ slope2 <- function(x, y, grp) {
 
   x_ux.y_uy / x_ux2
 }
+slope2a_int <- function(xo, yo, lens) {
+  max.grp <- lens[1]
+
+  xi <- rep(seq_along(lens), lens)
+  xu <- sum_grp2(xo, lens, max.grp, 'mean')
+  x_ux <- xo - xu[xi]
+
+  yu <- sum_grp2(yo, lens, max.grp, 'mean')
+  y_uy <- yo - yu[xi]
+
+  x_ux.y_uy <- sum_grp2(x_ux * y_uy, lens, max.grp, 'sum')
+  x_ux2 <- sum_grp2(x_ux ^ 2, lens, max.grp, 'sum')
+
+  x_ux.y_uy / x_ux2
+}
+slope2a <- function(x, y, grp, splits=5) {
+  ord <- order(grp)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.len <- grp.rle[['lengths']]
+
+  ord2 <- order(rep(grp.len, grp.len), decreasing=TRUE)
+  ordg <- order(grp.len, decreasing=TRUE)
+  grp.len.o <- grp.len[ordg]
+  len.max <- grp.len.o[1L]  # will break if no groups
+  len.min <- grp.len.o[length(grp.len.o)]
+
+  # order the inputs
+
+  ord3 <- ord[ord2]
+  xo <- x[ord3]
+  yo <- y[ord3]
+  go <- grp.ord[ord2]
+
+  # simple initial cut, just cut into equal splits
+
+  cuts <- as.integer(round(seq(1L, length(grp.len), length.out=splits)))
+  cuts[length(cuts)] <- cuts[length(cuts)] + 1L
+
+  grp.len.o.c <- cumsum(c(1L, grp.len.o))
+  res <- vector("list", splits)
+
+  for(i in seq_len(splits - 1L)){
+    # Figure out that starting and ending elements for each group
+
+    start.g <- cuts[i]
+    end.g <- cuts[i + 1L]
+
+    start <- grp.len.o.c[start.g]
+    end <- grp.len.o.c[end.g] - 1L
+
+    idx.g <- start.g:(end.g - 1L)
+    idx <- start:end
+
+    res[[i]] <- slope2a_int(xo[idx], yo[idx], grp.len.o[idx.g])
+  }
+  # Reorder back in ascending group order instead of group size order
+
+  res.fin <- numeric(length(grp.len))
+  res.fin[ordg] <- unlist(res)
+  res.fin
+}
 system.time(slope2(x, y, grp))
 ```
 ```
    user  system elapsed 
   2.827   0.932   3.807 
 ```
+```
+system.time(slope2a(x, y, grp))
+set.seed(42)
+x2 <- runif(100)
+y2 <- runif(100)
+g2 <- sample(1:10, 100, rep=TRUE)
+zz1 <- slope2(x2, y2, g2)
+zz2 <- slope2a(x2, y2, g2)
+
+```
+```{r eval=FALSE}
+dummy <- function(sizes) {
+  res <- vector("list", length(sizes))
+  for(i in seq_along(sizes)) {
+    mx <- matrix(numeric(), nrow=sizes[i], ncol=as.integer(1e6 / length(sizes)))
+    res[[i]] <- colSums(mx, na.rm=TRUE)
+  }
+}
+system.time(dummy(c(28, 21, 14, 7, 1)))
+```
+
 ```{r eval=FALSE}
 
 DT <- copy(DT.raw)
