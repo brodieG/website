@@ -97,8 +97,8 @@ channel[^love-r-but].
 system.time(x.grp.2 <- rowsum(x, grp))
 ```
 ```
-   user  system elapsed 
-  2.505   0.096   2.626 
+   user  system elapsed
+  2.505   0.096   2.626
 ```
 ```{r eval=FALSE}
 system.time({
@@ -107,8 +107,8 @@ system.time({
 })
 ```
 ```
-   user  system elapsed 
-  1.408   0.113   1.556 
+   user  system elapsed
+  1.408   0.113   1.556
 ```
 Slope:
 ```{r}
@@ -131,8 +131,8 @@ rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
 })
 ```
 ```
-   user  system elapsed 
-  4.655   0.772   5.516 
+   user  system elapsed
+  4.655   0.772   5.516
 ```
 
 
@@ -167,8 +167,8 @@ sum_g2 <- function(x, grp, na.rm=FALSE) {
 system.time(sum_g2(x, grp))
 ```
 ```
-   user  system elapsed 
-  1.186   0.374   1.634 
+   user  system elapsed
+  1.186   0.374   1.634
 ```
 Try slope:
 ```{r eval=FALSE}
@@ -210,8 +210,8 @@ slope1 <- function(x, y, grp, precise=FALSE) {
 system.time(slope1(x, y, grp, precise=FALSE))
 ```
 ```
-   user  system elapsed 
-  2.049   0.805   2.871 
+   user  system elapsed
+  2.049   0.805   2.871
 ```
 Precision is garbage though:
 ```
@@ -225,11 +225,11 @@ But we can make it precise
 system.time(slope1(x, y, grp, precise=TRUE))
 ```
 ```
-   user  system elapsed 
-  2.481   1.087   3.754 
+   user  system elapsed
+  2.481   1.087   3.754
   # second faster timing was from a fresh session, repeated several times
-   user  system elapsed 
-  2.399   0.933   3.348 
+   user  system elapsed
+  2.399   0.933   3.348
 ```
 
 ```{r eval=FALSE}
@@ -259,8 +259,8 @@ sum_g3 <- function(x, grp, na.rm=TRUE) {
 system.time(sum_g3(x, grp))
 ```
 ```
-   user  system elapsed 
-  1.186   0.374   1.634 
+   user  system elapsed
+  1.186   0.374   1.634
 ```
 ```{r eval=FALSE}
 # lens: how long each group is
@@ -273,10 +273,10 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
   # which means add whatever padding we need to the index value for the next
   # column
 
-  grp.pad <- maxlen - lens
+  grp.pad <- (maxlen + 1L) - lens[-length(lens)]
   id.raw <- rep(1L, length(x))
-  id.raw[(cumsum(lens) + 1L)[-length(lens)]] <- grp.pad[-length(lens)] + 1L
-  id <- cumsum(id.raw)
+  id.raw[cumsum(lens) + 1L] <- grp.pad
+  id <- cumsum(id.raw)[-length(id.raw)]
 
   # Inject the x values according to these indices that should place each gropu
   # in a column
@@ -343,13 +343,13 @@ slope2a <- function(x, y, grp, splits=5) {
 
   # simple initial cut, just cut into equal splits
 
-  cuts <- as.integer(round(seq(1L, length(grp.len), length.out=splits)))
-  cuts[length(cuts)] <- cuts[length(cuts)] + 1L
-
+  cuts <- as.integer(
+    round(seq(1L, length(grp.len) + 1L, length.out=splits + 1L))
+  )
   grp.len.o.c <- cumsum(c(1L, grp.len.o))
   res <- vector("list", splits)
 
-  for(i in seq_len(splits - 1L)){
+  for(i in seq_len(splits)){
     # Figure out that starting and ending elements for each group
 
     start.g <- cuts[i]
@@ -372,18 +372,18 @@ slope2a <- function(x, y, grp, splits=5) {
 system.time(slope2(x, y, grp))
 ```
 ```
-   user  system elapsed 
-  2.827   0.932   3.807 
+   user  system elapsed
+  2.827   0.932   3.807
+  # can't reproduce the earlier timings...
+   user  system elapsed
+  3.185   1.285   4.783
 ```
-```
+```{r eval=FALSE}
 system.time(slope2a(x, y, grp))
-set.seed(42)
-x2 <- runif(100)
-y2 <- runif(100)
-g2 <- sample(1:10, 100, rep=TRUE)
-zz1 <- slope2(x2, y2, g2)
-zz2 <- slope2a(x2, y2, g2)
-
+```
+```
+   user  system elapsed
+  2.998   1.055   4.082
 ```
 ```{r eval=FALSE}
 dummy <- function(sizes) {
