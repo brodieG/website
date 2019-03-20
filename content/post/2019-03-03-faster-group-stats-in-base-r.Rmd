@@ -30,6 +30,8 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 # Baseline
 
+In one corner, the venerable `tapply`:
+
 ```{r eval=FALSE}
 RNGversion("3.5.2"); set.seed(42)
 n     <- 1e7
@@ -44,6 +46,9 @@ system.time(x.ref <- c(tapply(x, grp, sum)))
    user  system elapsed
   8.539   0.321   9.030
 ```
+
+In the other, `data.table`.
+
 ```{r}
 library(data.table)
 DT <- data.table(grp, x)
@@ -52,8 +57,13 @@ system.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
 ```
 ```
    user  system elapsed
-  1.056   0.061   1.126
+  0.982   0.059   1.048
 ```
+
+We use one thread for more stable results, but also because for the final
+computation we are planning on doing multi-threaded did not make a huge
+difference on my system.  For this particular task multi threading can provide a
+substantial boost to data table performance.
 
 # Simple But Limited
 
@@ -65,8 +75,8 @@ former sums rows within groups, and the latter sums columns within rows.
 
 You did get the memo, right?  Good.
 
-Even though the function names are completely self explanatory, we will
-illustrate for completeness:
+Even though the function names are self explanatory, we will illustrate for
+completeness:
 
 ```{r}
 mx <- matrix(1:8, 4, byrow=TRUE) * 10 ^ (0:3)
@@ -86,16 +96,16 @@ rowSums(mx)
 resulting vector as a 4 x 1 "column".
 
 I have known about `rowSums` for a long time, and I only more recently
-discovered `rowsum`.  It probably says more about me than I care to admit, but
-when I first realized what `rowsum` _actually_ does I was about as excited
-as a taxidermist might be when they first realize the just delivered cadaver is
-not a dead white cat, but rather an albino possum.
+discovered `rowsum`.  Imagine the excitement a taxidermist might feel on
+realizing they were just given the corpse of an albino fox, and not that of a
+white cat as they initially thought.  That should capture the magnitude _and_
+significance of my excitement when I realized what `rowsum` does.
 
-How can a base R function possibly compete for excitement with a dead possum?
+How can a base R function possibly compete for excitement with a dead fox?
 Well, there are many base R functions that compute on arbitrary groups, and many
-base R functions that work directly in compiled code, but as far as I
-know base R functions that compute on arbitrary groups in compiled code are few
-and far between[^knowledge-caveat].  And this is very useful:
+base R functions that work directly in compiled code, but as far as I know base
+R functions that compute on arbitrary groups in compiled code are
+rare[^knowledge-caveat].  This is very useful:
 
 ```{r eval=FALSE}
 system.time(x.rs <- rowsum(x, grp))
@@ -111,33 +121,134 @@ all.equal(c(x.ref), c(x.rs), check.attributes=FALSE)
 [1] TRUE
 ```
 
-Almost four times faster 
+Almost four times faster than the original `tapply` solution, and not far from
+the `data.table` one.
 
-I've attempted to measure the relative popularity of the
-two functions, but try doing that in a search engine...  Thankfully years of
-using "R" as a search term have inured me to this type of disappointment.  So I
-don't if I'm just the loser that didn't get the memo or if `rowsum` is generally
-less known.
+```{r echo=FALSE}
+times <- data.frame(
+  Function=c('tapply', 'rowsum', 'data.table'),
+  time=c(9.030, 2.626, 1.126)
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col() +
+  # facet_wrap(~Function) +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+I've wondered if I am alone in my delayed awareness of `rowsum`, but my attempts
+to measure the relative popularity of the two functions via search engine were
+fruitless.  Given the glaring semantic cues in `rowsum` vs `rowSums` I would
+have thought they would do better...  Thankfully years of using "R" as a search
+term have inured me to this type of search disappointment.
+
+# Pixie Dust
+
+Sorting values prior to running `unique` on them makes `unique` faster:
+
+```{r eval=FALSE}
+grp.o <- grp[order(grp)]
+system.time(unique(grp.o))
+```
+   user  system elapsed
+  0.453   0.057   0.514
+```
+```
+```{r eval=FALSE}
+system.time(unique(grp))
+```
+```
+   user  system elapsed
+  1.354   0.067   1.436
+```
+
+Internally `unique` uses a [hash table][2] to detect duplicate values, so it may
+seem odd that the lookup speed is affected by ordering as the hashing time
+should not be affected by the input order.  Most likely it is some combination
+of caching and [branch prediction][3].
+
+With respect to caching, In the sorted version, we will look up the same key
+repeatedly, which presumably means the corresponding value will be warm and snug
+in the [highest speed cache][4].  In the unsorted version, we will be jumping
+all over the hash table, which will almost certainly require looking up values
+in at best slower cache, or more likely in main memory.  Similarly, in branch
+prediction, the processor will predict well just by assuming that a value
+will be a duplicate when the duplicates are sequential, as they are in the
+sorted case.  I have no idea if this is actually what is going on or not, but it
+seems likely, and I'm tickled pink by the thought that I'm noticing these
+effects from R-level for the first time.
+
+Now, for why I'm ranting about this, it turns out that the combined operation of
+sorting and `unique`ing is faster than the just `unique`ing:
+
+```{r eval=FALSE}
+system.time(unique(grp[order(grp)]))
+```
+```
+   user  system elapsed
+  0.909   0.158   1.081
+```
+
+This also has a big impact on `rowsum`, as it uses both `unique` on top of its
+own [hash table][5]:
+
+```{r eval=FALSE}
+system.time({
+  o <- order(grp)
+  x.rs2 <- rowsum(x[o], grp[o], reorder=FALSE)
+})
+```
+```
+   user  system elapsed 
+  1.283   0.105   1.430 
+```
+
+We are now within striking distance of single-threaded `data.table`:
+
+```{r echo=FALSE}
+times <- data.frame(
+  Function=c('tapply', 'rowsum', 'rowsum-sorted', 'data.table'),
+  time=c(9.030, 2.626, 1.430, 1.048)
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col() +
+  # facet_wrap(~Function) +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+Now, you might be thinking, "oh, so maybe `data.table` isn't so special after
+all".  Well, the only reason this `order` pixie dust business is even possible
+is because `order` is so fast.  And `order` is so fast because `data.table`
+contributed their pixie dust to R:
+
+```{r echo=FALSE}
+blogdown::shortcode('tweet', '1106231241488154626')
+```
+
+
+, where for the former we get a boost by
+looking up the same hash key repeatedly, as it is most likely to be in hj
+
+> system.time(unique(grp))
+
+```{r eval=FALSE}
+
+system.time({
+  o <- order(grp)
+  u1 <- unique(grp[o])
+})
+system.time({
+  go <- sort(grp)
+  u2 <- go[c(which(go[-length(go)] != go[-1L]), length(go))]
+})
+system.time(unique(grp))
+```
 
 
 
-if others typically run into `rowsum` far enough into their R learning
-curve to be excited by what it is.
-
-
-So I'm going on a limb based purely on anecdotal evidence that `rowSums` is far
-more well known than `rowsum`.
-
-
-
-I mean, c'mon, it's bad enough
-that we have to search for "R", and now I'm trying to get differential hits for
-"rowsum" vs "rowSums".
-
-Jkk
-Jkk
-When I first
-Before I proceed I want to point out how remarkable `rowsum` is
 
 
 ```{r eval=FALSE}
@@ -490,3 +601,7 @@ conventions][1] is something that I could do without.  Sorry for the rant, but I
 was particularly triggered by this example.
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
+[2]: https://en.wikipedia.org/wiki/Hash_table
+[3]: https://stackoverflow.com/a/11227902/2725969
+[4]: https://www.extremetech.com/extreme/188776-how-l1-and-l2-cpu-caches-work-and-why-theyre-an-essential-part-of-modern-chips
+[5]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L1514
