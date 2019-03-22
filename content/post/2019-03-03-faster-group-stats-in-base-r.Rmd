@@ -17,6 +17,7 @@ description: Front page summary
 
 ```{r echo=FALSE}
 options(digits=3)
+library(ggplot2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 
@@ -30,6 +31,7 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 # Baseline
 
+As we saw in the prior 
 In one corner, the venerable `tapply`:
 
 ```{r eval=FALSE}
@@ -65,7 +67,7 @@ computation we are planning on doing multi-threaded did not make a huge
 difference on my system.  For this particular task multi threading can provide a
 substantial boost to data table performance.
 
-# Simple But Limited
+# It's All In the Capitalization
 
 Our first solution uses `base::rowsum`.  As is clearly indicated by the lack of
 capitalization and pluralization, `base::rowsum` is completely different from
@@ -81,19 +83,21 @@ completeness:
 ```{r}
 mx <- matrix(1:8, 4, byrow=TRUE) * 10 ^ (0:3)
 mx
-```
-```{r}
 rowsum(mx, group=rep(c('odd', 'even'), 2))
 ```
 
 `rowsum` preserved the two columns, but collapsed the rows by the `group` value.
 
-```{r}
-rowSums(mx)
+```{r eval=FALSE}
+rowSums(mx)       # note: output has been edited for clarity
+```
+```{r echo=FALSE}
+matrix(rowSums(mx))
 ```
 
-`rowSums` collapsed the columns but preserved the rows.  You can think of the
-resulting vector as a 4 x 1 "column".
+`rowSums` collapsed the columns but preserved the rows.  Normally `rowSums`
+returns a vector, but here we display it as a one column matrix so the
+relationship to the input matrix is clear.
 
 I have known about `rowSums` for a long time, and I only more recently
 discovered `rowsum`.  Imagine the excitement a taxidermist might feel on
@@ -151,9 +155,9 @@ Sorting values prior to running `unique` on them makes `unique` faster:
 grp.o <- grp[order(grp)]
 system.time(unique(grp.o))
 ```
+```
    user  system elapsed
   0.453   0.057   0.514
-```
 ```
 ```{r eval=FALSE}
 system.time(unique(grp))
@@ -190,8 +194,8 @@ system.time(unique(grp[order(grp)]))
   0.909   0.158   1.081
 ```
 
-This also has a big impact on `rowsum`, as it uses both `unique` on top of its
-own [hash table][5]:
+This also has a big impact on `rowsum`, as it uses both [`unique`][6] on top of
+its own [hash table][5]:
 
 ```{r eval=FALSE}
 system.time({
@@ -221,48 +225,106 @@ ggplot(times, aes(x=Function, y=time)) +
 
 Now, you might be thinking, "oh, so maybe `data.table` isn't so special after
 all".  Well, the only reason this `order` pixie dust business is even possible
-is because `order` is so fast.  And `order` is so fast because `data.table`
+is because `order` is so fast, and `order` is so fast because `data.table`
 contributed their pixie dust to R:
 
+<div class=>
 ```{r echo=FALSE}
 blogdown::shortcode('tweet', '1106231241488154626')
 ```
+</div>
 
-
-, where for the former we get a boost by
-looking up the same hash key repeatedly, as it is most likely to be in hj
-
-> system.time(unique(grp))
+Based on this observation I propose a new function for base:
 
 ```{r eval=FALSE}
-
-system.time({
-  o <- order(grp)
-  u1 <- unique(grp[o])
-})
-system.time({
-  go <- sort(grp)
-  u2 <- go[c(which(go[-length(go)] != go[-1L]), length(go))]
-})
-system.time(unique(grp))
+rowsums <- function(x, group) {
+  o <- order(group)
+  rowsum(x[o], group[o], reorder=FALSE)
+}
 ```
 
+The pluralization in combination with the lower case will document that this is
+the pre-sorting version of `rowsum`[^love-r-but].
 
-
-
+One last thing before we move on: in theory it should be possible to
+re-implement the `unique` and `rowsum` internals to assume sorted inputs/groups.
 
 ```{r eval=FALSE}
-system.time({
-  o <- order(grp)
-  x.grp.2 <- rowsum(x[o], grp[o])
-})
+unique2 <- inline::cfunction(sig=c(x='integer'), body="
+  R_xlen_t len, i, j = 0, len_u = 1;
+  SEXP res;
+  int *xi = INTEGER(x);
+  len = XLENGTH(x);
+
+  if(len > 1) {
+    // count uniques
+    for(i = 1; i < len; ++i) {
+      len_u += (xi[i - 1] != xi[i]);
+    }
+    // allocate and record uniques
+    res = PROTECT(allocVector(INTSXP, len_u));
+    int *resi = INTEGER(res);
+    for(i = 1; i < len; ++i) {
+      if(xi[i - 1] != xi[i]) {
+        resi[j++] = xi[i - 1];
+    } }
+    resi[j] = xi[i - 1];
+    UNPROTECT(1);
+  } else {
+    res = x;
+  }
+  return res;
+")
+rowsums <- inline::cfunction(
+  sig=c(x='numeric', g='integer'),
+  body="
+  R_xlen_t len, i, len_u = 1;
+  SEXP res, res_x, res_g;
+  int *gi = INTEGER(g);
+  len = XLENGTH(g);
+  res = PROTECT(allocVector(VECSXP, 2));
+
+  if(len > 1) {
+    // count uniques
+    for(i = 1; i < len; ++i) {
+      if(gi[i - 1] != gi[i]) {
+        ++len_u;
+    } }
+    // allocate and record uniques
+    res_x = PROTECT(allocVector(REALSXP, len_u));
+    res_g = PROTECT(allocVector(INTSXP, len_u));
+
+    double *res_xi = REAL(res_x);
+    int *res_gi = INTEGER(res_x);
+    memset(res_xi, 0, len_u * (sizeof *res_xi));
+    R_xlen_t j = 0;
+
+    for(i = 1; i < len; ++i) {
+      res_xi[j] += xi[i - 1]; // we don't check for double overflow...
+      if(gi[i - 1] != gi[i]) {
+        res_gi[j] = gi[i - 1];
+        ++j;
+    } }
+    res_xi[j] += xi[i - 1];
+    res_gi[j] = gi[i - 1];
+
+    SET_VECTOR_ELT(res, 0, res_x);
+    SET_VECTOR_ELT(res, 1, res_g);
+    UNPROTECT(2);
+  } else {
+    // Don't seem to need to duplicate x/g
+    SET_VECTOR_ELT(res, 0, x);
+    SET_VECTOR_ELT(res, 1, g);
+  }
+  UNPROTECT(1);
+  return res;
+")
+copy <- inline::cfunction(sig=c(x='integer'), body="return x;")
 ```
-```
-   user  system elapsed
-  1.408   0.113   1.556
-```
+
+
 Slope:
-```{r}
+```{r eval=FALSE}
 system.time({
 o <- order(grp)
 go <- grp[o]
@@ -596,7 +658,7 @@ is fair to question whether I would know whether there are many other functions
 of this kind out there or not.
 [^vec-size]: Numeric vectors require 8 bytes per element plus some overhead for
 the object meta data.
-[^love-r-but]: I love R, but the maddness around [text decoration
+[^love-r-but]: I love R, but the madness around [text decoration
 conventions][1] is something that I could do without.  Sorry for the rant, but I
 was particularly triggered by this example.
 
@@ -605,3 +667,4 @@ was particularly triggered by this example.
 [3]: https://stackoverflow.com/a/11227902/2725969
 [4]: https://www.extremetech.com/extreme/188776-how-l1-and-l2-cpu-caches-work-and-why-theyre-an-essential-part-of-modern-chips
 [5]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L1514
+[6]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/rowsum.R#L26
