@@ -234,93 +234,49 @@ blogdown::shortcode('tweet', '1106231241488154626')
 ```
 </div>
 
-Based on this observation I propose a new function for base:
+One last thing before we move on: knowing that the data is sorted opens up
+different algorithms for many tasks such as `unique` and `rowsum`.  Combined
+with the ability to sort things quickly, we can re-implement `unique` and
+`rowsum` to track groups by pre-sorting and comparing adjacent values instead of
+using hashtables.  We pluralized them to indicate these are the sorting versions
+of the functions.  Or maybe that they are the speedy versions.  My dog ate the
+memo so I don't know anymore[^love-r-but].
+
+Here is what happens with `uniques`:
+
+```{r eval=FALSE}
+uniques <- function(x) {
+  o <- order(x)
+  ro <- order(o)
+  ox <- o
+  ox[o] <- o
+  xo <- x[o]
+  i <- .uniques(xo)          # C code: see appendix
+  oi <- o[i]
+  x[ro[i]]
+  x[oi][order(oi)]
+  x[o[i]][order(i)]
+}
+system.time(uniques(grp))
+```
+```
+   user  system elapsed 
+  0.517   0.010   0.530 
+```
+
+This is twice as fast as the original version with the sorted data.  Similar
+story for `rowsums`:
 
 ```{r eval=FALSE}
 rowsums <- function(x, group) {
   o <- order(group)
-  rowsum(x[o], group[o], reorder=FALSE)
+  .rowsums(x[o], group[o])    # C code: see appendix
 }
+system.time(rowsums(x, grp))
 ```
-
-The pluralization in combination with the lower case will document that this is
-the pre-sorting version of `rowsum`[^love-r-but].
-
-One last thing before we move on: in theory it should be possible to
-re-implement the `unique` and `rowsum` internals to assume sorted inputs/groups.
-
-```{r eval=FALSE}
-unique2 <- inline::cfunction(sig=c(x='integer'), body="
-  R_xlen_t len, i, j = 0, len_u = 1;
-  SEXP res;
-  int *xi = INTEGER(x);
-  len = XLENGTH(x);
-
-  if(len > 1) {
-    // count uniques
-    for(i = 1; i < len; ++i) {
-      len_u += (xi[i - 1] != xi[i]);
-    }
-    // allocate and record uniques
-    res = PROTECT(allocVector(INTSXP, len_u));
-    int *resi = INTEGER(res);
-    for(i = 1; i < len; ++i) {
-      if(xi[i - 1] != xi[i]) {
-        resi[j++] = xi[i - 1];
-    } }
-    resi[j] = xi[i - 1];
-    UNPROTECT(1);
-  } else {
-    res = x;
-  }
-  return res;
-")
-rowsums <- inline::cfunction(
-  sig=c(x='numeric', g='integer'),
-  body="
-  R_xlen_t len, i, len_u = 1;
-  SEXP res, res_x, res_g;
-  int *gi = INTEGER(g);
-  len = XLENGTH(g);
-  res = PROTECT(allocVector(VECSXP, 2));
-
-  if(len > 1) {
-    // count uniques
-    for(i = 1; i < len; ++i) {
-      if(gi[i - 1] != gi[i]) {
-        ++len_u;
-    } }
-    // allocate and record uniques
-    res_x = PROTECT(allocVector(REALSXP, len_u));
-    res_g = PROTECT(allocVector(INTSXP, len_u));
-
-    double *res_xi = REAL(res_x);
-    int *res_gi = INTEGER(res_x);
-    memset(res_xi, 0, len_u * (sizeof *res_xi));
-    R_xlen_t j = 0;
-
-    for(i = 1; i < len; ++i) {
-      res_xi[j] += xi[i - 1]; // we don't check for double overflow...
-      if(gi[i - 1] != gi[i]) {
-        res_gi[j] = gi[i - 1];
-        ++j;
-    } }
-    res_xi[j] += xi[i - 1];
-    res_gi[j] = gi[i - 1];
-
-    SET_VECTOR_ELT(res, 0, res_x);
-    SET_VECTOR_ELT(res, 1, res_g);
-    UNPROTECT(2);
-  } else {
-    // Don't seem to need to duplicate x/g
-    SET_VECTOR_ELT(res, 0, x);
-    SET_VECTOR_ELT(res, 1, g);
-  }
-  UNPROTECT(1);
-  return res;
-")
-copy <- inline::cfunction(sig=c(x='integer'), body="return x;")
 ```
+```
+`
 
 
 Slope:
@@ -653,6 +609,91 @@ Note on vector size[^vec-size].
 
 # Appendix
 
+## Acknowledgments
+
+* Oleg Sklyar, Duncan Murdoch, Mike Smith, Dirk Eddelbuettel, Romain Francois,
+  Karline Soetaert for [`inline`][7].
+
+## Sorting Versions
+
+Limited capability C versions 
+
+```{r eval=FALSE}
+.uniques <- inline::cfunction(sig=c(x='integer'), body="
+  R_xlen_t len, i, j = 0, len_u = 1;
+  SEXP res;
+  int *xi = INTEGER(x);
+  len = XLENGTH(x);
+
+  if(len > 1) {
+    // count uniques
+    for(i = 1; i < len; ++i) {
+      if(xi[i - 1] != xi[i]) {
+        ++len_u;
+    } }
+    // allocate and record uniques
+    res = PROTECT(allocVector(INTSXP, len_u));
+    int *resi = INTEGER(res);
+    for(i = 1; i < len; ++i) {
+      if(xi[i - 1] != xi[i]) {
+        resi[j++] = i;  // 1 based indexing
+    } }
+    resi[j] = i;
+    UNPROTECT(1);
+  } else {
+    res = x;
+  }
+  return res;
+")
+
+.rowsums <- inline::cfunction(
+  sig=c(x='numeric', g='integer'),
+  body="
+  R_xlen_t len, i, len_u = 1;
+  SEXP res, res_x, res_g;
+  int *gi = INTEGER(g);
+  double *xi = REAL(x);
+  len = XLENGTH(g);
+  if(len != XLENGTH(x)) error(\"Unequal Length Vectors\");
+  res = PROTECT(allocVector(VECSXP, 2));
+
+  if(len > 1) {
+    // count uniques
+    for(i = 1; i < len; ++i) {
+      if(gi[i - 1] != gi[i]) {
+        ++len_u;
+    } }
+    // allocate and record uniques
+    res_x = PROTECT(allocVector(REALSXP, len_u));
+    res_g = PROTECT(allocVector(INTSXP, len_u));
+
+    double *res_xi = REAL(res_x);
+    int *res_gi = INTEGER(res_g);
+    R_xlen_t j = 0;
+
+    res_xi[0] = 0;
+    for(i = 1; i < len; ++i) {
+      res_xi[j] += xi[i - 1]; // we don't check for double overflow...
+      if(gi[i - 1] != gi[i]) {
+        res_gi[j] = gi[i - 1];
+        ++j;
+        res_xi[j] = 0;
+    } }
+    res_xi[j] += xi[i - 1];
+    res_gi[j] = gi[i - 1];
+
+    SET_VECTOR_ELT(res, 0, res_x);
+    SET_VECTOR_ELT(res, 1, res_g);
+    UNPROTECT(2);
+  } else {
+    // Don't seem to need to duplicate x/g
+    SET_VECTOR_ELT(res, 0, x);
+    SET_VECTOR_ELT(res, 1, g);
+  }
+  UNPROTECT(1);
+  return res;
+")
+
 [^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
 is fair to question whether I would know whether there are many other functions
 of this kind out there or not.
@@ -668,3 +709,4 @@ was particularly triggered by this example.
 [4]: https://www.extremetech.com/extreme/188776-how-l1-and-l2-cpu-caches-work-and-why-theyre-an-essential-part-of-modern-chips
 [5]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L1514
 [6]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/rowsum.R#L26
+[7]: https://cran.r-project.org/web/packages/inline/index.html
