@@ -31,7 +31,7 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 # Baseline
 
-As we saw in the prior 
+As we saw in the prior
 In one corner, the venerable `tapply`:
 
 ```{r eval=FALSE}
@@ -204,8 +204,8 @@ system.time({
 })
 ```
 ```
-   user  system elapsed 
-  1.283   0.105   1.430 
+   user  system elapsed
+  1.283   0.105   1.430
 ```
 
 We are now within striking distance of single-threaded `data.table`:
@@ -239,33 +239,28 @@ different algorithms for many tasks such as `unique` and `rowsum`.  Combined
 with the ability to sort things quickly, we can re-implement `unique` and
 `rowsum` to track groups by pre-sorting and comparing adjacent values instead of
 using hashtables.  We pluralized them to indicate these are the sorting versions
-of the functions.  Or maybe that they are the speedy versions.  My dog ate the
-memo so I don't know anymore[^love-r-but].
+of the functions, or maybe that they are the speedy versions.  My dog ate the
+memo so I don't know anymore[^love-r-but]...
 
-Here is what happens with `uniques`:
+Here is what happens with `uniques`:<span id=unique-c></span>
 
 ```{r eval=FALSE}
-uniques <- function(x) {
+uniques <- function(x, res.sorted=FALSE) {
   o <- order(x)
-  ro <- order(o)
-  ox <- o
-  ox[o] <- o
   xo <- x[o]
   i <- .uniques(xo)          # C code: see appendix
-  oi <- o[i]
-  x[ro[i]]
-  x[oi][order(oi)]
-  x[o[i]][order(i)]
+  if(!res.sorted) xo[i][order(o[i])] else xo[i]
 }
 system.time(uniques(grp))
 ```
 ```
-   user  system elapsed 
-  0.517   0.010   0.530 
+   user  system elapsed
+  0.587   0.018   0.615
 ```
 
-This is twice as fast as the original version with the sorted data.  Similar
-story for `rowsums`:
+This is almost twice as fast as the original version with the sorted data, and
+it could be made faster if we were okay with getting results back sorted.
+Similar story for `rowsums`:
 
 ```{r eval=FALSE}
 rowsums <- function(x, group) {
@@ -275,8 +270,18 @@ rowsums <- function(x, group) {
 system.time(rowsums(x, grp))
 ```
 ```
+   user  system elapsed
+  0.820   0.022   0.846
 ```
-`
+
+The implementations are not equivalent, but for these specific inputs they
+should be comparable.  More details [in the appendix](#sorting-versions).
+
+The main point I'm trying to make here is that it is a **big deal** that `order`
+can order fast enough that we can switch what algorithms we use downstream.  A
+big thank you to team `data.table` for sharing the pixie dust.
+
+# So You Think You Can Sum?
 
 
 Slope:
@@ -616,11 +621,29 @@ Note on vector size[^vec-size].
 
 ## Sorting Versions
 
-Limited capability C versions 
+I quickly threw together C functions that `unique` and `rowsum` on sorted data.
+They support a very narrow set of inputs, but for those inputs the timing
+comparisons relative to the base equivalents should be fair.  `.rowsums` does
+benefit from being able to assume the input will be a vector and not a matrix,
+but that should be a small difference.
+
+I tried two variations from the one we looked at in the [main body](#unique-c)
+of the post that generally support the timings against the base functions with
+input sorting:
+
+* 1e8 vector with ~10 sized groups
+* 1e7 vector with ~1 sized groups
+
+`rowsums` preserves the ~2x advantage in both scenarios.  `uniques` maintains
+the advantage for the first scenario, but in the second is at parity.  This is
+because for `uniques` we need to unsort the result and when there are no
+duplicates the vector to unsort is large.  If we were allowed to return the
+results sorted then `uniques` is faster, but by a smaller margin than with the
+original example.
 
 ```{r eval=FALSE}
 .uniques <- inline::cfunction(sig=c(x='integer'), body="
-  R_xlen_t len, i, j = 0, len_u = 1;
+  R_xlen_t len, i, len_u = 1;
   SEXP res;
   int *xi = INTEGER(x);
   len = XLENGTH(x);
@@ -634,11 +657,12 @@ Limited capability C versions
     // allocate and record uniques
     res = PROTECT(allocVector(INTSXP, len_u));
     int *resi = INTEGER(res);
+    *resi = 1;
+    R_xlen_t j = 1;
     for(i = 1; i < len; ++i) {
       if(xi[i - 1] != xi[i]) {
-        resi[j++] = i;  // 1 based indexing
+        resi[j++] = i + 1;  // 1 based indexing
     } }
-    resi[j] = i;
     UNPROTECT(1);
   } else {
     res = x;
@@ -693,6 +717,7 @@ Limited capability C versions
   UNPROTECT(1);
   return res;
 ")
+```
 
 [^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
 is fair to question whether I would know whether there are many other functions
