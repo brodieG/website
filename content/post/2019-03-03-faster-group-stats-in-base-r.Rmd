@@ -100,17 +100,18 @@ returns a vector, but here we display it as a one column matrix so the
 relationship to the input matrix is clear.
 
 I have known about `rowSums` for a long time, and I only more recently
-discovered `rowsum`.  Imagine the excitement a taxidermist might feel on
-realizing they were just given the corpse of an albino fox, and not that of a
-white cat as they initially thought.  That should capture the magnitude _and_
-significance of my excitement when I realized what `rowsum` does.
-
-How can a base R function possibly compete for excitement with a dead fox?
-Well, there are many base R functions that compute on arbitrary groups, and many
-base R functions that work directly in compiled code, but as far as I know base
-R functions that compute on arbitrary groups in compiled code are
+discovered `rowsum`.  It probably says more about me than I should admit but I
+was downright giddy when I realized _exactly_ what `rowsum` does.  After all,
+there are many base R functions that compute on arbitrary groups, and many base
+R functions that work directly in compiled code, but as far as I know base R
+functions that compute on arbitrary groups in compiled code are
 rare[^knowledge-caveat].  This is very useful:
 
+<!--
+I have known about rowSums for a long time, and I only more recently discovered rowsum. Imagine the excitement a taxidermist might feel on realizing they were just given the corpse of an albino fox, and not that of a white cat as they initially thought. That should capture the magnitude and significance of my excitement when I realized what rowsum does.
+
+How can a base R function possibly compete for excitement with a dead fox? Well, there are many base R functions that compute on arbitrary groups, and many base R functions that work directly in compiled code, but as far as I know base R functions that compute on arbitrary groups in compiled code are rare1. This is very useful:
+-->
 ```{r eval=FALSE}
 system.time(x.rs <- rowsum(x, grp))
 ```
@@ -208,7 +209,7 @@ system.time({
   1.283   0.105   1.430
 ```
 
-We are now within striking distance of single-threaded `data.table`:
+This puts us in striking distance of single-threaded `data.table`:
 
 ```{r echo=FALSE}
 times <- data.frame(
@@ -235,12 +236,13 @@ blogdown::shortcode('tweet', '1106231241488154626')
 </div>
 
 One last thing before we move on: knowing that the data is sorted opens up
-different algorithms for many tasks such as `unique` and `rowsum`.  Combined
-with the ability to sort things quickly, we can re-implement `unique` and
-`rowsum` to track groups by pre-sorting and comparing adjacent values instead of
-using hashtables.  We pluralized them to indicate these are the sorting versions
-of the functions, or maybe that they are the speedy versions.  My dog ate the
-memo so I don't know anymore[^love-r-but]...
+different algorithms for many tasks such as `unique` and `rowsum`.  To
+illustrate I implemented the alternate [algorithms in C in the
+appendix](#sorting-versions).  We wrap those in R functions that order
+the data first, and to distinguish them from their base counterparts we
+pluralize them.  The trailing "s" indicate these are the sorting versions of the
+functions, or maybe that they are the speedy versions.  My dog ate the memo so I
+don't know anymore[^love-r-but]...
 
 Here is what happens with `uniques`:<span id=unique-c></span>
 
@@ -259,7 +261,10 @@ system.time(uniques(grp))
 ```
 
 This is almost twice as fast as the original version with the sorted data, and
-it could be made faster if we were okay with getting results back sorted.
+it could be made faster if we were okay with getting results back sorted.  Most
+of the time is actually spent in the `o <- order(x)` step, so the actually
+unique-ing is an order of magnitude faster!
+
 Similar story for `rowsums`:
 
 ```{r eval=FALSE}
@@ -275,38 +280,151 @@ system.time(rowsums(x, grp))
 ```
 
 The implementations are not equivalent, but for these specific inputs they
-should be comparable.  More details [in the appendix](#sorting-versions).
+should be comparable.  Your mileage will vary depending on the degree of
+uniqueness of the data.  More details [in the appendix](#sorting-versions).
 
 The main point I'm trying to make here is that it is a **big deal** that `order`
-can order fast enough that we can switch what algorithms we use downstream.  A
-big thank you to team `data.table` for sharing the pixie dust.
+can order fast enough that we can switch the algorithms we use downstream and
+get an even bigger performance improvement.  A big thank you to team
+`data.table` for sharing the pixie dust.
 
-# So You Think You Can Sum?
+# So You Think You Can Group-Stat?
 
+Okay, great, we can sum quickly in base R.  One measly stat.  What good is that
+if we want to compute something more complex like the slope of a bivariate
+regression, as we did in our [prior post][8]?  As a refresher this is what the
+calculation looks like:
 
-Slope:
+$$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
+\bar{x})^{2}}$$
+
+The R equivalent is[^slope-mod]:<span id='slope-ex'></a>
+
 ```{r eval=FALSE}
-system.time({
-o <- order(grp)
-go <- grp[o]
-xo <- x[o]
-xs <- rowsum(xo, go)
-xn <- rowsum(rep(1L, length(go)), go)
-xi <- rep(seq_along(xs), xn)
-xu <- (xs/xn)[xi]
+slope <- function(x, y) {
+  x_ux <- x - mean.default(x)
+  y_uy <- y - mean.default(y)
+  sum(x_ux * y_uy) / sum(x_ux ^ 2)
+}
+```
 
-yo <- y[o]
-ys <- rowsum(yo, go)
-yu <- (ys/xn)[xi]
-x_ux <- xo - xu
-y_uy <- yo - yu
 
-rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
-})
+We can see that `sum` shows up explicitly, and somewhat implicitly via
+`mean`[^not-quite-sum].  There are many statistics that essentially boil down to
+adding things together, so we can use `rowsum` as the wedge to breach the
+heretofore impenetrable barrier to fast grouped statistics in R[^forgive-me]:
+
+```{r eval=FALSE}
+group_slope <- function(x, y, grp) {
+  ## order inputs by group
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  ## group sizes and group indices
+  gn <- rowsum(rep(1L, length(xo)), go)
+  gi <- rep(seq_along(gn), gn)
+
+  ## compute mean(x) and mean(y), and recycle them
+  ## to each element of `x` and `y`:
+  xs <- rowsum(xo, go)     # sum(x)
+  xu <- (xs/gn)[gi]        # mean(x), recycled to original vec length
+  ys <- rowsum(yo, go)
+  yu <- (ys/gn)[gi]
+
+  ## (x - mean(x)) and (y - mean(y))
+  x_ux <- xo - xu
+  y_uy <- yo - yu
+
+  ## Slopes!
+  rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
+}
+```
+
+The non-obvious steps involve `gn` and `gi`:
+
+```{r eval=FALSE}
+gn <- rowsum(rep(1L, length(go)), go)
+gi <- rep(seq_along(gn), gn)
+```
+
+By summing ones (`rep(1L, length(go))`) by group we count how many elements
+there are in each group and store than in `gn`.  We can illustrate in simplified
+form:
+
+```{r}
+(xo <- 2:6)                              # some values
+(go <- c(3, 3, 5, 5, 5))                 # their groups
+(gn <- rowsum(rep(1L, length(go)), go))  # the size of the groups
+```
+
+`gn` tells us how many elements there are in each group.  This allows us to
+compute the `$\bar{x}$` values:
+
+```{r}
+(xs <- rowsum(xo, go))                   # sum of each group
+(xu <- xs / gn)                          # mean of each group
+```
+
+But we need to compute `$x - \bar{x}$`, which means we need to recycle each
+group's `$\bar{x}$` value for each `$x$`.  This is what `gi` does:
+
+```{r}
+(gi <- rep(seq_along(gn), gn))
+cbind(x=xo, xu=xu[gi], g=go)
+```
+
+For each original `$x$` value, we have associated the corresponding `$\bar{x}$`
+value.  In `group_slope` we combined the mean calculation and recycling into one
+step: `xu <- (xs/gn)[gi]`.
+
+This is pretty fast with our original 10MM record data set::
+
+```{r eval=FALSE}
+system.time(slope.rs <- group_slope(x, y, grp))
 ```
 ```
    user  system elapsed
-  4.655   0.772   5.516
+  4.542   0.540   5.139
+```
+
+
+And a summary of all the timings including `data.table`:
+
+```{r rowsum-timings-all, echo=FALSE}
+funs <- c('*pply', '*pply', 'data.table', 'data.table', 'rowsum')
+times <- data.frame(
+  Function=factor(funs, levels=unique(funs)),
+  Version=c('normal', 'ordered', 'normal', 'optim', 'normal'),
+  time=c(14.184, 9.867 , 7.959, 3.697, 5.139)
+)
+ggplot(times, aes(x=Version, y=time)) +
+  geom_col() +
+  facet_grid(.~Function, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+`rowsum` is ~3x faster than even basic `*pply` version, and faster than the
+unoptimized `data.table` [^timing-note].  But `data.table` keeps the performance
+crown, albeit with a little help[^dt-optim].
+
+```{r eval=FALSE}
+system.time({
+  o <- order(grp)
+  go <- grp[o]
+  id <- seq_along(grp)[o]
+  id.split <- split(id, go)
+  slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+system.time({
+  id <- seq_along(grp)
+  id.split <- split(id, grp)
+  res.slope.base <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+
 ```
 
 
@@ -719,14 +837,79 @@ original example.
 ")
 ```
 
+## Other Benchmarks
+
+Original `*pply`, we used in the [prior grouped statistics post][8]:
+
+```{r eval=FALSE}
+system.time({
+  id <- seq_along(grp)
+  id.split <- split(id, grp)
+  slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+```
+```
+   user  system elapsed
+ 13.817   0.216  14.184
+```
+
+Ordered version:
+
+```{r eval=FALSE}
+system.time({
+  o <- order(grp)
+  go <- grp[o]
+  id <- seq_along(grp)[o]
+  id.split <- split(id, go)
+  slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+```
+```
+   user  system elapsed
+  9.565   0.203   9.867
+```
+```{r eval=FALSE}
+all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+`data.table`, not optimized:
+
+```{r eval=FALSE}
+setDTthreads(1)
+DT <- data.table(grp, x, y)
+system.time(DT[, slope(x, y), grp])
+```
+```
+   user  system elapsed
+  7.798   0.082   7.959
+```
+
 [^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
-is fair to question whether I would know whether there are many other functions
-of this kind out there or not.
+  is fair to question whether I would know whether there are many other
+  functions of this kind out there or not.
 [^vec-size]: Numeric vectors require 8 bytes per element plus some overhead for
-the object meta data.
+  the object meta data.
 [^love-r-but]: I love R, but the madness around [text decoration
-conventions][1] is something that I could do without.  Sorry for the rant, but I
-was particularly triggered by this example.
+  conventions][1], or lack thereof is something that I could do without.  Sorry
+  for the rant, but I was particularly triggered by this example.  I also do
+  understand that in large collaborative project like this one, things like this
+  are bound to happen and in the end it's not a big deal.
+[^not-quite-sum]: `mean(x)` in R is not exactly equivalent to
+  `sum(x) / length(x)` because `mean` has a two pass precision improvement
+  algorithm.
+[^forgive-me]: I am prone to absurd pedantic turns of phrase when giddy, so
+  please forgive me.  I did mention that I am `rowsum` made me giddy, right?
+[prior post][8]
+[^slope-mode]: This is a slightly modified version of the original from [prior
+  post][8] that is faster because it uses `mean.default` instead of `mean`.
+[^timing-note]: Timings in the [prior post][8] are slower due to the use of
+  `mean` instead of `mean.default` in the [`slope` function](#slope-ex).
+[^dt-optim]: In order to unlock the full performance of `data.table` we need to
+  engage in some manipulations.  We covered these in the [prior group statistics
+  post][9].
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
 [2]: https://en.wikipedia.org/wiki/Hash_table
@@ -735,3 +918,5 @@ was particularly triggered by this example.
 [5]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L1514
 [6]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/rowsum.R#L26
 [7]: https://cran.r-project.org/web/packages/inline/index.html
+[8]: /2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip/
+[0]: /2019/02/24/a-strategy-for-faster-group-statisitics/#optim-start/
