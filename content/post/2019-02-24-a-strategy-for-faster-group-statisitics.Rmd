@@ -388,7 +388,7 @@ The formula is:
 $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
 
-The R equivalent is:<span id='slope-ex'></a>
+The R equivalent is:<span id='slope-ex'></span>
 
 ```{r eval=FALSE}
 slope <- function(x, y) {
