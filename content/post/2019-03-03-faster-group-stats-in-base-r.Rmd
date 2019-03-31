@@ -196,7 +196,7 @@ system.time(unique(grp[order(grp)]))
 ```
 
 This also has a big impact on `rowsum`, as it uses both [`unique`][6] on top of
-its own [hash table][5]:
+its own [hash table][5]:<span id=rowsum-ordered></span>
 
 ```{r eval=FALSE}
 system.time({
@@ -235,6 +235,7 @@ blogdown::shortcode('tweet', '1106231241488154626')
 ```
 </div>
 
+<span id=alt-algo></span>
 One last thing before we move on: knowing that the data is sorted opens up
 different algorithms for many tasks such as `unique` and `rowsum`.  To
 illustrate I implemented the alternate [algorithms in C in the
@@ -420,76 +421,138 @@ I've had the idea that we could use cumulative functions to compute group
 statistics for a while, but [John Mount][10] [beat me to it][11].  I may have
 seen this elsewhere previously and forgot the seeing but not the concept, so
 apologies if I'm subconsciously stealing someone else's idea.  Some quick
-research didn't turn up anything, and it may be because this was not practical
-until the `data.table` radix sorting was added to base R in version 3.3.0.
+research didn't turn up anything.  Also, remember how we saw earlier that a fast
+order opened up opportunities for [new algorithms](#alt-algo)?  Well, this
+cumulative approach was not really practical until `data.table` radix sorting
+was added to base R in version 3.3.0.
 
 The concept is simple: order by group, compute cumulative sum, pull out the last
-value for each group, and take the differences of these.  Visually:
+value for each group, and take their differences.  Visually:
 
 ```{r echo=FALSE}
 RNGversion("3.5.2"); set.seed(42)
 n1 <- 7
 x1 <- seq_len(n1)
 y1 <- runif(n1);
-g1 <- sample(c('#3333ee', '#33ee33', '#eeee33'), n1, replace=TRUE)
+colors <- c('#3333ee', '#33ee33', '#eeee33')
+g1 <- sample(1:3, n1, replace=TRUE)
 steps <- c(
-  'Start', 'Sort By Group', 'Cumulative Sum',
-  'Last Value in Group', 'Take Differnces', 'Group Sums!'
+  '1 - Start', '2 - Sort By Group', '3 - Cumulative Sum',
+  '4 - Last Value in Group', '5 - Take Differences', '6 - Group Sums!'
 )
 steps <- factor(steps, levels=steps)
-df1 <- data.frame(x1, y1, g1, step=steps[[1]], stringsAsFactors=FALSE)
+df1 <- data.frame(
+  x1, y1, g1=as.character(g1), step=steps[[1]], stringsAsFactors=FALSE
+)
 df2 <- df1[order(g1),]
 df2[['x1']] <- x1
 df2[['step']] <- steps[[2]]
 df3 <- df2
-df3[['step']] <- steps[[3]]
-df4 <- subset(
-  transform(
-    subset(df3, ),
-    yc=cumsum(y1),
-    step=steps[[4]]
-  ),
-  c(head(g1, -1) != tail(g1, -1), TRUE)
+df3 <- transform(
+  df3, yc=cumsum(y1), step=steps[[3]],
+  last=c(head(g1, -1) != tail(g1, -1), TRUE)
 )
-df5 <- transform(df4, x1=3:5, y1=yc, step=steps[[5]])
-df5 <- transform(df5, y1=c(y1[[1]], diff(y1)))
+df4 <- transform(df3, step=steps[[4]])
+df5 <- transform(
+  subset(df4, last), x1=3:5, y1=c(yc[[1]], diff(yc)), step=steps[[5]]
+)
 df6 <- transform(df5, step=steps[[6]])
 
-ggplot(mapping=aes(x=x1, y=y1, fill=I(g1))) +
+ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
   geom_col(data=df1) +
   geom_col(data=df2) +
-  geom_col(data=df3, position='waterfall') +
-  geom_col(data=df4, mapping=aes(y=yc), width=0.9) +
+  geom_col(data=df3, mapping=aes(y=yc)) +
+  geom_col(
+    data=df4, mapping=aes(y=yc, alpha=I(ifelse(last, 1, .15))),
+    width=0.9
+  ) +
   geom_col(data=df5, width=0.9, position='waterfall') +
   geom_col(data=df6, width=0.9) +
-  facet_wrap(~step, ncol=3) +
+  facet_wrap(~step, ncol=2) +
   ylab(NULL) + xlab(NULL) +
   theme(
     axis.text.x=element_blank(), axis.text.y=element_blank(),
     panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
-    axis.text.x=element_blank(), axis.text.y=element_blank()
-  )
+    axis.ticks=element_blank()
+  ) +
+  scale_fill_manual(values=setNames(colors, 1:3), guide=FALSE)
 ```
 
-1. Compute the cumulative sum ordered by groups.
-2. Reset j
+This is the data we used for the visualization:
 
+```{r echo=FALSE}
+x1 <- y1 # a bit confusing with x/y for ggplot
+```
+```{r}
+g1
+x1
+```
+
+The first three steps are pretty obvious:
 
 ```{r eval=FALSE}
-system.time({
-  o <- order(grp)
-  go <- grp[o]
-  id <- seq_along(grp)[o]
-  id.split <- split(id, go)
-  slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
-})
-system.time({
-  id <- seq_along(grp)
-  id.split <- split(id, grp)
-  res.slope.base <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
-})
-
+ord <- order(g1)
+go <- g1[ord]
+xo <- x1[ord]
+xc <- cumsum(xo)
 ```
+
+Picking the last value from each group is a little harder, but we can do so with
+the help of `base::rle`.  `rle` returns the lengths of runs of adjacent numbers
+that are equal.  We can use it to compute the lengths of each group:
+
+```{r}
+go
+rle(go)[['lengths']]
+```
+
+This tells us the first group has two elements, the second also two, and the
+last three.  We can translate this into indices of the original vector with
+`cumsum`, and use it to pull out the relevant values from the cumulative sum of
+the `x` values:
+
+```{r}
+xc.last <- xc[cumsum(rle(go)[['lengths']])]
+```
+
+To finish we just take the differences.  We can wrap the whole thing into a
+function[^group-sum-complete]:
+
+```{r}
+group_sum <- function(x, grp) {
+  ord <- order(grp)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.rle.c <- cumsum(grp.rle[['lengths']])
+  x.ord <- x[ord]
+  x.grp.c <- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
+  structure(x.grp.c, groups=grp.rle[['values']], n=grp.rle[['lengths']])
+}
+group_sum(x1, g1)
+```
+
+We return some extra information so that we can use it in future steps if
+needed.
+
+Every step of `group_sum` is internally vectorized, so the function is fast.  We
+demonstrate here with the original 10MM data set:
+
+```{r eval}
+system.time(x.grpsum <- group_sum(x, grp))
+```
+```
+   user  system elapsed 
+  1.164   0.354   1.529 
+```
+```{r eval}
+all.equal(x.grpsum, c(x.ref), check.attributes=FALSE)
+```
+
+This is neck and neck with the [pre-ordered `rowsum`](#rowsum-ordered)
+calculation, but importantly it allows us to recover intermediate calculations
+we can re-use.
+
 
 
 ```{r eval=FALSE}
@@ -949,6 +1012,80 @@ system.time(DT[, slope(x, y), grp])
 ```
    user  system elapsed
   7.798   0.082   7.959
+```
+
+## Cumulative Group Sum
+
+```{r eval=FALSE}
+# Note: adapted to handle na.rm as per winvector, don't necessarily
+# handle corner cases correctly (0, 1 length vectors, others?)
+
+# Note: this stuff is only fast because order(, method="radix") is fast
+# Doesn't handle Infinite values
+
+group_sum2 <- function(x, grp, na.rm=FALSE) {
+  ord <- order(grp)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.rle.c <- cumsum(grp.rle[['lengths']])
+  x.ord <- x[ord]
+
+  # NA and Inf handling. Checking inf makes this 5% slower, but
+  # doesn't seem worth adding special handling for cases w/o Infs
+
+  has.na <- anyNA(x)
+  if(has.na) {
+    na.x <- which(is.na(x.ord))
+    x.ord[na.x] <- 0
+  } else na.x <- logical()
+  inf.x <- which(is.infinite(x.ord))
+  any.inf <- length(inf.x) > 0
+  if(any.inf) {
+    inf.vals <- x.ord[inf.x]
+    x.ord[inf.x] <- 0
+  }
+  x.grp.c <- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
+
+  # Re-inject NAs and Infs as needed
+
+  if(!na.rm && has.na)
+    x.grp.c[findInterval(na.x, grp.rle.c, left.open=TRUE)] <- NA
+  if(any.inf) {
+    inf.grps <- findInterval(inf.x, grp.rle.c, left.open=TRUE)
+    inf.rle <- rle(inf.grps)
+    inf.vals <- rep(Inf, length(inf.grps))
+    inf.neg <- inf.x < 0
+
+    # If more than one Inf val in group, need to make sure we don't have
+    # Infs of different signs as those add up to NaN
+    if(any(inf.long <- (inf.rle[['lengths']] > 1L))) {
+      inf.pos.g <- group_sum2(!inf.neg, inf.grps)
+      inf.neg.g <- group_sum2(inf.neg, inf.grps)
+      inf.vals[inf.neg.g] <- -Inf
+      inf.vals[inf.pos.g & inf.neg.g] <- NaN
+    } else {
+      inf.vals[inf.neg] <- -Inf
+    }
+    x.grp.c[inf.grps] <- inf.vals
+  }
+  structure(x.grp.c, groups=grp.rle[['values']], n=grp.rle[['lengths']])
+}
+system.time(group_sum2(x, grp))
+
+RNGversion("3.5.2"); set.seed(42)
+x2 <- c(1:10)
+x2[c(2, 6)] <- Inf
+g2 <- sample(1:3, 10, rep=T)
+group_sum2(x2, g2)
+x2[c(2, 6)] <- NA
+group_sum2(x2, g2)
+group_sum2(x2, g2, na.rm=TRUE)
+
+```
+```
+   user  system elapsed
+  1.186   0.374   1.634
 ```
 
 [^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
