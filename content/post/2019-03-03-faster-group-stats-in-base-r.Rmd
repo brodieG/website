@@ -379,7 +379,7 @@ For each original `$x$` value, we have associated the corresponding `$\bar{x}$`
 value.  In `group_slope` we combined the mean calculation and recycling into one
 step: `xu <- (xs/gn)[gi]`.
 
-This is pretty fast with our original 10MM record data set::
+This is pretty fast with our original 10MM record data set:
 
 ```{r eval=FALSE}
 system.time(slope.rs <- group_slope(x, y, grp))
@@ -388,7 +388,6 @@ system.time(slope.rs <- group_slope(x, y, grp))
    user  system elapsed
   4.542   0.540   5.139
 ```
-
 
 And a summary of all the timings including `data.table`:
 
@@ -409,7 +408,72 @@ ggplot(times, aes(x=Version, y=time)) +
 
 `rowsum` is ~3x faster than even basic `*pply` version, and faster than the
 unoptimized `data.table` [^timing-note].  But `data.table` keeps the performance
-crown, albeit with a little help[^dt-optim].
+crown, albeit with a little help[^dt-optim].  More details for the benchmarks
+are [in the appendix](#other-benchmarks).
+
+So like Rocky Balboa we walk off into the sunset, not victorious, but satisfied
+we put up a good fight.  Except...
+
+# Round II
+
+I've had the idea that we could use cumulative functions to compute group
+statistics for a while, but [John Mount][10] [beat me to it][11].  I may have
+seen this elsewhere previously and forgot the seeing but not the concept, so
+apologies if I'm subconsciously stealing someone else's idea.  Some quick
+research didn't turn up anything, and it may be because this was not practical
+until the `data.table` radix sorting was added to base R in version 3.3.0.
+
+The concept is simple: order by group, compute cumulative sum, pull out the last
+value for each group, and take the differences of these.  Visually:
+
+```{r echo=FALSE}
+RNGversion("3.5.2"); set.seed(42)
+n1 <- 7
+x1 <- seq_len(n1)
+y1 <- runif(n1);
+g1 <- sample(c('#3333ee', '#33ee33', '#eeee33'), n1, replace=TRUE)
+steps <- c(
+  'Start', 'Sort By Group', 'Cumulative Sum',
+  'Last Value in Group', 'Take Differnces', 'Group Sums!'
+)
+steps <- factor(steps, levels=steps)
+df1 <- data.frame(x1, y1, g1, step=steps[[1]], stringsAsFactors=FALSE)
+df2 <- df1[order(g1),]
+df2[['x1']] <- x1
+df2[['step']] <- steps[[2]]
+df3 <- df2
+df3[['step']] <- steps[[3]]
+df4 <- subset(
+  transform(
+    subset(df3, ),
+    yc=cumsum(y1),
+    step=steps[[4]]
+  ),
+  c(head(g1, -1) != tail(g1, -1), TRUE)
+)
+df5 <- transform(df4, x1=3:5, y1=yc, step=steps[[5]])
+df5 <- transform(df5, y1=c(y1[[1]], diff(y1)))
+df6 <- transform(df5, step=steps[[6]])
+
+ggplot(mapping=aes(x=x1, y=y1, fill=I(g1))) +
+  geom_col(data=df1) +
+  geom_col(data=df2) +
+  geom_col(data=df3, position='waterfall') +
+  geom_col(data=df4, mapping=aes(y=yc), width=0.9) +
+  geom_col(data=df5, width=0.9, position='waterfall') +
+  geom_col(data=df6, width=0.9) +
+  facet_wrap(~step, ncol=3) +
+  ylab(NULL) + xlab(NULL) +
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+    axis.text.x=element_blank(), axis.text.y=element_blank()
+  )
+```
+
+1. Compute the cumulative sum ordered by groups.
+2. Reset j
+
 
 ```{r eval=FALSE}
 system.time({
@@ -919,4 +983,6 @@ system.time(DT[, slope(x, y), grp])
 [6]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/rowsum.R#L26
 [7]: https://cran.r-project.org/web/packages/inline/index.html
 [8]: /2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip/
-[0]: /2019/02/24/a-strategy-for-faster-group-statisitics/#optim-start/
+[9]: /2019/02/24/a-strategy-for-faster-group-statisitics/#optim-start/
+[10]: https://github.com/JohnMount
+[11]: https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105
