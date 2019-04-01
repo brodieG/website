@@ -130,8 +130,9 @@ Almost four times faster than the original `tapply` solution, and not far from
 the `data.table` one.
 
 ```{r echo=FALSE}
+funs <- c('tapply', 'rowsum', 'data.table')
 times <- data.frame(
-  Function=c('tapply', 'rowsum', 'data.table'),
+  Function=factor(funs, levels=funs),
   time=c(9.030, 2.626, 1.126)
 )
 ggplot(times, aes(x=Function, y=time)) +
@@ -171,18 +172,15 @@ system.time(unique(grp))
 Internally `unique` uses a [hash table][2] to detect duplicate values, so it may
 seem odd that the lookup speed is affected by ordering as the hashing time
 should not be affected by the input order.  Most likely it is some combination
-of caching and [branch prediction][3].
-
-With respect to caching, In the sorted version, we will look up the same key
-repeatedly, which presumably means the corresponding value will be warm and snug
-in the [highest speed cache][4].  In the unsorted version, we will be jumping
-all over the hash table, which will almost certainly require looking up values
-in at best slower cache, or more likely in main memory.  Similarly, in branch
-prediction, the processor will predict well just by assuming that a value
-will be a duplicate when the duplicates are sequential, as they are in the
-sorted case.  I have no idea if this is actually what is going on or not, but it
-seems likely, and I'm tickled pink by the thought that I'm noticing these
-effects from R-level for the first time.
+of caching and [branch prediction][3].  In the sorted version, we will look up
+the same key repeatedly, which means the corresponding value will be warm and
+snug in the [highest speed cache][4].  Additionally, since all duplicated values
+are in sequence, the processor will do a pretty good job predicting branches
+just by assuming the next value will be duplicated.  It will get it wrong at
+each transition to a new value, but it will be right more often than not if
+there is sufficient duplication.  I have no idea if this is actually what is
+going on or not, but it seems likely, and I'm tickled pink by the thought that
+I'm noticing these effects from R-level for the first time.
 
 Now, for why I'm ranting about this, it turns out that the combined operation of
 sorting and `unique`ing is faster than the just `unique`ing:
@@ -324,7 +322,8 @@ group_slope <- function(x, y, grp) {
   yo <- y[o]
 
   ## group sizes and group indices
-  gn <- rle(go)[['lengths']]
+  grle <- rle(go)
+  gn <- grle[['lengths']]
   gi <- rep(seq_along(gn), gn)
 
   ## compute mean(x) and mean(y), and recycle them
@@ -339,7 +338,7 @@ group_slope <- function(x, y, grp) {
   y_uy <- yo - uy
 
   ## Slopes!
-  rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
+  setNames(rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go), grle[['values']])
 }
 ```
 
@@ -625,7 +624,7 @@ group_slope2 <- function(x, y, grp) {
   ## Slopes!
   x_ux.y_uy <- .group_sum_int(x_ux * y_uy, gnc)
   x_ux2 <- .group_sum_int(x_ux ^ 2, gnc)
-  x_ux.y_uy / x_ux2
+  setNames(x_ux.y_uy / x_ux2, grle[['values']])
 }
 system.time(slope.gs <- group_slope2(x, y, grp))
 ```
@@ -641,7 +640,7 @@ funs <- c('*pply', '*pply', 'data.table', 'data.table', 'rowsum', 'cumsum')
 times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
   Version=c('normal', 'ordered', 'normal', 'optim', 'normal', 'normal'),
-  time=c(14.184, 9.867 , 7.959, 3.697, 4.915, 2.652)
+  time=c(14.184, 9.867 , 7.959, 3.697, 4.915, 2.573)
 )
 ggplot(times, aes(x=Version, y=time)) +
   geom_col() +
@@ -651,10 +650,9 @@ ggplot(times, aes(x=Version, y=time)) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
 ```
 
-The key advantage `group_slope2` has over the `rowsum` version is that we can
-re-use the last-element-in-group index `gnc` since the groups are the same at
-every step.  Once we know the last element in a group the sum using the
-cumulative method is substantially faster:
+The key advantage `group_slope2` has over the `rowsum` version is that it can
+re-use `gnc`, the vector of indices to the last value in each group.
+Computing `gnc` is the expensive part of the `cumsum` group sum calculation:
 
 ```{r eval=FALSE}
 o <- order(grp)
@@ -683,8 +681,94 @@ times when computing the slope.
 
 # Precision Schmecision
 
-The skeptical reader might have noticed that unlike with previous examples, we
-did not compare the results
+The skeptical reader might have noticed that we did not compare the results of
+`group_slope2` with reference values.  It turns out that our blazing fast
+benchmark hero is cutting some corners:
+
+```{r}
+all.equal(slope.gs, c(slope.rs), check.attributes=FALSE)
+```
+```
+[1] "Mean relative difference: 0.001404195"
+```
+With a generous tolerance we find equality:
+```{r}
+all.equal(slope.gs, c(slope.rs), check.attributes=FALSE, tolerance=2e-3)
+```
+```
+[1] TRUE
+```
+
+Let's find the worst offender:
+
+```{r eval=FALSE}
+bad.el <- which.max(abs(slope.gs / slope.rs - 1))
+slope.gs[bad.el]
+```
+```
+   616826 
+-2511.833 
+```
+```{r eval=FALSE}
+slope.rs[bad.el]
+```
+```
+   616826 
+-2977.281 
+```
+
+Ugh, that's pretty bad.  These are the values responsible:
+
+```{r eval=FALSE}
+bad.grp <- as.integer(names(slope.gs[bad.el]))
+(bad.x <- x[grp == mxgr])
+```
+```
+[1] 0.4239786 0.4239543
+```
+```{r eval=FALSE}
+(bad.y <- y[grp == mxgr])
+```
+```
+[1] 0.7647899 0.8370645
+```
+
+The `x` values are almost certainly the cause of the problem, as `$x
+- \bar{x}$` produces some small numbers.
+
+```{r eval=FALSE}
+bad.x - mean(bad.x)
+```
+```
+[1]  0.00001213769 -0.00001213769
+```
+
+But these are well within the range of values that should be manageable
+for [double precision floats][12] which are what R "numeric" values are stored
+as.  So what's going on?  It turns out that the `cumsum` approach severely
+amplifies precision issues.  Typical double precision floating point numbers
+have about 15-16 digits of precision.  In order to mitigate precision issues, [R
+internally uses a representation][13] that allows [18-19 digits of
+precision][14] for `cumsum`.  Yet that is not enough here.  To see why we need
+to review our algorithm:
+
+```{r cumsum-review, echo=FALSE}
+ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
+  geom_col(
+    data=df4, mapping=aes(y=yc, alpha=I(ifelse(last, 1, .15))),
+    width=0.9
+  ) +
+  geom_col(data=df5, width=0.9, position='waterfall') +
+  facet_wrap(~step, ncol=2) +
+  ylab(NULL) + xlab(NULL) +
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+    axis.ticks=element_blank()
+  ) +
+  scale_fill_manual(values=setNames(colors, 1:3), guide=FALSE)
+
+```
 
 
 ```
@@ -697,13 +781,7 @@ did not compare the results
 }
 ```
 
-Precision is garbage though:
-```
-> all.equal(res.slope.dt1[[2]], res4, tol=1e-2)
-[1] TRUE
-> all.equal(res.slope.dt1[[2]], res4, tol=1e-3)
-[1] FALSE
-```
+
 But we can make it precise
 ```{r eval=FALSE}
 system.time(slope1(x, y, grp, precise=TRUE))
@@ -1221,3 +1299,6 @@ mapply(
 [9]: /2019/02/24/a-strategy-for-faster-group-statisitics/#optim-start/
 [10]: https://github.com/JohnMount
 [11]: https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105
+[12]: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
+[13]: https://github.com/wch/r-source/blob/R-3-5-branch/src/main/cum.c#L30
+[14]: https://en.wikipedia.org/wiki/Extended_precision#Working_range
