@@ -20,6 +20,16 @@ options(digits=3)
 library(ggplot2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
+```{r, echo=FALSE}
+writeFansi <- function(x) {
+  writeLines(
+    paste0(
+      "<pre></pre><pre><code>",
+      paste0(fansi::sgr_to_html(x), collapse="\n"),
+      "</code></pre>"
+  ) )
+}
+```
 
 # blah blah
 
@@ -699,22 +709,22 @@ all.equal(slope.gs, c(slope.rs), check.attributes=FALSE, tolerance=2e-3)
 [1] TRUE
 ```
 
-Let's find the worst offender:
+Let's find the worst offender:<span id=prec-error></span>
 
 ```{r eval=FALSE}
 bad.el <- which.max(abs(slope.gs / slope.rs - 1))
 slope.gs[bad.el]
 ```
 ```
-   616826 
--2511.833 
+   616826
+-2511.833
 ```
 ```{r eval=FALSE}
 slope.rs[bad.el]
 ```
 ```
-   616826 
--2977.281 
+   616826
+-2977.281
 ```
 
 Ugh, that's pretty bad.  These are the values responsible:
@@ -736,6 +746,9 @@ bad.grp <- as.integer(names(slope.gs[bad.el]))
 The `x` values are almost certainly the cause of the problem, as `$x
 - \bar{x}$` produces some small numbers.
 
+```{r}
+old.opt <- options(digits=22, scipen=100) # show more digits
+```
 ```{r eval=FALSE}
 bad.x - mean(bad.x)
 ```
@@ -744,13 +757,13 @@ bad.x - mean(bad.x)
 ```
 
 But these are well within the range of values that should be manageable
-for [double precision floats][12] which are what R "numeric" values are stored
-as.  So what's going on?  It turns out that the `cumsum` approach severely
-amplifies precision issues.  Typical double precision floating point numbers
-have about 15-16 digits of precision.  In order to mitigate precision issues, [R
-internally uses a representation][13] that allows [18-19 digits of
-precision][14] for `cumsum`.  Yet that is not enough here.  To see why we need
-to review our algorithm:
+for [double precision floats][12] ("doubles" henceforth) which are what R
+"numeric" values are stored as.  So what's going on?  It turns out that the
+`cumsum` approach severely amplifies precision issues.  Typical double precision
+floating point numbers have about 15-16 digits of precision.  In order to
+mitigate precision issues, [R internally uses a representation][13] that allows
+[18-19 digits of precision][14] for `cumsum`[^extended-precision].  Yet that is
+not enough here.  To see why we need to review our algorithm:
 
 ```{r cumsum-review, echo=FALSE}
 ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
@@ -767,6 +780,269 @@ ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
     axis.ticks=element_blank()
   ) +
   scale_fill_manual(values=setNames(colors, 1:3), guide=FALSE)
+
+```
+
+While the overall cumulative value is going to be reasonably precise, the
+_differences_ between adjacent cumulative values will cause us to lose some
+precision.  Let's look at the actual values involved, starting with what the
+accumulated sum of all the prior ordered `x` values is by the time we reach our
+bad group:
+
+```{r eval=FALSE}
+o <- order(grp)
+go <- grp[o]
+xo <- x[o]
+yo <- y[o]
+
+bad.grp.idx <- which(go == bad.grp)
+bad.grp.start <- head(bad.grp.idx, 1)
+bad.grp.end <- tail(bad.grp.idx, 1)
+(x.cum.prev <- sum(xo[1:(bad.grp.start-1)]))  # end val of prior group
+```
+```
+[1] 3084341.120945733506233
+```
+And the cumulative sum at the end of our group:
+
+```{r eval=FALSE}
+(x.cum <- sum(xo[1:bad.grp.end]))             # end val of bad group
+```
+```
+[1] 3084341.968878706917167
+```
+
+In our algorithm we take the difference of these two numbers to get the group
+sum.  Here we show the two numbers and their difference highlighting the
+precision digits in green[^precision-digits]:
+
+```{r eval=FALSE}
+group.sum <- x.cum - x.cum.pre
+rbind(x.cum.pre, x.accum.post, group.sum)
+```
+```{r echo=FALSE, results='asis'}
+val <- "                                       [,1]
+x.accum.pre  \033[42m3084341.120945733\033[m5062325000763
+x.accum.post \033[42m3084341.968878706\033[m9171667098999
+group.sum          0.\033[42m847932973\033[m4109342098236"
+writeFansi(val)
+```
+
+Our group sum is small, so the group ends are near each other.  By taking the
+difference we lose all the precision that was contributed by the first seven
+digits of the cumulative numbers, leaving us with about nine
+digits[^precision-digits].  Normally this should still be plenty of precision,
+but the next step `$x - \bar{x}$` peels off even more, as shown here with the
+first value of `$x$` in the group:
+
+```{r eval=FALSE}
+x1 <- xo[bad.grp.start]
+ux <- group.sum / length(bad.grp.idx)
+x1_ux <- x1 - ux
+rbind(x1, ux, x1_ux)
+```
+```{r echo=FALSE, results='asis'}
+val <- "                              [,1]
+x1    0.\033[42m423978624399751\033[m42478942871
+ux    0.\033[42m423966486\033[m70546710491180420
+x1_ux 0.0000\033[42m12137\033[m69428431987762451"
+writeFansi(val)
+```
+
+Still, this loss of precision can't account for the [~15% error we
+observed](#prec-error).  Where the wheels really fall off is in the `$\sum(x -
+\bar{x})^2$` step.  This is the code from the `group_slope2` function that gets
+us to `$(x - \bar{x})^2$`, edited to remove irrelavant parts:
+
+```{r eval=FALSE}
+grle <- rle(go)
+gn <- grle[['lengths']]
+gi <- rep(seq_along(gn), gn)
+gnc <- cumsum(gn)    # Last index in each group
+
+sx <- .group_sum_int(xo, gnc)
+ux <- (sx/gn)[gi]
+x_ux <- xo - ux
+x_ux2 <- (x_ux ^ 2)
+```
+
+Already we were at only about five digits of precision and now we're going to
+take the difference between these two numbers:
+
+```{r eval=FALSE}
+(x_ux2.cum.prev <- cumsum(x_ux2)[bad.grp.start - 1])
+```
+```
+[1] 462818.5549556238111109
+```
+```{r eval=FALSE}
+(x_ux2.cum <- cumsum(x_ux2)[bad.grp.end])
+```
+```
+[1] 462818.5549556241603568
+```
+
+This is the computing equivalent of walking down the steps into a dark basement
+with ominous background music in a horror movie.  To leave no doubt about the
+carnage that is about to unfold (viewer discretion advised):<span
+id=carnage></span>
+
+```{r eval=FALSE}
+diff <- x_ux2.cum - x_ux2.cum.prev
+rbind(x_ux2.cum.prev, x_ux2.cum, diff)
+```
+```{r echo=FALSE, results='asis'}
+val <- "                                                 [,1]
+x_ux2.cum.prev \033[42m46281\033[m8.5549556238111108541488647460938
+x_ux2.cum      \033[42m46281\033[m8.5549556241603568196296691894531
+diff                0.0000000003492459654808044433594"
+writeFansi(val)
+```
+
+Zilch precision left.  I will not transcribe the scream of horror and agony for
+the sake of the children, but I will show you the aftermath:
+
+```{r eval=FALSE}
+seven31::reveal(diff)
+```
+```{r echo=FALSE, results='asis'}
+val <- "\033[31m0\033[m \033[34m01111011111\033[m (-32) 1000000000000000000000000000000000000000000000000000 : diff"
+writeFansi(val)
+```
+
+[Romain François's][15] [`seven31`][16] allows us to inspect the internal
+representation of floating point numbers.  These have three components that
+together account for the 64 bits used in encoding the number.  In order they
+are:
+
+* Sign (1 bit: <code style='color: red !important;'>0</code>), which tells us
+  if the number is positive or negative.
+* Exponent (11 bits: <code style='color: blue !important;'>01111011111</code>,
+  also shown in decimal form as `(-32)`) which gives the magnitude of the
+  number.
+* Normalized value (52 bits: <code>100000000000000...</code>), which is  the
+  part that matters for precision.
+
+If this does not knot up your guts I don't know what will.  We're essentially
+left with two bits of precision: the only `1` visible in the "Normalized Value"
+section, and implicitly, the leading `1` of that same value that is not shown.
+
+Check this out:
+
+```{r}
+(2^-32) *         # exponent
+  (2^0 + 2^-1)    # normalized value
+```
+
+This is exactly what we got from subtracting the cumulative values earlier, and
+shows there really is very little precision.  The `2^0` corresponds to the
+implicit value bit that isn't shown, and `2^-1` to the one `1` in the
+"normalized value" portion of the double.  Each bit in the "normalized value"
+section is represented by `2^-n` where `n` is the position in the bit field.  If
+we take the two bits of precision at face value, we can represent four
+normalized values, so a 15% error is about what you might expect.  In reality we
+don't even have two bits of precision, but I thought it was striking enough to
+see the binary representation of the value we are dealing with.
+
+I hope you will forgive some of the hand-waving I indulged in above.  For
+example, trailing zeroes don't necessarily indicate imprecision.  In fact, the
+bit representation of the actual values we're subtracting would imply higher
+precision than just two bits.  At the same time, the bit "precision" can greatly
+overstate the actual precision of a number.  For example, if I add two values
+that are each precise to two bits, but are of different magnitudes, the result
+will appear as having much higher precision than it actually does.  The net of
+all this is the above explanation should be mostly correct in spirit if perhaps
+a bit liberal with the interpretation of some facts.
+
+# Now What?
+
+Before we give up hope it is worth pointing out that precision loss in some
+cases can be considered a feature.  For example, [Drew Schmidt's `float`][17]
+package implements single precision numerics for R as an explicit trade-off of
+precision for memory and speed.  In a sense, we are doing something similar by
+using `cumsum`, although not explicitly.
+
+Additionally, in our case, the bad errors happen when all the `$x$` values in a
+group are very close to each other, which produces very steep slopes.  Do we
+actually care whether the slope is -2977:1 or -2512:1?  Maybe you shouldn't
+compute injection orbits for expensive mars landers using these methods, but
+otherwise it is conceivable the loss of precision might be acceptable.  But you
+also need to have some awareness of the magnitude differences between the
+overall sum of your data and any given group's sum.  If precision in the small
+sums is important you cannot use this method as it is.
+
+Either way, it would be nice if we could make a version of this method that
+doesn't suffer from this precision infirmity.  And it turns out we can!  The
+main source of precision loss is due to the accumulated sum eventually growing
+much larger than any given individual group in size.  This is what happened with
+the [cumulative sum of `$(x - \bar{x})^2$`](#carnage), exacerbated by the
+squaring of the variable.
+
+If we could ensure the cumulative sum stays close to zero, then the error should
+be greatly mitigated.  This is hard to do without knowing ahead of time what the
+group sizes are.  Instead, we can use a two pass process where we first
+compute the imprecise group sums, and then re-insert the negative of those
+values into the data:
+
+
+```{r eval=FALSE}
+.group_sum_int2 <- function(x, last.in.group){
+  x.grp <- .group_sum_int(x, last.in.group)     # imprecise pass
+  x[last.in.group] <- x[last.in.group] - x.grp  # subtract from each group
+  x.grp + .group_sum_int(x, last.in.group)      # compute errors and add
+}
+```
+
+
+```
+sy <- .group_sum_int(yo, gnc)
+uy <- (sy/gn)[gi]
+
+## (x - mean(x)) and (y - mean(y))
+y_uy <- yo - uy
+
+ux0 <- sum(xo[bad.grp.idx]) / length(bad.grp.idx)
+x_ux0 <- xo[bad.grp.idx] - ux0
+
+uy0 <- sum(yo[bad.grp.idx]) / length(bad.grp.idx)
+y_uy0 <- yo[bad.grp.idx] - uy0
+
+xoc <- cumsum(xo)
+ux1 <- (xoc[bad.grp.end] - xoc[bad.grp.start - 1]) / length(bad.grp.idx)
+x_ux1 <- xo[bad.grp.idx] - ux1
+
+yoc <- cumsum(yo)
+uy1 <- (yoc[bad.grp.end] - yoc[bad.grp.start - 1]) / length(bad.grp.idx)
+y_uy1 <- yo[bad.grp.idx] - uy1
+
+
+x_uxc1 <-
+
+sum(x_ux1 * y_uy1) / sum(x_ux1 ^2)
+sum(x_ux0 * y_uy0) / sum(x_ux0 ^2)
+
+## group sizes and group indices
+grle <- rle(go)
+gn <- grle[['lengths']]
+gi <- rep(seq_along(gn), gn)
+gnc <- cumsum(gn)    # Last index in each group
+
+## compute mean(x) and mean(y), and recycle them
+## to each element of `x` and `y`:
+sx <- .group_sum_int(xo, gnc)
+ux <- (sx/gn)[gi]
+sy <- .group_sum_int(yo, gnc)
+uy <- (sy/gn)[gi]
+
+## (x - mean(x)) and (y - mean(y))
+x_ux <- xo - ux
+y_uy <- yo - uy
+
+## Slopes!
+x_ux.y_uy <- .group_sum_int(x_ux * y_uy, gnc)
+x_ux2 <- .group_sum_int(x_ux ^ 2, gnc)
+
+
 
 ```
 
@@ -1004,6 +1280,10 @@ Note on vector size[^vec-size].
 
 ## Acknowledgments
 
+* Matt Dowle and the `data.table` team for contributing their `radix` order to
+  R.
+* Romain Francois for `seven31` which allowed us to debug the double precision
+  precision issues.
 * Oleg Sklyar, Duncan Murdoch, Mike Smith, Dirk Eddelbuettel, Romain Francois,
   Karline Soetaert for [`inline`][7].
 
@@ -1287,6 +1567,13 @@ mapply(
   obvious uses of this method.  Since this approach was not really practical
   until `data.table` radix sorting was added to base R in version 3.3.0, its
   plausible it is somewhat rare.  Send me links if there are other examples.
+[^extended-precision]: The additional precision is only available internally;
+  the return value is truncated to the regular double precision.
+[^precision-digits]: Double precision is roughly `log10(2^53)`, or 15.95
+  in decimal, but precision can really only be measured in binary "digits", so
+  you cannot directly compute how much precision is lost by comparing two
+  decimal numbers.  This particular subtraction loses us 21 bits of precision,
+  or about 6.32 digits of decimal precision.
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
 [2]: https://en.wikipedia.org/wiki/Hash_table
@@ -1302,3 +1589,6 @@ mapply(
 [12]: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 [13]: https://github.com/wch/r-source/blob/R-3-5-branch/src/main/cum.c#L30
 [14]: https://en.wikipedia.org/wiki/Extended_precision#Working_range
+[15]: https://github.com/romainfrancois
+[16]: https://github.com/ThinkR-open/seven31
+[17]: https://github.com/wrathematics/float
