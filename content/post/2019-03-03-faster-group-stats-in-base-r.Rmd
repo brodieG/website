@@ -643,9 +643,14 @@ group_slope2 <- function(x, y, grp, group_sum=.group_sum_int) {
 }
 system.time(slope.gs <- group_slope2(x, y, grp))
 ```
+<!-- ed note: the timings below appear sensitive to other stuff running on the
+system.  This is the fastest I've recorded:
+   user  system elapsed 
+  1.864   0.496   2.368 
+-->
 ```
-   user  system elapsed
-  1.952   0.605   2.573
+   user  system elapsed 
+  2.017   0.607   2.647 
 # can't reproduce above one right now?
    user  system elapsed 
   2.032   0.673   2.715 
@@ -660,7 +665,7 @@ funs <- c('*pply', '*pply', 'data.table', 'data.table', 'rowsum', 'cumsum')
 times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
   Version=c('normal', 'ordered', 'normal', 'optim', 'normal', 'normal'),
-  time=c(14.184, 9.867 , 7.959, 3.697, 4.915, 2.573)
+  time=c(14.184, 9.867 , 7.959, 3.697, 4.915, 2.647)
 )
 ggplot(times, aes(x=Version, y=time)) +
   geom_col() +
@@ -1061,12 +1066,11 @@ If the first pass group sum was fully precise, the values inside the
 highlighting boxes should be zero. The small values we see inside the boxes
 represent the errors of each group computation[^for-effect].  Steps that we are
 not showing above is collecting these values, taking their differences and
-adding them back to the first pass values.
+adding them back to the first pass values, similar to what `base::mean` does.
 
-`.group_sum_int2` below embodies this approach.  One slight modification is that
+`.group_sum_int2` below embodies the approach.  One slight modification is that
 we subtract the first pass group value from the last value in the group instead
-of adding it as it own stand-alone value in order to save a new vector
-allocation:
+of appending it to the group:
 
 ```{r}
 .group_sum_int2 <- function(x, last.in.group){
@@ -1075,43 +1079,21 @@ allocation:
   x.grp + .group_sum_int(x, last.in.group)      # compute errors and add
 }
 ```
-
 ```{r echo=FALSE}
 system.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
 ```
 ```
    user  system elapsed 
-  2.624   0.918   3.562 
-# this one seems to have been a fluke?  Maybe system not
-# busy and able to give mem real quick? Not a fluke once we killed
-# FF and all other random processes
-   user  system elapsed 
-  2.446   0.772   3.246 
-
-   user  system elapsed 
-  2.543   0.754   3.312 
+  2.477   0.747   3.278 
+```
+```
+all.equal(c(slope.rs), slope.gs2, check.attributes=FALSE)
 ```
 
-Updated reference times for `data.table`.  This is after we killed all
-extraneous processes, including firefox.
-
-```{r eval=FALSE}
-setDTthreads(1)
-DT <- data.table(grp, x, y)
-system.time({
-  setkey(DT, grp)
-  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
-  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
-  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
-  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
-  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
-})
-```
-```
-# Bah, it was with four threads.  Still, useful number
+<!-- ed note: fastest recorded, again with wifi off, everything shut down
    user  system elapsed 
-  7.691   0.815   2.828 
-```
+  2.234   0.598   2.842 
+-->
 
 We can do a little better though since we don't need the full precision.
 * Get max cumsum value
@@ -1143,7 +1125,30 @@ We can do a little better though since we don't need the full precision.
   structure(gs, precision=precision, precision.mitigation=precision < p.bits)
 }
 gsfun <- function(x, last.in.group) .group_sum_intb(x, last.in.group, 16)
-system.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=gsfun))
+x1 <- x + rep(c(.001, -.001), length(x)/2)
+y1 <- y + rep(c(.001, -.001), length(y)/2)
+slope.rs1 <- group_slope(x1, y1, grp)
+system.time(slope.gsa <- group_slope2(x1, y1, grp))
+system.time(slope.gs2a <- group_slope2(x1, y1, grp, group_sum=.group_sum_int2))
+system.time(slope.gs3a <- group_slope2(x1, y1, grp, group_sum=gsfun))
+```
+```
+   user  system elapsed 
+  2.311   0.703   3.026 
+```
+<!-- fastest:
+   user  system elapsed 
+  2.164   0.682   2.856 
+-->
+```{r eval=FALSE}
+all.equal(
+  slope.gs3[!is.na(slope.rs)], slope.rs[!is.na(slope.rs)], 
+  check.attributes=FALSE
+)
+```
+```
+[1] TRUE
+```
 
 system.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
 
@@ -1151,97 +1156,32 @@ system.time(.group_sum_intb(xo, gnc, 50))
 system.time(.group_sum_int(xo, gnc))
 system.time(.group_sum_intb(xo, gnc, 50))
 
-all.equal(
-  slope.gs3[!is.na(slope.rs)], slope.rs[!is.na(slope.rs)], 
-  check.attributes=FALSE
-)
 
 ```
+Updated reference times for `data.table`.  This is after we killed all
+extraneous processes, including firefox.
+
+```{r eval=FALSE}
+setDTthreads(1)
+DT <- data.table(grp, x, y)
+system.time({
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})
+```
+```
+# Bah, it was with four threads.  Still, useful number
+   user  system elapsed 
+  7.691   0.815   2.828 
+```
+
 
 
 ## testing whether we're better off with different method
-.group_sum_int3 <- function(x, last.in.group){
-  x.grp <- .group_sum_int(x, last.in.group)     # imprecise pass
-  zz <- numeric(length(x) + length(last.in.group))
-  zz[last.in.group] <- last.in.group
-  x.grp
-}
-
-```
-sy <- .group_sum_int(yo, gnc)
-uy <- (sy/gn)[gi]
-
-## (x - mean(x)) and (y - mean(y))
-y_uy <- yo - uy
-
-ux0 <- sum(xo[bad.grp.idx]) / length(bad.grp.idx)
-x_ux0 <- xo[bad.grp.idx] - ux0
-
-uy0 <- sum(yo[bad.grp.idx]) / length(bad.grp.idx)
-y_uy0 <- yo[bad.grp.idx] - uy0
-
-xoc <- cumsum(xo)
-ux1 <- (xoc[bad.grp.end] - xoc[bad.grp.start - 1]) / length(bad.grp.idx)
-x_ux1 <- xo[bad.grp.idx] - ux1
-
-yoc <- cumsum(yo)
-uy1 <- (yoc[bad.grp.end] - yoc[bad.grp.start - 1]) / length(bad.grp.idx)
-y_uy1 <- yo[bad.grp.idx] - uy1
-
-
-x_uxc1 <-
-
-sum(x_ux1 * y_uy1) / sum(x_ux1 ^2)
-sum(x_ux0 * y_uy0) / sum(x_ux0 ^2)
-
-## group sizes and group indices
-grle <- rle(go)
-gn <- grle[['lengths']]
-gi <- rep(seq_along(gn), gn)
-gnc <- cumsum(gn)    # Last index in each group
-
-## compute mean(x) and mean(y), and recycle them
-## to each element of `x` and `y`:
-sx <- .group_sum_int(xo, gnc)
-ux <- (sx/gn)[gi]
-sy <- .group_sum_int(yo, gnc)
-uy <- (sy/gn)[gi]
-
-## (x - mean(x)) and (y - mean(y))
-x_ux <- xo - ux
-y_uy <- yo - uy
-
-## Slopes!
-x_ux.y_uy <- .group_sum_int(x_ux * y_uy, gnc)
-x_ux2 <- .group_sum_int(x_ux ^ 2, gnc)
-
-
-
-```
-
-
-```
-.group_sum_int2 <- function(x, last.in.group, precise=FALSE){
-  x.grp <- sum_grp1_int(x, last.in.group)
-  if(precise) {
-    x[last.in.group] <- x[last.in.group] - x.grp
-    x.grp + sum_grp1_int(x, last.in.group)
-  } else x.grp
-}
-```
-
-
-But we can make it precise
-```{r eval=FALSE}
-system.time(slope1(x, y, grp, precise=TRUE))
-```
-```
-   user  system elapsed
-  2.481   1.087   3.754
-  # second faster timing was from a fresh session, repeated several times
-   user  system elapsed
-  2.399   0.933   3.348
-```
 
 ```{r eval=FALSE}
 sum_g3 <- function(x, grp, na.rm=TRUE) {
