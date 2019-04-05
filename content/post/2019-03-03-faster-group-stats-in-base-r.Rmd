@@ -648,6 +648,8 @@ system.time(slope.gs <- group_slope2(x, y, grp))
   1.952   0.605   2.573
 # can't reproduce above one right now?
    user  system elapsed 
+  2.032   0.673   2.715 
+   user  system elapsed 
   2.106   0.743   2.876 
 ```
 
@@ -1085,6 +1087,9 @@ system.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
 # FF and all other random processes
    user  system elapsed 
   2.446   0.772   3.246 
+
+   user  system elapsed 
+  2.543   0.754   3.312 
 ```
 
 Updated reference times for `data.table`.  This is after we killed all
@@ -1103,12 +1108,55 @@ system.time({
 })
 ```
 ```
-# Four threads.
+# Bah, it was with four threads.  Still, useful number
    user  system elapsed 
   7.691   0.815   2.828 
 ```
 
-We can do a little better though.
+We can do a little better though since we don't need the full precision.
+* Get max cumsum value
+* Compare to smallest group
+* But one big problem with this is we don't actually know for sure that the
+  cumulative sum is growing throughout, so last value is not necessarily the
+  largest in magnitude.  Shortcut might be taking the max and min of the
+  cumulative sum?  And to find the smallest value?  Can we do it without taking
+  the abs and copying the whole group?
+
+```{r}
+.group_sum_int3 <- function(x, last.in.group, p.bits=53){
+  x.grp <- .group_sum_int(x, last.in.group)
+  x[last.in.group] <- x[last.in.group] - x.grp
+  x.grp + .group_sum_int(x, last.in.group)
+}
+
+.group_sum_intb <- function(x, last.in.group, p.bits=53) {
+  xgc <- cumsum(x)[last.in.group]
+  gmax <- log2(max(abs(range(xgc))))
+  gs <- diff(c(0, xgc))
+  gsabs <- abs(gs)
+  gmin <- min(log2(gsabs[gsabs > 0]))
+  precision <- floor(53 + (gmin - gmax))
+  if(precision < p.bits) {
+    x[last.in.group] <- x[last.in.group] - gs
+    gs <- gs + .group_sum_int(x, last.in.group)
+  }
+  structure(gs, precision=precision, precision.mitigation=precision < p.bits)
+}
+gsfun <- function(x, last.in.group) .group_sum_intb(x, last.in.group, 16)
+system.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=gsfun))
+
+system.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
+
+system.time(.group_sum_intb(xo, gnc, 50))
+system.time(.group_sum_int(xo, gnc))
+system.time(.group_sum_intb(xo, gnc, 50))
+
+all.equal(
+  slope.gs3[!is.na(slope.rs)], slope.rs[!is.na(slope.rs)], 
+  check.attributes=FALSE
+)
+
+```
 
 
 ## testing whether we're better off with different method
