@@ -987,7 +987,20 @@ digits in question are in the "yellow zone" of internal `cumsum` precision, but
 not in the "green zone" of double number precision?
 
 In order to answer these questions we need to look at the internal
-representation of the numbers involved.
+representation of the numbers involved.  To conclude from everything below, by
+sheer dumb luck (though hard to explain why this was also true of all the other
+variations) the version with noise has mostly zeroes after the last significant
+digit marked with a caret:
+
+```
+001001001111101111110001011101100000000  # start
+                   ^
+001001001111110001000000011110000000000  # end
+                   ^
+```
+
+If either start or end are mismatched, we could have had a much bigger error
+from truncation.  In this case truncation introduces almost no error
 
 ```
 1100001111111010000110011011010000100100111110111111
@@ -1003,10 +1016,39 @@ representation of the numbers involved.
 # note, we added back leading ones for the non cum values
 
 00100100111110111111...................
+                  101000011111101101110  # xux2[bad.grp.start]
+001001001111110000011?.................  # inferring one
+                  101000111101011111110  # xux2[bad.grp.start]
+00100100111111000100                     # group end
+                 1010000000000000000000  # diff?
+                 1010000111111011111010  # actual
+
+001001001111101111110001011101100000000  # start
+                   ^
+001001001111110001000000011110000000000  # end
+                   ^
+                   3     4
+                   4567890
+
+# woohoo, we tied it out.
+
+001001001111110000010001100000100000000  # start
                   101000011111101101110
-001001001111110000011..................
-                  101000111101011111110
-00100100111111000100
+001001001111110000011001111111001101110  # middle
+
+# and yes, confirmed with
+
+001001001111110000011001111111001101110  # middle  (mod)
+                  101000111101011111110  # xux2[bad.grp.start]
+001001001111110001000010111100101101100  # end?
+                   ^
+
+> a <- make731("011001111111001101110", 0)
+> b <- make731("101000111101011111110", 0)
+> seven31::reveal(a, b, (a + b))
+0 01111111111 (0) 0110011111110011011100000000000000000000000000000000 : a
+0 01111111111 (0) 1010001111010111111100000000000000000000000000000000 : b
+0 10000000000 (1) 1000010111100101101100000000000000000000000000000000 : (a + b)
 
 # trying to see if starting off with 0s at end
 # affects precision.  Not obvious that it does.
@@ -1020,7 +1062,7 @@ representation of the numbers involved.
                   101000111101011111110
 00100100111111000101
 
-# this is the original version without noise
+# this is the original version without noise that had the bigger errors
 
 0 10000010001 (18) 1100001111111000101000111000010001100100100101111100 : x_ux2.cum.pre
 0 10000010001 (18) 1100001111111000101000111000010001100100100101111111 : x_ux2c[bad.grp.start]
@@ -1036,8 +1078,50 @@ representation of the numbers involved.
 01100100100101111111
                   101000011111101111101
 01100100100110000010
-                 10000000000000000000
+            ^
+
+# trying to figure out what the continuation of the previous number, this is
+# x_ux2.cum.pre with a tentative continuation (no-noise)
+
+0110010010010111110011101101100000000000
+                    ^
+# and x_ux2.cum
+
+0110010010011000001011110011000000000000
+                    ^
+
+0110010010010111110011101101100000000000
+0110010010011000001011110011000000000000
+                    ^
+
+# So it is a bit of a freak that this one rounds up because this is the value of
+# what we're adding between groups:
+
+0 01111011111 (-32) 0100001111110111110100111001001000000000000000000000 : sum(X_UX^2)
+
+
+0110010010010111110011101101100000000000  # x_ux2.cum.pre
+                    ^
+                  101000011111101111101   # sum(X_UX^2)
+
+# there aren't that many possible starting values of x_ux2.cum.pre that would
+# cause the insignificant bits to change the outcome
+
+# Smallest number that would cause the problem?
+
+> a <- make731('1000000000000000000000', 0)
+> b <- make731('101000011111101111101', -1)
+> seven31::reveal(a - b)
+0 01111111110 (-1) 0101111000000100000110000000000000000000000000000000 : a - b
+
+                    10111100000010000011  # smallest?
+
+0110010010010111110011101101100000000000  # x_ux2.cum.pre
+                    ^
+                  101000011111101111101   # sum(X_UX^2)
+
 ```
+
 
 
 
