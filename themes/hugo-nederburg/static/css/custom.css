@@ -1902,10 +1902,10 @@ body pre, body code.hljs {
 pre {
   border: 2px solid #EEE;
 }
-body pre + pre:not([class]) code.hljs  {
+body pre + pre:not([class]) code.hljs, body pre + pre.fansi code.hljs {
   background-color: #EEE;
 }
-body pre + pre:not([class]) {
+body pre + pre:not([class]), body pre + pre.fansi {
   margin-top: -19px;
 }
 .blog .main {

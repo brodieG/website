@@ -16,9 +16,12 @@ description: Front page summary
 ---
 
 ```{r echo=FALSE}
-options(digits=3)
+options(digits=3, crayon.enabled=TRUE)
 library(ggplot2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+```{r echo=FALSE, comment="", results='asis'}
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
 ```
 ```{r, echo=FALSE}
 writeFansi <- function(x) {
@@ -415,7 +418,7 @@ system.time({
    user  system elapsed
  13.817   0.216  14.184
 ```
-```{r}
+```{r eval=FALSE}
 all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)
 ```
 ```
@@ -608,7 +611,7 @@ done, but we will ignore than wrinkle going forward for clarity's sake.
 Now for the real fun: let's re-implement the [initial `rowsum` group slope
 function](#group-slope-rs) with this method:
 
-```{r eval=FALSE}
+```{r}
 .group_sum_int <- function(x, last.in.group) {
   xgc <- cumsum(x)[last.in.group]
   diff(c(0, xgc))
@@ -642,8 +645,12 @@ group_slope2 <- function(x, y, grp, group_sum=.group_sum_int) {
   x_ux2 <- group_sum(x_ux ^ 2, gnc)
   setNames(x_ux.y_uy / x_ux2, grle[['values']])
 }
+```
+Let's time it:
+```{r eval=FALSE}
 system.time(slope.gs <- group_slope2(x, y, grp))
 ```
+
 <!-- ed note: the timings below appear sensitive to other stuff running on the
 system.  This is the fastest I've recorded:
    user  system elapsed
@@ -675,11 +682,6 @@ The key advantage `group_slope2` has over the `rowsum` version is that it can
 re-use `gnc`, the vector of indices to the last value in each group.
 Computing `gnc` is the expensive part of the `cumsum` group sum calculation:
 
-```{r echo=FALSE}
-o <- order(grp)
-go <- grp[o]
-xo <- x[o]
-```
 ```{r eval=FALSE}
 o <- order(grp)
 go <- grp[o]
@@ -822,7 +824,10 @@ bad group:
 ```{r}
 old.opt <- options(digits=22, scipen=100) # show more digits
 ```
-```{r eval=FALSE}
+```{r}
+o <- order(grp)
+go <- grp[o]
+xo <- x[o]
 grle <- rle(go)
 gn <- grle[['lengths']]
 gi <- rep(seq_along(gn), gn)
@@ -830,19 +835,20 @@ gnc <- cumsum(gn)    # Last index in each group
 xc <- cumsum(xo)
 ```
 
-```{r eval=FALSE}
+```{r}
 bad.grp.idx <- which(go == bad.grp)
 bad.grp.start <- head(bad.grp.idx, 1)
 bad.grp.end <- tail(bad.grp.idx, 1)
-(x.cum.pre <- xc[bad.grp.start - 1])  # end val of prior group
+(xc.pre <- xc[bad.grp.start - 1])   # end val of prior group
 ```
 ```
 [1] 3084340.367945733480155
 ```
+
 And the cumulative sum at the end of our group:
 
 ```{r eval=FALSE}
-(x.cum <- xc[bad.grp.end])             # end val of bad group
+(xc.bad <- xc[bad.grp.end])         # end val of bad group
 ```
 ```
 [1] 3084341.213878707028925
@@ -854,15 +860,15 @@ precision digits in green[^precision-digits]. In yellow are the additional
 digits that `cumsum` might use internally[^extended-2].<span id=mu-prec></span>
 
 ```{r eval=FALSE}
-bad.grp.mean <- (x.cum - x.cum.pre) / length(bad.grp.idx)
-rbind(x.cum.pre, x.cum, bad.grp.mean)
+bad.grp.mean <- (xc.bad - xc.pre) / length(bad.grp.idx)
+rbind(xc.pre, xc.bad, bad.grp.mean)
 ```
-```{r echo=FALSE, results='asis'}
+```{r echo=FALSE}
 val <- "                                    [,1]
-x.cum.pre    \033[42m3084340.36794573\033[43m348\033[m01554679871
-x.cum        \033[42m3084341.21387870\033[43m702\033[m89254188538
+xc.pre       \033[42m3084340.36794573\033[43m348\033[m01554679871
+xc.bad       \033[42m3084341.21387870\033[43m702\033[m89254188538
 bad.grp.mean       0.\033[42m42296648\033[43m677\033[m43849754333"
-writeFansi(val)
+writeLines(val)
 ```
 
 Our group values are small, so the group ends are near each other.  By taking
@@ -873,7 +879,7 @@ Normally this should still be plenty of precision, but up next is `$\sum{(x -
 need to calculate all the steps up to just before the group sum of `$(x -
 \bar{x})^2$`:
 
-```{r eval=FALSE}
+```{r}
 sx <- .group_sum_int(xo, gnc)    # sum(x)
 ux <- (sx/gn)[gi]                # mean(x), recycled
 x_ux <- xo - ux                  # (x - mean(x))
@@ -884,14 +890,15 @@ x_ux2c <- cumsum(x_ux2)
 We need to take the difference in the cumulative sum of the end of the
 previous group and our group:
 
-```{r eval=FALSE}
-(x_ux2.cum.pre <- cumsum(x_ux2)[bad.grp.start - 1])
+
+```{r}
+(x_ux2c.pre <- x_ux2c[bad.grp.start - 1])
 ```
 ```
 [1] 462824.4016201458289288
 ```
-```{r eval=FALSE}
-(x_ux2.cum <- cumsum(x_ux2)[bad.grp.end])
+```{r}
+(x_ux2c.bad <- x_ux2c[bad.grp.end])
 ```
 ```
 [1] 462824.4016201461199671
@@ -901,16 +908,20 @@ This is the computing equivalent of walking down the steps into a dark basement
 with ominous background music.  To leave no doubt about the carnage that is
 about to unfold (viewer discretion advised):<span id=carnage></span>
 
-```{r eval=FALSE}
-x_ux2.diff <- x_ux2.cum - x_ux2.cum.pre
-rbind(x_ux2.cum.pre, x_ux2.cum, x_ux2.diff)
+```{r echo=FALSE}
+x_ux2c.diff <- x_ux2c.bad - x_ux2c.pre
 ```
-```{r echo=FALSE, results='asis'}
+```{r eval=FALSE}
+x_ux2c.diff <- x_ux2c.bad - x_ux2c.pre
+rbind(x_ux2c.pre, x_ux2c.bad, x_ux2.diff)
+```
+<pre></pre>
+```{r echo=FALSE}
 val <- "                                                 [,1]
-x_ux2.cum.pre \033[42m462824.40162014\033[43m582\033[m89287984371185302734
-x_ux2.cum     \033[42m462824.40162014\033[43m611\033[m99671030044555664062
-x_ux2.diff         0.000000000\033[43m29\033[m10383045673370361328"
-writeFansi(val)
+x_ux2c.pre \033[42m462824.40162014\033[43m582\033[m89287984371185302734
+x_ux2c.bad \033[42m462824.40162014\033[43m611\033[m99671030044555664062
+x_ux2c.diff       0.000000000\033[43m29\033[m10383045673370361328"
+writeLines(val)
 ```
 
 It is questionable whether there is any precision left at
@@ -918,12 +929,9 @@ all[^full-prec-assumption].  What about all those digits displayed?  They
 sure seem to look like they are precise, if perhaps not significant.  Well,
 about them:
 
-```{r eval=FALSE}
-seven31::reveal(x_ux2.diff)
-```
-```{r echo=FALSE, results='asis'}
-val <- "\033[31m0\033[m \033[34m01111011111\033[m  (-32) 0100000000000000000000000000000000000000000000000000 : x_ux2.diff"
-writeFansi(val)
+```{r}
+d <- x_ux2c.diff   # for display
+seven31::reveal(a)
 ```
 
 [Romain François's][15] [`seven31`][16] allows us to inspect the internal
@@ -949,8 +957,8 @@ check this out:
 (2^-32) *         # magnitude
   (2^0 + 2^-2)    # normalized value (precision)
 ```
-```{r eval=FALSE}
-x_ux2.diff
+```{r}
+x_ux2c.diff
 ```
 ```
 [1] 0.0000000002910383045673370361328
@@ -964,9 +972,63 @@ represented by `$2^{-n}$` where `n` is the position in the bit field.  All those
 digits are just an artifact of converting a limited precision binary number into
 decimal representation.
 
-If we assume that the precision ends at the `1`, then we have 3 bits of
-precision, which should translate to about &plusmn;6.25%.  The actual error is
--1.2%:
+The actual error is -1.2%, but that does not tell us what the precision of our
+estimate is.  To calculate that correctly we need to look the binary
+representation of all the numbers involved.  In this case:
+
+```{r}
+a <- x_ux2c.pre
+b <- x_ux2c.bad
+d <- x_ux2c.diff
+seven31::reveal(a, b, d)
+```
+
+We can see most of `x_ux2c.pre` and `x_ux2c.bad` is shared, although how close
+the actual numbers are is somewhat concealed by the binary representation.  The
+different sequences as the end (`0111111` vs `1000100`) are closer than they
+might seem visually, as evidenced by the difference.  To make the relationships
+clearer, let's focus on the last 20 bits of the two cumulative numbers.  We will
+also add their extended precision representation:
+
+```
+-10111011000000000000000000000000000000000000000000000: -38 x_ux2.pre remainder
+-11110000000000000000000000000000000000000000000000000: -40 x_ux2.bad remainder
+
+0 10000010001 (18) 1100001111111010000110011011010000100100111110111111 : pre
+0 10000010001 (18) 1100001111111010000110011011010000100100111111000100 : bad
+
+# actual x_ux2.pre/bad values
+
++18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |         |
+ 11100001111111010000110011011010000100100111110111111
+ 11100001111111010000110011011010000100100111111000100
+
+# remainders "added" back in, but since they are negative it affects the 32nd
+# digit
+
++18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |         |
+ 11100001111111010000110011011010000100100111110111111
+                                                   1101110100010100000
+ 11100001111111010000110011011010000100100111111000100
+                                                   0111111100010000000
++18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+ 1110000111111101000011001101101000010010011111011111011101000101
+ 1110000111111101000011001101101000010010011111100001111111000100
+                                                   10100000000000  diff
+
+```
+
+If we assume that the precision ends at the  last `1` in `101000...`, then the
+true value of the normalized value `1010` could be at the limit anywhere between
+`1001` and `1011`.
+
+
+precision, which should translate to about &plusmn;6.25%[^plus-minus].  The
+actual error is -1.2%, which is closer to what you might expect if we had 5-6
+bits of precision.  In order to see how many bits of precision
 
 ```{r eval=FALSE}
 (x_ux2.diff.act <- sum((xo[bad.grp.idx] - mean(xo[bad.grp.idx]))^2))
@@ -1122,13 +1184,12 @@ from truncation.  In this case truncation introduces almost no error
                     1000000000000000000   # target #
                   101000000000000000000   # target #
 
-                    ^
-                     111100000010000011   # smallest?
-                         11111101111101   # sum(X_UX^2), old, possibly wrong
+
                  1010000111111011111010   # sum(X_UX^2), all
                         111111011111010   # sum(X_UX^2), < 35
-                        3
-                        9
+                     111000000100000110   # smallest number that triggers flip
+                     3  3
+                     6  9
 
 011001001001011111001111011011000000000   # x_ux2.cum.pre
 011001001001100000101111001100000000000   # x_ux2.cum
@@ -1147,13 +1208,6 @@ from truncation.  In this case truncation introduces almost no error
                   101000011111101111101   # sum(x_ux^2)
                      67894
                          0
-# smallest value that we can add sum(X_UX^2) that causes 2^-33 bit flip.
-
-0 01111011101 (-34) 1111100000010000011000000000000000000000000000000000 : a - b
-
-                   1111110000001000001100000
-                    ^
-0110010010010111110011101101100000000000  # x_ux2.cum.pre
 
 ```
 
@@ -1166,15 +1220,11 @@ magnitudes with `cumsum`[^mag-diff].
 
 
 
-
 Still, this loss of precision can't account for the [error we
 observed](#prec-error) as we still have ~five digits of precision.  Where the
 wheels really fall off is in the `$\sum(x - \bar{x})^2$` step.  This is the code
 from the `group_slope2` function that gets us to `$(x - \bar{x})^2$`, edited to
 remove irrelevant parts:
-
-```{r eval=FALSE}
-```
 
 We didn't have that much precision, and now we're going to take the difference
 between these two numbers:
@@ -1322,7 +1372,8 @@ quantile(slope.rs - slope.gs, na.rm=TRUE)
 
 The new error is _sixteen_ orders of magnitude smaller than the original.
 
-
+<!--
+-->
 
 <!-- ed note: fastest recorded, again with wifi off, everything shut down
    user  system elapsed
@@ -1338,7 +1389,7 @@ We can do a little better though since we don't need the full precision.
   cumulative sum?  And to find the smallest value?  Can we do it without taking
   the abs and copying the whole group?
 
-```{r}
+```{r eval=FALSE}
 .group_sum_int3 <- function(x, last.in.group, p.bits=53){
   x.grp <- .group_sum_int(x, last.in.group)
   x[last.in.group] <- x[last.in.group] - x.grp
@@ -1384,14 +1435,6 @@ all.equal(
 [1] TRUE
 ```
 
-system.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
-
-system.time(.group_sum_intb(xo, gnc, 50))
-system.time(.group_sum_int(xo, gnc))
-system.time(.group_sum_intb(xo, gnc, 50))
-
-
-```
 Updated reference times for `data.table`.  This is after we killed all
 extraneous processes, including firefox.
 
@@ -1947,6 +1990,8 @@ mapply(
   numbers that are not [fully precise](#mu-prec), which may cause concern.
   However, what we actually care about is that the cumulative sum of these
   numbers is numerically precise, not semantically precise.
+[^plus-minus]: 3 bits allow us to represent `$2^3 == 8$` values, so naively
+  error spans `$1/8$`, or `$\pm1/16 == \pm6.25%$`.
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
 [2]: https://en.wikipedia.org/wiki/Hash_table
