@@ -743,8 +743,8 @@ all.equal(slope.gs, c(slope.rs), check.attributes=FALSE, tolerance=2e-3)
 Let's find the worst offender:<span id=prec-error></span>
 
 ```{r echo=FALSE}
-# hard coding the above value so that rest of stuff that we actually
-# run can use it
+ # hard coding the above value so that rest of stuff that we actually
+ # run can use it
 bad.el <- 616793L
 bad.grp <- 616826L
 ```
@@ -990,6 +990,65 @@ might seem visually, as evidenced by the difference.  To make the relationships
 clearer, let's focus on the last 20 bits of the two cumulative numbers.  We will
 also add their extended precision representation:
 
+This is what the numbers look like in their full 80 bit extended precision, with
+the normal 53 digits of significand in green and the added 10 bits of extended
+precision in yellow:
+<!--
+seven31::reveal()
+diff.A <- sum((c(1,rep(0, 11))-c(0,1,1,1,0,1,0,0,0,1,0,1))*2^-(34:45))
+diff.diff <- sum((c(1,0,1,1,1,0,1,1) - c(0,0,1,1,1,1,0,0))*2^-(38:45))
+(c(1,0,1,1,1,1,0,1)-c(0,0,1,1,1,1,0,0))*2^-(38:43)
+-->
+`xux2c.pre`:
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+ \033[42m11100001111111010000110011011010000100100111110111111\033[m00000000000: 64 bit
+ \033[42m11100001111111010000110011011010000100100111110111110\033[43m1110100010\033[m1: 80 bit
+ 00000000000000000000000000000000000000000000000000000000\033[43m1011101\033[m1: Diff
+ "
+writeLines(val)
+```
+
+`xux2c.bad`:
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+ \033[42m11100001111111010000110011011010000100100111111000100\033[m00000000000: 64 bit
+ \033[42m11100001111111010000110011011010000100100111111000011\033[43m1111100010\033[m0: x_ux2c.bad
+ 0000000000000000000000000000000000000000000000000000000000\033[43m11110\033[m0: Diff"
+writeLines(val)
+```
+
+Internally, the full 80 bit precision is available to `cumsum`.  But once the
+result is returned into R we round back to the 64 bit precision level.  By sheer
+luck the difference between the 80 bit value and 64 bit values is small.  The
+worst case scenario would have been as follows:
+
+`xux2c.pre`:
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+ \033[42m11100001111111010000110011011010000100100111110111111\033[m0000000000: 64 bit
+ \033[42m11100001111111010000110011011010000100100111110111110\033[43m1000000001\033[m: 80 bit
+ 00000000000000000000000000000000000000000000000000000\033[43m0111111111\033[m: Diff"
+writeLines(val)
+```
+`xux2c.bad`:
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+ \033[42m11100001111111010000110011011010000100100111111000100\033[m0000000000: 64 bit
+ \033[42m11100001111111010000110011011010000100100111111000100\033[43m1000000000\033[m: x_ux2c.bad
+ 00000000000000000000000000000000000000000000000000000\033[43m1000000000\033[m: Diff"
+writeLines(val)
+```
+
+
+have the result and we need to take the difference
+
+The problem is, those aren't actually the
+
 ```
 -10111011000000000000000000000000000000000000000000000: -38 x_ux2.pre remainder
 -11110000000000000000000000000000000000000000000000000: -40 x_ux2.bad remainder
@@ -997,15 +1056,15 @@ also add their extended precision representation:
 0 10000010001 (18) 1100001111111010000110011011010000100100111110111111 : pre
 0 10000010001 (18) 1100001111111010000110011011010000100100111111000100 : bad
 
-# actual x_ux2.pre/bad values
+ # actual x_ux2.pre/bad values
 
 +18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |         |
  11100001111111010000110011011010000100100111110111111
  11100001111111010000110011011010000100100111111000100
 
-# remainders "added" back in, but since they are negative it affects the 32nd
-# digit
+ # remainders "added" back in, but since they are negative it affects the 32nd
+ # digit onwards, showing the affected region overlapping with the original
 
 +18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |         |
@@ -1013,11 +1072,14 @@ also add their extended precision representation:
                                                    1101110100010100000
  11100001111111010000110011011010000100100111111000100
                                                    0111111100010000000
+
+ # and collapsing
+
 +18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
  1110000111111101000011001101101000010010011111011111011101000101
  1110000111111101000011001101101000010010011111100001111111000100
-                                                   10100000000000  diff
+                                                   1010000000000  diff
 
 ```
 
@@ -1075,7 +1137,7 @@ from truncation.  In this case truncation introduces almost no error
 0 01111011110 (-33) 0100001111110110111000100111011100010010000010000010 : x_ux2[bad.grp.start]
 0 01111011110 (-33) 0100001111111000110001001010110101000111101011111110 : x_ux2[bad.grp.end]
 
-# note, we added back leading ones for the non cum values
+ # note, we added back leading ones for the non cum values
 
 00100100111110111111...................
                   101000011111101101110  # xux2[bad.grp.start]
@@ -1092,13 +1154,13 @@ from truncation.  In this case truncation introduces almost no error
                    3     4
                    4567890
 
-# woohoo, we tied it out.
+ # woohoo, we tied it out.
 
 001001001111110000010001100000100000000  # start
                   101000011111101101110
 001001001111110000011001111111001101110  # middle
 
-# and yes, confirmed with
+ # and yes, confirmed with
 
 001001001111110000011001111111001101110  # middle  (mod)
                   101000111101011111110  # xux2[bad.grp.start]
@@ -1112,11 +1174,11 @@ from truncation.  In this case truncation introduces almost no error
 0 01111111111 (0) 1010001111010111111100000000000000000000000000000000 : b
 0 10000000000 (1) 1000010111100101101100000000000000000000000000000000 : (a + b)
 
-# trying to see if starting off with 0s at end
-# affects precision.  Not obvious that it does.
-# the previous example looks like it does, but
-# all the ones that flipped are just unflipped by
-# the sutraction at the end.
+ # trying to see if starting off with 0s at end
+ # affects precision.  Not obvious that it does.
+ # the previous example looks like it does, but
+ # all the ones that flipped are just unflipped by
+ # the sutraction at the end.
 
 00100100111110000000...................
                   101000011111101101110
@@ -1124,7 +1186,7 @@ from truncation.  In this case truncation introduces almost no error
                   101000111101011111110
 00100100111111000101
 
-# this is the original version without noise that had the bigger errors
+ # this is the original version without noise that had the bigger errors
 
 0 10000010001 (18) 1100001111111000101000111000010001100100100101111100 : x_ux2.cum.pre
 0 10000010001 (18) 1100001111111000101000111000010001100100100101111111 : x_ux2c[bad.grp.start]
@@ -1133,7 +1195,7 @@ from truncation.  In this case truncation introduces almost no error
 0 01111011110 (-33) 0100001111110111110100111001001000000000000000000000 : x_ux2[bad.grp.end]
 0 01111011111 (-32) 1000000000000000000000000000000000000000000000000000 : x_ux2.cum - x_ux2.cu
 
-# note, we added back leading ones for the non cum values
+ # note, we added back leading ones for the non cum values
 
 01100100100101111100
                   101000011111101111101
@@ -1145,12 +1207,12 @@ from truncation.  In this case truncation introduces almost no error
                  1100000000000000000000   # diff
                  1010000000000000000000   # diff w/ noise
 
-# trying to figure out what the continuation of the previous number, this is
-# x_ux2.cum.pre with a tentative continuation (no-noise)
+ # trying to figure out what the continuation of the previous number, this is
+ # x_ux2.cum.pre with a tentative continuation (no-noise)
 
 0110010010010111110011110110110000000000
                     ^
-# and x_ux2.cum
+ # and x_ux2.cum
 
 0110010010011000001011110011000000000000
                     ^
@@ -1159,8 +1221,8 @@ from truncation.  In this case truncation introduces almost no error
 0110010010011000001011110011000000000000
                     ^
 
-# So it is a bit of a freak that this one rounds up because this is the value of
-# what we're adding between groups:
+ # So it is a bit of a freak that this one rounds up because this is the value of
+ # what we're adding between groups:
 
 0 01111011111 (-32) 0100001111110111110100111001001000000000000000000000 : sum(X_UX^2)
 
@@ -1169,10 +1231,10 @@ from truncation.  In this case truncation introduces almost no error
                     ^
                   101000011111101111101   # sum(X_UX^2)
 
-# there aren't that many possible starting values of x_ux2.cum.pre that would
-# cause the insignificant bits to change the outcome
-
-# Smallest number that would cause the problem?
+ # there aren't that many possible starting values of x_ux2.cum.pre that would
+ # cause the insignificant bits to change the outcome
+ 
+ # Smallest number that would cause the problem?
 
 > a <- make731('1000000000000000000000', 0)
 > b <- make731('101000011111101111101', -1)
@@ -1451,7 +1513,7 @@ system.time({
 })
 ```
 ```
-# Bah, it was with four threads.  Still, useful number
+ # Bah, it was with four threads.  Still, useful number
    user  system elapsed
   7.691   0.815   2.828
 ```
@@ -1491,8 +1553,8 @@ system.time(sum_g3(x, grp))
   1.186   0.374   1.634
 ```
 ```{r eval=FALSE}
-# lens: how long each group is
-# maxlen: longest group
+  # lens: how long each group is
+  # maxlen: longest group
 sum_grp2 <- function(x, lens, maxlen, mode='sum') {
 
   res <- matrix(NA_real_, ncol=length(lens), nrow=maxlen)
@@ -1636,11 +1698,11 @@ system.time(dummy(c(28, 21, 14, 7, 1)))
 
 DT <- copy(DT.raw)
 system.time(res.ref <- DT[, sum(x), keyby=grp][['V1']])
-#   user  system elapsed
-#  1.071   0.134   1.216
+  #   user  system elapsed
+  #  1.071   0.134   1.216
 system.time(res <- sum_g2(x, grp))
-#   user  system elapsed
-#  1.286   0.309   1.692
+  #   user  system elapsed
+  #  1.286   0.309   1.692
 all.equal(res, res.ref, check.attributes=FALSE) # TRUE
 
 system.time(res2 <- sum_g2(x, grp))
@@ -1901,7 +1963,7 @@ all.equal(x.grpsum, x.grpsum3)
 [1] TRUE
 ```
 ```{r echo=FALSE, eval=FALSE}
-## some tests
+  ## some tests
 RNGversion("3.5.2"); set.seed(42)
 g20 <- rep(c(1, 3, 8, 9), c(2, 3, 4, 1))
 x20 <- runif(length(g2))
