@@ -680,9 +680,10 @@ ggplot(times, aes(x=Version, y=time)) +
 
 The key advantage `group_slope2` has over the `rowsum` version is that it can
 re-use `gnc`, the vector of indices to the last value in each group.
-Computing `gnc` is the expensive part of the `cumsum` group sum calculation:
+Computing `gnc` is the expensive part of the `cumsum` group sum
+calculation:<span id=basic-calcs></span>
 
-```{r eval=FALSE}
+```{r}
 o <- order(grp)
 go <- grp[o]
 xo <- x[o]
@@ -740,198 +741,154 @@ all.equal(slope.gs, c(slope.rs), check.attributes=FALSE, tolerance=2e-3)
 [1] TRUE
 ```
 
-Let's find the worst offender:<span id=prec-error></span>
+Let's find the worst offender, which for convenience we'll call `B`.  Its index
+in the group list is then `B.gi` and its group is `B.g`:<span
+id=prec-error></span>
 
 ```{r echo=FALSE}
  # hard coding the above value so that rest of stuff that we actually
  # run can use it
-bad.el <- 616793L
-bad.grp <- 616826L
+B.gi <- 616793L
+B.g <- 616826L
+B.i <- go == B.g
 ```
 ```{r eval=FALSE}
-bad.el <- which.max(abs(slope.gs / slope.rs - 1))
-slope.gs[bad.el]
+B.gi <- which.max(abs(slope.gs / slope.rs - 1))
+slope.gs[B.gi]
 ```
 ```
  616826
 -3014.2
 ```
 ```{r eval=FALSE}
-slope.rs[bad.el]
+slope.rs[B.gi]
 ```
 ```
    616826
 -2977.281
 ```
 
-Ugh, that's pretty bad.  These are the values responsible:
+Not very good.  Let's get the indices of the interesting values:
 
 ```{r eval=FALSE}
-bad.grp <- as.integer(names(slope.gs[bad.el]))
+B.g <- as.integer(names(slope.gs[B.gi]))
+B.i <- go == B.g          # indices corresponding to our group
+B.n <- tail(B.i, 1)       # last element in group
+A.n <- head(B.i, 1) - 1   # last element in previous group
 ```
+```{r echo=FALSE}
+B.i <- which(go == B.g)   # indices corresponding to our group
+B.n <- tail(B.i, 1)       # last element in group
+A.n <- head(B.i, 1) - 1   # last element in previous group
+```
+
+And the actual values:
+
 ```{r eval=FALSE}
-(bad.x <- x[grp == bad.grp])
+(B.x <- xo[B.i])  # x values in our group
 ```
 ```
 [1] 0.4239786 0.4239543
 ```
 ```{r eval=FALSE}
-(bad.y <- y[grp == bad.grp])
+(B.y <- yo[B.i])   # y values in our group
 ```
 ```
 [1] 0.7637899 0.8360645
 ```
 
-The `x` values are almost certainly the cause of the problem, as `$x
-- \bar{x}$` produces some small numbers.
+The `x` values are close to each other and are ultimately responsible for the
+precision issues.  However, they are well within the range of values that should
+be manageable for [double precision floats][12] ("doubles" henceforth), which
+are what R "numeric" values are stored as.  Our problem starts with the next
+step which is to compute `$\sum{(x - \bar{x})^2}$`.  To see how bad it is need
+to calculate all the steps up to just before the group sum of `$(x -
+\bar{x})^2$`.  Recall we calculated `xo` (`x` ordered), `gi` (group indices),
+`gn` (group lengths), and `gnc` (group lengths accumulated)
+[previously](#basic-calcs).
 
-```{r eval=FALSE}
-bad.x - mean(bad.x)
-```
-```
-[1]  0.00001213769 -0.00001213769
+```{r}
+old.opt <- options(digits=22, scipen=100) # show more digits
+sx <- .group_sum_int(xo, gnc)    # sum(x)
+ux <- (sx/gn)[gi]                # mean(x), recycled
+x_ux <- xo - ux                  # (x - mean(x))
+x_ux2 <- (x_ux ^ 2)              # (x - mean(x)) ^ 2
+x_ux2c <- cumsum(x_ux2)
+
+x_ux2c[c(A.n, B.i)]       # Value before group B, and group B values
 ```
 
-But these are well within the range of values that should be manageable
-for [double precision floats][12] ("doubles" henceforth) which are what R
-"numeric" values are stored as.  So what's going on?  It turns out that the
-`cumsum` approach amplifies precision issues.  Typical doubles have about 15-16
-digits of precision.  In order to mitigate precision issues, [R internally uses
-a representation][13] that allows [18-19 digits of precision][14] for `cumsum`,
-but the actual R output is truncated to normal double
-precision[^extended-precision].  Yet that is not enough here.  To see why we
-need to review our algorithm:
+These values are awfully close to each other.  Let's revisit our algorithm to
+see why that's a problem:
 
 ```{r cumsum-review, echo=FALSE}
+dfa <- data.frame(
+  x1=1:7, y1=0, label=c('A.1', 'A.n', 'B.1', 'B.n', 'C.1', 'C.2', 'C.n'),
+  step=steps[4]
+)
+dfb <- data.frame(
+  x1=3:5, y1=0, label=c('A.s', 'B.s', 'C.s'), step=steps[[5]]
+)
 ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
   geom_col(
     data=df4, mapping=aes(y=yc, alpha=I(ifelse(last, 1, .15))),
     width=0.9
   ) +
   geom_col(data=df5, width=0.9, position='waterfall') +
+  geom_text(data=dfa, aes(fill=NULL, label=label), vjust=1.2) +
+  geom_text(data=dfb, aes(fill=NULL, label=label), vjust=1.2) +
   plot.extra
 ```
 
-While the overall cumulative value is going to be reasonably precise, the
-_differences_ between adjacent cumulative values will cause us to lose some
-precision.  Let's compute all the intermediate values so we can see what's going
-on:
-
-starting with what the
-accumulated sum of all the prior ordered `x` values is by the time we reach our
-bad group:
+The cumulative sums will be quite precise as [R internally uses a
+representation][13] that allows [18-19 digits of precision][14] for
+`cumsum`[^extended-precision].  This additional precision is
+rounded back to standard double precision on exit from `cumsum`.  Where things
+go wrong is when we take the difference of the resulting doubles.  This is the
+value of the last element in the previous group, `A.n`:
 
 ```{r}
-old.opt <- options(digits=22, scipen=100) # show more digits
+(A.x_ux2cn <- x_ux2c[A.n])   # end val of prior group
 ```
-```{r}
-o <- order(grp)
-go <- grp[o]
-xo <- x[o]
-grle <- rle(go)
-gn <- grle[['lengths']]
-gi <- rep(seq_along(gn), gn)
-gnc <- cumsum(gn)    # Last index in each group
-xc <- cumsum(xo)
-```
+
+And this is the value of the last element in the target group, `B.n`:
 
 ```{r}
-bad.grp.idx <- which(go == bad.grp)
-bad.grp.start <- head(bad.grp.idx, 1)
-bad.grp.end <- tail(bad.grp.idx, 1)
-(xc.pre <- xc[bad.grp.start - 1])   # end val of prior group
-```
-```
-[1] 3084340.367945733480155
-```
-
-And the cumulative sum at the end of our group:
-
-```{r eval=FALSE}
-(xc.bad <- xc[bad.grp.end])         # end val of bad group
-```
-```
-[1] 3084341.213878707028925
+(B.x_ux2cn <- x_ux2c[B.n])   # end val of bad group
 ```
 
 In our algorithm we take the difference of these two numbers to get the group
-sum.  Here we show the two numbers and their difference highlighting the
-precision digits in green[^precision-digits]. In yellow are the additional
-digits that `cumsum` might use internally[^extended-2].<span id=mu-prec></span>
-
-```{r eval=FALSE}
-bad.grp.mean <- (xc.bad - xc.pre) / length(bad.grp.idx)
-rbind(xc.pre, xc.bad, bad.grp.mean)
-```
-```{r echo=FALSE}
-val <- "                                    [,1]
-xc.pre       \033[42m3084340.36794573\033[43m348\033[m01554679871
-xc.bad       \033[42m3084341.21387870\033[43m702\033[m89254188538
-bad.grp.mean       0.\033[42m42296648\033[43m677\033[m43849754333"
-writeLines(val)
-```
-
-Our group values are small, so the group ends are near each other.  By taking
-the difference we lose all the precision that was contributed by the first seven
-digits of the cumulative numbers, leaving us with about eight digits.
-Normally this should still be plenty of precision, but up next is `$\sum{(x -
-\bar{x})^2}$`.  This involves some even smaller numbers.  To see how bad it is
-need to calculate all the steps up to just before the group sum of `$(x -
-\bar{x})^2$`:
-
-```{r}
-sx <- .group_sum_int(xo, gnc)    # sum(x)
-ux <- (sx/gn)[gi]                # mean(x), recycled
-x_ux <- xo - ux                  # (x - mean(x))
-x_ux2 <- (x_ux ^ 2)              # (x - mean(x)) ^ 2
-x_ux2c <- cumsum(x_ux2)
-```
-
-We need to take the difference in the cumulative sum of the end of the
-previous group and our group:
-
-
-```{r}
-(x_ux2c.pre <- x_ux2c[bad.grp.start - 1])
-```
-```
-[1] 462824.4016201458289288
-```
-```{r}
-(x_ux2c.bad <- x_ux2c[bad.grp.end])
-```
-```
-[1] 462824.4016201461199671
-```
-
-This is the computing equivalent of walking down the steps into a dark basement
-with ominous background music.  To leave no doubt about the carnage that is
-about to unfold (viewer discretion advised):<span id=carnage></span>
+sum.  But when values are so close, doing so is the computing equivalent of
+taking the steps down into a dark basement with ominous background music in a
+horror flick.  To leave no doubt about the carnage that is about to unfold
+(viewer discretion advised):<span id=carnage></span>
 
 ```{r echo=FALSE}
-x_ux2c.diff <- x_ux2c.bad - x_ux2c.pre
+B.s <- B.x_ux2cn - A.x_ux2cn
 ```
 ```{r eval=FALSE}
-x_ux2c.diff <- x_ux2c.bad - x_ux2c.pre
-rbind(x_ux2c.pre, x_ux2c.bad, x_ux2.diff)
+B.s <- B.x_ux2cn - A.x_ux2cn
+rbind(A.x_ux2cn, B.x_ux2cn, B.s)
 ```
 <pre></pre>
 ```{r echo=FALSE}
 val <- "                                                 [,1]
-x_ux2c.pre \033[42m462824.40162014\033[43m582\033[m89287984371185302734
-x_ux2c.bad \033[42m462824.40162014\033[43m611\033[m99671030044555664062
-x_ux2c.diff       0.000000000\033[43m29\033[m10383045673370361328"
+A.x_ux2cn  \033[42m462824.40162014\033[43m582\033[m89287984371185302734
+B.x_ux2cn  \033[42m462824.40162014\033[43m611\033[m99671030044555664062
+B.s             0.000000000\033[43m29\033[m10383045673370361328"
 writeLines(val)
 ```
 
-It is questionable whether there is any precision left at
-all[^full-prec-assumption].  What about all those digits displayed?  They
-sure seem to look like they are precise, if perhaps not significant.  Well,
-about them:
+We highlight the approximate double precision digits in green, and the 
+additional digits that `cumsum` might use internally in yellow[^extended-2].<span
+id=mu-prec></span>  The only precision left is in the extended precision range,
+but that is not actually available outside of `cumsum`[^full-prec-assumption].
+Our decimal representation above is an approximation.  The actual calculations
+and precisions are all in binary, so let's look at the binary representation:
+
 
 ```{r}
-d <- x_ux2c.diff   # for display
-seven31::reveal(a)
+seven31::reveal(B.s)
 ```
 
 [Romain François's][15] [`seven31`][16] allows us to inspect the internal
@@ -943,63 +900,39 @@ for the 64 bits used in encoding the number.  In order they are:
 * Exponent (11 bits: <code style='color: blue !important;'>01111011111</code>,
   also shown in decimal form as `(-32)`) which gives the magnitude of the
   number.  This is a binary exponent, so `-32` here means `2^-32`.
-* Normalized Value (52 bits: <code>010000000000000...</code>), which is the
-  part that matters for precision.  There is an additional implicit leading bit
-  set to `1` that is not shown.
+* Normalized Value, a.k.a. "significand" (52 bits:
+  <code>010000000000000...</code>), which is the part that matters for
+  precision.  There is an additional implicit leading bit set to `1` that is not
+  shown.
 
 The key thing to notice is all those trailing zeroes in the "Normalized Value"
 section that determine the precision.  The number is binary, but all those
-trailing zeroes have essentially the same meaning as they would in a decimal
-number: there is probably not much precision there.  To hammer the point in,
-check this out:
+trailing zeroes have the same meaning as they would in a decimal number: there
+is probably not much precision there.  To hammer the point in, check this out:
 
 ```{r}
 (2^-32) *         # magnitude
   (2^0 + 2^-2)    # normalized value (precision)
 ```
 ```{r}
-x_ux2c.diff
-```
-```
-[1] 0.0000000002910383045673370361328
+B.s
 ```
 
-We exactly reproduced what we got from subtracting the [cumulative values
-earlier](#carnage). The `2^0` corresponds to the implicit value bit that isn't
-shown, and `2^-2` to the one `1` at the second position in the "normalized
-value" portion of the double.  Each bit in the "normalized value" section is
-represented by `$2^{-n}$` where `n` is the position in the bit field.  All those
-digits are just an artifact of converting a limited precision binary number into
-decimal representation.
+The entire precision of `B.s` is encapsulated in `2^0 + 2^-2`.  `2^0`
+corresponds to the implicit value bit that isn't shown, and `2^-2` to the one
+`1` at the second position in the "normalized value" portion of the double.
+Each bit in the "normalized value" section is represented by `$2^{-n}$` where
+`n` is the position in the bit field.  All those digits are just an artifact of
+the conversion of a limited precision binary number into decimal representation.
 
-The actual error is -1.2%, but that does not tell us what the precision of our
-estimate is.  To calculate that correctly we need to look the binary
-representation of all the numbers involved.  In this case:
+So how much precision do we actually have?  The naive decimal view suggests not
+that much.  The binary view suggests about 3 bits worth, but we don't actually
+know if any of the trailing zeroes are significant.  The actual error is -1.2%,
+and that suggests closer to 4-5 bits of precision.  To get to the actual answer
+we need to dive deep into the extended precision binary representation used
+`cumsum`.  Here it is for the last value of the previous group, compared to the
+normal double precision:
 
-```{r}
-a <- x_ux2c.pre
-b <- x_ux2c.bad
-d <- x_ux2c.diff
-seven31::reveal(a, b, d)
-```
-
-We can see most of `x_ux2c.pre` and `x_ux2c.bad` is shared, although how close
-the actual numbers are is somewhat concealed by the binary representation.  The
-different sequences as the end (`0111111` vs `1000100`) are closer than they
-might seem visually, as evidenced by the difference.  To make the relationships
-clearer, let's focus on the last 20 bits of the two cumulative numbers.  We will
-also add their extended precision representation:
-
-This is what the numbers look like in their full 80 bit extended precision, with
-the normal 53 digits of significand in green and the added 10 bits of extended
-precision in yellow:
-<!--
-seven31::reveal()
-diff.A <- sum((c(1,rep(0, 11))-c(0,1,1,1,0,1,0,0,0,1,0,1))*2^-(34:45))
-diff.diff <- sum((c(1,0,1,1,1,0,1,1) - c(0,0,1,1,1,1,0,0))*2^-(38:45))
-(c(1,0,1,1,1,1,0,1)-c(0,0,1,1,1,1,0,0))*2^-(38:43)
--->
-`xux2c.pre`:
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
@@ -1010,7 +943,8 @@ val <- "+18     +10        0        -10       -20       -30       -40
 writeLines(val)
 ```
 
-`xux2c.bad`:
+And for the last value of the current group:
+
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
@@ -1020,9 +954,23 @@ val <- "+18     +10        0        -10       -20       -30       -40
 writeLines(val)
 ```
 
-Internally, the full 80 bit precision is available to `cumsum`.  But once the
+Internally, the full 80 bit precision is available to `cumsum`, but once the
 result is returned into R we round back to the 64 bit precision level.  By sheer
-luck the difference between the 80 bit value and 64 bit values is small.  The
+luck the difference between the 80 bit values and 64 bit values is small, and
+also in the same direction.  As a result the total error caused by the rounding
+from 80 bits to 64 bits is `$(000111100 - 101111011) \times 2^{-38}$` (forgive
+the mixing of binary and decimal representation).  We can compute this:
+
+```{r}
+sum(2^-(38:45) * (c(0,0,1,1,1,1,0,0) - c(1,0,1,1,1,0,1,1)))
+```
+
+Recall that binary representation can be translated into `$2^{-n}$`.  
+That's exactly what we're doing here.  We take the powers of two between
+`$2^-38$`
+
+
+The
 worst case scenario would have been as follows:
 
 `xux2c.pre`:
