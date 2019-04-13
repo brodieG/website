@@ -858,10 +858,10 @@ And this is the value of the last element in the target group, `B.n`:
 ```
 
 In our algorithm we take the difference of these two numbers to get the group
-sum.  But when values are so close, doing so is the computing equivalent of
-taking the steps down into a dark basement with ominous background music in a
-horror flick.  To leave no doubt about the carnage that is about to unfold
-(viewer discretion advised):<span id=carnage></span>
+sum.  But when values are so close relative to their magnitudes, doing so is the
+computing equivalent of taking the steps down into a dark basement with ominous
+background music in a horror flick.  To leave no doubt about the carnage that is
+about to unfold (viewer discretion advised):<span id=carnage></span>
 
 ```{r echo=FALSE}
 B.s <- B.x_ux2cn - A.x_ux2cn
@@ -918,20 +918,46 @@ is probably not much precision there.  To hammer the point in, check this out:
 B.s
 ```
 
-The entire precision of `B.s` is encapsulated in `2^0 + 2^-2`.  `2^0`
-corresponds to the implicit value bit that isn't shown, and `2^-2` to the one
-`1` at the second position in the "normalized value" portion of the double.
+The entire precision of `B.s` is encapsulated in `$2^0 + 2^{-2}$`.  `$2^0$`
+corresponds to the implicit value bit that isn't shown, and `$2^{-2}$` to the
+one `1` at the second position in the "normalized value" portion of the double.
 Each bit in the "normalized value" section is represented by `$2^{-n}$` where
-`n` is the position in the bit field.  All those digits are just an artifact of
-the conversion of a limited precision binary number into decimal representation.
+`$n$` is the position in the bit field.  All those digits are just an artifact
+of the conversion of a limited precision binary number into decimal
+representation.
 
 So how much precision do we actually have?  The naive decimal view suggests not
-that much.  The binary view suggests about 3 bits worth, but we don't actually
-know if any of the trailing zeroes are significant.  The actual error is -1.2%,
-and that suggests closer to 4-5 bits of precision.  To get to the actual answer
-we need to dive deep into the extended precision binary representation used
-`cumsum`.  Here it is for the last value of the previous group, compared to the
-normal double precision:
+that much, but the actual error of -1.2% suggests closer to 4-5 bits of
+precision.  We can get a better idea by comparing the binary representation of
+the `A.x_ux2cn` and `B.x_ux2cn` values to their difference `B.s`.  Even though
+`A.x_ux2cn` and `B.x_ux2cn` were computed in 80 bit extended precision by
+`cumsum`, only the rounded 64 bit values are available in the results:
+
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+ \033[42m11100001111111010000110011011010000100100111110111111\033[m00000000000: A.x_ux2cn
+ \033[42m11100001111111010000110011011010000100100111111000100\033[m00000000000: B.x_ux2cn
+ 00000000000000000000000000000000000000000000000000\033[42m101\033[m00000000000: B.s"
+writeLines(val)
+```
+
+After taking the difference of `A.x_ux2cn` and `B.x_ux2cn` we are left with
+three bits of precision.  The last significant bit in our starting numbers
+corresponds to `$2^{-34}$`, so at the limit both `A.x_ux2cn` and `B.x_ux2cn`
+could be off by as much as `$\pm2^{-35}$`.  The representation error in the
+difference `B.s` can thus be up to `$2 \times \pm2^{-35} = \pm2^{-34}`
+assuming that the errors in `A.x_ux2cn` and `B.x_ux2cn` are in opposite
+directions.  With a baseline value of `B.s` of `$2^-32 + 2^-34$`, the relative
+error becomes[^rel-err]:
+
+$$\pm\frac{2^{-34}}{2^{-32} + 2^{-34}} = \pm20\%$$
+
+If the theoretical precision is only `$\pm20\%$`, how did we end up with the
+much smaller `$-1.2\%$` error?  Sheer luck, basically.  Let's look again at the
+`A.x_ux2cn` and `B.x_ux2cn` values, but this time comparing the underlying 80
+bit representations used by `cumsum`.  First `A.x_ux2cn`:
+
 
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
@@ -943,59 +969,72 @@ val <- "+18     +10        0        -10       -20       -30       -40
 writeLines(val)
 ```
 
-And for the last value of the current group:
+Same thing for the last value of the target group, `B.xux2cn`:
 
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
  \033[42m11100001111111010000110011011010000100100111111000100\033[m00000000000: 64 bit
- \033[42m11100001111111010000110011011010000100100111111000011\033[43m1111100010\033[m0: x_ux2c.bad
+ \033[42m11100001111111010000110011011010000100100111111000011\033[43m1111100010\033[m0: 80 bit
  0000000000000000000000000000000000000000000000000000000000\033[43m11110\033[m0: Diff"
 writeLines(val)
 ```
 
-Internally, the full 80 bit precision is available to `cumsum`, but once the
-result is returned into R we round back to the 64 bit precision level.  By sheer
-luck the difference between the 80 bit values and 64 bit values is small, and
-also in the same direction.  As a result the total error caused by the rounding
-from 80 bits to 64 bits is `$(000111100 - 101111011) \times 2^{-38}$` (forgive
-the mixing of binary and decimal representation).  We can compute this:
+It turns out the difference between the 80 bit values and 64 bit values is
+small, and also in the same direction.  As a result the total error caused by
+the rounding from 80 bits to 64 bits is `$(0.00111100 - 1.01111011) \times
+2^{-38}$`, or a hair under `$2^{-38}$`:
 
 ```{r}
+options(old.opt) # switch back to normal display
 sum(2^-(38:45) * (c(0,0,1,1,1,1,0,0) - c(1,0,1,1,1,0,1,1)))
 ```
 
-Recall that binary representation can be translated into `$2^{-n}$`.  
-That's exactly what we're doing here.  We take the powers of two between
-`$2^-38$`
+This is one sixteenth of the theoretical maximum error given the precision
+error.  We can confirm we've done this correctly by comparing our cumulative sum
+based value `B.s` to the directly computed value of the same quantity:
 
+```{r}
+sum((xo[B.i] - mean(xo[B.i]))^2) - B.s
+```
 
-The
-worst case scenario would have been as follows:
+This supports that we are carrying out the calculations on the 80 bit
+representations correctly.  The numbers are not exactly the same because even
+the 80 bit representation is limited in precision so we can only approximate the
+error.
 
-`xux2c.pre`:
+To illustrate the maximum error, consider that the following 80 bit
+representations round to the same 64 bit representations of `A.x_ux2cn` and
+`B.x_ux2cn` representations:
+
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
- \033[42m11100001111111010000110011011010000100100111110111111\033[m0000000000: 64 bit
- \033[42m11100001111111010000110011011010000100100111110111110\033[43m1000000001\033[m: 80 bit
- 00000000000000000000000000000000000000000000000000000\033[43m0111111111\033[m: Diff"
+ \033[42m11100001111111010000110011011010000100100111110111111\033[m00000000000: 64 bit
+ \033[42m11100001111111010000110011011010000100100111110111110\033[43m1000000000\033[m1: 80 bit
+ 00000000000000000000000000000000000000000000000000000\033[43m0111111111\033[m1: Diff A.n"
 writeLines(val)
 ```
-`xux2c.bad`:
+
+And:
+
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
- \033[42m11100001111111010000110011011010000100100111111000100\033[m0000000000: 64 bit
+ \033[42m11100001111111010000110011011010000100100111111000100\033[m00000000000: 64 bit
  \033[42m11100001111111010000110011011010000100100111111000100\033[43m1000000000\033[m: x_ux2c.bad
- 00000000000000000000000000000000000000000000000000000\033[43m1000000000\033[m: Diff"
+ 00000000000000000000000000000000000000000000000000000\033[43m1000000000\033[m: Diff B.n"
 writeLines(val)
 ```
 
+We could have gotten errors as large as these, and is we had as expected our
+overall error reaches the limit we estimated previously:
 
-have the result and we need to take the difference
-
-The problem is, those aren't actually the
+```{r}
+(err.max <-
+  sum(2^-(35:45) * (c(0,1,1,1,1,1,1,1,1,1,1) + c(1,0,0,0,0,0,0,0,0,0,0))))
+err.max / B.s
+```
 
 ```
 -10111011000000000000000000000000000000000000000000000: -38 x_ux2.pre remainder
