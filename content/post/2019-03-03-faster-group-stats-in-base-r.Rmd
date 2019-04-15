@@ -894,9 +894,10 @@ writeLines(val)
 ```
 
 We highlight the approximate double precision digits in green, and the
-additional digits that `cumsum` might use internally in yellow[^extended-2].<span
-id=mu-prec></span>  The only precision left is in the extended precision range,
-but that is not actually available outside of `cumsum`.
+additional digits that `cumsum` might use internally in yellow[^extended-2].
+The colors here have no semantic relation to those in the illustrative
+plots.<span id=mu-prec></span>  The only precision left is in the extended
+precision range, but that is not actually available outside of `cumsum`.
 
 So how much precision does `B.s` actually have?  The naive decimal view suggests
 quite a bit with all those trailing digits.  The color highlighting tells us
@@ -960,7 +961,7 @@ The 80 bit floating point representation adds 10 bits to the significand.  We'll
 discuss shortly how we got these 80 bit representations, but first let's look at
 `A.n`:<span id='a-err'></span>
 
-```{r echo=FALSE}
+```{r a-n-err, echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
 \033[34m+\033[42;39m11100001111111010000110011011010000100100111110111111\033[m00000000000: 64 bit
@@ -999,7 +1000,7 @@ exps <- 2^-(38:45)
 ```
 
 Here we estimated the error in our calculation from the binary representation,
-and got a value very close to the actual error:
+and got a value very close to the actual error:<span id=prec-loss-err></span>
 
 ```{r}
 (err.obs <-  B.s - sum((xo[B.i] - mean(xo[B.i]))^2))
@@ -1092,7 +1093,7 @@ bin_rep <- function(x) {
 ```
 ```{r}
 x_ux2.A.n <- x_ux2[1:(A.ni + 1)]
-x_ux2.b[A.ni + 1] <- -A.n
+x_ux2.A.n[A.ni + 1] <- -A.n
 ```
 
 We now have the original `$(x - \bar{x})^2$` values up to the element just past
@@ -1101,7 +1102,7 @@ group `A`, and at that position, the **cumulative** sum of all the prior values,
 be zero.  But it's not:
 
 ```{r}
-A.n.err <- tail(cumsum(x_ux2.b), 1)
+A.n.err <- tail(cumsum(x_ux2.A.n), 1)
 bin_rep(A.n.err)
 ```
 
@@ -1110,11 +1111,17 @@ doubles.  `A.n.err` is not zero because the cumulative sum was computed with 80
 bit precision.  By adding `-A.n` in 64 bit precision to the end of the vector we
 are left with the difference between the 80 bit and 64 bit versions of the
 cumulative sum.  In this case you might recognize that `A.n.err` as the error we
-showed when we compared the [80 and 64 bit versions of `A.n`](#a-err).  We got
-the 80 bit version of `A.n` by adding the error to the 64 bit version[^by-hand].
+showed when we compared the [80 and 64 bit versions of `A.n`](#a-err):  
 
-More generally, we can compute the 80->64 bit conversion errors for every group.
-Visually:
+```{r a-n-err, echo=FALSE}
+```
+
+We got the 80 bit version of `A.n` by subtracting the error to the 64 bit
+version[^by-hand].
+
+More generally, we can compute the 80->64 bit conversion errors for every group
+by adding computing the group sums as we did previously, and then adding their
+negatives back to the input vector for a second pass cumulative sum.  Visually:
 
 ```{r echo=FALSE}
 steps <- c(
@@ -1154,46 +1161,15 @@ ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
   plot.extra
 ```
 
-
-To compensate for this
-we're going to adapt a strategy from `base::mean`.  Here is an snippet from the
-[C code in R3.3][18] altered for clarity:
-
-```{c eval=FALSE}
-LDOUBLE s = 0., t = 0.;                // extended precision floats
-for (i = 0; i < n; i++) s += x[i];     // sum all values i->n
-s /= n;                                // turn `s` into mean by dividing by `n`
-if(R_FINITE((double)s)) {
-    for (i = 0; i < n; i++)            // second pass
-        t += (x[i] - s);               // <- KEY STEP
-    s += t/n;                          // update mean
-}
-ans[0] = (double) s;
-```
-
-After computing the simple mean, we run a second pass.  In the "KEY STEP" we
-subtract the first-pass mean from each value (`(x[i] - s)` ) before adding it to
-the secondary accumulator `t`.  The expected value of `(x[i] - s)` is zero, so
-`t` should remain close to that throughout, absent pathological
-inputs[^mean-pathological].  The end value of `t` will be the sum of the
-incremental precision error from first-pass mean, so the mean of that can be
-added back to the result.  This does not guarantee perfect precision, but it
-should always improve precision.
-
-A similar adjustment for `cumsum` based group sums is:
-
-* Compute group sums.
-* Insert the negative of the group sums after each group in the original data.
-* Recompute the group sums.
-
-Visually:
-
-
 If the first pass group sum was fully precise, the values inside the
 highlighting boxes in the last panel should be zero. The small values we see
 inside the boxes represent the errors of each group computation[^for-effect].
 Steps that we are not showing above are collecting these values, taking their
 differences, and adding them back to the first pass values.
+
+While the second pass is still subject to precision issues, these are greatly
+reduced because the cumulative sum is reset to near zero after each group, so we
+will never be subtracting two large but near numbers from each other.
 
 `.group_sum_int2` below embodies the approach.  One slight modification is that
 we subtract the first pass group value from the last value in the group instead
@@ -1240,50 +1216,68 @@ quantile(slope.rs - slope.gs, na.rm=TRUE)
 
 The new error is _sixteen_ orders of magnitude smaller than the original.
 
-<!--
--->
+Two-pass precision improvement methods have been around for long time.  For
+example R's own `mean` uses a [variation on this method][18].
 
-<!-- ed note: fastest recorded, again with wifi off, everything shut down
-   user  system elapsed
-  2.234   0.598   2.842
--->
+## I Swear, It's a Feature
 
-We can do a little better though since we don't need the full precision.
-* Get max cumsum value
-* Compare to smallest group
-* But one big problem with this is we don't actually know for sure that the
-  cumulative sum is growing throughout, so last value is not necessarily the
-  largest in magnitude.  Shortcut might be taking the max and min of the
-  cumulative sum?  And to find the smallest value?  Can we do it without taking
-  the abs and copying the whole group?
+We noted earlier that precision loss can be a feature.  We can make it so in
+this case by providing some controls for it.  We saw earlier that it is possible
+to [estimate precision loss](#prec-loss-err), so we can use this decide whether
+we want to trigger the second precision correcting pass.  [`.group_sum_int3` in
+the appendix](#adjustable-precision-group-sums) does exactly this by providing a
+`p.bits` parameter.  This parameter specifies the minimum number of bits of
+precision in the resulting group sums.  If as a result of the first pass we
+determine the worst case loss could take us below `p.bits`, we run the second
+precision improvement pass:
 
-```{r eval=FALSE}
-.group_sum_int3 <- function(x, last.in.group, p.bits=53){
-  x.grp <- .group_sum_int(x, last.in.group)
-  x[last.in.group] <- x[last.in.group] - x.grp
-  x.grp + .group_sum_int(x, last.in.group)
-}
-
-.group_sum_intb <- function(x, last.in.group, p.bits=53) {
+```{r group_sum_int3, eval=FALSE, echo=FALSE}
+.group_sum_int3 <- function(x, last.in.group, p.bits=53, info=FALSE) {
   xgc <- cumsum(x)[last.in.group]
-  gmax <- log2(max(abs(range(xgc))))
+  gmax <- floor(log2(max(abs(range(xgc)))))
   gs <- diff(c(0, xgc))
   gsabs <- abs(gs)
-  gmin <- min(log2(gsabs[gsabs > 0]))
-  precision <- floor(53 + (gmin - gmax))
+  gmin <- floor(log2(min(gsabs[gsabs > 0])))
+  precision <- 53 + (gmin - gmax)
   if(precision < p.bits) {
     x[last.in.group] <- x[last.in.group] - gs
     gs <- gs + .group_sum_int(x, last.in.group)
   }
-  structure(gs, precision=precision, precision.mitigation=precision < p.bits)
+  if(info) # info about precision and second pass
+    structure(gs, precision=precision, precision.mitigation=precision < p.bits)
+  else gs
 }
-gsfun <- function(x, last.in.group) .group_sum_intb(x, last.in.group, 16)
-x1 <- x + rep(c(.001, -.001), length(x)/2)
-y1 <- y + rep(c(.001, -.001), length(y)/2)
-slope.rs1 <- group_slope(x1, y1, grp)
-system.time(slope.gsa <- group_slope2(x1, y1, grp))
-system.time(slope.gs2a <- group_slope2(x1, y1, grp, group_sum=.group_sum_int2))
-system.time(slope.gs3a <- group_slope2(x1, y1, grp, group_sum=gsfun))
+```
+```{r eval=FALSE}
+microbenchmark::microbenchmark(times=10,
+  .group_sum_int(x_ux2, gnc),            # original single pass
+  .group_sum_int2(x_ux2, gnc),           # two pass, always
+  .group_sum_int3(x_ux2, gnc, p.bits=2), # check, single pass
+  .group_sum_int3(x_ux2, gnc, p.bits=3)  # check, two pass
+)
+```
+```
+                                    expr   min    lq mean median  uq max neval
+              .group_sum_int(x_ux2, gnc)  44.0  94.5  101     97 115 153    10
+             .group_sum_int2(x_ux2, gnc) 196.2 258.2  277    271 294 365    10
+ .group_sum_int3(x_ux2, gnc, p.bits = 2)  79.7 119.4  119    126 128 133    10
+ .group_sum_int3(x_ux2, gnc, p.bits = 3) 294.5 308.3  324    312 349 371    10
+```
+
+In this example the worst case precision is 2 bits, so with `p.bits=2` we run in
+one pass, whereas with `p.bits=3` two passes are required.  There is some
+overhead in checking precision, but it is small enough relative to the cost of
+the second pass that it is probably warranted in many cases.
+
+Let's try our slope calculation, this time again demanding at least 16 bits of
+precision.  For our calculation 16 bits of precision implies the error will be
+at most `$\pm2^{-16} \approx 1.53 \times 10^{-5}$`.
+
+```{r eval=FALSE}
+.group_sum_int_16 <- function(x, last.in.group)
+  .group_sum_int3(x, last.in.group, p.bits=16)
+
+system.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=.group_sum_int_16))
 ```
 ```
    user  system elapsed
@@ -1293,15 +1287,30 @@ system.time(slope.gs3a <- group_slope2(x1, y1, grp, group_sum=gsfun))
    user  system elapsed
   2.164   0.682   2.856
 -->
-```{r eval=FALSE}
-all.equal(
-  slope.gs3[!is.na(slope.rs)], slope.rs[!is.na(slope.rs)],
-  check.attributes=FALSE
-)
-```
 ```
 [1] TRUE
 ```
+```{r eval=FALSE}
+quantile(slope.rs - slope.gs3 / slope.rs, na.rm=TRUE)
+```
+```
+       0%       25%       50%       75%      100% 
+-1.80e-08 -5.50e-15  0.00e+00  5.47e-15  2.54e-06 
+```
+
+Indeed the errors are no larger than that.  Note the precision check occurs only
+at the group sum step.  If other steps accumulate errors it is possible for the
+final precision to end up below the specified levels.
+
+
+
+<!--
+-->
+
+<!-- ed note: fastest recorded, again with wifi off, everything shut down
+   user  system elapsed
+  2.234   0.598   2.842
+-->
 
 Updated reference times for `data.table`.  This is after we killed all
 extraneous processes, including firefox.
@@ -1794,6 +1803,11 @@ mapply(
   },
   xs, list(g2), c(FALSE, FALSE, TRUE, FALSE)
 )
+```
+
+## Adjustable Precision Group Sums
+
+```{r group_sum_int3, eval=FALSE}
 ```
 
 [^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
