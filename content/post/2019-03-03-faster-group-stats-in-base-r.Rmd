@@ -3,16 +3,18 @@ title: Faster Group Stats in Base R
 author: ~
 date: '2019-03-03'
 slug: faster-group-stats-in-base-r
-categories: []
-tags: []
-image: /front-img/default.png
-imagerect: ~
+categories: [r]
+tags: [optim, rdatatable]
+image: /front-img/rock-em-sock-em.png
+imagerect: /front-img/rock-em-sock-em-wide.png
 imagemrgvt: 0%
 imagemrghz: 0%
 draft: true
 weight: 1
 contenttype: article
-description: Front page summary
+descriptionlong: "In which scrappy base R takes on the reigning group stats champ
+  data.table, with suprising results.  Cache effects, branch prediction, pixie
+  dust, IEEE 754, and more!"
 ---
 
 ```{r echo=FALSE}
@@ -34,18 +36,28 @@ writeFansi <- function(x) {
 }
 ```
 
-# blah blah
+# In One Corner...
 
 <!-- this needs to become a shortcode -->
 <img
-  id='front-img' src='/front-img/default.png'
+  id='front-img' src='/front-img/rock-em-sock-em.png'
   class='post-inset-image'
 />
 
-# Baseline
+As we saw in our [previous post ][21], `data.table` is the group statistics
+heavyweight champ.  Its `gforce` functions and fast grouping put it head and
+shoulders above all challengers. Yet, here we are, about to throw our had in
+the ring with nothing but base R functionality.  Are we out of our minds?  We
+don't have access C-level group statistics, nor efficient memory re-using
+groups, but TL;DR, the results might surprise you.
 
-As we saw in the prior
-In one corner, the venerable `tapply`:
+Stick around for an epic battle between the champ and the scrappy challenger.
+To go along with the main card: cameos from cache effects and branch prediction,
+and a death match with the big bad villain IEEE-754.
+
+# The Ring
+
+Ten million observations, ~one million groups, no holds barred:
 
 ```{r}
 RNGversion("3.5.2"); set.seed(42)
@@ -56,26 +68,50 @@ noise <- rep(c(.001, -.001), n/2)
 x     <- runif(n) + noise
 y     <- runif(n) + noise  # we'll use this later
 ```
+```{r sys-time, echo=FALSE}
+sys.time <- function(exp, reps=11) {
+  res <- matrix(0, reps, 5)
+  time.call <- quote(system.time({NULL}))
+  time.call[[2]][[2]] <- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] <- eval(time.call, parent.frame())
+  }
+  structure(res, class='proc_time2')
+}
+print.proc_time2 <- function(x, ...) {
+  print(
+    structure(
+      x[order(x[,3]),][floor(nrow(x)/2),],
+      names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
+      class='proc_time'
+) ) }
+```
+
+Let's try a warm up round.  `sys.time` is the expression through `System.time`
+eleven times and returns the median timing.  It is [defined in the
+appendix](#sys.time).
+
 ```{r eval=FALSE}
-system.time(x.ref <- c(tapply(x, grp, sum)))
+sys.time(x.ref <- tapply(x, grp, sum))
 ```
 ```
    user  system elapsed
-  8.539   0.321   9.030
+  7.137   0.163   7.308
 ```
-
-In the other, `data.table`.
-
 ```{r eval=FALSE}
 library(data.table)
 DT <- data.table(grp, x)
 setDTthreads(1)
-system.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
+sys.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
 ```
 ```
    user  system elapsed
-  0.982   0.059   1.048
+  0.941   0.030   0.973
 ```
+
+Ouch.  Even without multithreading `data.table` just crushed the venerable but
+outmatched `tapply`.
 
 We use one thread for more stable results, but also because for the final
 computation we are planning on doing multi-threaded did not make a huge
@@ -128,11 +164,11 @@ I have known about rowSums for a long time, and I only more recently discovered 
 How can a base R function possibly compete for excitement with a dead fox? Well, there are many base R functions that compute on arbitrary groups, and many base R functions that work directly in compiled code, but as far as I know base R functions that compute on arbitrary groups in compiled code are rare1. This is very useful:
 -->
 ```{r eval=FALSE}
-system.time(x.rs <- rowsum(x, grp))
+sys.time(x.rs <- rowsum(x, grp))
 ```
 ```
    user  system elapsed
-  2.505   0.096   2.626
+  2.251   0.058   2.310
 ```
 ```{r eval=FALSE}
 all.equal(c(x.ref), c(x.rs), check.attributes=FALSE)
@@ -148,7 +184,7 @@ the `data.table` one.
 funs <- c('tapply', 'rowsum', 'data.table')
 times <- data.frame(
   Function=factor(funs, levels=funs),
-  time=c(9.030, 2.626, 1.126)
+  time=c(7.308, 2.310, 0.973)
 )
 ggplot(times, aes(x=Function, y=time)) +
   geom_col() +
@@ -170,18 +206,18 @@ Sorting values prior to running `unique` on them makes `unique` faster:
 
 ```{r eval=FALSE}
 grp.o <- grp[order(grp)]
-system.time(unique(grp.o))
+sys.time(unique(grp.o))
 ```
 ```
    user  system elapsed
-  0.453   0.057   0.514
+  0.382   0.049   0.434
 ```
 ```{r eval=FALSE}
-system.time(unique(grp))
+sys.time(unique(grp))
 ```
 ```
    user  system elapsed
-  1.354   0.067   1.436
+  1.213   0.054   1.275
 ```
 
 Internally `unique` uses a [hash table][2] to detect duplicate values, so it may
@@ -201,18 +237,18 @@ Now, for why I'm ranting about this, it turns out that the combined operation of
 sorting and `unique`ing is faster than the just `unique`ing:
 
 ```{r eval=FALSE}
-system.time(unique(grp[order(grp)]))
+sys.time(unique(grp[order(grp)]))
 ```
 ```
    user  system elapsed
-  0.909   0.158   1.081
+  0.854   0.060   0.918
 ```
 
 This also has a big impact on `rowsum`, as it uses both [`unique`][6] on top of
 its own [hash table][5]:<span id=rowsum-ordered></span>
 
 ```{r eval=FALSE}
-system.time({
+sys.time({
   o <- order(grp)
   x.rs2 <- rowsum(x[o], grp[o], reorder=FALSE)
 })
@@ -227,7 +263,7 @@ This puts us in striking distance of single-threaded `data.table`:
 ```{r echo=FALSE}
 times <- data.frame(
   Function=c('tapply', 'rowsum', 'rowsum-sorted', 'data.table'),
-  time=c(9.030, 2.626, 1.430, 1.048)
+  time=c(7.308, 2.310, 1.430, 0.973)
 )
 ggplot(times, aes(x=Function, y=time)) +
   geom_col() +
@@ -242,7 +278,7 @@ all".  Well, the only reason this `order` pixie dust business is even possible
 is because `order` is so fast, and `order` is so fast because `data.table`
 contributed their pixie dust to R:
 
-<div class=>
+<div class='aligncenter' style='width: 500px;'>
 ```{r echo=FALSE}
 blogdown::shortcode('tweet', '1106231241488154626')
 ```
@@ -267,7 +303,7 @@ uniques <- function(x, res.sorted=FALSE) {
   i <- .uniques(xo)          # C code: see appendix
   if(!res.sorted) xo[i][order(o[i])] else xo[i]
 }
-system.time(uniques(grp))
+sys.time(uniques(grp))
 ```
 ```
    user  system elapsed
@@ -398,41 +434,25 @@ step: `xu <- (xs/gn)[gi]`.
 This is pretty fast with our original 10MM record data set:
 
 ```{r eval=FALSE}
-system.time(slope.rs <- group_slope(x, y, grp))
+sys.time(slope.rs <- group_slope(x, y, grp))
 ```
 ```
    user  system elapsed
-  4.110   0.785   4.915
+  3.937   0.681   4.622
 ```
 
-Compare to the `vapply` version from the [prior grouped statistics post][8]:
+Let's look at all the timings, including variations from our [prior grouped
+statistics post][8], as well as the "pixie dust" (ordered) version of the
+`vapply` method ([code and updated timings in
+appendix](#other-slope-benchmarks):
 
-```{r eval=FALSE}
-system.time({
-  id <- seq_along(grp)
-  id.split <- split(id, grp)
-  slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
-})
-```
-```
-   user  system elapsed
- 13.817   0.216  14.184
-```
-```{r eval=FALSE}
-all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)
-```
-```
-[1] TRUE
-```
-
-And a summary of all the timings including `data.table`:
 
 ```{r rowsum-timings-all, echo=FALSE}
 funs <- c('*pply', '*pply', 'data.table', 'data.table', 'rowsum')
 times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
   Version=c('normal', 'ordered', 'normal', 'optim', 'normal'),
-  time=c(14.184, 9.867 , 7.959, 3.697, 4.915)
+  time=c(12.573, 8.557 , 7.172, 3.697, 4.622)
 )
 ggplot(times, aes(x=Version, y=time)) +
   geom_col() +
@@ -442,10 +462,13 @@ ggplot(times, aes(x=Version, y=time)) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
 ```
 
-`rowsum` is ~3x faster than even basic `*pply` version, and faster than the
-unoptimized `data.table` [^timing-note].  But `data.table` keeps the performance
-crown, albeit with a little help[^dt-optim].  More details for the benchmarks
-are [in the appendix](#other-benchmarks).
+`rowsum` is substantially faster than everything except the 
+~3x faster than the basic `*pply` version, and faster than the
+~2x faster than the unoptimized `data.table`[^timing-note].  Sprinkling pixie
+dust on `*pply` by ordering the inputs (see [appendix](#tapply-ordered) gets us
+close to unoptimized `data.table`, but `rowsum` is still ~2x faster.  But
+`data.table` keeps the performance crown, albeit with a little help[^dt-optim].
+More details for the benchmarks are [in the appendix](#other-benchmarks).
 
 So like Rocky Balboa we walk off into the sunset, without the title but
 satisfied we put up a good fight.  Except...
@@ -589,7 +612,7 @@ Every step of `group_sum` is internally vectorized[^int-vec], so the function is
 fast.  We demonstrate here with the original 10MM data set:
 
 ```{r eval=FALSE}
-system.time(x.grpsum <- group_sum(x, grp))
+sys.time(x.grpsum <- group_sum(x, grp))
 ```
 ```
    user  system elapsed
@@ -648,7 +671,7 @@ group_slope2 <- function(x, y, grp, group_sum=.group_sum_int) {
 ```
 Let's time it:
 ```{r eval=FALSE}
-system.time(slope.gs <- group_slope2(x, y, grp))
+sys.time(slope.gs <- group_slope2(x, y, grp))
 ```
 
 <!-- ed note: the timings below appear sensitive to other stuff running on the
@@ -658,7 +681,7 @@ system.  This is the fastest I've recorded:
 -->
 ```
    user  system elapsed
-  2.017   0.607   2.647
+  1.928   0.656   2.587
 ```
 
 Oh snap, 30% faster than `data.table`!
@@ -668,7 +691,7 @@ funs <- c('*pply', '*pply', 'data.table', 'data.table', 'rowsum', 'cumsum')
 times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
   Version=c('normal', 'ordered', 'normal', 'optim', 'normal', 'normal'),
-  time=c(14.184, 9.867 , 7.959, 3.697, 4.915, 2.647)
+  time=c(14.184, 9.867 , 7.172, 3.697, 4.915, 2.647)
 )
 ggplot(times, aes(x=Version, y=time)) +
   geom_col() +
@@ -695,7 +718,7 @@ gnc <- cumsum(gn)
 o <- order(grp)
 go <- grp[o]
 xo <- x[o]
-system.time({
+sys.time({
   gn <- rle(go)[['lengths']]
   gi <- rep(seq_along(gn), gn)
   gnc <- cumsum(gn)
@@ -703,13 +726,13 @@ system.time({
 ```
 ```
    user  system elapsed
-  0.417   0.154   0.573
+  0.398   0.134   0.535
 ```
 
 Once we have `gnc` the group sum is blazing fast:
 
 ```{r eval=FALSE}
-system.time(.group_sum_int(xo, gnc))
+sys.time(.group_sum_int(xo, gnc))
 ```
 ```
    user  system elapsed
@@ -947,7 +970,7 @@ The last significant bit in our starting numbers corresponds to
 that `B.s`, which is the difference of `A.n` and `B.n`, could have up to twice
 the error:
 
-$$2 \times \pm2^{-35} = \pm2^{-34}$$ 
+$$2 \times \pm2^{-35} = \pm2^{-34}$$
 
 With a baseline value of `B.s` of `$2^{-32} + 2^{-34}$`, the relative error
 becomes[^rel-err]:
@@ -1111,7 +1134,7 @@ doubles.  `A.n.err` is not zero because the cumulative sum was computed with 80
 bit precision.  By adding `-A.n` in 64 bit precision to the end of the vector we
 are left with the difference between the 80 bit and 64 bit versions of the
 cumulative sum.  In this case you might recognize that `A.n.err` as the error we
-showed when we compared the [80 and 64 bit versions of `A.n`](#a-err):  
+showed when we compared the [80 and 64 bit versions of `A.n`](#a-err):
 
 ```{r a-n-err, echo=FALSE}
 ```
@@ -1183,7 +1206,7 @@ of appending it to the group:
 }
 ```
 ```{r eval=FALSE}
-system.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
+sys.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
 ```
 ```
    user  system elapsed
@@ -1277,11 +1300,11 @@ at most `$\pm2^{-16} \approx 1.53 \times 10^{-5}$`.
 .group_sum_int_16 <- function(x, last.in.group)
   .group_sum_int3(x, last.in.group, p.bits=16)
 
-system.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=.group_sum_int_16))
+sys.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=.group_sum_int_16))
 ```
 ```
    user  system elapsed
-  2.311   0.703   3.026
+  2.095   0.778   2.874
 ```
 <!-- fastest:
    user  system elapsed
@@ -1291,21 +1314,17 @@ system.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=.group_sum_int_16))
 [1] TRUE
 ```
 ```{r eval=FALSE}
-quantile(slope.rs - slope.gs3 / slope.rs, na.rm=TRUE)
+quantile((slope.rs - slope.gs3) / slope.rs, na.rm=TRUE)
 ```
 ```
-       0%       25%       50%       75%      100% 
--1.80e-08 -5.50e-15  0.00e+00  5.47e-15  2.54e-06 
+       0%       25%       50%       75%      100%
+-2.91e-08 -2.51e-14  0.00e+00  2.51e-14  4.73e-09
 ```
 
-Indeed the errors are no larger than that.  Note the precision check occurs only
-at the group sum step.  If other steps accumulate errors it is possible for the
-final precision to end up below the specified levels.
-
-
-
-<!--
--->
+Indeed the errors are no larger than that.  The precision check occurs only at
+the group sum step, so if other steps steps accumulate errors it is possible for
+the final precision of a more complex computation to end up below the specified
+levels.
 
 <!-- ed note: fastest recorded, again with wifi off, everything shut down
    user  system elapsed
@@ -1315,23 +1334,6 @@ final precision to end up below the specified levels.
 Updated reference times for `data.table`.  This is after we killed all
 extraneous processes, including firefox.
 
-```{r eval=FALSE}
-setDTthreads(1)
-DT <- data.table(grp, x, y)
-system.time({
-  setkey(DT, grp)
-  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
-  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
-  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
-  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
-  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
-})
-```
-```
- # Bah, it was with four threads.  Still, useful number
-   user  system elapsed
-  7.691   0.815   2.828
-```
 
 
 
@@ -1549,8 +1551,8 @@ Note on vector size[^vec-size].
 
 * Matt Dowle and the `data.table` team for contributing their `radix` order to
   R.
-* Romain Francois for `seven31` which allowed us to debug the double precision
-  precision issues.
+* Romain Francois for `seven31` which allowed us to debug double precision
+  issues.
 * Oleg Sklyar, Duncan Murdoch, Mike Smith, Dirk Eddelbuettel, Romain Francois,
   Karline Soetaert for [`inline`][7].
 
@@ -1654,23 +1656,22 @@ original example.
 ")
 ```
 
-## Other Benchmarks
+## Other Slope Benchmarks
 
+### vapply
 
-Ordered version:
+Normal:
 
 ```{r eval=FALSE}
-system.time({
-  o <- order(grp)
-  go <- grp[o]
-  id <- seq_along(grp)[o]
-  id.split <- split(id, go)
+sys.time({
+  id <- seq_along(grp)
+  id.split <- split(id, grp)
   slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
 })
 ```
 ```
    user  system elapsed
-  9.565   0.203   9.867
+ 12.416   0.142  12.573
 ```
 ```{r eval=FALSE}
 all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)
@@ -1679,19 +1680,98 @@ all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)
 [1] TRUE
 ```
 
-`data.table`, not optimized:
+Sorted version:
+
+
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  id <- seq_along(grp)[o]
+  id.split <- split(id, go)
+  slope.ply2 <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+```
+```
+   user  system elapsed
+  8.397   0.155   8.557
+```
+```{r eval=FALSE}
+all.equal(slope.ply2, c(slope.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+### data.table
+
+Normal:
 
 ```{r eval=FALSE}
 setDTthreads(1)
 DT <- data.table(grp, x, y)
-system.time(DT[, slope(x, y), grp])
+sys.time(DT[, slope(x, y), grp])
 ```
 ```
    user  system elapsed
-  7.798   0.082   7.959
+  7.117   0.046   7.172
+```
+
+Normal multi-thread:
+
+```{r eval=FALSE}
+setDTthreads(0)
+DT <- data.table(grp, x, y)
+sys.time(DT[, slope(x, y), grp])
+```
+```
+   user  system elapsed 
+   8.53    0.11    6.73 
+```
+
+Optimized:
+
+```{r eval=FALSE}
+library(data.table)
+setDTthreads(1)
+sys.time({
+  DT <- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})
+```
+```
+   user  system elapsed
+  3.102   0.352   3.454
+```
+
+Optimized multi-core:
+
+```{r}
+setDTthreads(0)
+sys.time({
+  DT <- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})
+```
+```
+   user  system elapsed
+  7.147   0.855   2.609
 ```
 
 ## Function Definitions
+
+```{r sys-time, echo=FALSE}
+```
 
 ### group_sum
 
@@ -1887,7 +1967,7 @@ mapply(
   `$2^{-32}`), but it could also have been `1.11` or `0.01`, so for 3 bit values
   the relative error can be as low as ~14% or as high as 100%.
 [^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
-  do the binary addition by hand...  
+  do the binary addition by hand...
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
 [2]: https://en.wikipedia.org/wiki/Hash_table
@@ -1909,3 +1989,4 @@ mapply(
 [18]: https://github.com/wch/r-source/blob/R-3-3-branch/src/main/summary.c#L434
 [19]: https://twitter.com/BrodieGaslam/status/1113783101262585856
 [20]: https://www.ibm.com/blogs/research/2018/12/8-bit-precision-training/
+[21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
