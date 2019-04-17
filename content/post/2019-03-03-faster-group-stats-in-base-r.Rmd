@@ -46,14 +46,12 @@ writeFansi <- function(x) {
 
 As we saw in our [previous post ][21], `data.table` is the group statistics
 heavyweight champ.  Its `gforce` functions and fast grouping put it head and
-shoulders above all challengers. Yet, here we are, about to throw our had in
-the ring with nothing but base R functionality.  Are we out of our minds?  We
-don't have access C-level group statistics, nor efficient memory re-using
-groups, but TL;DR, the results might surprise you.
+shoulders above all challengers. And yet, here we are, about to throw our hat in
+the ring with nothing but base R functionality.  Are we out of our minds?
 
-Stick around for an epic battle between the champ and the scrappy challenger.
-To go along with the main card: cameos from cache effects and branch prediction,
-and a death match with the big bad villain IEEE-754.
+TL;DR: some surprising results, close encounters with cache effects and branch
+prediction from R, and an epic battle with double precision imprecision.  Oh,
+and pixie dust.
 
 # The Ring
 
@@ -88,9 +86,9 @@ print.proc_time2 <- function(x, ...) {
 ) ) }
 ```
 
-Let's try a warm up round.  `sys.time` is the expression through `System.time`
-eleven times and returns the median timing.  It is [defined in the
-appendix](#sys.time).
+Let's try a warm up round.  `sys.time` is a wrapper around `system.time` that
+runs the expression eleven times and returns the median timing.  It is [defined
+in the appendix](#sys.time).
 
 ```{r eval=FALSE}
 sys.time(x.ref <- tapply(x, grp, sum))
@@ -110,25 +108,21 @@ sys.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
   0.941   0.030   0.973
 ```
 
-Ouch.  Even without multithreading `data.table` just crushed the venerable but
-outmatched `tapply`.
+Ouch.  Even without multithreading `data.table` crushes `tapply`.
 
-We use one thread for more stable results, but also because for the final
-computation we are planning on doing multi-threaded did not make a huge
-difference on my system.  For this particular task multi threading can provide a
-substantial boost to data table performance.
+We use one thread for more stable and comparable results.  We'll show some
+multi-threaded benchmarks at the end.
 
 # It's All In the Capitalization
 
-Our first solution uses `base::rowsum`.  As is clearly indicated by the lack of
-capitalization and pluralization, `base::rowsum` is completely different from
-`base::rowSums`.  Further, anyone who has read the "Semantics of Capitalization,
-Punctuation, and Pluralization in R Function Names" memo can infer that the
-former sums rows within groups, and the latter sums columns within rows.
+We take our first swing with `base::rowsum`.  That's right, `rowsum`, not
+`rowSums`.  Lower case singular makes all the difference in the world.  This is
+R, after all, and as any self respecting R user that has read the
+seminal paper "Semantics of Capitalization, Punctuation, and Pluralization in R
+Function Names" can tell you, the former sums rows within groups, and the latter
+sums columns within rows.  You did read the memo, right?  Good.
 
-You did get the memo, right?  Good.
-
-Even though the function names are self explanatory, we will illustrate for
+Even though the function names are self explanatory, let's illustrate for
 completeness:
 
 ```{r}
@@ -150,7 +144,29 @@ matrix(rowSums(mx))
 returns a vector, but here we display it as a one column matrix so the
 relationship to the input matrix is clear.
 
-I have known about `rowSums` for a long time, and I only more recently
+Many R functions compute primarily in compiled code (e.g `sum`), several compute
+on arbitrary groups (e.g. `tapply`), some even compute on equal sized groups in
+compiled code (e.g. `rowSums`).  As far as I know, `rowsum` (singular, lower
+case...) is the only one that computes on arbitrary groups in compiled code.
+This is a big deal.  One of R's biggest weaknesses is that computing on groups
+requires calling R-level functions for each group, defeating the compiled code
+vectorizations that usually make R speedy.  `rowsum` gives us a tool to
+circumvent this limitation.
+
+
+
+All joking aside, I have known about `rowSums` for a long time, and have seen
+the name `rowsum` in passing, but it never occurred to me that the latter might
+do something as extraordinary as what it actually does: compute on arbitrary
+groups in compiled code.  
+
+
+but very few do both.
+
+
+`rowsum`
+there 
+I only more recently
 discovered `rowsum`.  It probably says more about me than I should admit but I
 was downright giddy when I realized _exactly_ what `rowsum` does.  After all,
 there are many base R functions that compute on arbitrary groups, and many base
@@ -177,8 +193,8 @@ all.equal(c(x.ref), c(x.rs), check.attributes=FALSE)
 [1] TRUE
 ```
 
-Almost four times faster than the original `tapply` solution, and not far from
-the `data.table` one.
+Over three times faster than the original `tapply` solution, and at least
+plausibly in the same conversation as the `data.table` one.
 
 ```{r echo=FALSE}
 funs <- c('tapply', 'rowsum', 'data.table')
@@ -462,7 +478,7 @@ ggplot(times, aes(x=Version, y=time)) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
 ```
 
-`rowsum` is substantially faster than everything except the 
+`rowsum` is substantially faster than everything except the
 ~3x faster than the basic `*pply` version, and faster than the
 ~2x faster than the unoptimized `data.table`[^timing-note].  Sprinkling pixie
 dust on `*pply` by ordering the inputs (see [appendix](#tapply-ordered) gets us
@@ -1099,7 +1115,7 @@ If you are still wondering how we came up with the 80 bit representations of the
 of `A.n` at the position following `A.n` position:
 
 ```{r bin_rep, echo=FALSE}
-# Only works for normal finitite non-zero non-NA scalar doubles
+ # Only works for normal finitite non-zero non-NA scalar doubles
 
 bin_rep <- function(x) {
   stopifnot(length(x) == 1)
@@ -1725,8 +1741,8 @@ DT <- data.table(grp, x, y)
 sys.time(DT[, slope(x, y), grp])
 ```
 ```
-   user  system elapsed 
-   8.53    0.11    6.73 
+   user  system elapsed
+   8.53    0.11    6.73
 ```
 
 Optimized:
