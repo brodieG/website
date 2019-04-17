@@ -113,108 +113,7 @@ Ouch.  Even without multithreading `data.table` crushes `tapply`.
 We use one thread for more stable and comparable results.  We'll show some
 multi-threaded benchmarks at the end.
 
-# It's All In the Capitalization
 
-We take our first swing with `base::rowsum`.  That's right, `rowsum`, not
-`rowSums`.  Lower case singular makes all the difference in the world.  This is
-R, after all, and as any self respecting R user that has read the
-seminal paper "Semantics of Capitalization, Punctuation, and Pluralization in R
-Function Names" can tell you, the former sums rows within groups, and the latter
-sums columns within rows.  You did read the memo, right?  Good.
-
-Even though the function names are self explanatory, let's illustrate for
-completeness:
-
-```{r}
-mx <- matrix(1:8, 4, byrow=TRUE) * 10 ^ (0:3)
-mx
-rowsum(mx, group=rep(c('odd', 'even'), 2))
-```
-
-`rowsum` preserved the two columns, but collapsed the rows by the `group` value.
-
-```{r eval=FALSE}
-rowSums(mx)       # note: output has been edited for clarity
-```
-```{r echo=FALSE}
-matrix(rowSums(mx))
-```
-
-`rowSums` collapsed the columns but preserved the rows.  Normally `rowSums`
-returns a vector, but here we display it as a one column matrix so the
-relationship to the input matrix is clear.
-
-Many R functions compute primarily in compiled code (e.g `sum`), several compute
-on arbitrary groups (e.g. `tapply`), some even compute on equal sized groups in
-compiled code (e.g. `rowSums`).  As far as I know, `rowsum` (singular, lower
-case...) is the only one that computes on arbitrary groups in compiled code.
-This is a big deal.  One of R's biggest weaknesses is that computing on groups
-requires calling R-level functions for each group, defeating the compiled code
-vectorizations that usually make R speedy.  `rowsum` gives us a tool to
-circumvent this limitation.
-
-
-
-All joking aside, I have known about `rowSums` for a long time, and have seen
-the name `rowsum` in passing, but it never occurred to me that the latter might
-do something as extraordinary as what it actually does: compute on arbitrary
-groups in compiled code.  
-
-
-but very few do both.
-
-
-`rowsum`
-there 
-I only more recently
-discovered `rowsum`.  It probably says more about me than I should admit but I
-was downright giddy when I realized _exactly_ what `rowsum` does.  After all,
-there are many base R functions that compute on arbitrary groups, and many base
-R functions that work directly in compiled code, but as far as I know base R
-functions that compute on arbitrary groups in compiled code are
-rare[^knowledge-caveat].  This is very useful:
-
-<!--
-I have known about rowSums for a long time, and I only more recently discovered rowsum. Imagine the excitement a taxidermist might feel on realizing they were just given the corpse of an albino fox, and not that of a white cat as they initially thought. That should capture the magnitude and significance of my excitement when I realized what rowsum does.
-
-How can a base R function possibly compete for excitement with a dead fox? Well, there are many base R functions that compute on arbitrary groups, and many base R functions that work directly in compiled code, but as far as I know base R functions that compute on arbitrary groups in compiled code are rare1. This is very useful:
--->
-```{r eval=FALSE}
-sys.time(x.rs <- rowsum(x, grp))
-```
-```
-   user  system elapsed
-  2.251   0.058   2.310
-```
-```{r eval=FALSE}
-all.equal(c(x.ref), c(x.rs), check.attributes=FALSE)
-```
-```
-[1] TRUE
-```
-
-Over three times faster than the original `tapply` solution, and at least
-plausibly in the same conversation as the `data.table` one.
-
-```{r echo=FALSE}
-funs <- c('tapply', 'rowsum', 'data.table')
-times <- data.frame(
-  Function=factor(funs, levels=funs),
-  time=c(7.308, 2.310, 0.973)
-)
-ggplot(times, aes(x=Function, y=time)) +
-  geom_col() +
-  # facet_wrap(~Function) +
-  ylab("Time in Sec (Less is Better)") +
-  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
-  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
-```
-
-I've wondered if I am alone in my delayed awareness of `rowsum`, but my attempts
-to measure the relative popularity of the two functions via search engine were
-fruitless.  Given the glaring semantic cues in `rowsum` vs `rowSums` I would
-have thought they would do better...  Thankfully years of using "R" as a search
-term have inured me to this type of search disappointment.
 
 # Pixie Dust
 
@@ -1353,7 +1252,127 @@ extraneous processes, including firefox.
 
 
 
-## testing whether we're better off with different method
+Note on vector size[^vec-size].
+
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Outtakes
+
+## Outtakes in Blog Post?
+
+When I first started to write the blog post I was exploring three different
+methods for computing group sums.  As is usually the case with R, there are many
+ways to do one things.  I include the slower two methods for completeness.
+
+## It's All In the Capitalization
+
+We take our first swing with `base::rowsum`.  That's right, `rowsum`, not
+`rowSums`.  Lower case singular makes all the difference in the world.  This is
+R, after all, and as any self respecting R user that has read the
+seminal paper "Semantics of Capitalization, Punctuation, and Pluralization in R
+Function Names" can tell you, the former sums rows within groups, and the latter
+sums columns within rows.  You did read the memo, right?  Good.
+
+Even though the function names are self explanatory, let's illustrate for
+completeness:
+
+```{r}
+mx <- matrix(1:8, 4, byrow=TRUE) * 10 ^ (0:3)
+mx
+rowsum(mx, group=rep(c('odd', 'even'), 2))
+```
+
+`rowsum` preserved the two columns, but collapsed the rows by the `group` value.
+
+```{r eval=FALSE}
+rowSums(mx)       # note: output has been edited for clarity
+```
+```{r echo=FALSE}
+matrix(rowSums(mx))
+```
+
+`rowSums` collapsed the columns but preserved the rows.  Normally `rowSums`
+returns a vector, but here we display it as a one column matrix so the
+relationship to the input matrix is clear.
+
+Many R functions compute primarily in compiled code (e.g `sum`), several compute
+on arbitrary groups (e.g. `tapply`), some even compute on equal sized groups in
+compiled code (e.g. `rowSums`).  As far as I know, `rowsum` (singular, lower
+case...) is the only one that computes on arbitrary groups in compiled code.
+This is a big deal.  One of R's biggest weaknesses is that computing on groups
+requires calling R-level functions for each group, defeating the compiled code
+vectorizations that usually make R speedy.  `rowsum` gives us a tool to
+circumvent this limitation.
+
+
+
+All joking aside, I have known about `rowSums` for a long time, and have seen
+the name `rowsum` in passing, but it never occurred to me that the latter might
+do something as extraordinary as what it actually does: compute on arbitrary
+groups in compiled code.  
+
+
+but very few do both.
+
+
+`rowsum`
+there 
+I only more recently
+discovered `rowsum`.  It probably says more about me than I should admit but I
+was downright giddy when I realized _exactly_ what `rowsum` does.  After all,
+there are many base R functions that compute on arbitrary groups, and many base
+R functions that work directly in compiled code, but as far as I know base R
+functions that compute on arbitrary groups in compiled code are
+rare[^knowledge-caveat].  This is very useful:
+
+<!--
+I have known about rowSums for a long time, and I only more recently discovered rowsum. Imagine the excitement a taxidermist might feel on realizing they were just given the corpse of an albino fox, and not that of a white cat as they initially thought. That should capture the magnitude and significance of my excitement when I realized what rowsum does.
+
+How can a base R function possibly compete for excitement with a dead fox? Well, there are many base R functions that compute on arbitrary groups, and many base R functions that work directly in compiled code, but as far as I know base R functions that compute on arbitrary groups in compiled code are rare1. This is very useful:
+-->
+```{r eval=FALSE}
+sys.time(x.rs <- rowsum(x, grp))
+```
+```
+   user  system elapsed
+  2.251   0.058   2.310
+```
+```{r eval=FALSE}
+all.equal(c(x.ref), c(x.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+Over three times faster than the original `tapply` solution, and at least
+plausibly in the same conversation as the `data.table` one.
+
+```{r echo=FALSE}
+funs <- c('tapply', 'rowsum', 'data.table')
+times <- data.frame(
+  Function=factor(funs, levels=funs),
+  time=c(7.308, 2.310, 0.973)
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col() +
+  # facet_wrap(~Function) +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+I've wondered if I am alone in my delayed awareness of `rowsum`, but my attempts
+to measure the relative popularity of the two functions via search engine were
+fruitless.  Given the glaring semantic cues in `rowsum` vs `rowSums` I would
+have thought they would do better...  Thankfully years of using "R" as a search
+term have inured me to this type of search disappointment.
+
+## colSums
 
 ```{r eval=FALSE}
 sum_g3 <- function(x, grp, na.rm=TRUE) {
@@ -1412,6 +1431,8 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
   else if(identical(mode, 'mean')) colMeans(res, na.rm=TRUE)
   else stop("Invalid mode")
 }
+```
+```
 slope2 <- function(x, y, grp) {
   ord <- order(grp)
   grp.ord <- grp[ord]
@@ -1516,51 +1537,6 @@ system.time(slope2a(x, y, grp))
    user  system elapsed
   2.998   1.055   4.082
 ```
-```{r eval=FALSE}
-dummy <- function(sizes) {
-  res <- vector("list", length(sizes))
-  for(i in seq_along(sizes)) {
-    mx <- matrix(numeric(), nrow=sizes[i], ncol=as.integer(1e6 / length(sizes)))
-    res[[i]] <- colSums(mx, na.rm=TRUE)
-  }
-}
-system.time(dummy(c(28, 21, 14, 7, 1)))
-```
-
-```{r eval=FALSE}
-
-DT <- copy(DT.raw)
-system.time(res.ref <- DT[, sum(x), keyby=grp][['V1']])
-  #   user  system elapsed
-  #  1.071   0.134   1.216
-system.time(res <- sum_g2(x, grp))
-  #   user  system elapsed
-  #  1.286   0.309   1.692
-all.equal(res, res.ref, check.attributes=FALSE) # TRUE
-
-system.time(res2 <- sum_g2(x, grp))
-system.time(res3 <- sum_g3(x, grp))
-system.time(res4 <- rowsum(x, grp))
-
-sum_winvector <- function(DF) {
-  odata <- DF[order(DF$grp),,drop=FALSE]
-  first_indices <- mark_first_in_each_group(odata, "grp")
-  sum_g(odata[['x']], first_indices)
-}
-```
-```
-  user  system elapsed
- 1.810   0.740   2.651
-```
-Note on vector size[^vec-size].
-
-
-# Conclusions
-
-<!-- this needs to become a shortcode -->
-<!-- this is populated by JS in feedback.html partial -->
-<div id='feedback-cont'></div>
-
 # Appendix
 
 ## Acknowledgments
