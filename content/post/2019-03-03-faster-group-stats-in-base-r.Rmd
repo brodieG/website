@@ -43,7 +43,13 @@ writeFansi <- function(x) {
   id='front-img' src='/front-img/rock-em-sock-em.png'
   class='post-inset-image'
 />
+<!--
+Image source:
+https://www.flickr.com/photos/ariels_photos/4195885445/in/photolist-7oM1yv-8fyCrd-na8xCB-naaZpy-na8EkB-LTtYa-6WxNKb-9JDyW-qhNGC7-9JDm3-9JDt2-7rYhX7-9JDgE-9JDSo-qighyD-5Eefam-MP7aqp-27hhiHB-9JDNS-9JDoL-7f7eAt-imcMdo-ioeXfv-PEADr-8fyCqS-8f4Nm4-8f4Nm8-8fdcpz-eoigzJ-enHBht-4faLtc-8fyCrq-8fyCrJ-UQBbNR-9JB87-8fdcqR-fuJahW-8eWrsR-8fdcqa-8fyCr1-eoigHu-6PbaCE-idksM7-enHzAn-enHB3p-6P6ZXr-bLw8Sz-4fGYzV-6PbaqN-eoihsS
 
+Ariel Waldman Copyright 2009
+CC BY-SA 2.0
+-->
 As we saw in our [previous post ][21], `data.table` is the group statistics
 heavyweight champ.  Its `gforce` functions and fast grouping put it head and
 shoulders above all challengers. And yet, here we are, about to throw our hat in
@@ -56,6 +62,8 @@ and pixie dust.
 # The Ring
 
 Ten million observations, ~one million groups, no holds barred:
+
+DISCLAIMER ABOUT GROUP COUNT?
 
 ```{r}
 RNGversion("3.5.2"); set.seed(42)
@@ -86,17 +94,25 @@ print.proc_time2 <- function(x, ...) {
 ) ) }
 ```
 
-Let's try a warm up round.  `sys.time` is a wrapper around `system.time` that
-runs the expression eleven times and returns the median timing.  It is [defined
-in the appendix](#sys.time).
+Let's try a warm up round by computing sums of `x` grouped by `grp`.  
 
 ```{r eval=FALSE}
-sys.time(x.ref <- tapply(x, grp, sum))
+sys.time({
+  grp.dat <- split(x, grp)
+  x.ref <- vapply(grp.dat, sum, 0)
+})
 ```
 ```
-   user  system elapsed
-  7.137   0.163   7.308
+   user  system elapsed 
+  6.552   0.161   6.806 
 ```
+
+This is roughly equivalent to and slightly faster than `tapply(x, grp, sum)`.
+
+`sys.time` is a wrapper around `system.time` that runs the expression eleven
+times and returns the median timing.  It is [defined in the
+appendix](#sys.time).
+
 ```{r eval=FALSE}
 library(data.table)
 DT <- data.table(grp, x)
@@ -108,16 +124,153 @@ sys.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
   0.941   0.030   0.973
 ```
 
-Ouch.  Even without multithreading `data.table` crushes `tapply`.
+Ouch.  Even without multithreading `data.table` crushes `split`/`vapply`.
 
 We use one thread for more stable and comparable results.  We'll show some
 multi-threaded benchmarks at the end.
 
-
-
 # Pixie Dust
 
-Sorting values prior to running `unique` on them makes `unique` faster:
+Something pretty remarkable happened between R3.2x and R3.3.0: the `data.table`
+team contributed their radix sort to R:
+
+<div class='aligncenter' style='width: 500px;'>
+```{r echo=FALSE}
+blogdown::shortcode('tweet', '1106231241488154626')
+```
+</div>
+
+In particular with `order`, the radix sort is **fifty** times faster than the
+shell sort it replaces.
+
+Reason #1 why this is a huge deal, as also shown in the tweet:
+
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  grp.dat.o <- split(xo, go)
+  x.ref.o <- vapply(grp.dat.o, sum, 0)
+})
+```
+```
+   user  system elapsed 
+  2.470   0.141   2.611 
+```
+```{r eval=FALSE}
+identical(x.ref, x.ref.o)
+```
+```
+[1] TRUE
+```
+
+Sorting values by group prior to running `split`/`vapply` makes them twice
+as fast, **including the time required to sort the data**.  We just doubled the
+speed of an important workhorse R function without touching the code.
+
+Pixie dust.  `data.table` pixie dust, really.  Maybe it's not exactly gracious
+of us to take advantage of a `data.table` improvement in base R to do battle
+with `data.table`, but what's the fun in being gracious nowadays?  If that
+satisfies your curiosity feel free to skip to the next section.
+
+We know that the performance improvement must come from the `split` step since
+it orders the groups, so the `vapply` step in both the sorted and unsorted input
+cases is the same:
+
+```{r}
+identical(grp.dat, grp.dat.o)
+```
+```
+[1] TRUE
+```
+
+Let's look at the [`treeprof`][22] timings for the two `split` calls:
+
+```
+times in milliseconds
+                                      unordered  |     ordered
+split --------------------------- : 7239 -    0  |  1573 -   0
+    split.default --------------- : 7239 - 1997  |  1573 - 137
+        as.factor --------------- : 5242 - 2471  |  1436 - 630
+            sort ---------------- : 2771 -    0  |   806 -   0
+                unique.default -- : 2705 - 2705  |   789 - 789
+                sort.default ---- :   67 -    0  |    17 -   0
+                    sort.int ---- :   67 -   27  |    17 -   7
+                        order --- :   40 -   40  |     9 -   9
+```
+
+For each of the unordered and ordered versions, `treeprof` reports the time
+spent evaluating each function[^treeprof-manip], and the amount of that time
+that cannot be attributed to child R-level function calls[^Rprof].  For example
+in the unordered case the `as.factor` call is evaluated in 5,242 milliseconds,
+of which 2,771 (5,245 - 2,471) are spent in child R-level function calls.  The
+balance, 2,471 milliseconds, is spent on evaluations outside of the R call
+stack, typically internal compiled code as called via "special"
+functions[^special-internal].
+
+Indeed splitting is much faster when the data is ordered.  The primary sources
+of the difference are:
+
+* "special" code in `split.default`:  1997 - 137 = 1860ms (15x speed-up)
+* "special" code in `as.factor`:      2471 - 630 = 1841ms (4x speed-up)
+* "special" code in `unique.default`: 2705 - 789 = 1906ms (3.5x speed-up)
+
+We can tell the difference are in compiled code because 
+
+<!-- Notes on Hash Tables in R - For Integers
+
+Haven't thought too hard about distinctions between long vs not long
+
+They are sized to be the closest power of 2 that is larger than twice the
+length of the input vector.
+
+https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L355
+
+Do I have this right?  This is insane if that's the case, as we can just create
+a vector that size and use the vector values as offsets?  Ah, no, because the
+vector value could be e.g. 2^31 - 1 in a vector of length 1000.
+
+One of the mindblowing things is that the hash table is self overlapping.  This
+allows the hash table to be a single integer vector instead of a list of cons
+cells.  It does lead to the odd situation that if you hit a hash code for the
+first time that spot may be occupied from a previous overflow.
+-->
+
+```{r eval=FALSE, echo=FALSE}
+vs <- function(x, grp) {
+  grp.dat <- split(x, grp)
+  vapply(grp.dat, sum, 0)
+}
+vso <- function(x, grp) {
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  grp.dat.o <- split(xo, go)
+  vapply(grp.dat.o, sum, 0)
+}
+
+treeprof::treeprof(vso(x, grp))
+treeprof::treeprof(vs(x, grp))
+treeprof::treeprof(vs(x, grp))
+treeprof::treeprof(vso(x, grp))
+
+treeprof::treeprof(tapply(x, grp, sum))
+```
+                                   milliseconds
+tapply -------------------------- : 8401 -    0
+    lapply ---------------------- : 5218 -  374
+    |   FUN --------------------- : 4844 - 3744
+    |       sort ---------------- : 1100 -    0
+    |           unique.default -- :  997 -  997
+    |           sort.default ---- :  103 -    0
+    |               sort.int ---- :  103 -   57
+    |                   order --- :   46 -   46
+    split ----------------------- : 2939 -    0
+    |   split.default ----------- : 2939 - 2939
+    as.integer ------------------ :  101 -  101
+    lengths --------------------- :   92 -   92
+
 
 ```{r eval=FALSE}
 grp.o <- grp[order(grp)]
@@ -188,16 +341,6 @@ ggplot(times, aes(x=Function, y=time)) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
 ```
 
-Now, you might be thinking, "oh, so maybe `data.table` isn't so special after
-all".  Well, the only reason this `order` pixie dust business is even possible
-is because `order` is so fast, and `order` is so fast because `data.table`
-contributed their pixie dust to R:
-
-<div class='aligncenter' style='width: 500px;'>
-```{r echo=FALSE}
-blogdown::shortcode('tweet', '1106231241488154626')
-```
-</div>
 
 <span id=alt-algo></span>
 One last thing before we move on: knowing that the data is sorted opens up
@@ -1960,6 +2103,15 @@ mapply(
   the relative error can be as low as ~14% or as high as 100%.
 [^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
   do the binary addition by hand...
+[^treeprof-manip]: We manually juxtaposed the output of two `treeprof` runs.
+[^special-internal]: Compiled code functions that can be invoked with the
+  `.Internal` or `.Primitive` interfaces without evaluating the parameters are
+  considered "special".  Not all functions invoked with `.Primitive` or
+  `.Internal` are special.  The `.Internal` function itself is a "special"
+  primitive.  See [R Internals][23] for details.
+[^Rprof]: `treeprof` collects its timings with `Rprof`, so you can consult
+  `?Rprof` for more details about the "total" and "self" times which are the
+  ones reported here.
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
 [2]: https://en.wikipedia.org/wiki/Hash_table
@@ -1982,3 +2134,5 @@ mapply(
 [19]: https://twitter.com/BrodieGaslam/status/1113783101262585856
 [20]: https://www.ibm.com/blogs/research/2018/12/8-bit-precision-training/
 [21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
+[22]: https://github.com/brodieG/treeprof
+[23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
