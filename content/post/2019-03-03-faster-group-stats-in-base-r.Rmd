@@ -218,6 +218,71 @@ of the difference are:
 
 We can tell the difference are in compiled code because 
 
+```{r echo=FALSE, fig.height=5}
+rds <- '../../static/data/group-stat-base-split-times.RDS'
+res <- readRDS(rds)
+
+colnames <- unique(names(res))
+resmx <- matrix(
+  unname(res), ncol=length(colnames), dimnames=list(NULL, colnames),
+  byrow=TRUE
+)
+normal.times <- vapply(resmx[,'normal'], function(x) median(x[,3]), 0)
+sorted.times <- vapply(resmx[,'sorted'], function(x) median(x[,3]), 0)
+
+resdf <- data.frame(
+  times=unlist(resmx[, 'times']),
+  n=unlist(resmx[, 'n']),
+  normal.raw=normal.times, sorted.raw=sorted.times
+)
+resdf <- transform(
+  resdf, normal.per=normal.raw/times, sorted.per=sorted.raw/times
+)
+resdf <- transform(resdf, sorted=sorted.per/n, random=normal.per/n)
+resdf <- transform(resdf, ratio=random/sorted)
+resdf <- transform(resdf, n=n * (8 + 4 * 1/10))
+
+library(reshape2)
+library(ggplot2)
+resdfm <- melt(resdf[c(1:2, 7:9)], id.vars=c('times', 'n'))
+resdfm <- transform(
+  resdfm, 
+  facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time')
+)
+cache.sizes <- c(15, 18, 22)
+cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB')
+
+dat <- resdfm
+ymax <- stack(tapply(log2(resdfm$value), resdfm$facet, max))
+names(ymax)[2] <- 'facet'
+dat.label <- as.data.frame(
+  c(lapply(ymax, rep, each=3), list(size=cache.sizes), list(label=cache.lab))
+)
+
+
+
+format_log_2 <- function(x) parse(text=paste0('2^', x))
+plot.els <- list(
+  geom_line(aes(x=log2(n), y=log2(value))),
+  geom_point(aes(x=log2(n), y=log2(value))),
+  scale_y_continuous(label=format_log_2),
+  scale_x_continuous(label=format_log_2),
+  geom_vline(data=NULL, xintercept=cache.sizes),
+  ylab("Time Per Input Element, Log Scale"),
+  xlab("Result Size in Bytes, Log Scale"),
+  theme(legend.position='bottom')
+)
+
+ggplot(dat, aes(x=log2(n), y=log2(value), color=variable)) +
+  facet_wrap(~facet, scales='free_y') +
+  geom_text(
+    data=dat.label,
+    aes(x=size, y=values, label=label, color=NULL),
+    hjust=0
+  ) + plot.els
+
+```
+
 <!-- Notes on Hash Tables in R - For Integers
 
 Haven't thought too hard about distinctions between long vs not long
@@ -235,6 +300,22 @@ One of the mindblowing things is that the hash table is self overlapping.  This
 allows the hash table to be a single integer vector instead of a list of cons
 cells.  It does lead to the odd situation that if you hit a hash code for the
 first time that spot may be occupied from a previous overflow.
+
+Split
+
+1. Factor vector read in sequence?  No, we don't need this again.
+2. Input numeric vector
+3. Output numeric vector
+
+For non-long vectors:
+
+1. Read factor level     (int)
+2. Read offset in group  (int)*
+3. Read source value sequentially - this need not be cached
+4. Write value           (double)*
+
+
+
 -->
 
 ```{r eval=FALSE, echo=FALSE}
