@@ -94,7 +94,8 @@ print.proc_time2 <- function(x, ...) {
 ) ) }
 ```
 
-Let's try a warm up round by computing sums of `x` grouped by `grp`.  
+Let's try a warm up round by computing sums of `x` grouped by `grp`.<span
+id=sum-unsorted></span>
 
 ```{r eval=FALSE}
 sys.time({
@@ -132,18 +133,10 @@ multi-threaded benchmarks at the end.
 # Pixie Dust
 
 Something pretty remarkable happened between R3.2x and R3.3.0: the `data.table`
-team contributed their radix sort to R:
+team [contributed their radix sort to R][24].  In particular with `order`, the
+radix sort is **fifty** times faster than the shell sort it replaces.
 
-<div class='aligncenter' style='width: 500px;'>
-```{r echo=FALSE}
-blogdown::shortcode('tweet', '1106231241488154626')
-```
-</div>
-
-In particular with `order`, the radix sort is **fifty** times faster than the
-shell sort it replaces.
-
-Reason #1 why this is a huge deal, as also shown in the tweet:
+Reason #1 why this is a huge deal:
 
 ```{r eval=FALSE}
 sys.time({
@@ -166,13 +159,15 @@ identical(x.ref, x.ref.o)
 ```
 
 Sorting values by group prior to running `split`/`vapply` makes them twice
-as fast, **including the time required to sort the data**.  We just doubled the
-speed of an important workhorse R function without touching the code.
+as fast as in the [unsorted case](#sum-unsorted), **including the time required
+to sort the data**.  We just doubled the speed of an important workhorse R
+function without touching the code.
 
 Pixie dust.  `data.table` pixie dust, really.  Maybe it's not exactly gracious
 of us to take advantage of a `data.table` improvement in base R to do battle
 with `data.table`, but what's the fun in being gracious nowadays?  If that
-satisfies your curiosity feel free to skip to the next section.
+satisfies your curiosity feel free to skip to the [next
+section](#so-you-think-you-can-group-stat).
 
 We know that the performance improvement must come from the `split` step since
 it orders the groups, so the `vapply` step in both the sorted and unsorted input
@@ -212,11 +207,52 @@ functions[^special-internal].
 Indeed splitting is much faster when the data is ordered.  The primary sources
 of the difference are:
 
-* "special" code in `split.default`:  1997 - 137 = 1860ms (15x speed-up)
-* "special" code in `as.factor`:      2471 - 630 = 1841ms (4x speed-up)
-* "special" code in `unique.default`: 2705 - 789 = 1906ms (3.5x speed-up)
+* "special" code in `split.default`:  1997 - 137 = 1860ms (~15x speed-up)
+* "special" code in `as.factor`:      2471 - 630 = 1841ms ( ~4x speed-up)
+* "special" code in `unique.default`: 2705 - 789 = 1906ms ( ~4x speed-up)
 
-We can tell the difference are in compiled code because 
+For `split.default`, the "special" code is the [internal C code][25] that
+allocates the result list of numeric vectors, and copies the input values into
+each list element according to the groups.
+
+* Computes the size of each group by tabulating factor levels.
+* Allocates a list of numeric vectors, one for each group of size as per above.
+* Scans through the input and the groups in step, copying the input values to
+  the vector corresponding to its group.
+
+These are three in essence three loops that have no order dependency in them, so
+in theory they should execute in the same amount of time.  While the logic of
+the code is not affected, 
+
+```{r eval=FALSE}
+colors <- 25
+groups <- 4
+# col.vals <- rep(sample(colors(), colors), groups)
+col.vals <- sample(viridisLite::viridis(colors), colors * groups, rep=TRUE)
+margin <- 0.1
+rows <- 10
+coords.raw <- c(margin, margin, 1 - margin, 1 - margin)
+coords.scale <- coords.raw / rows
+shift <- (1 - 2 * margin) / (rows - 1) * (0:(rows - 1))
+shifts <- expand.grid(xs=shift, ys=shift)
+coords <- matrix(coords.scale, nrow=100, ncol=4, byrow=TRUE)
+coords[, c(1,3)] <- coords[, c(1,3)] + shifts[[1]]
+coords[, c(2,4)] <- coords[, c(2,4)] + shifts[[2]]
+plot.new()
+rect(coords[,1], coords[,2], coords[,3], coords[,4],
+  col=rep(viridisLite::viridis(25), 4))
+
+```
+
+
+a calls to `.Internal(split(x, f))`,
+where `x` is the vector to split and `f` the factor to split along.  That code
+essentially boils down to:
+
+* Loop through factor and compute how many instances of each level there are
+* Allocate list of numeric vectors, each of size computed in prior step
+* Scan through `x` and `f`, copying values of `x` to the numeric vectors in the
+  previously allocated list as dictated by `f`.
 
 ```{r echo=FALSE, fig.height=5}
 rds <- '../../static/data/group-stat-base-split-times.RDS'
@@ -277,7 +313,7 @@ ggplot(dat, aes(x=log2(n), y=log2(value), color=variable)) +
   facet_wrap(~facet, scales='free_y') +
   geom_text(
     data=dat.label,
-    aes(x=size, y=values, label=label, color=NULL),
+    aes(x=size + .125, y=values, label=label, color=NULL),
     hjust=0
   ) + plot.els
 
@@ -310,8 +346,14 @@ Split
 For non-long vectors:
 
 1. Read factor level     (int)
-2. Read offset in group  (int)*
-3. Read source value sequentially - this need not be cached
+2. Read offset in group  (int)*  Random seek in lvls long vector
+3. Read input            (dbl)
+4. Write to output       (dbl)*  Random seek in lvls long vec of vecs
+5. Increment offset      (int)
+5. Write offset          (int)   Should still be in cache
+
+
+   source value sequentially - this need not be cached
 4. Write value           (double)*
 
 
@@ -2217,3 +2259,5 @@ mapply(
 [21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
 [22]: https://github.com/brodieG/treeprof
 [23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
+[24]: https://twitter.com/BrodieGaslam/status/1106231241488154626
+[25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
