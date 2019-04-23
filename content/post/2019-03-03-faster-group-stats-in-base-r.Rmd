@@ -224,24 +224,41 @@ These are three in essence three loops that have no order dependency in them, so
 in theory they should execute in the same amount of time.  While the logic of
 the code is not affected, 
 
-```{r eval=FALSE}
-colors <- 25
-groups <- 4
+```{r}
+colors <- 10
+groups <- 10
 # col.vals <- rep(sample(colors(), colors), groups)
-col.vals <- sample(viridisLite::viridis(colors), colors * groups, rep=TRUE)
-margin <- 0.1
-rows <- 10
-coords.raw <- c(margin, margin, 1 - margin, 1 - margin)
-coords.scale <- coords.raw / rows
-shift <- (1 - 2 * margin) / (rows - 1) * (0:(rows - 1))
-shifts <- expand.grid(xs=shift, ys=shift)
-coords <- matrix(coords.scale, nrow=100, ncol=4, byrow=TRUE)
-coords[, c(1,3)] <- coords[, c(1,3)] + shifts[[1]]
-coords[, c(2,4)] <- coords[, c(2,4)] + shifts[[2]]
+
+rect_coords <- function(rows, margin) {
+  coords.raw <- c(margin, margin, 1 - margin, 1 - margin)
+  coords.scale <- coords.raw / rows
+
+  shift <- (1) / (rows) * (0:(rows - 1))
+  shifts <- expand.grid(xs=shift, ys=shift)
+  coords <- matrix(coords.scale, nrow=100, ncol=4, byrow=TRUE)
+  coords[, c(1,3)] <- coords[, c(1,3)] + shifts[[1]]
+  coords[, c(2,4)] <- coords[, c(2,4)] + shifts[[2]]
+  coords
+}
+col.vals <- rainbow(colors)[sample(colors * groups) %% colors + 1]
+coords <- rect_coords(10, 0.1)
+
+old.par <- par(bg='#CCCCCC', mai=numeric(4), mfrow=c(1,2))
+plot.window(c(0,1), c(0,1), asp=1)
 plot.new()
 rect(coords[,1], coords[,2], coords[,3], coords[,4],
-  col=rep(viridisLite::viridis(25), 4))
-
+  col=col.vals, border=NA
+)
+coords2 <- rect_coords(10, 0)
+plot.new()
+rect(coords2[,1], coords2[,2], coords2[,3], coords2[,4],
+  col=matrix(sort(col.vals), nrow=10, byrow=TRUE), border=NA
+)
+coords1 <- rect_coords(10, 0.2)
+rect(coords1[,1], coords1[,2], coords1[,3], coords1[,4],
+  col='#CCCCCC', border=NA
+)
+par(old.par)
 ```
 
 
@@ -346,12 +363,19 @@ Split
 For non-long vectors:
 
 1. Read factor level     (int)
-2. Read offset in group  (int)*  Random seek in lvls long vector
+2. Read offset in group  (int)xx  Random seek in lvls long vector
 3. Read input            (dbl)
-4. Write to output       (dbl)*  Random seek in lvls long vec of vecs
-5. Increment offset      (int)
-5. Write offset          (int)   Should still be in cache
+4. Read list element     (ptr)xx
+5. Read group element    (dbl)x   In most cases should be from after read above
+6. Write group elment    (dbl)    Random seek in lvls long vec of vecs
+7. Increment offset      (int).
+8. Write offset          (int)    Should still be in cache
 
+Vs. 
+
+1. Read offset
+2. Read input            (dbl)xx
+3. Write to output       (dbl)
 
    source value sequentially - this need not be cached
 4. Write value           (double)*
