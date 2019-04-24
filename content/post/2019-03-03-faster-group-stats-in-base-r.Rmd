@@ -104,8 +104,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  6.552   0.161   6.806 
+   user  system elapsed
+  6.552   0.161   6.806
 ```
 
 This is roughly equivalent to and slightly faster than `tapply(x, grp, sum)`.
@@ -148,8 +148,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  2.470   0.141   2.611 
+   user  system elapsed
+  2.470   0.141   2.611
 ```
 ```{r eval=FALSE}
 identical(x.ref, x.ref.o)
@@ -213,68 +213,156 @@ of the difference are:
 
 For `split.default`, the "special" code is the [internal C code][25] that
 allocates the result list of numeric vectors, and copies the input values into
-each list element according to the groups.
+each list element according to the groups.  To understand the performance
+differences here we can play a game that approximates what the code does.
 
-* Computes the size of each group by tabulating factor levels.
-* Allocates a list of numeric vectors, one for each group of size as per above.
-* Scans through the input and the groups in step, copying the input values to
-  the vector corresponding to its group.
+Imagine we have been given a board full of tokens, each identified by one of
+eighteen possible two letter combinations[^game-size].  We have also been given
+a box with eighteen slots, each one labeled with one of the possible letter
+combinations.  Our job is to transfer the tokens from the board into the slot
+with the same label:
 
-These are three in essence three loops that have no order dependency in them, so
-in theory they should execute in the same amount of time.  While the logic of
-the code is not affected, 
-
-```{r}
-colors <- 10
-groups <- 10
-# col.vals <- rep(sample(colors(), colors), groups)
-
-rect_coords <- function(rows, margin) {
-  coords.raw <- c(margin, margin, 1 - margin, 1 - margin)
-  coords.scale <- coords.raw / rows
-
-  shift <- (1) / (rows) * (0:(rows - 1))
-  shifts <- expand.grid(xs=shift, ys=shift)
-  coords <- matrix(coords.scale, nrow=100, ncol=4, byrow=TRUE)
-  coords[, c(1,3)] <- coords[, c(1,3)] + shifts[[1]]
-  coords[, c(2,4)] <- coords[, c(2,4)] + shifts[[2]]
-  coords
-}
-col.vals <- rainbow(colors)[sample(colors * groups) %% colors + 1]
-coords <- rect_coords(10, 0.1)
-
-old.par <- par(bg='#CCCCCC', mai=numeric(4), mfrow=c(1,2))
-plot.window(c(0,1), c(0,1), asp=1)
-plot.new()
-rect(coords[,1], coords[,2], coords[,3], coords[,4],
-  col=col.vals, border=NA
-)
-coords2 <- rect_coords(10, 0)
-plot.new()
-rect(coords2[,1], coords2[,2], coords2[,3], coords2[,4],
-  col=matrix(sort(col.vals), nrow=10, byrow=TRUE), border=NA
-)
-coords1 <- rect_coords(10, 0.2)
-rect(coords1[,1], coords1[,2], coords1[,3], coords1[,4],
-  col='#CCCCCC', border=NA
-)
-par(old.par)
+```{r echo=FALSE, eval=FALSE}
+strings <- sample(do.call(paste0, expand.grid(LETTERS, LETTERS)), 18)
+strings.s <- matrix(sample(rep(strings, 8)), ncol=8)
+for(i in seq_len(nrow(strings.s))) cat(strings.s[i,], '\n')
+```
+```
+        TOKENS                        SLOTS
+        ------                        -----
+CE DM FK LB PL QU UE VF               QG [ ]
+CE DM FK LB PL QU UE VF               XD [ ]
+CE DM FK LD PL QU UE XD               DM [ ]
+CE DM FK LD PL QU UE XD               PL [ ]
+CE DM JY LD PL QU VA XD               CE [ ]
+CE DM JY LD PL QU VA XD               RF [ ]
+CE DS JY LD PL RF VA XD               ZB [ ]
+CE DS JY LD PL RF VA XD               QU [ ]
+CK DS JY LD QG RF VA XD               VA [ ]
+CK DS JY LD QG RF VA XD               VF [ ]
+CK DS JY PH QG RF VA ZB               UE [ ]
+CK DS JY PH QG RF VA ZB               LD [ ]
+CK DS LB PH QG RF VF ZB               DS [ ]
+CK DS LB PH QG RF VF ZB               LB [ ]
+CK FK LB PH QG UE VF ZB               FK [ ]
+CK FK LB PH QG UE VF ZB               JY [ ]
+DM FK LB PH QU UE VF ZB               CK [ ]
+DM FK LB PH QU UE VF ZB               PH [ ]
 ```
 
+We choose to start with the first "CE" token.  We pick it up and scan the slot
+labels for the matching slot until we find it and drop the token in it. The next
+token down is also labeled "CE".  This time, since we remember where we just
+dropped the last token we can repeat the action with little fuss.  This allows
+us to quickly transfer the remaining sequence of six "CE" tokens into their
+slot.  Then we must slow down to find the "CK" slot, but again, after the first
+transfer the seven subsequent ones can happen quickly because we remember what
+slot we need to go back to.
 
-a calls to `.Internal(split(x, f))`,
-where `x` is the vector to split and `f` the factor to split along.  That code
-essentially boils down to:
+Even though we have 144 tokens we can do the transfer reasonably quickly because
+we only need to do eighteen full slot scans.
 
-* Loop through factor and compute how many instances of each level there are
-* Allocate list of numeric vectors, each of size computed in prior step
-* Scan through `x` and `f`, copying values of `x` to the numeric vectors in the
-  previously allocated list as dictated by `f`.
+Imagine instead if the board we had been given looked as follows:
+
+```
+        TOKENS                        SLOTS
+        ------                        -----
+PH VA FK PH ZB JY DM XD               QG [ ]
+LB QU VF LB QU JY XD DS               XD [ ]
+QG QG JY LD VA QG LD RF               DM [ ]
+DM RF QU XD RF XD CK PH               PL [ ]
+VA FK XD DS UE JY JY PL               CE [ ]
+QG UE UE CE VF PL DS XD               RF [ ]
+FK LD PH CK UE PH LD VF               ZB [ ]
+QG CE FK LB LD ZB DM CE               QU [ ]
+VF VA RF FK DM CK DM VA               VA [ ]
+UE CE LB UE LB RF LB QG               VF [ ]
+DM ZB QU VF ZB QU LB DM               UE [ ]
+ZB DS QU JY JY PL PL QU               LD [ ]
+ZB QU RF DS PH XD LD XD               DS [ ]
+FK RF VA VF VA JY VF PL               LB [ ]
+ZB CK CE CE CK PH CE CK               FK [ ]
+PH FK FK UE VA VF DS LD               JY [ ]
+ZB LD UE QG DS DM PL LB               CK [ ]
+CK PL DS CE RF PL QG CK               PH [ ]
+```
+
+After our first "PH" token we have two choices: start with the next token with a
+different label and scan the slot list again, or scan all tokens to find all the
+"PH" tokens.  If we have a good memory we might be able to remember the location
+for a few of the labels so that each time we hit one of them we can transfer to
+the matching slot without needing to scan the slots.  Either way, it will take
+us much longer than when the tokens were sorted, and this is essentially because
+we can't easily memorize the locations of the eighteen slots.
+
+Even though computers are much better at remembering than us humans, they resort
+to some compromises to optimize the cost vs performance trade-off, and those
+come into play here.  In particular, really fast memory is expensive so
+computers only have a little bit of it and it is used as a temporary holding
+pool for data and instructions while they are in use.  This type of memory is
+known as "cache".
+
+In addition to the main memory, my system has three levels of cache: L1, L2, and
+L3.  Here are typical access times and sizes of various cache levels and:
+
+<!--
+<div style='max-width: 90%; white-space: nowrap; margin: auto;'>
+<div style='max-width: 45%;'>
+```{r fig.width=3, echo=FALSE}
+labels <- c('L1', 'L2', 'L3', 'Main')
+times <- c(3, 15, 40, 250)
+sizes <- c(2^15, 2^18, 2^21, 2^33)
+
+library(ggplot2)
+ggplot(data.frame(labels=labels, cycles=times)) +
+  geom_col(aes(labels, cycles))
+ggplot(data.frame(labels=labels, sizes=sizes)) +
+  geom_col(aes(labels, sizes)) + coord_cartesian(ylim=c(0,2^24))
+```
+</div>
+</div>
+-->
+
+```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
+labels <- c('L1', 'L2', 'L3', 'Main')
+times <- c(3, 15, 40, 250)
+sizes <- c(2^15, 2^18, 2^21, 2^33)
+
+library(ggplot2)
+ggplot(data.frame(labels=labels, cycles=times), aes(labels, cycles)) +
+  geom_col() + xlab(NULL) +
+  geom_label(aes(label=times), vjust=-.25) +
+  ylab('Access Time (CPU Cycles)') +
+  scale_y_continuous(expand=expand_scale(mult=c(0.05, 0.15)))
+ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
+  geom_col(color='grey35') +
+  geom_col() +
+  ylab('Memory Size (MB)') + xlab(NULL) +
+  geom_label(
+    aes(
+      label=c('32KB', '256KB', '2MB', '8GB^^'),
+      y=c(head(sizes, -1), 290)
+    ), vjust=-.25
+  ) +
+  # expand doesn't work with ylim
+  # scale_y_continuous(expand=expand_scale(mult=c(0.05, 0.10)))
+  coord_cartesian(ylim=c(0, 300*1.1/1.05))
+  # coord_cartesian(ylim=c(0,2^4))
+```
+
+My processor is clocked at 1.2GHz, so L1 cache can be accessed in `$3 \times
+1/1.2GHz = 2.5ns$`.  Each subsequent level of cache is slower, up
+to main memory which is two orders of magnitude slower.  The flipside is that
+there is very little L1 cache[^l1-data-vs-inst], a measly 32KB.  So little that
+if I didn't truncate the plot at 300MB you wouldn't be able to see it, and
+certainly nowhere near large enough to hold 10 million double precision numbers..
+
+One way we can inspect real life effect of cache effects is to vary the size of
+our problem and time each run:
 
 ```{r echo=FALSE, fig.height=5}
-rds <- '../../static/data/group-stat-base-split-times.RDS'
+rds <- '../../static/data/group-stat-base-split-times-2.RDS'
 res <- readRDS(rds)
-
 colnames <- unique(names(res))
 resmx <- matrix(
   unname(res), ncol=length(colnames), dimnames=list(NULL, colnames),
@@ -299,7 +387,7 @@ library(reshape2)
 library(ggplot2)
 resdfm <- melt(resdf[c(1:2, 7:9)], id.vars=c('times', 'n'))
 resdfm <- transform(
-  resdfm, 
+  resdfm,
   facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time')
 )
 cache.sizes <- c(15, 18, 22)
@@ -311,9 +399,6 @@ names(ymax)[2] <- 'facet'
 dat.label <- as.data.frame(
   c(lapply(ymax, rep, each=3), list(size=cache.sizes), list(label=cache.lab))
 )
-
-
-
 format_log_2 <- function(x) parse(text=paste0('2^', x))
 plot.els <- list(
   geom_line(aes(x=log2(n), y=log2(value))),
@@ -321,7 +406,8 @@ plot.els <- list(
   scale_y_continuous(label=format_log_2),
   scale_x_continuous(label=format_log_2),
   geom_vline(data=NULL, xintercept=cache.sizes),
-  ylab("Time Per Input Element, Log Scale"),
+  geom_vline(data=NULL, xintercept=26.32),
+  ylab("Time Per Input Element, Seconds, Log Scale"),
   xlab("Result Size in Bytes, Log Scale"),
   theme(legend.position='bottom')
 )
@@ -335,6 +421,57 @@ ggplot(dat, aes(x=log2(n), y=log2(value), color=variable)) +
   ) + plot.els
 
 ```
+
+All axes are log base 2.  The dashed vertical line represents our current
+working set size (i.e. 10MM entries)[^working-set-size].
+
+Whether the data is ordered does not appear to affect performance so long as it
+fits in completely in L1 cache.  In that case, the CPU is able to quickly find
+the target vector for each element in the input.  The declining timings from set
+size `$2^10$` through `$2^15$` are likely due to amortization of fixed overhead
+in the `split.default` call.  It is difficult to be certain that all operations
+for data sets at or below `$2^15$` is indeed being fed out of L1 cache, but
+given the timing per element is ~24 cycles and there are six memory operations
+involved for each element copy, it is highly probably this is
+all indeed happening in L1[^time-in-cycles][^split-ops].
+
+
+
+It would be as if we were only given 1-4 different token
+labels in the previous game: we would memorize the slot locations and transfer
+the tokens quickly.
+
+This is the computer equivalent of dealing
+with the tokens bearing a small set of the possible labels, say 1-4, so that we
+can memorize the corresponding slot locations and transfer tokens with little
+thought.
+
+two, three, or maybe four label/slot combinations in the token/slot game
+from earlier.  We can easily remember the slot locations  
+them 
+
+
+is a bit of noise int 
+
+
+* Computes the size of each group by tabulating factor levels.
+* Allocates a list of numeric vectors, one for each group of size as per above.
+* Scans through the input and the groups in step, copying the input values to
+  the vector corresponding to its group.
+
+These are three in essence three loops that have no order dependency in them, so
+in theory they should execute in the same amount of time.  While the logic of
+the code is not affected,
+
+a calls to `.Internal(split(x, f))`,
+where `x` is the vector to split and `f` the factor to split along.  That code
+essentially boils down to:
+
+* Loop through factor and compute how many instances of each level there are
+* Allocate list of numeric vectors, each of size computed in prior step
+* Scan through `x` and `f`, copying values of `x` to the numeric vectors in the
+  previously allocated list as dictated by `f`.
+
 
 <!-- Notes on Hash Tables in R - For Integers
 
@@ -371,7 +508,7 @@ For non-long vectors:
 7. Increment offset      (int).
 8. Write offset          (int)    Should still be in cache
 
-Vs. 
+Vs.
 
 1. Read offset
 2. Read input            (dbl)xx
@@ -1604,14 +1741,14 @@ circumvent this limitation.
 All joking aside, I have known about `rowSums` for a long time, and have seen
 the name `rowsum` in passing, but it never occurred to me that the latter might
 do something as extraordinary as what it actually does: compute on arbitrary
-groups in compiled code.  
+groups in compiled code.
 
 
 but very few do both.
 
 
 `rowsum`
-there 
+there
 I only more recently
 discovered `rowsum`.  It probably says more about me than I should admit but I
 was downright giddy when I realized _exactly_ what `rowsum` does.  After all,
@@ -2259,6 +2396,31 @@ mapply(
 [^Rprof]: `treeprof` collects its timings with `Rprof`, so you can consult
   `?Rprof` for more details about the "total" and "self" times which are the
   ones reported here.
+[^game-size]: Eighteen is an arbitrary number of distinct elements picked to be
+  large enough so that it is non trivial for humans to scan through them.
+[^l1-data-vs-inst]: My system actually has 64KB of L1 cache, but it is split
+  into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).
+[^time-in-cycles]: `$2^{-25.6}s per element / (1 / 1.2GHz) \approx 24 cycles per element$`.
+[^split-ops]: The operations involving memory are: read input value (1), read
+  factor level (2), fetch target vector from result list (3), read offset in
+  target vector (4), write value to target vector at offset (5), and increment
+  offset (6).
+[^working-set-size]: We use for working set size the portion of the data that
+  cannot be accessed sequentially when the input is randomized.  This is the
+  size of the result list of vectors which will be a little over 10MM elements
+  each 8 bytes in size, and the offset tracking vector which will be ~1MM
+  elements, each 4 bytes in size.  In reality there is more data involved, but
+  because the rest of it are accessed sequentially, their impact on cache
+  utilization is much lower.
+
+1. Read factor level     (int)
+2. Read offset in group  (int)xx  Random seek in lvls long vector
+3. Read input            (dbl)
+4. Read list element     (ptr)xx
+5. Read group element    (dbl)x   In most cases should be from after read above
+6. Write group elment    (dbl)    Random seek in lvls long vec of vecs
+7. Increment offset      (int).
+8. Write offset          (int)    Should still be in cache
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
 [2]: https://en.wikipedia.org/wiki/Hash_table
