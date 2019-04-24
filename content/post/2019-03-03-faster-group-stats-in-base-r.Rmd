@@ -325,13 +325,14 @@ ggplot(data.frame(labels=labels, sizes=sizes)) +
 
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
 labels <- c('L1', 'L2', 'L3', 'Main')
-accews.times <- c(3, 15, 40, 250)
+# access.times <- c(3, 15, 40, 250)
+access.times <- c(4, 10, 40, 250)
 sizes <- c(2^15, 2^18, 2^21, 2^33)
 
 library(ggplot2)
-ggplot(data.frame(labels=labels, cycles=acccess.times), aes(labels, cycles)) +
+ggplot(data.frame(labels=labels, cycles=access.times), aes(labels, cycles)) +
   geom_col() + xlab(NULL) +
-  geom_label(aes(label=acccess.times), vjust=-.25) +
+  geom_label(aes(label=access.times), vjust=-.25) +
   ylab('Access Time (CPU Cycles)') +
   scale_y_continuous(expand=expand_scale(mult=c(0.05, 0.15)))
 ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
@@ -361,11 +362,13 @@ One way we can inspect real life effect of cache effects is to vary the size of
 our problem and time each run:
 
 ```{r echo=FALSE, fig.height=5}
-res1 <- readRDS('static/data/group-stat-base-split-times.RDS')
-res2 <- readRDS('static/data/group-stat-base-split-times-2.RDS')
-res3 <- readRDS('static/data/group-stat-base-split-times-3.RDS')
+base <- ('../../static/data/group-stat-base-split-times%s.RDS')
+res1 <- readRDS(sprintf(base, ''))
+res2 <- readRDS(sprintf(base, '-2'))
+res3 <- readRDS(sprintf(base, '-3'))
 
 res.all <- c(res1, res2, res3)
+colnames <- unique(names(res.all))
 res.all.mx <- matrix(res.all, ncol=4, dimnames=list(NULL, colnames), byrow=TRUE)
 mx.lens <- vapply(res.all.mx[,1], nrow, 0)
 resdf <- data.frame(
@@ -377,6 +380,7 @@ resdf <- data.frame(
 resdf <- transform(resdf, ratio=random/sorted)
 
 library(ggplot2)
+library(ggbeeswarm)
 library(reshape2)
 resdfm <- transform(
   melt(resdf, id.vars=c('n', 'times')),
@@ -400,23 +404,30 @@ resdfmm <- transform(
 ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
 cache.sizes <- c(15, 18, 22, log2(1e7 * (8 + 4/10)))
 cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB', '10MM\nItems')
-cache.styles <- rep(c(rep('solid', 3), 'dashed'), 2)
+cache.styles <- c(rep('solid', 3), 'dashed')
 dat.label <- as.data.frame(
   c(
     lapply(ymax, rep, each=length(cache.sizes)),
-    list(size=cache.sizes), list(label=cache.lab), list(style=cache.styles)
+    list(size=unname(cache.sizes)),
+    list(label=cache.lab), list(style=cache.styles)
 ) )
 names(dat.label)[2] <- 'facet'
 format_log_2 <- function(x) parse(text=paste0('2^', x))
-colors <- c(,
 
+extra <- list(
+  geom_quasirandom(position='dodge', alpha=0.15),
+  scale_y_continuous(label=format_log_2),
+  scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))),
+  scale_shape_manual(values=c(Single=16, Median=18)),
+  ylab("Time Per Input Element, Seconds, Log Scale"),
+  xlab("Result Size in Bytes, Log Scale"),
+  theme(legend.position='bottom', legend.title=element_blank())
+)
 ggplot(
   resdfm,
   aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
 ) +
-  facet_wrap(~facet, scales='free_y') +
-  geom_quasirandom(position='dodge', alpha=0.15) +
-  geom_point(data=resdfmm, size=3) +
+  extra +
   geom_text(
     data=dat.label,
     aes(
@@ -424,16 +435,12 @@ ggplot(
     ),
     color='black', hjust=0
   ) +
-  scale_y_continuous(label=format_log_2) +
-  scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))) +
-  scale_shape_manual(values=c(Single=16, Median=18)) +
+  geom_point(data=resdfmm, size=3) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=rep(cache.styles, 2)) +
   scale_color_manual(
     values=c(random='#cccc00', sorted='#33ee33', ratio='#3333ee')
   ) +
-  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles) +
-  ylab("Time Per Input Element, Seconds, Log Scale") +
-  xlab("Result Size in Bytes, Log Scale") +
-  theme(legend.position='bottom', legend.title=element_blank())
+  facet_wrap(~facet, scales='free_y')
 ```
 
 All axes are log base 2.  The dashed vertical line represents our current
@@ -449,11 +456,47 @@ given the timing per element is ~24 cycles and there are six memory operations
 involved for each element copy, it is highly probably this is
 all indeed happening in L1[^time-in-cycles][^split-ops].
 
-```{r}
-cache.sizes <- c(15, 18, 22, Inf)
-access.times <- c()
-```
+```{r echo=FALSE}
+test.sizes <- c(9:25)
+mem.sizes <- c(L1=15, L2=18, L3=22, Main=33)
+set.sizes <- setNames(2^test.sizes * (8 + 4/10), test.sizes)
+hit.rates <- outer(
+  set.sizes, 2^mem.sizes, function(x, y) 1 - pmax(0, x - y) / x
+)
 
+times <- matrix(numeric(), nrow=nrow(hit.rates), ncol=ncol(hit.rates))
+mult <- rep(1, nrow(hit.rates))
+for(i in seq_len(ncol(hit.rates))) {
+  times[,i] <- hit.rates[,i] * access.times[i] * mult
+  mult <- mult * (1 - hit.rates[,i])
+}
+mdl.dat <- data.frame(
+  x=log2(set.sizes), y=log2((rowSums(times) + 20) / 1.2e9),
+  variable='modeled'
+)
+resdfm2 <- transform(subset(resdfm, variable == 'random'), variable='observed')
+resdfmm2 <- transform(subset(resdfmm, variable == 'random'), variable='observed')
+ggplot(
+  resdfm2,
+  aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
+) +
+  extra +
+  geom_text(
+    data=subset(dat.label, facet == 'time'),
+    aes(
+      x=size + .125, y=values, label=label, color=NULL, group=NULL, shape=NULL
+    ),
+    color='black', hjust=0
+  ) +
+  geom_point(data=resdfmm2, size=3) +
+  geom_point(
+    data=mdl.dat,
+    aes(x=x, y=y, shape=NULL), size=1
+  ) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles) +
+  scale_color_manual(values=c(observed='#cccc00', modeled='gray35')) +
+  ggtitle("Random Order Timings, Observed and Modeled")
+```
 
 It would be as if we were only given 1-4 different token
 labels in the previous game: we would memorize the slot locations and transfer
@@ -2420,7 +2463,7 @@ mapply(
   into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).
 [^time-in-cycles]: `$2^{-25.6}s per element / (1 / 1.2GHz) \approx 24 cycles per element$`.
 [^split-ops]: The operations involving memory are: read input value (1), read
-  factor level (2), fetch target vector from result list (3), read offset in
+  factor level (2), fetch target vector from result list (3), read offset for
   target vector (4), write value to target vector at offset (5), and increment
   offset (6).
 [^working-set-size]: We use for working set size the portion of the data that
