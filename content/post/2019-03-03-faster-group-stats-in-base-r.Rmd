@@ -325,13 +325,13 @@ ggplot(data.frame(labels=labels, sizes=sizes)) +
 
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
 labels <- c('L1', 'L2', 'L3', 'Main')
-times <- c(3, 15, 40, 250)
+accews.times <- c(3, 15, 40, 250)
 sizes <- c(2^15, 2^18, 2^21, 2^33)
 
 library(ggplot2)
-ggplot(data.frame(labels=labels, cycles=times), aes(labels, cycles)) +
+ggplot(data.frame(labels=labels, cycles=acccess.times), aes(labels, cycles)) +
   geom_col() + xlab(NULL) +
-  geom_label(aes(label=times), vjust=-.25) +
+  geom_label(aes(label=acccess.times), vjust=-.25) +
   ylab('Access Time (CPU Cycles)') +
   scale_y_continuous(expand=expand_scale(mult=c(0.05, 0.15)))
 ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
@@ -361,65 +361,79 @@ One way we can inspect real life effect of cache effects is to vary the size of
 our problem and time each run:
 
 ```{r echo=FALSE, fig.height=5}
-rds <- '../../static/data/group-stat-base-split-times-2.RDS'
-res <- readRDS(rds)
-colnames <- unique(names(res))
-resmx <- matrix(
-  unname(res), ncol=length(colnames), dimnames=list(NULL, colnames),
-  byrow=TRUE
-)
-normal.times <- vapply(resmx[,'normal'], function(x) median(x[,3]), 0)
-sorted.times <- vapply(resmx[,'sorted'], function(x) median(x[,3]), 0)
+res1 <- readRDS('static/data/group-stat-base-split-times.RDS')
+res2 <- readRDS('static/data/group-stat-base-split-times-2.RDS')
+res3 <- readRDS('static/data/group-stat-base-split-times-3.RDS')
 
+res.all <- c(res1, res2, res3)
+res.all.mx <- matrix(res.all, ncol=4, dimnames=list(NULL, colnames), byrow=TRUE)
+mx.lens <- vapply(res.all.mx[,1], nrow, 0)
 resdf <- data.frame(
-  times=unlist(resmx[, 'times']),
-  n=unlist(resmx[, 'n']),
-  normal.raw=normal.times, sorted.raw=sorted.times
+  random=unlist(lapply(res.all.mx[, 1], function(x) x[,3])),
+  sorted=unlist(lapply(res.all.mx[, 2], function(x) x[,3])),
+  n=rep(unlist(res.all.mx[, 3]), mx.lens),
+  times=rep(unlist(res.all.mx[, 4]), mx.lens)
 )
-resdf <- transform(
-  resdf, normal.per=normal.raw/times, sorted.per=sorted.raw/times
-)
-resdf <- transform(resdf, sorted=sorted.per/n, random=normal.per/n)
 resdf <- transform(resdf, ratio=random/sorted)
-resdf <- transform(resdf, n=n * (8 + 4 * 1/10))
 
-library(reshape2)
 library(ggplot2)
-resdfm <- melt(resdf[c(1:2, 7:9)], id.vars=c('times', 'n'))
+library(reshape2)
+resdfm <- transform(
+  melt(resdf, id.vars=c('n', 'times')),
+  time.per=ifelse(variable=='ratio', value, value/(n*times)),
+  size=n*(8 + 4/10)
+)
 resdfm <- transform(
   resdfm,
-  facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time')
+  facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
+  shape='Single'
 )
-cache.sizes <- c(15, 18, 22)
-cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB')
+resmm <- tapply(resdfm$time.per, resdfm[c('variable', 'n')], median)
+resdfmm <- melt(resmm)
+names(resdfmm)[3] <- 'time.per'
+resdfmm <- transform(
+  resdfmm,
+  facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
+  shape='Median'
+)
 
-dat <- resdfm
-ymax <- stack(tapply(log2(resdfm$value), resdfm$facet, max))
-names(ymax)[2] <- 'facet'
+ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
+cache.sizes <- c(15, 18, 22, log2(1e7 * (8 + 4/10)))
+cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB', '10MM\nItems')
+cache.styles <- rep(c(rep('solid', 3), 'dashed'), 2)
 dat.label <- as.data.frame(
-  c(lapply(ymax, rep, each=3), list(size=cache.sizes), list(label=cache.lab))
-)
+  c(
+    lapply(ymax, rep, each=length(cache.sizes)),
+    list(size=cache.sizes), list(label=cache.lab), list(style=cache.styles)
+) )
+names(dat.label)[2] <- 'facet'
 format_log_2 <- function(x) parse(text=paste0('2^', x))
-plot.els <- list(
-  geom_line(aes(x=log2(n), y=log2(value))),
-  geom_point(aes(x=log2(n), y=log2(value))),
-  scale_y_continuous(label=format_log_2),
-  scale_x_continuous(label=format_log_2),
-  geom_vline(data=NULL, xintercept=cache.sizes),
-  geom_vline(data=NULL, xintercept=26.32),
-  ylab("Time Per Input Element, Seconds, Log Scale"),
-  xlab("Result Size in Bytes, Log Scale"),
-  theme(legend.position='bottom')
-)
+colors <- c(,
 
-ggplot(dat, aes(x=log2(n), y=log2(value), color=variable)) +
+ggplot(
+  resdfm,
+  aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
+) +
   facet_wrap(~facet, scales='free_y') +
+  geom_quasirandom(position='dodge', alpha=0.15) +
+  geom_point(data=resdfmm, size=3) +
   geom_text(
     data=dat.label,
-    aes(x=size + .125, y=values, label=label, color=NULL),
-    hjust=0
-  ) + plot.els
-
+    aes(
+      x=size + .125, y=values, label=label, color=NULL, group=NULL, shape=NULL
+    ),
+    color='black', hjust=0
+  ) +
+  scale_y_continuous(label=format_log_2) +
+  scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))) +
+  scale_shape_manual(values=c(Single=16, Median=18)) +
+  scale_color_manual(
+    values=c(random='#cccc00', sorted='#33ee33', ratio='#3333ee')
+  ) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles) +
+  ylab("Time Per Input Element, Seconds, Log Scale") +
+  xlab("Result Size in Bytes, Log Scale") +
+  theme(legend.position='bottom', legend.title=element_blank())
 ```
 
 All axes are log base 2.  The dashed vertical line represents our current
@@ -435,6 +449,10 @@ given the timing per element is ~24 cycles and there are six memory operations
 involved for each element copy, it is highly probably this is
 all indeed happening in L1[^time-in-cycles][^split-ops].
 
+```{r}
+cache.sizes <- c(15, 18, 22, Inf)
+access.times <- c()
+```
 
 
 It would be as if we were only given 1-4 different token
