@@ -351,17 +351,55 @@ ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
   # coord_cartesian(ylim=c(0,2^4))
 ```
 
-My processor is clocked at 1.2GHz, so L1 cache can be accessed in `$3 \times
-1/1.2GHz = 2.5ns$`.  Each subsequent level of cache is slower, up
+My processor is clocked at 1.2GHz, so L1 cache can be accessed in 
+`$4/1.2GHz = 2.5ns$`.  Each subsequent level of cache is slower, up
 to main memory which is two orders of magnitude slower.  The flipside is that
 there is very little L1 cache[^l1-data-vs-inst], a measly 32KB.  So little that
 if I didn't truncate the plot at 300MB you wouldn't be able to see it, and
-certainly nowhere near large enough to hold 10 million double precision numbers..
+certainly nowhere near large enough to hold 10 million double precision numbers.
 
-One way we can inspect real life effect of cache effects is to vary the size of
-our problem and time each run:
+Given the cache structure of my system we can we can build a model of memory
+access time by working set size.  We will assume that sequential reads can be
+made at L1 cache speeds without polluting cache[^stream-buffer], and that other
+accesses will be from the fastest available cache with hit rates proportional to
+the ratio of cache size to working set size.  This is what the model looks like:
 
-```{r echo=FALSE, fig.height=5}
+```{r echo=FALSE}
+library(ggplot2)
+library(ggbeeswarm)
+library(reshape2)
+
+cache.sizes <- c(15, 18, 22, log2(1e7 * (8 + 4/10)))
+cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB', '10MM\nItems')
+cache.styles <- c(rep('solid', 3), 'dashed')
+test.sizes <- c(9:25)
+mem.sizes <- c(L1=15, L2=18, L3=22, Main=33)
+set.sizes.1 <- setNames(2^test.sizes * 8, test.sizes)
+set.sizes.2 <- setNames(2^test.sizes * 4 / 10, test.sizes)
+
+cache_times <- function(set.sizes, mem.sizes, access.times) {
+  hit.rates <- outer(
+    set.sizes, 2^mem.sizes, function(x, y) 1 - pmax(0, x - y) / x
+  )
+  times <- matrix(numeric(), nrow=nrow(hit.rates), ncol=ncol(hit.rates))
+  mult <- rep(1, nrow(hit.rates))
+  for(i in seq_len(ncol(hit.rates))) {
+    times[,i] <- hit.rates[,i] * access.times[i] * mult
+    mult <- mult * (1 - hit.rates[,i])
+  }
+  times
+}
+times1 <- cache_times(set.sizes.1, mem.sizes, access.times)
+times2 <- cache_times(set.sizes.2, mem.sizes, access.times)
+times <- rowSums(times1) + rowSums(times2)
+
+mdl.dat <- data.frame(
+  x=log2(rep(set.sizes.1 + set.sizes.2, 2)),
+  y=log2(c(times + 4 * 4, rep(6 * 4, length(times)))),
+  variable=rep(c('random', 'sorted'), each=length(times)),
+  shape='Single'
+)
+  # actually data, here so we can use same ymax
 base <- ('../../static/data/group-stat-base-split-times%s.RDS')
 res1 <- readRDS(sprintf(base, ''))
 res2 <- readRDS(sprintf(base, '-2'))
@@ -377,70 +415,105 @@ resdf <- data.frame(
   n=rep(unlist(res.all.mx[, 3]), mx.lens),
   times=rep(unlist(res.all.mx[, 4]), mx.lens)
 )
-resdf <- transform(resdf, ratio=random/sorted)
-
-library(ggplot2)
-library(ggbeeswarm)
-library(reshape2)
 resdfm <- transform(
   melt(resdf, id.vars=c('n', 'times')),
-  time.per=ifelse(variable=='ratio', value, value/(n*times)),
-  size=n*(8 + 4/10)
-)
-resdfm <- transform(
-  resdfm,
-  facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
+  # time.per=ifelse(variable=='ratio', value, value/(n*times)),
+  time.per=value/(n*times)/(1/1.2e9),
   shape='Single'
 )
+ymax <- max(c(times, resdfm$time.per))
+dat.label <- as.data.frame(
+  c(
+    values=lapply(log2(ymax), rep, each=length(cache.sizes)),
+    list(size=unname(cache.sizes)),
+    list(label=cache.lab), list(style=cache.styles)
+) )
+format_log_2 <- function(x) parse(text=paste0('2^', x))
+format_cycles <- function(x) round(2^x)
+clrs <- c(random='#cccc00', sorted='#33ee33', ratio='#3333ee')
+extra <- list(
+  scale_y_continuous(label=format_cycles),
+  scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))),
+  scale_shape_manual(values=c(Single=21, Median=23)),
+  scale_color_manual(values=clrs),
+  scale_fill_manual(values=clrs),
+  ylab("CPU Cycles Per Item, log2"),
+  xlab("Result Size in Bytes, log2"),
+  theme(legend.title=element_blank()) #legend.position='bottom', 
+)
+
+ggplot(mdl.dat, aes(x, y)) +
+  extra +
+  geom_line(aes(color=variable)) +
+  geom_text(
+    data=dat.label,
+    aes(
+      x=size - .125, y=values, label=label, color=NULL, group=NULL, 
+      shape=NULL
+    ),
+    color='black', hjust=1
+  ) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles) + NULL
+  # coord_cartesian(ylim=c(4, 9))
+```
+
+We assume that all sequential accesses can be can be efficiently
+prefetched/buffered so that the main memory latency is concealed irrespective of
+working set size.  This is why the sorted case is modeled at a consistent 24
+cycles per element, or four cycles for each of the six required memory accesses.
+As the working set grows past each level of cache, an increasing portion of the
+accesses will be from the slower level.
+
+One seeming anomaly is that there are only three transitions from faster to
+slower memory, yet there are four bumps in the plot.  This is because our
+working set contains two randomly accessed elements: the result list with the
+component double vectors, and an integer vector that tracks the offset within
+each group that the next element needs to be written to.  This integer vector is
+much smaller as only one value per group is needed, and integers are half the
+size of doubles.  With ten elements per group this vector exceeds 4MB, the size
+of the L3 cache, when there are ~10 million elements.
+
+This model is remarkably accurate:
+
+```{r echo=FALSE, fig.height=5}
+# resdfm <- transform(
+#   resdfm,
+#   # facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
+#   shape='Single'
+# )
 resmm <- tapply(resdfm$time.per, resdfm[c('variable', 'n')], median)
 resdfmm <- melt(resmm)
 names(resdfmm)[3] <- 'time.per'
 resdfmm <- transform(
   resdfmm,
-  facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
+  # facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
   shape='Median'
 )
+# ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
+ymax <- max(log2(resdfm$time.per))
 
-ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
-cache.sizes <- c(15, 18, 22, log2(1e7 * (8 + 4/10)))
-cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB', '10MM\nItems')
-cache.styles <- c(rep('solid', 3), 'dashed')
-dat.label <- as.data.frame(
-  c(
-    lapply(ymax, rep, each=length(cache.sizes)),
-    list(size=unname(cache.sizes)),
-    list(label=cache.lab), list(style=cache.styles)
-) )
-names(dat.label)[2] <- 'facet'
-format_log_2 <- function(x) parse(text=paste0('2^', x))
-
-extra <- list(
-  geom_quasirandom(position='dodge', alpha=0.15),
-  scale_y_continuous(label=format_log_2),
-  scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))),
-  scale_shape_manual(values=c(Single=16, Median=18)),
-  ylab("Time Per Input Element, Seconds, Log Scale"),
-  xlab("Result Size in Bytes, Log Scale"),
-  theme(legend.position='bottom', legend.title=element_blank())
-)
 ggplot(
   resdfm,
-  aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
+  aes(
+    x=log2(n * (8 + 4/10)), y=log2(time.per),
+    color=variable, shape=shape, fill=variable
+  )
+  #aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
 ) +
+  geom_quasirandom(position='dodge', alpha=0.20) +
   extra +
   geom_text(
     data=dat.label,
     aes(
-      x=size + .125, y=values, label=label, color=NULL, group=NULL, shape=NULL
+      x=size - .125, y=values, label=label, color=NULL, group=NULL, 
+      shape=NULL, fill=NULL
     ),
-    color='black', hjust=0
+    color='black', hjust=1
   ) +
   geom_point(data=resdfmm, size=3) +
-  geom_vline(data=NULL, xintercept=cache.sizes, linetype=rep(cache.styles, 2)) +
-  scale_color_manual(
-    values=c(random='#cccc00', sorted='#33ee33', ratio='#3333ee')
-  ) +
-  facet_wrap(~facet, scales='free_y')
+  geom_line(data=mdl.dat, aes(x, y)) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
+  # facet_wrap(~facet, scales='free_y')
 ```
 
 All axes are log base 2.  The dashed vertical line represents our current
@@ -457,21 +530,9 @@ involved for each element copy, it is highly probably this is
 all indeed happening in L1[^time-in-cycles][^split-ops].
 
 ```{r echo=FALSE}
-test.sizes <- c(9:25)
-mem.sizes <- c(L1=15, L2=18, L3=22, Main=33)
-set.sizes <- setNames(2^test.sizes * (8 + 4/10), test.sizes)
-hit.rates <- outer(
-  set.sizes, 2^mem.sizes, function(x, y) 1 - pmax(0, x - y) / x
-)
 
-times <- matrix(numeric(), nrow=nrow(hit.rates), ncol=ncol(hit.rates))
-mult <- rep(1, nrow(hit.rates))
-for(i in seq_len(ncol(hit.rates))) {
-  times[,i] <- hit.rates[,i] * access.times[i] * mult
-  mult <- mult * (1 - hit.rates[,i])
-}
 mdl.dat <- data.frame(
-  x=log2(set.sizes), y=log2((rowSums(times) + 20) / 1.2e9),
+  x=log2(set.sizes), y=log2((times + 4 * 4) / 1.2e9),
   variable='modeled'
 )
 resdfm2 <- transform(subset(resdfm, variable == 'random'), variable='observed')
@@ -2035,6 +2096,17 @@ system.time(slope2a(x, y, grp))
   issues.
 * Oleg Sklyar, Duncan Murdoch, Mike Smith, Dirk Eddelbuettel, Romain Francois,
   Karline Soetaert for [`inline`][7].
+* Ggplot2
+* Ggbeeswarm
+* Reshape2
+
+## References
+
+* Ulrich Drepper's [What Every Programmer Should Know About Memory][27]
+* [Stuffed Cow post on Ivy Bridge Cache Replacement policies][26]
+* Cache timings?
+* Nima Honarmand [Memory Prefetching][28], including discussion of stream
+  buffers.
 
 ## Sorting Versions
 
@@ -2365,10 +2437,60 @@ mapply(
 )
 ```
 
-## Adjustable Precision Group Sums
+### Adjustable Precision Group Sums
 
 ```{r group_sum_int3, eval=FALSE}
 ```
+
+## Benchmarking Code
+
+```{r eval=FALSE}
+times <- c(
+   1e4, 1e4,  1e4,  5e3,   1e3,  1e3, 1e3,  1e2,  1e2,    50,   25,    25,
+   10,    5,    3
+)
+reps <- c(
+    11,  11,   11,   11,    11,   11,   5,    5,     5,    5,    5,     5,
+     5,   5,    5
+)
+ns <- rev(ns)
+times <- rev(times) * 2
+reps <- rep(reps)
+
+res <- vector('list', 0)
+for(i in seq_along(ns)) {
+  RNGversion("3.5.2"); set.seed(42)
+  n <- ns[i]
+  x <- runif(n)
+  g <- sample(n/10, n, rep=TRUE)
+  go <- sort(g)
+  gfo <- as.factor(go)
+  gf <- as.factor(g)
+
+  writeLines(sprintf('------ %f -------', n))
+  time.normal <-
+    # sys.time(for(j in seq_len(times[i])) duplicated.default(g))
+    sys.time(for(j in seq_len(times[i])) split.default(x, gf), reps=reps[i])
+  time.sorted <-
+    sys.time(for(j in seq_len(times[i])) split.default(x, gfo), reps=reps[i])
+    # sys.time(for(j in seq_len(times[i])) duplicated.default(go))
+
+  res <- append(
+    res, list(
+      normal=time.normal, sorted=time.sorted, n=n, times=times[i]
+  ) )
+  print(time.normal)
+  print(time.sorted)
+}
+
+colnames <- unique(names(res))
+resmx <- matrix(
+  unname(res), ncol=length(colnames), dimnames=list(NULL, colnames),
+  byrow=TRUE
+)
+```
+
+
 
 [^knowledge-caveat]: Given how long it's taken me to find out about `rowsum` it
   is fair to question whether I would know whether there are many other
@@ -2474,6 +2596,7 @@ mapply(
   because the rest of it are accessed sequentially, their impact on cache
   utilization is much lower.
 
+
 1. Read factor level     (int)
 2. Read offset in group  (int)xx  Random seek in lvls long vector
 3. Read input            (dbl)
@@ -2508,3 +2631,6 @@ mapply(
 [23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
 [24]: https://twitter.com/BrodieGaslam/status/1106231241488154626
 [25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
+[26]: http://blog.stuffedcow.net/2013/01/ivb-cache-replacement/
+[27]: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf
+[28]: https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf
