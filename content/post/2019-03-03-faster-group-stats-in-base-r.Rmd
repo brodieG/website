@@ -181,6 +181,7 @@ identical(grp.dat, grp.dat.o)
 ```
 
 Let's look at the [`treeprof`][22] timings for the two `split` calls:
+<span id=split-times></span>
 
 ```
 times in milliseconds
@@ -351,18 +352,15 @@ ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
   # coord_cartesian(ylim=c(0,2^4))
 ```
 
-My processor is clocked at 1.2GHz, so L1 cache can be accessed in 
-`$4/1.2GHz = 2.5ns$`.  Each subsequent level of cache is slower, up
-to main memory which is two orders of magnitude slower.  The flipside is that
+My processor is clocked at 1.2GHz, so L1 cache can be accessed in ~2.5
+nanoseconds (`$4/1.2GHz = 2.5ns$`).  Each subsequent level of cache is slower,
+up to main memory which is two orders of magnitude slower.  The flipside is that
 there is very little L1 cache[^l1-data-vs-inst], a measly 32KB.  So little that
 if I didn't truncate the plot at 300MB you wouldn't be able to see it, and
 certainly nowhere near large enough to hold 10 million double precision numbers.
 
 Given the cache structure of my system we can we can build a model of memory
-access time by working set size.  We will assume that sequential reads can be
-made at L1 cache speeds without polluting cache[^stream-buffer], and that other
-accesses will be from the fastest available cache with hit rates proportional to
-the ratio of cache size to working set size.  This is what the model looks like:
+access time by working set size:
 
 ```{r echo=FALSE}
 library(ggplot2)
@@ -406,21 +404,25 @@ res2 <- readRDS(sprintf(base, '-2'))
 res3 <- readRDS(sprintf(base, '-3'))
 
 res.all <- c(res1, res2, res3)
-colnames <- unique(names(res.all))
-res.all.mx <- matrix(res.all, ncol=4, dimnames=list(NULL, colnames), byrow=TRUE)
-mx.lens <- vapply(res.all.mx[,1], nrow, 0)
-resdf <- data.frame(
-  random=unlist(lapply(res.all.mx[, 1], function(x) x[,3])),
-  sorted=unlist(lapply(res.all.mx[, 2], function(x) x[,3])),
-  n=rep(unlist(res.all.mx[, 3]), mx.lens),
-  times=rep(unlist(res.all.mx[, 4]), mx.lens)
-)
-resdfm <- transform(
-  melt(resdf, id.vars=c('n', 'times')),
-  # time.per=ifelse(variable=='ratio', value, value/(n*times)),
-  time.per=value/(n*times)/(1/1.2e9),
-  shape='Single'
-)
+proc_times <- function(res) {
+  colnames <- unique(names(res))
+  res.mx <- matrix(res, ncol=4, dimnames=list(NULL, colnames), byrow=TRUE)
+  mx.lens <- vapply(res.mx[,1], nrow, 0)
+  resdf <- data.frame(
+    random=unlist(lapply(res.mx[, 1], function(x) x[,3])),
+    sorted=unlist(lapply(res.mx[, 2], function(x) x[,3])),
+    n=rep(unlist(res.mx[, 3]), mx.lens),
+    times=rep(unlist(res.mx[, 4]), mx.lens)
+  )
+  resdfm <- transform(
+    melt(resdf, id.vars=c('n', 'times')),
+    # time.per=ifelse(variable=='ratio', value, value/(n*times)),
+    time.per=value/(n*times)/(1/1.2e9),
+    shape='Single'
+  )
+  resdfm
+}
+resdfm <- proc_times(res.all)
 ymax <- max(c(times, resdfm$time.per))
 dat.label <- as.data.frame(
   c(
@@ -428,13 +430,14 @@ dat.label <- as.data.frame(
     list(size=unname(cache.sizes)),
     list(label=cache.lab), list(style=cache.styles)
 ) )
+
 format_log_2 <- function(x) parse(text=paste0('2^', x))
 format_cycles <- function(x) round(2^x)
 clrs <- c(random='#cccc00', sorted='#33ee33', ratio='#3333ee')
 extra <- list(
   scale_y_continuous(label=format_cycles),
   scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))),
-  scale_shape_manual(values=c(Single=21, Median=23)),
+  scale_shape_manual(values=c(Single=16, Median=18)),
   scale_color_manual(values=clrs),
   scale_fill_manual(values=clrs),
   ylab("CPU Cycles Per Item, log2"),
@@ -457,38 +460,49 @@ ggplot(mdl.dat, aes(x, y)) +
   # coord_cartesian(ylim=c(4, 9))
 ```
 
+The dashed vertical line represents our current working set size (i.e. 10MM
+entries)[^working-set-size].
+
 We assume that all sequential accesses can be can be efficiently
 prefetched/buffered so that the main memory latency is concealed irrespective of
-working set size.  This is why the sorted case is modeled at a consistent 24
-cycles per element, or four cycles for each of the six required memory accesses.
+working set size.  This is akin to a board with tokens sorted in the same order
+that the slots are in.  We can mechanically transfer the tokens from board to
+slots with almost no scanning for the correct slot.  `split.default` has
+six memory accesses, and if each is done at the fastest possible 4 cycles per
+element, then each element can be processed in 24 cycles[^access-dominates].  
+
+In the random case we model access to be the same speed as in the sorted case so
+long as the working set fits in L1 cache.  This is akin to having only two or
+three distinct labels in randomly ordered tokens.  We can easily memorize the
+three slot locations and transfer the tokens quickly without further thought.
 As the working set grows past each level of cache, an increasing portion of the
-accesses will be from the slower level.
+accesses will be from the slower next slower level.
 
 One seeming anomaly is that there are only three transitions from faster to
 slower memory, yet there are four bumps in the plot.  This is because our
 working set contains two randomly accessed elements: the result list with the
-component double vectors, and an integer vector that tracks the offset within
-each group that the next element needs to be written to.  This integer vector is
-much smaller as only one value per group is needed, and integers are half the
-size of doubles.  With ten elements per group this vector exceeds 4MB, the size
-of the L3 cache, when there are ~10 million elements.
+double precision vectors that correspond to each group, and an integer vector
+that tracks the offsets within each group that the next element will be written
+to.  The last bump corresponds to the point at which the offset integer vector
+outgrows L3 cache[^offset-vector].
 
-This model is remarkably accurate:
+This simple model predicts the random inputs will be ~13 times slower to process
+than the sorted ones for 10MM long inputs.  This is close to the [previously
+observed ~15 times in `split.default`](#split-times).  But what about different
+sized inputs?   The model performs remarkably well:
 
 ```{r echo=FALSE, fig.height=5}
-# resdfm <- transform(
-#   resdfm,
-#   # facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
-#   shape='Single'
-# )
-resmm <- tapply(resdfm$time.per, resdfm[c('variable', 'n')], median)
-resdfmm <- melt(resmm)
-names(resdfmm)[3] <- 'time.per'
-resdfmm <- transform(
-  resdfmm,
-  # facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
-  shape='Median'
-)
+time_med <- function(x) {
+  resmm <- tapply(x$time.per, x[c('variable', 'n')], median)
+  resdfmm <- melt(resmm)
+  names(resdfmm)[3] <- 'time.per'
+  transform(
+    resdfmm,
+    # facet=ifelse(variable=='ratio', 'Time Ratios (random/sorted)', 'Time'),
+    shape='Median'
+  )
+}
+resdfmm <- time_med(resdfm)
 # ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
 ymax <- max(log2(resdfm$time.per))
 
@@ -516,83 +530,100 @@ ggplot(
   # facet_wrap(~facet, scales='free_y')
 ```
 
-All axes are log base 2.  The dashed vertical line represents our current
-working set size (i.e. 10MM entries)[^working-set-size].
+Here we add as points actual timings at various working set sizes.  The median
+time for each working set size is shown as a diamond.
 
-Whether the data is ordered does not appear to affect performance so long as it
-fits in completely in L1 cache.  In that case, the CPU is able to quickly find
-the target vector for each element in the input.  The declining timings from set
-size `$2^10$` through `$2^15$` are likely due to amortization of fixed overhead
-in the `split.default` call.  It is difficult to be certain that all operations
-for data sets at or below `$2^15$` is indeed being fed out of L1 cache, but
-given the timing per element is ~24 cycles and there are six memory operations
-involved for each element copy, it is highly probably this is
-all indeed happening in L1[^time-in-cycles][^split-ops].
+The decreasing times per item for the smaller sets are likely a result of
+overhead being amortized over an increasing number of entries.  Another
+noticeable mismatch is at the largest working set size for the sorted case.
+Here the tricks that the memory system can use to conceal latency in sequential
+accesses start to fail[^possible-failure].  Perhaps the equivalent in our token
+and slots example is our hands cramping up after too many tokens.
 
-```{r echo=FALSE}
+The exact pattern of time per element versus working set size will vary
+depending on memory system architecture and other factors.  Even though our
+model appears to approximate real timings well, it could be a coincidence.
+There are many factors that might affect memory access times that we are not
+modeling.  Despite the complexity of memory systems there are a two points that
+should be generally applicable:
 
-mdl.dat <- data.frame(
-  x=log2(set.sizes), y=log2((times + 4 * 4) / 1.2e9),
-  variable='modeled'
-)
-resdfm2 <- transform(subset(resdfm, variable == 'random'), variable='observed')
-resdfmm2 <- transform(subset(resdfmm, variable == 'random'), variable='observed')
-ggplot(
-  resdfm2,
-  aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
-) +
-  extra +
-  geom_text(
-    data=subset(dat.label, facet == 'time'),
-    aes(
-      x=size + .125, y=values, label=label, color=NULL, group=NULL, shape=NULL
-    ),
-    color='black', hjust=0
-  ) +
-  geom_point(data=resdfmm2, size=3) +
-  geom_point(
-    data=mdl.dat,
-    aes(x=x, y=y, shape=NULL), size=1
-  ) +
-  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles) +
-  scale_color_manual(values=c(observed='#cccc00', modeled='gray35')) +
-  ggtitle("Random Order Timings, Observed and Modeled")
+1. Performance can vary greatly with work load size.
+2. Performance can vary greatly with work load type.
+    * Some use cases will be optimized.
+    * Sequential accesses are likely to be highly optimized.
+    * Random accesses will almost always be pathological.
+
+As seen in the tests on our system these factors interact, e.g. all access types
+were fast so long as the working sets fit in L1 cache, and the penalty for
+pathological access balloons as the working set size grows.
+
+While this explains why `split` works so much faster with sorted inputs, we are
+still left to deal with the unsorted inputs.  Even ignoring the `order` step
+itself, the indexing step required to order our data require random accesses:
+
+```{r eval=FALSE}
+o <- order(grp)
+go <- g[o]
+xo <- x[o]
+split.default(xo, go)
 ```
 
-It would be as if we were only given 1-4 different token
-labels in the previous game: we would memorize the slot locations and transfer
-the tokens quickly.
+Here we show the timings for `x[o]` as well as for a version with `x` and `o`
+pre-sorted:
 
-This is the computer equivalent of dealing
-with the tokens bearing a small set of the possible labels, say 1-4, so that we
-can memorize the corresponding slot locations and transfer tokens with little
-thought.
+```{r echo=FALSE, fig.height=5}
+resdfm <- proc_times(readRDS(sprintf(base, '-4')))
+ymax <- max(resdfm$time.per)
+dat.label <- as.data.frame(
+  c(
+    values=lapply(log2(ymax), rep, each=length(cache.sizes)),
+    list(size=unname(cache.sizes)),
+    list(label=cache.lab), list(style=cache.styles)
+) )
+resdfmm <- time_med(resdfm)
 
-two, three, or maybe four label/slot combinations in the token/slot game
-from earlier.  We can easily remember the slot locations  
-them 
+ggplot(
+  resdfm,
+  aes(
+    x=log2(n * 8), y=log2(time.per),
+    color=variable, shape=shape, fill=variable
+  )
+  #aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
+) +
+  geom_quasirandom(position='dodge', alpha=0.20) +
+  extra +
+  geom_text(
+    data=dat.label,
+    aes(
+      x=size - .125, y=values, label=label, color=NULL, group=NULL, 
+      shape=NULL, fill=NULL
+    ),
+    color='black', hjust=1
+  ) +
+  geom_point(data=resdfmm, size=3) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
+```
 
+That the baseline times are faster than for `split.default` is expected given
+there are fewer steps involved in indexing than in splitting. The sorted
+indexing case is interesting, but I won't delve into it as ultimately it is not
+relevant here[^sorted-indexing].  What is most notable is that in the random
+case we can keep up L2 latencies (~10 cycles) up to 4-8 times L2 cache size, and
+that beyond L3 sizes we are still substantial faster than main memory latency.
+Presumably the access pattern is simple and common enough (read offsets from
+indexing vector, fetch values using offsets) that the memory system can prefetch
+and hide a good amount of the latency associated with the random accesses.
 
-is a bit of noise int 
+This example further highlights that there is a lot going on in the memory
+system beyond what can be modeled from the basic cache size and latency.
+Additionally, it suggests that there can be a substantial benefit to isolating
+pathological (e.g. random) accesses to the simplest problems so that the memory
+system will have the best chance to mitigate latency costs.
 
+One final note: YMMV.  It is conceivable that some system are not able to
+conceal access latency even in the simple random indexing case, in which case
+ordering before the split may fail to improve or even degrade performance.
 
-* Computes the size of each group by tabulating factor levels.
-* Allocates a list of numeric vectors, one for each group of size as per above.
-* Scans through the input and the groups in step, copying the input values to
-  the vector corresponding to its group.
-
-These are three in essence three loops that have no order dependency in them, so
-in theory they should execute in the same amount of time.  While the logic of
-the code is not affected,
-
-a calls to `.Internal(split(x, f))`,
-where `x` is the vector to split and `f` the factor to split along.  That code
-essentially boils down to:
-
-* Loop through factor and compute how many instances of each level there are
-* Allocate list of numeric vectors, each of size computed in prior step
-* Scan through `x` and `f`, copying values of `x` to the numeric vectors in the
-  previously allocated list as dictated by `f`.
 
 
 <!-- Notes on Hash Tables in R - For Integers
@@ -2595,6 +2626,17 @@ resmx <- matrix(
   elements, each 4 bytes in size.  In reality there is more data involved, but
   because the rest of it are accessed sequentially, their impact on cache
   utilization is much lower.
+[^offset-vector]: With ten elements pre group on average, we will need ~1
+  million elements in the offset vector to track each group with a 10MM
+  working set size.  At 4 bytes an element, that makes for a ~4MB integer
+  vector, which is the size of L3 cache.
+[^possible-failure]: One point of failure could be that some level of the
+  [Translation Lookaside Buffer][29] that acts as cache for the translation of
+  virtual to physical memory is also exceeded and a full main memory table walk
+  is required.
+[^access-dominates]: There are a few other operations involved, such as
+  allocating memory and incrementing offset counters, but these are a small
+  portion of the overall time.
 
 
 1. Read factor level     (int)
@@ -2634,3 +2676,4 @@ resmx <- matrix(
 [26]: http://blog.stuffedcow.net/2013/01/ivb-cache-replacement/
 [27]: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf
 [28]: https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf
+[29]: https://en.wikipedia.org/wiki/Translation_lookaside_buffer
