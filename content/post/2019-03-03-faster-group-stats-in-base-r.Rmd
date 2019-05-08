@@ -186,7 +186,7 @@ with `data.table`, but what's the fun in being gracious nowadays?
 _Something_ is going on underneath the hood that dramatically affects the
 performance of the random scenario.  TL;DR: random accesses defeat the measures
 that memory systems use to hide the horrendous latency of their RAM.  If you
-already know about cache effects and the role they play in R, or if you are
+already know about cache and other memory system effects, or if you are
 satisfied simply knowing that sorting data may allow you to process it faster,
 feel free to skip to the [next section](#so-you-think-you-can-group-stat).
 
@@ -219,15 +219,12 @@ writeLines(string)
 ```
 
 There are many differences between the two runs, but let's focus on the
-highlighted numbers to start.  The columns they are in correspond to the "self"
-time, or the time spent in the function as opposed to in child R-level
-functions[^Rprof].  Usually these correspond to the evaluation of internal
-compiled code as called via "special" functions[^special-internal].
-
-For `split.default`, it is the [`.Internal` call that invokes][29] the [C
-code][25] that allocates the result list of numeric vectors, and copies the
-input values into them.  There is a ~15x speed-up between the sorted (137ms) and
-randomized versions (1,997ms) for this step!
+highlighted numbers to start.  These correspond to the internal C code that
+scans through the input and processed group vectors[^proc-group] and copies each
+input value into the result vector indicated by the group[^split-internal].  The
+code will take the same exact number of steps irrespective of input order, yet
+there is a ~15x speed-up between the sorted (137ms) and randomized versions
+(1,997ms).
 
 The following analogy may be helpful in understanding what is going on.  Imagine
 we have been given a board full of tokens, each identified by one of eighteen
@@ -289,34 +286,22 @@ UZ RM JO PF QS DW UA SQ PF PF EQ EQ
 Whatever we do we'll be stuck re-scanning the slots with each token, or scanning
 the tokens for a particular label.  If our short term memory is good we might be
 remember the location for a few of the labels and transfer those without a scan,
-but this will take us much longer than in the sorted case.
+but unless we can remember the location of every slot it will take us much
+longer than in the sorted case.
 
 Computers will also struggle with randomly order input for similar reasons.
 Memory is a major bottle neck, and computer architectures will resort to all
 sorts of hacks to mitigate this.  The most advertised one is the use of cache:
 a special sort of very fast and very expensive memory.  Cache is akin to the
 short term memory that allows us to quickly recall the label of the most
-recently seen token/slot label: fast, but limited in capacity.
+recently seen token/slot label: fast, but limited in capacity.  
 
 My system has three levels of cache, each one larger but slower than the
 previous one:
 
 <!--
-<div style='max-width: 90%; white-space: nowrap; margin: auto;'>
-<div style='max-width: 45%;'>
-```{r fig.width=3, echo=FALSE}
-labels <- c('L1', 'L2', 'L3', 'Main')
-times <- c(3, 15, 40, 250)
-sizes <- c(2^15, 2^18, 2^21, 2^33)
-
-library(ggplot2)
-ggplot(data.frame(labels=labels, cycles=times)) +
-  geom_col(aes(labels, cycles))
-ggplot(data.frame(labels=labels, sizes=sizes)) +
-  geom_col(aes(labels, sizes)) + coord_cartesian(ylim=c(0,2^24))
-```
-</div>
-</div>
+Some question whether 250 cycle for main memory is right.  Most quote 100ns,
+which maybe with the processors 
 -->
 
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
@@ -458,30 +443,29 @@ many cycles to get access to a specific main memory element, but if we request
 a memory _region_ around that element, we amortize the latency of the request
 across the entire region.  The first element is still subject to the full
 latency, but subsequent elements can be streamed at a high rate reducing the
-average latency. Our model assumes that sequential accesses are met at L1
-speeds.  In our (sorted) token/slot analogy the latency is the time it takes to
-find a slot, and the bandwidth the rate at which we can transfer tokens into
-their slots.
+average latency. Our model assumes that sequential accesses do this and are met
+on average at L1 speeds.  In our (sorted) token/slot analogy the latency is the
+time it takes to find a slot, and the bandwidth the rate at which we can
+transfer tokens into their slots.
 
-`split.default` has six memory accesses[^split-ops].  If the data fits in L1
-cache they are all done at L1 speeds.  This explains why the chart starts at
-24 cycles per element for both the random and sorted cases[^access-dominates].
-In the token/slots analogy, a data set that fits in L1 is akin to a set of
-distinct labels small enough that we can memorize the slot locations for each of
-them.
+`split.default` has six memory accesses[^split-ops].  When the working set fits
+in L1 cache they are all done at L1 speeds, which explains why the chart starts
+at 24 cycles per element in both cases[^access-dominates].  In the token/slots
+analogy, a working set that fits in L1 is akin to a set of distinct labels small
+enough that we can memorize the slot locations for each of them.
 
 Of the six accesses four will always be sequential.  The other two are
 sequential only for the sorted set.  Once we exceed L1 cache size with the
-random set, things slows down as an increasing number of the
-non-sequential accesses must come from slower memory.  Each transition to a
-slower memory is characterized by a steep processing time increase that
+random set, things slows down as an increasing number of the non-sequential
+accesses must come from slower memory.  Each transition to a slower level of
+memory is manifests as an increase in per-element time increase that
 asymptotically[^asymptotic-latency] approaches the slower memory's incremental
 latency[^access-anomaly].
 
 This simple model predicts the random inputs will be ~13 times slower to process
 than the sorted ones for 10MM long inputs, which is close to the [ observed ~15
-times in `split.default`](#split-times).  It performs remarkably well for
-other working set sizes:
+times in `split.default`](#split-times).  We tested different working set sizes:
+
 
 ```{r echo=FALSE, fig.height=5}
 time_med <- function(x) {
@@ -522,27 +506,20 @@ ggplot(
   # facet_wrap(~facet, scales='free_y')
 ```
 
-Individual timed runs are shown as points, and the median time for each working
-set size shown as a diamond.
+Outside of a few anomalies[^model-anomalies] the model works remarkably well,
+which is surprising because computers use many tricks outside of sequential
+access streams and cache to conceal latency, and our model does not account for
+them.  These normally include things such as out-of-order / speculative
+execution, parallel memory access, and other tricks. A possible culprit is that
+each iteration is partially dependent on the prior iteration[^loop-dep], which
+may limit how far ahead out-of-order execution can get.
 
-The decreasing times per item for the smaller sets are likely a result of R
-function call overhead being amortized over an increasing number of entries, and
-the jump up for the largest working set size likely corresponds to that size
-defeating the normal latency-concealing optimizations used for sequential
-accesses[^possible-failure].  Perhaps the equivalent in our token and slots
-example is our hands cramping up after too many tokens.
 
-The exact pattern of time per element versus working set size will vary
-depending on memory system architecture and other factors.  Even though our
-model appears to approximate real timings well, it may be partly a coincidence.
-There are many factors that might affect memory access times that we are not
-modeling.  Despite the complexity of memory systems there are a two points that
-should be generally applicable:
 
-1. Performance can vary greatly with work load size.
-2. Performance can vary greatly with work load type.
-    * Sequential accesses are likely to be highly optimized.
-    * Random accesses will almost always be pathological.
+
+In That our simple model predicts timings without
+accounting for any of those things suggests the tricks are being defeated.  
+
 
 While this explains why `split` works so much faster with sorted inputs, we are
 still left to deal with the unsorted inputs:
@@ -559,8 +536,19 @@ Even ignoring the `order` call, the indexing steps required to order `x` and
 as well as for a version with `x` and `o` pre-sorted:
 
 ```{r echo=FALSE, fig.height=5}
+test.sizes <- 12:30 - 3
+set.sizes <- setNames(2^test.sizes * 8, test.sizes)
+
+times <- rowSums(cache_times(set.sizes, mem.sizes, access.times))
+
+mdl.dat <- data.frame(
+  x=log2(rep(set.sizes, 2)),
+  y=log2(c(times + 2*4, rep(3 * 4, length(times)))),
+  variable=rep(c('random', 'sorted'), each=length(times)),
+  shape='Single'
+)
 resdfm <- proc_times(readRDS(sprintf(base, '-4')))
-ymax <- max(resdfm$time.per)
+ymax <- max(resdfm$time.per, 2^mdl.dat$y)
 dat.label <- as.data.frame(
   c(
     values=lapply(log2(ymax), rep, each=length(cache.sizes)),
@@ -587,14 +575,94 @@ ggplot(
     ),
     color='black', hjust=1
   ) +
+  geom_line(data=mdl.dat, aes(x, y)) +
   geom_point(data=resdfmm, size=3) +
   geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
 ```
 
-There are many interesting things going on[^interesting-indexing], but the most
-notable one is that in the random case we can keep up L2 speeds (~10 cycles) in
-working sets 4-8 times L2 cache size, and that at 256 times beyond L3 sizes we
-are still substantial faster than main memory latency.  Presumably the index
+There are many interesting things going on, but the most notable one is that the
+random case substantially outperforms our naive model.  Most likely this is
+happening because of out-of-order execution and memory interleaving /
+pipelining.  A pseudo code version of the [subset C code][31] might look like:
+
+```{r eval=FALSE}
+res <- numeric(length(grp))
+for(i in seq_along(grp)) {
+  idx <- o[i]        # fetch group offset
+  val <- x[i]        # fetch x value
+  res[idx] <- val    # write x value at offset
+}
+```
+
+The slow step is `res[idx] <- val` as `idx` can point to any location in the
+result vector and will not be met from cache at large enough working set sizes.
+But the nice thing about this loop is that each iteration is independent of all
+others.  This allows the processor to execute multiple loop cycles concurrently,
+using cycles that would be idle waiting for the slow step to complete to process
+subsequent iterations.  Even before the first result value is recorded there
+will be multiple `res[idx] <- val` commands with different `idx` values en route
+to main memory.  Since the accesses are random they will each likely point to
+different memory banks, so requests can be interleaved so that idle banks can be
+used without waiting on the busy ones.
+
+As we saw previously, the latency of the first random access will still be the
+full main memory latency, but we can amortize this cost by the lesser of how
+many iterations processor cycles we can get ahead while waiting for the slow
+step, and how many different memory banks our requests points to and how many of
+them can be served simultaneously.  I have no way of knowing that this is what
+is happening, but both out-of-order command execution and memory interleaving /
+pipelining are well established techniques that can explain faster-than-memory
+random accesses[^ooo-interleave].
+
+So why did these optimizations not work in the `split.default` case?  Let's look
+at the pseudo code:
+
+```{r eval=FALSE}
+# setup
+
+grpi <- match(as.factor(grp), unique(sort(grp)))
+offsets <- integer(length(levels(grpf)))
+sizes <- integer(length(levels(grpf)))
+for(i in grpi) sizes[i] <- sizes[i] + 1L
+res <- lapply(sizes, numeric)
+
+#actual work
+
+for(i in seq_along(grpi)) {
+
+  res[
+
+
+}
+
+offsets <- 
+res <- numeric(length(grp))
+
+```
+The exact pattern of time per element versus working set size will vary
+depending on memory system architecture and other factors.  Even though our
+model appears to approximate real timings well, it may be a coincidence.
+
+There are many factors that might affect memory access times that we are not
+modeling.  Despite the complexity of memory systems there are a two points that
+should be generally applicable:
+
+1. Performance can vary greatly with work load size.
+2. Performance can vary greatly with work load type.
+    * Sequential accesses are likely to be highly optimized.
+    * Random accesses will almost always be pathological.
+
+by pipelining subsequent loop iterations into different
+memory 
+
+I have no way of knowing this is actually what is happening 
+
+in
+the random case we can keep up L2 speeds up to 4x the L2
+cache size, and we can stay well below main memory latency for working sets up
+to 1GB, the largest we tried.  Presumably the values of `o` are recognized as
+the pointer offsets they are
+index
 access pattern is simple and common enough (read offsets from indexing vector,
 fetch values using offsets) that the memory system can prefetch and hide a good
 amount of the latency associated with the random accesses[^random-prefetch].
@@ -602,7 +670,7 @@ Do note that final YMMV: it is conceivable that some system are not able to
 conceal access latency even in the simple random indexing case, in which case
 ordering before the split may fail to improve or even degrade performance.
 
-One fineal note: I clearly remember peeking at the [most popular QA on
+One final note: I clearly remember peeking at the [most popular QA on
 Stackoverlfow][3] a few years ago and thinking "oh, that's not a problem I need
 to worry about as an R user".  I'm kind of tickled that I was wrong and I got to
 see these effects at play first hand.
@@ -2583,11 +2651,6 @@ resmx <- matrix(
 [^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
   do the binary addition by hand...
 [^treeprof-manip]: We manually juxtaposed the output of two `treeprof` runs.
-[^special-internal]: Compiled code functions that can be invoked with the
-  `.Internal` or `.Primitive` interfaces without evaluating the parameters are
-  considered "special".  Not all functions invoked with `.Primitive` or
-  `.Internal` are special.  The `.Internal` function itself is a "special"
-  primitive.  See [R Internals][23] for details.
 [^Rprof]: `treeprof` collects its timings with `Rprof`, so you can consult
   `?Rprof` for more details about the "total" and "self" times which are the
   ones reported here.
@@ -2608,10 +2671,14 @@ resmx <- matrix(
   elements, each 4 bytes in size.  In reality there is more data involved, but
   because the rest of it are accessed sequentially, their impact on cache
   utilization is much lower.
-[^possible-failure]: One point of failure could be that some level of the
-  [Translation Lookaside Buffer][29] that acts as cache for the translation of
-  virtual to physical memory addresses is also exceeded and a full main memory
-  table walk is required.
+[^model-anomalies]: The decreasing times per item for the smaller sets are
+  likely a result of R function call overhead being amortized over an increasing
+  number of entries, and the jump up for the largest working set size likely
+  corresponds to that size defeating the normal latency-concealing optimizations
+  used for sequential accesses.  One point of failure could be that some level
+  of the [Translation Lookaside Buffer][29] that acts as cache for the
+  translation of virtual to physical memory addresses is also exceeded and a
+  full main memory table walk is required.
 [^access-dominates]: There are a few other operations involved, such as
   allocating memory and incrementing offset counters, but these are a small
   portion of the overall time.
@@ -2629,6 +2696,27 @@ resmx <- matrix(
   average, we will need ~1 million elements in the offset vector to track each
   group with a 10MM working set size.  At 4 bytes an element, that makes for a
   ~4MB integer vector, which is the size of L3 cache.
+[^ooo-interleave] See this [University of Utah CS7810 presentation][32]
+  for some discussion of the parallelism obtained from banks in DRAM memory, and
+  the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
+  interleaving, and pipelining.
+[^proc-group]: Prior to this step the group vector is turned into integer group
+  numbers that match the offset into the result list that the values of a group
+  will be stored in.
+[^split-internal] The timing corresponds to the [`.Internal` call that
+  invokes][29] the [C code][25] that does the allocation of the result vector
+  and the copying, although the bulk of the time is spent copying .   The
+  `.Internal` call does not show up in the R profile data used to build the
+  `treeprof` output because `.Internal` is both "special" (i.e.
+  `typeof(.Internal) == "special"`, see `?Rprof`) _and_ a primitive.  "special"
+  functions are those that can access their arguments unevaluated.
+  See [R Internals][23] for details.
+[^loop-dep] `split` tracks the offset at which the next value in a group will be
+  written to, and increments that offset each time a value is written.  In other
+  words, in order to know where in the result vector a value needs to go, the
+  CPU needs to know how many times previously that group was written to, which
+  is difficult to do without a level of insight into the code the CPU is
+  unlikely to have.
 
 
 
@@ -2667,7 +2755,88 @@ resmx <- matrix(
 [24]: https://twitter.com/BrodieGaslam/status/1106231241488154626
 [25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
 [26]: http://blog.stuffedcow.net/2013/01/ivb-cache-replacement/
+<!-- 
+Ulrich Drepper Paper, lots of goodies.
+
+Table 2.2: DDR3 array/bus frequencies (933MHz for DDR3-1866)
+Bottom pg 15: Latency numbers for Pentium M, including 240 cycles for main
+memory.
+
+Oddly doesn't really talk about interleaved access.
+-->
+
 [27]: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf
+
 [28]: https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf
 [29]: https://en.wikipedia.org/wiki/Translation_lookaside_buffer
 [30]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/split.R#L31
+[31]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L72
+[32]: https://pubweb.eng.utah.edu/~cs7810/pres/11-7810-12.pdf
+[33]: https://en.wikipedia.org/wiki/Synchronous_dynamic_random-access_memory#Command_interactions
+[34]: https://iis-people.ee.ethz.ch/~gmichi/asocd/addinfo/Out-of-Order_execution.pdf
+
+<!-- 
+Good layperson layout of various factors affecting RAM performance,
+including discussion of banks and ability to use them to saturate bandwidth  
+
+There is ambiguity about how many banks there are, and if they are confined to
+one integrated circuit (IC) or not.  It sounds like not?  I.e bank 1 in IC 1 is
+the same bank and bank 2 in IC2?  Same number of banks as ICs, so hard to
+dissambiguate.
+-->
+
+[35]: https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2
+
+<!-- Paper that discusses memory page handling, some details on banks, and of
+most interest is the idea that you can have a policy that closes pages right
+away or leaves them open depending on expectation that prob of next read being
+on last page read -->
+
+[36]: https://arxiv.org/pdf/1509.03740.pdf
+
+<!-- 
+Very detailed overview of architecture of Core i7 and Xeon 5500 (Circa 2008?),
+timings in cycles for cache accesses, and ns for memory 
+
+Includes the 4, 10, 40 cycle access times, plus 100ns for main memory (p8,9,22).
+
+Details about TLB (separate large page TLBs, 2 level TLB, see p9, 64 and 512
+entries)
+-->
+
+[37]: https://software.intel.com/sites/products/collateral/hpc/vtune/performance_analysis_guide.pdf
+
+<!-- Typical timings in mostly ns-->
+
+[38]: http://norvig.com/21-days.html#answers
+
+
+<!-- 
+Wiki page on DDR3 
+
+Timings for 1866 suggest 11-14 nanoseconds for CAS and Row activation, which
+strongly suggests 100ns is way more reasonable than 250 cycles unless the 250
+cycles is dominated by bus latency..
+-->
+
+[39]: https://en.wikipedia.org/wiki/DDR3_SDRAM#JEDEC_standard_modules
+
+<!--
+2014 blogpost with latencies, has main memory at 360 cycles
+-->
+[40]: http://sgros.blogspot.com/2014/08/memory-access-latencies.html
+
+<!--
+More timings, has main memory at 200 cycles, but L1 cache at 0.5ns!  Even at 
+possible with 4GHz that's two cycles, seems wrong?  This does tie out with the
+100ns number though.  It's possible that in my system the memory access latency
+is ironically lower because the clock is so slow, i.e. it always takes about
+100ns to get to memory.
+-->
+https://gist.github.com/jboner/2841832
+
+<!--
+CMU paper on DRAM refresh notes typically 8 banks per rank
+-->
+
+[43]: https://users.ece.cmu.edu/~omutlu/pub/dram-access-refresh-parallelization_hpca14.pdf
