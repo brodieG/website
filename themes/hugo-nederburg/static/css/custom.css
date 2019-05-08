@@ -299,14 +299,38 @@ img.aligncenter {
   display: block;
   margin: auto;
 }
-
+/* Inset image settings
+ *
+ * see min-width 37.5 section for the wider settings
+ */
 img.post-inset-image {
   float: left;
   margin: 5px 15px 5px 0;
   object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+figure.post-inset-image {
+  display: inline-block;
+  float: left;
+  margin: 5px 15px 10px 0;
   width: 200px;
+}
+figure.post-inset-image div.post-inset-image-frame{
+  width: 100%;
   height: 200px;
 }
+figure.post-inset-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+figure.post-inset-image figcaption {
+  font-size: 0.8em;
+  font-style: italic;
+}
+/* End image inset */
+
 .alignleft {
   float: left;
   margin: 0 1.5em 1.5em 0;
@@ -337,10 +361,12 @@ img {
   max-width: 100%;
 }
 
+/*
 article img {
   max-height: 100%;
   max-width: 100%;
 }
+*/
 
 .wp-caption-text {
   margin: 0;
@@ -1964,10 +1990,19 @@ code {
 }
 /* 600px */
 @media all and (min-width: 37.5em) {
+    /* see also default settings for narrower */
     img.post-inset-image {
       width: 250px;
       height: 250px;
     }
+    figure.post-inset-image {
+      width: 250px;
+    }
+    figure.post-inset-image div.post-inset-image-frame{
+      width: 250px;
+      height: 250px;
+    }
+    /* end post-inset */
     .return-top {
       display: block;
       position: fixed;

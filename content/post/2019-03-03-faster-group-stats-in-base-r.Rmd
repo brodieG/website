@@ -181,14 +181,38 @@ Pixie dust.  `data.table` pixie dust, really.  Maybe it's not exactly gracious
 of us to take advantage of a `data.table` improvement in base R to do battle
 with `data.table`, but what's the fun in being gracious nowadays?
 
-# Cache Effects
+# The Memory System Sucks
+
+<figure class='post-inset-image'>
+<div class='post-inset-image-frame'><img
+  id='front-img' 
+  src='/post/2019-03-03-faster-group-stats-in-base-r_files/images/coal-train.jpg'
+/></div>
+<figcaption>Just one lump of coal please</figcaption>
+</figure>
 
 _Something_ is going on underneath the hood that dramatically affects the
 performance of the random scenario.  TL;DR: random accesses defeat the measures
-that memory systems use to hide the horrendous latency of their RAM.  If you
-already know about cache and other memory system effects, or if you are
+that memory systems use to hide the horrendous latency of their main memory.  If
+you already know about cache and other memory system effects, or if you are
 satisfied simply knowing that sorting data may allow you to process it faster,
 feel free to skip to the [next section](#so-you-think-you-can-group-stat).
+
+Over the decades CPU processing speed has grown faster than memory latency has
+dropped.  So much so that nowadays it may take ~200 CPU cycles to have a CPU
+data request fulfilled from main memory.  Memory bandwidth on the other hand has
+kept up.  The over-used analogy is that of a freight train: it is slow to start
+moving and get to you (latency), but if you can have it properly loaded it will
+bury you in goods once it arrives (bandwidth).  If you can figure out how to
+fully pack the freight train before it departs the cost of latency is low as you
+suffer it once and amortize it over the entire train load.  That unfortunately
+is an ideal case as often what you need will depend on ongoing calculations .
+
+
+Ideally CPUs would request and get data with each of their cycles so that 
+no processing power is wasted, but unfortunately this is not possible.  CPU
+processing speed has grown faster than RAM access latency has dropped, and
+
 
 We know that the performance improvement must come from `split` because the
 result of that step is identical irrespective of whether the inputs are sorted
@@ -511,14 +535,10 @@ which is surprising because computers use many tricks outside of sequential
 access streams and cache to conceal latency, and our model does not account for
 them.  These normally include things such as out-of-order / speculative
 execution, parallel memory access, and other tricks. A possible culprit is that
-each iteration is partially dependent on the prior iteration[^loop-dep], which
-may limit how far ahead out-of-order execution can get.
-
-
-
-
-In That our simple model predicts timings without
-accounting for any of those things suggests the tricks are being defeated.  
+the algorithm uses an offset vector to track where in each group vector to write
+the next value and it is updated in each iteration.  This introduces a
+dependency across iterations[^loop-dep], which likely hamstrings out-of-order
+execution.
 
 
 While this explains why `split` works so much faster with sorted inputs, we are
@@ -2840,3 +2860,10 @@ CMU paper on DRAM refresh notes typically 8 banks per rank
 -->
 
 [43]: https://users.ece.cmu.edu/~omutlu/pub/dram-access-refresh-parallelization_hpca14.pdf
+
+<!-- 
+Archives New Zealand photo of coal train 
+CC BY 2.0
+-->
+
+[44]: https://www.flickr.com/photos/archivesnz/35756097220/in/photolist-WtDkYQ-pFXbm3-EC9kXN-7kXxX1-8U6V9V-8ARY8U-8AS1m3-e2vora-54GqWx-2ejTYGK-24Jjyh2-6VJXqq-Hr5etz-am3WNE-niGFx9-c47ogL-pvnydm-8ANKYR-q8dYGa-GC23Cx-2cwaLQc-22GYq5b-7bdD4a-5J8sM1-a7C8ZL-oeGeph-4qHJ3t-iP2gsi-28A2Rjv-8WetRn-cpRqNW-d4paYu-ppvSpN-UAE5gq-YmgY8J-g1EDcJ-bCWKu5-9fyM4U-YQekTS-sdCeYu-BseS2w-pkMARp-ebgH77-2ekscff-ixN2mt-dXp7D2-a8h1SU-e1d6MP-Ttk3vp-2d4h1cC
