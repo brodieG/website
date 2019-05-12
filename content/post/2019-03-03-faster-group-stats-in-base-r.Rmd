@@ -177,11 +177,20 @@ identical(x.ref, x.ref.o)
 [1] TRUE
 ```
 
+We can tell that the difference in the two times must come from the `split` step
+as the result of that step is the same in both cases:
+
+```{r eval=FALSE}
+identical(grp.dat, grp.dat.o)
+```
+
 Pixie dust.  `data.table` pixie dust, really.  Maybe it's not exactly gracious
 of us to take advantage of a `data.table` improvement in base R to do battle
 with `data.table`, but what's the fun in being gracious nowadays?
 
 # The Memory System Sucks
+
+## What Do Memory Systems and Freight Trains Have in Common?
 
 <figure class='post-inset-image'>
 <div class='post-inset-image-frame'><img
@@ -199,34 +208,28 @@ satisfied simply knowing that sorting data may allow you to process it faster,
 feel free to skip to the [next section](#so-you-think-you-can-group-stat).
 
 Over the decades CPU processing speed has grown faster than memory latency has
-dropped.  So much so that nowadays it may take ~200 CPU cycles to have a CPU
-data request fulfilled from main memory.  Memory bandwidth on the other hand has
-kept up.  The over-used analogy is that of a freight train: it is slow to start
-moving and get to you (latency), but if you can have it properly loaded it will
-bury you in goods once it arrives (bandwidth).  If you can figure out how to
-fully pack the freight train before it departs the cost of latency is low as you
-suffer it once and amortize it over the entire train load.  That unfortunately
-is an ideal case as often what you need will depend on ongoing calculations .
+dropped.  Nowadays it may take ~200 CPU cycles to have a CPU data request
+fulfilled from main memory.  Memory bandwidth on the other hand has kept up.
+The over-used analogy is that of a freight train: it is slow to start moving and
+get to you (latency), but if you can have it properly loaded it will bury you in
+goods once it arrives (bandwidth).
 
+There are two classes of tricks memory systems use to mask the latency and
+leverage the bandwidth.  The first one involves having some amount of low
+latency memory.  This memory is very limited because it requires a more
+expensive design _and_ it must be close to the CPU, typically on the limited
+real estate of the CPU die.  The second involves interpreting data requests in
+such a way that the bandwidth "freight train" can be fully loaded before it
+leaves the depot[^freight-train].  This includes preloading memory areas the CPU
+is likely to need based on prior access patterns, and executing operations out
+of order so that memory requests for later operations are initiated while
+earlier ones wait for theirs to be fulfilled.
 
-Ideally CPUs would request and get data with each of their cycles so that 
-no processing power is wasted, but unfortunately this is not possible.  CPU
-processing speed has grown faster than RAM access latency has dropped, and
-
-
-We know that the performance improvement must come from `split` because the
-result of that step is identical irrespective of whether the inputs are sorted
-or not:
-
-```{r eval=FALSE}
-identical(grp.dat, grp.dat.o)
-```
-```
-[1] TRUE
-```
-
-[`treeprof`][22] gives us detailed timings for the random and sorted `split`
-calls[^treeprof-manip]: <span id=split-times></span>
+In many use cases memory systems are effective at concealing their latency by
+using these tricks and more, but not always.  `split`ting the randomly ordered
+vector is an example of where they fail.  [`treeprof`][22] gives us detailed
+timings for the random and sorted `split` calls[^treeprof-manip]: <span
+id=split-times></span>
 
 ```{r echo=FALSE}
 string <- "times in milliseconds
@@ -319,6 +322,15 @@ sorts of hacks to mitigate this.  The most advertised one is the use of cache:
 a special sort of very fast and very expensive memory.  Cache is akin to the
 short term memory that allows us to quickly recall the label of the most
 recently seen token/slot label: fast, but limited in capacity.  
+
+## Modelling Cache Effects
+
+<figure class='post-inset-image'>
+<div class='post-inset-image-frame'><img
+  id='front-img' 
+  src='/post/2019-03-03-faster-group-stats-in-base-r_files/images/cpu-die_westmere-6core_edited.jpg'
+/></div>
+</figure>
 
 My system has three levels of cache, each one larger but slower than the
 previous one:
@@ -435,7 +447,7 @@ dat.label <- as.data.frame(
 
 format_log_2 <- function(x) parse(text=paste0('2^', x))
 format_cycles <- function(x) round(2^x)
-clrs <- c(random='#cccc00', sorted='#33ee33', ratio='#3333ee')
+clrs <- c(random='#cccc00', sorted='#33ee33', random2='#3333ee')
 extra <- list(
   scale_y_continuous(label=format_cycles),
   scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))),
@@ -612,6 +624,44 @@ for(i in seq_along(grp)) {
   val <- x[i]        # fetch x value
   res[idx] <- val    # write x value at offset
 }
+```
+
+```{r echo=FALSE}
+resdfm2 <- proc_times(readRDS(sprintf(base, '-7')))
+resdfm3 <- rbind(
+  resdfm, 
+  transform(subset(resdfm2, variable=='random'), variable='random2')
+)
+ymax <- max(resdfm3$time.per, 2^mdl.dat$y)
+dat.label <- as.data.frame(
+  c(
+    values=lapply(log2(ymax), rep, each=length(cache.sizes)),
+    list(size=unname(cache.sizes)),
+    list(label=cache.lab), list(style=cache.styles)
+) )
+resdfmm <- time_med(resdfm3)
+
+ggplot(
+  resdfm3,
+  aes(
+    x=log2(n * 8), y=log2(time.per),
+    color=variable, shape=shape, fill=variable
+  )
+  #aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
+) +
+  geom_quasirandom(position='dodge', alpha=0.20) +
+  extra +
+  geom_text(
+    data=dat.label,
+    aes(
+      x=size - .125, y=values, label=label, color=NULL, group=NULL,
+      shape=NULL, fill=NULL
+    ),
+    color='black', hjust=1
+  ) +
+  geom_line(data=mdl.dat, aes(x, y)) +
+  geom_point(data=subset(resdfmm, !is.na(time.per)), size=3) +
+  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
 ```
 
 The slow step is `res[idx] <- val` as `idx` can point to any location in the
@@ -2589,6 +2639,80 @@ resmx <- matrix(
   byrow=TRUE
 )
 ```
+```{r echo=FALSE, eval=FALSE}
+ # this is for the chain following
+walkrand <- inline::cfunction(
+  sig=c(x='numeric', times='integer', res='integer'), 
+  body="
+  // make sure x only contains values of sample(length(x)) - 1L
+  R_xlen_t len = XLENGTH(x);
+  double total = 0;
+  double *pointer = REAL(x);
+  double *resvec = REAL(res);
+  int jmax = asInteger(times);
+  for(int j = 0; j < jmax; ++j) {
+    total = 0;
+    R_xlen_t idx = 0;
+    for(R_xlen_t i = 0; i < len; ++i) {
+      idx = pointer[idx];
+      total += idx;
+      resvec[i] = total;
+  } }
+  return res;
+")
+scanrand <- inline::cfunction(
+  sig=c(x='numeric', times='integer', res='integer'), 
+  body="
+  // make sure x only contains values of sample(length(x)) - 1L
+  R_xlen_t len = XLENGTH(x);
+  double *pointer = REAL(x);
+  double *resvec = REAL(res);
+  int jmax = asInteger(times);
+  for(int j = 0; j < jmax; ++j) {
+    for(R_xlen_t i = 0; i < len; ++i) {
+      resvec[i] = pointer[(int) pointer[i]];
+  } }
+  return res;
+")
+
+ftest <- function(size, reps) {
+  if(!is.numeric(reps) || length(reps) != 1 || is.na(reps) || reps < 1)
+    stop("bad input reps")
+  x <- sample(as.integer(size)) - 1L
+  fint(x, as.integer(reps))
+}
+rand_path <- function(size) {
+  if(!is.numeric(size) || length(size) != 1 || is.na(size) || size < 1)
+    stop("bad input size")
+  idx <- sample(as.integer(size - 1L)) + 1
+  res <- numeric(size)
+  res[c(1, head(idx, -1))] <- idx
+  res[tail(idx, 1)] <- 1
+  res - 1
+}
+sizes <- 2^(10:27)
+times <- pmax(2^24 / sizes, 1)
+sizes.sub <- seq_along(sizes) # tail(seq_along(sizes), 3)
+samps <- lapply(sizes[sizes.sub], rand_path)
+ress <- lapply(sizes[sizes.sub], numeric)
+y <- 10
+
+#res <- vector('list', 0)
+for(i in seq_along(samps)) {
+  idx <- sizes.sub[i]
+  writeLines(sprintf('------ %f -------', sizes[idx]))
+  time.normal <- sys.time(walkrand(samps[[i]], times[[idx]], ress[[i]]), y)
+  time.sorted <- sys.time(scanrand(samps[[i]], times[[idx]], ress[[i]]), y)
+
+  res <- append(
+    res, list(
+      normal=time.normal, sorted=time.sorted, n=sizes[[idx]], times=times[idx]
+  ) )
+  print(time.normal)
+  print(time.sorted)
+}
+
+```
 
 
 
@@ -2706,7 +2830,7 @@ resmx <- matrix(
   corresponds to a doubling of the working set size.  After the first past a
   cache level transition, only half the working set can be accessed from the
   faster cache.  After two only a quarter, and so on.
-[^access-anomaly] One seeming anomaly is that there are only three transitions
+[^access-anomaly]: One seeming anomaly is that there are only three transitions
   from faster to slower memory, yet there are four bumps in the plot.  This is
   because our working set contains two randomly accessed elements: the result
   list with the double precision vectors that correspond to each group, and an
@@ -2716,14 +2840,14 @@ resmx <- matrix(
   average, we will need ~1 million elements in the offset vector to track each
   group with a 10MM working set size.  At 4 bytes an element, that makes for a
   ~4MB integer vector, which is the size of L3 cache.
-[^ooo-interleave] See this [University of Utah CS7810 presentation][32]
+[^ooo-interleave]: See this [University of Utah CS7810 presentation][32]
   for some discussion of the parallelism obtained from banks in DRAM memory, and
   the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
   interleaving, and pipelining.
 [^proc-group]: Prior to this step the group vector is turned into integer group
   numbers that match the offset into the result list that the values of a group
   will be stored in.
-[^split-internal] The timing corresponds to the [`.Internal` call that
+[^split-internal]: The timing corresponds to the [`.Internal` call that
   invokes][29] the [C code][25] that does the allocation of the result vector
   and the copying, although the bulk of the time is spent copying .   The
   `.Internal` call does not show up in the R profile data used to build the
@@ -2731,13 +2855,14 @@ resmx <- matrix(
   `typeof(.Internal) == "special"`, see `?Rprof`) _and_ a primitive.  "special"
   functions are those that can access their arguments unevaluated.
   See [R Internals][23] for details.
-[^loop-dep] `split` tracks the offset at which the next value in a group will be
+[^loop-dep]: `split` tracks the offset at which the next value in a group will be
   written to, and increments that offset each time a value is written.  In other
   words, in order to know where in the result vector a value needs to go, the
   CPU needs to know how many times previously that group was written to, which
   is difficult to do without a level of insight into the code the CPU is
   unlikely to have.
-
+[^freight-train]: Perhaps a conveyor belt would be a better analogy, but that
+  lacks the visual impact of the freight train.
 
 
 1. Read factor level     (int)
@@ -2774,6 +2899,10 @@ resmx <- matrix(
 [23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
 [24]: https://twitter.com/BrodieGaslam/status/1106231241488154626
 [25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
+<!-- 
+Analysis of cache replacement policies with experiments.
+-->
+
 [26]: http://blog.stuffedcow.net/2013/01/ivb-cache-replacement/
 <!-- 
 Ulrich Drepper Paper, lots of goodies.
@@ -2803,6 +2932,16 @@ There is ambiguity about how many banks there are, and if they are confined to
 one integrated circuit (IC) or not.  It sounds like not?  I.e bank 1 in IC 1 is
 the same bank and bank 2 in IC2?  Same number of banks as ICs, so hard to
 dissambiguate.
+
+> It's important to understand that each page of memory is segmented evenly
+> across Bank n of each IC for the associated rank.
+
+> We can now see why the DDR3 core has a 8n-prefetch (where n refers to the
+> number of banks per rank) as every read access to the memory requires a
+> minimum of 64 bits (8 bytes) of data to be transferred. This is because each
+> bank, of which there are eight for DDR3, fetches no less than 8 bits (1 byte)
+> of data per read request - the equivalent of one column's worth of data.
+
 -->
 
 [35]: https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2
@@ -2867,3 +3006,40 @@ CC BY 2.0
 -->
 
 [44]: https://www.flickr.com/photos/archivesnz/35756097220/in/photolist-WtDkYQ-pFXbm3-EC9kXN-7kXxX1-8U6V9V-8ARY8U-8AS1m3-e2vora-54GqWx-2ejTYGK-24Jjyh2-6VJXqq-Hr5etz-am3WNE-niGFx9-c47ogL-pvnydm-8ANKYR-q8dYGa-GC23Cx-2cwaLQc-22GYq5b-7bdD4a-5J8sM1-a7C8ZL-oeGeph-4qHJ3t-iP2gsi-28A2Rjv-8WetRn-cpRqNW-d4paYu-ppvSpN-UAE5gq-YmgY8J-g1EDcJ-bCWKu5-9fyM4U-YQekTS-sdCeYu-BseS2w-pkMARp-ebgH77-2ekscff-ixN2mt-dXp7D2-a8h1SU-e1d6MP-Ttk3vp-2d4h1cC
+
+<!-- 
+Reorder Buffer Size testing
+
+Of interest:
+* Mentions the ~200 cycle main memory access time, but the tests themselves
+  suggest potentially faster (~150) cycles.
+* Shows reorder buffer size likely ~168 for Sandybridge, which is the generation
+  prior to Skylake on my system.
+-->
+[45]: http://blog.stuffedcow.net/2013/05/measuring-rob-capacity/
+
+<!--
+Not a reference, but someone that at least seems to have some idea of what's
+going on, but no idea if they are right or not.
+-->
+
+[46]: https://forums.tomshardware.com/threads/what-exactly-is-a-memory-bank.2919273/#post-18421032
+
+<!--
+RIDL and Fallout website, in particular has a great diagram of memory system
+architecture, including ROB entry counts, line fill buffer mention, separate L1
+and L2 TLBs.
+-->
+
+[47]: https://mdsattacks.com/
+
+<!--
+Bad concurrency with great but low rez annotated die image
+-->
+
+[48]: https://www.flickr.com/search/?text=cpu+die+cache
+
+<!--
+Westmere 6 core image
+-->
+[50]: http://i.imgur.com/AawdBre.jpg
