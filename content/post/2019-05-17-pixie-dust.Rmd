@@ -1,0 +1,94 @@
+---
+title: Pixie Dust
+author: ~
+date: '2019-05-17'
+slug: pixie-dust
+categories: [r]
+tags: [optimization]
+image: "/post/2019-05-15-pixiedust_files/user-images/cpu-die_westmere-6core_edited.jpg"
+imagerect: "/post/2019-05-15-pixiedust_files/user-images/cpu-die_westmere-6core_small.jpg"
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: In which data.table makes everything faster, and the rabbit whole
+  we fell in trying to understand why.
+---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+
+# Pixie Dust
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' 
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_edited.jpg"
+  class='post-inset-image'
+/>
+
+It wasn't supposed to be this way.  You shouldn't be looking at an image of CPU
+die, however beautiful it may be.  This post was going to be short, sweet, and
+useful.  Instead it is the one head I managed to lop off of the [Lernean
+Hydra][51] that is currently sitting on my chest smothering all productivity out
+of my life.
+
+It all started on a lark to see if I could make base R competitive with the
+undisputed champ `data.table` [at computing group statistics][21].  That thought
+alone is scoff-worthy enough that I deserve little sympathy for what happened
+next.  **Warning**: this is an optimization post in a blog about R, so please
+set your expectations for riveting stories about adventures appropriately.
+
+So, let's go back to where it all started:
+
+```{r echo=FALSE}
+blogdown::shortcode("tweet", "1106231241488154626")
+```
+
+"More on this next week"... &#x1f923;&#x1f923;&#x1f923;.  Aaaah, what a fool.
+That was two months ago.
+
+Anyhow the key observations back then where that:
+
+* `data.table` contributed its radix sort to R in R3.3.0
+* As a result, `order` is 50x faster under at least some work loads
+* Ordering data prior to processing can make the processing faster.
+
+
+
+no sympathy for figurative bumps,
+scrapes, and bruises I've suffered in my continuing fall into the rabbit whole
+in the middle of that road.
+
+As we saw in our [previous post ][21], `data.table` is the group statistics
+heavyweight champ.  Its `gforce` functions and fast grouping put it head and
+shoulders above all challengers. And yet, here we are, about to throw our hat in
+the ring with nothing but base R functionality.  Are we out of our minds?
+
+
+became
+the mythical 
+
+
+
+```{r}
+plot(1:10, 1:10)
+```
+
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Appendix
+
+[^adventure]: 
+Don't expect some
+grand fascinating 
+
+[21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
+[51]: https://en.wikipedia.org/wiki/Lernaean_Hydra
