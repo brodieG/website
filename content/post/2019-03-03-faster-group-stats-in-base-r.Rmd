@@ -2189,75 +2189,6 @@ for(i in seq_along(samps)) {
   the relative error can be as low as ~14% or as high as 100%.
 [^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
   do the binary addition by hand...
-[^treeprof-manip]: We manually juxtaposed the output of two `treeprof` runs.
-[^Rprof]: `treeprof` collects its timings with `Rprof`, so you can consult
-  `?Rprof` for more details about the "total" and "self" times which are the
-  ones reported here.
-[^game-size]: Eighteen is an arbitrary number of distinct elements picked to be
-  large enough so that it is non trivial for humans to scan through them.
-[^l1-data-vs-inst]: My system actually has 64KB of L1 cache, but it is split
-  into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).
-[^time-in-cycles]: `$2^{-25.6}s per element / (1 / 1.2GHz) \approx 24 cycles per
-  element$`.
-[^split-ops]: We are including only the operations used to process the inputs
-  in the main loop.  These are: read input value (1), read factor level (2),
-  fetch target vector from result list (3), read offset for target vector (4),
-  write value to target vector at offset (5), and increment offset (6).
-[^working-set-size]: We use for working set size the portion of the data that
-  cannot be accessed sequentially when the input is randomized.  This is the
-  size of the result list of vectors which will be a little over 10MM elements
-  each 8 bytes in size, and the offset tracking vector which will be ~1MM
-  elements, each 4 bytes in size.  In reality there is more data involved, but
-  because the rest of it are accessed sequentially, their impact on cache
-  utilization is much lower.
-[^model-anomalies]: The decreasing times per item for the smaller sets are
-  likely a result of R function call overhead being amortized over an increasing
-  number of entries, and the jump up for the largest working set size likely
-  corresponds to that size defeating the normal latency-concealing optimizations
-  used for sequential accesses.  One point of failure could be that some level
-  of the [Translation Lookaside Buffer][29] that acts as cache for the
-  translation of virtual to physical memory addresses is also exceeded and a
-  full main memory table walk is required.
-[^access-dominates]: There are a few other operations involved, such as
-  allocating memory and incrementing offset counters, but these are a small
-  portion of the overall time.
-[^asymptotic-latency]: Keep in mind that the x-axis is log base 2, so each step
-  corresponds to a doubling of the working set size.  After the first past a
-  cache level transition, only half the working set can be accessed from the
-  faster cache.  After two only a quarter, and so on.
-[^access-anomaly]: One seeming anomaly is that there are only three transitions
-  from faster to slower memory, yet there are four bumps in the plot.  This is
-  because our working set contains two randomly accessed elements: the result
-  list with the double precision vectors that correspond to each group, and an
-  integer vector that tracks the offsets within each group that the next element
-  will be written to.  The last bump corresponds to the point at which the
-  offset integer vector outgrows L3 cache.  With ten elements pre group on
-  average, we will need ~1 million elements in the offset vector to track each
-  group with a 10MM working set size.  At 4 bytes an element, that makes for a
-  ~4MB integer vector, which is the size of L3 cache.
-[^ooo-interleave]: See this [University of Utah CS7810 presentation][32]
-  for some discussion of the parallelism obtained from banks in DRAM memory, and
-  the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
-  interleaving, and pipelining.
-[^proc-group]: Prior to this step the group vector is turned into integer group
-  numbers that match the offset into the result list that the values of a group
-  will be stored in.
-[^split-internal]: The timing corresponds to the [`.Internal` call that
-  invokes][29] the [C code][25] that does the allocation of the result vector
-  and the copying, although the bulk of the time is spent copying .   The
-  `.Internal` call does not show up in the R profile data used to build the
-  `treeprof` output because `.Internal` is both "special" (i.e.
-  `typeof(.Internal) == "special"`, see `?Rprof`) _and_ a primitive.  "special"
-  functions are those that can access their arguments unevaluated.
-  See [R Internals][23] for details.
-[^loop-dep]: `split` tracks the offset at which the next value in a group will be
-  written to, and increments that offset each time a value is written.  In other
-  words, in order to know where in the result vector a value needs to go, the
-  CPU needs to know how many times previously that group was written to, which
-  is difficult to do without a level of insight into the code the CPU is
-  unlikely to have.
-[^freight-train]: Perhaps a conveyor belt would be a better analogy, but that
-  lacks the visual impact of the freight train.
 
 
 1. Read factor level     (int)
@@ -2290,7 +2221,6 @@ for(i in seq_along(samps)) {
 [19]: https://twitter.com/BrodieGaslam/status/1113783101262585856
 [20]: https://www.ibm.com/blogs/research/2018/12/8-bit-precision-training/
 [21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
-[22]: https://github.com/brodieG/treeprof
 [23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
 [24]: https://twitter.com/BrodieGaslam/status/1106231241488154626
 [25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8

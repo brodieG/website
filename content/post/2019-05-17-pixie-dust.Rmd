@@ -1,5 +1,5 @@
 ---
-title: Pixie Dust
+title: "Hydra Chronicles, Part I: Pixie Dust"
 author: ~
 date: '2019-05-17'
 slug: pixie-dust
@@ -11,13 +11,29 @@ imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: In which data.table makes everything faster, and the rabbit whole
-  we fell in trying to understand why.
+description: "How cache and other microarchitectural factors affect the
+performance of R code, how the fast ordering contributed by data.table
+mitigates potential problems, and opens up the possibility of faster
+algorithms."
 ---
 
 ```{r echo=FALSE}
-options(digits=3)
+options(digits=3, crayon.enabled=TRUE)
+suppressMessages(library(ggplot2))
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+```{r echo=FALSE, comment="", results='asis'}
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+```
+```{r, echo=FALSE}
+writeFansi <- function(x) {
+  writeLines(
+    paste0(
+      "<pre></pre><pre><code>",
+      paste0(fansi::sgr_to_html(x), collapse="\n"),
+      "</code></pre>"
+  ) )
+}
 ```
 
 # Often the Road Least Travelled is so For Good Reasons
@@ -25,21 +41,25 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 <!-- this needs to become a shortcode -->
 <img
   id='front-img' 
-  src= "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_edited.jpg"
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/hydra-white.png"
   class='post-inset-image'
 />
 
-It wasn't supposed to be this way.  You shouldn't be looking at an image of CPU
-die, however beautiful it may be.  This post was going to be short, sweet, and
-useful.  Instead it is the one head I managed to lop off of the [Lernean
-Hydra][51] that is contentedly sitting on my chest smothering all productivity
-out of me.
+It wasn't supposed to be this way.  You shouldn't be looking at drawing of a
+[Lernean Hydra][51] laughing its ass off.  This post was going to be short,
+sweet, and useful.  Instead it turned into a many-headed monster that is smugly
+sitting on my chest smothering all productivity out of me.  What follows here is
+a re-telling of my flailing attempt at chopping off one its heads.
 
 It all started on a lark to see if I could make base R competitive with the
 undisputed champ `data.table` [at computing group statistics][21].  That thought
 alone is scoff-worthy enough that I deserve little sympathy for what happened
 next.  **Warning**: this is an optimization post in a blog about R, so please
 set your expectations for riveting stories about adventures appropriately.
+
+> TL;DR: ordering data can have a huge impact on how quickly it can be processed
+> because of micro-architectural factors and because of better algorithms that
+> become available.
 
 Let's skip back to the care-free, hydra-less days when I should have known
 better:
@@ -49,9 +69,7 @@ blogdown::shortcode("tweet", "1106231241488154626")
 ```
 
 "More on this next week"... &#x1f923;&#x1f923;&#x1f923;.  Aaaah, what a fool.
-That was two months ago.
-
-The key observations back then where that:
+That was two months ago.  The key observations back then were that:
 
 * `data.table` contributed its radix sort to R in R3.3.0.
 * As a result, `order` became 50x faster under at least some work loads.
@@ -59,7 +77,7 @@ The key observations back then where that:
 I was also alluding that something fairly remarkable happens when you order data
 before you process it.  Let's illustrate with 10MM items in ~1MM groups:
 
-```{r}
+```{r warning=FALSE}
 RNGversion("3.5.2"); set.seed(42)
 n     <- 1e7
 n.grp <- 1e6
@@ -96,9 +114,20 @@ sys.time(gs <- split(x, grp))
   5.643   0.056   5.704 
 ```
 
-`sys.time` is a wrapper around `system.time` that runs the expression eleven
-times and returns the median timing.  It is [defined in the
-appendix](#sys.time).  Compare to:
+`split` will split our vector `x` into a list of vectors as per `grp`, so the
+following displays the first three split vectors:
+
+```{r eval=FALSE}
+str(head(gs, 3))
+```
+```
+List of 3
+ $ 1: num [1:11] 0.216 0.537 0.849 0.847 0.347 ...
+ $ 2: num [1:7] 0.0724 0.1365 0.5364 0.0517 0.1887 ...
+ $ 3: num [1:7] 0.842 0.323 0.325 0.49 0.342 ...
+```
+
+`sys.time` is a wrapper around `system.time`[^sys-time].   Compare to:
 
 ```{r eval=FALSE}
 sys.time({
@@ -125,26 +154,17 @@ identical(gs, gso)
 [1] TRUE
 ```
 
-<img
-  id='front-img' 
-  src= "/post/2019-05-17-pixie-dust_files/user-imgs/hydra-white.png"
-  class='post-inset-image'
-/>
-
 Mind blowing.  I remember peeking at the [most popular QA on Stackoverflow][3] a
 few years ago and thinking "oh, that's not a problem I need to worry about as an
-R user".  I'm tickled that I was wrong and I get to see this type of effects in
+R user".  I'm tickled that I was wrong and I get to see this type of effect in
 play first hand, although here there are more issues than just branch
 prediction.
-
 
 Two months ago I reached a fork in the road and I could have taken the "oh,
 neat, let's move on and do something useful" one.  Instead I took the other one.
 The one leading down the rabbit hole[^rabbit-hole].  And here I am, flat on my
 back with a fat hydra sitting on my chest, licking its paws rather unconcerned
-with my flailing efforts to cut off its remaining heads before I run out of
-breath.
-<br />
+with my flailing efforts to cut off its remaining heads.
 
 # The Memory System Sucks
 
@@ -157,34 +177,46 @@ breath.
 </figure>
 
 _Something_ is going on underneath the hood that dramatically affects the
-performance of the random scenario.  TL;DR: random accesses defeat the measures
-that memory systems use to hide the horrendous latency of their main memory.  If
-you already know about cache and other memory system effects, or if you are
-satisfied simply knowing that sorting data may allow you to process it faster,
-feel free to skip to the [next section](#so-you-think-you-can-group-stat).
-
-Over the decades CPU processing speed has grown faster than memory latency has
-dropped.  Nowadays it may take ~200 CPU cycles to have a CPU data request
-fulfilled from main memory.  Memory bandwidth on the other hand has kept up.
-The over-used analogy is that of a freight train: it is slow to start moving and
-get to you (latency), but if you can have it properly loaded it will bury you in
-goods once it arrives (bandwidth).
+performance of the random scenario. Over the decades CPU processing speed has
+grown faster than memory latency has dropped.  Nowadays it may take ~200 CPU
+cycles to have a CPU data request fulfilled from main memory.  Memory bandwidth
+on the other hand has kept up.  The over-used analogy is that of a freight
+train: it is slow to start moving and get to you (latency), but if you can have
+it properly loaded it will bury you in goods once it arrives (bandwidth).
 
 There are two classes of tricks memory systems use to mask the latency and
 leverage the bandwidth.  The first one involves having some amount of low
-latency memory.  This memory is very limited because it requires a more
-expensive design _and_ it must be close to the CPU, typically on the limited
-real estate of the CPU die.  The second involves interpreting data requests in
-such a way that the bandwidth "freight train" can be fully loaded before it
-leaves the depot[^freight-train].  This includes preloading memory areas the CPU
-is likely to need based on prior access patterns, and executing operations out
-of order so that memory requests for later operations are initiated while
-earlier ones wait for theirs to be fulfilled.
+latency memory known as cache.  This memory is very limited because it requires
+a more expensive design _and_ it must be close to the CPU, typically on the
+limited real estate of the CPU die:  
 
-In many use cases memory systems are effective at concealing their latency by
-using these tricks and more, but not always.  `split`ting the randomly ordered
-vector is an example of where they fail.  [`treeprof`][22] gives us detailed
-timings for the random and sorted `split` calls[^treeprof-manip]: <span
+<figure class='aligncenter' style='max-width: 500px;'>
+<img
+  id='cpu-die' 
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_annotated2.jpeg"
+/>
+<figcaption>Half of a Westmere 6 Core Xeon Die</figcaption>
+</figure>
+
+We can see three levels of cache labeled L1, L2, and L3[^cache-labels], with the
+first two inside the cores, and the last shared across all cores.  Each core
+will have its own L1 and L2 cache, though we only label them within one core.
+L1 cache is split between data cache (L1d) and instruction cache (L1i).
+
+<span id=second-trick></span>The second latency concealing trick involves
+interpreting instructions in such a way that the bandwidth "freight train" can
+be fully loaded before it leaves the depot[^freight-train].  This includes
+preloading memory areas the CPU is likely to need based on prior access
+patterns, executing operations out of order so that memory requests for later
+operations are initiated while earlier ones wait for theirs to be fulfilled,
+guessing at which conditional branch will be executed before its condition is
+known, and other optimizations.
+
+In many cases the combination of these tricks is sufficient to conceal or at
+least amortize the latency over many accesses, but there are pathological
+operations that defeat them.  `split`ting the randomly ordered vector is an
+example of such an operation.  [`treeprof`][22] gives us detailed timings for
+the random and sorted `split` calls[^treeprof-manip]: <span
 id=split-times></span>
 
 ```{r echo=FALSE}
@@ -243,9 +275,10 @@ DT DW FD FM JO KI PL QO RM SQ UE UZ
 We pick up the first token and scan the slots until we find the one with the
 "CF" label and drop the token in it.  The next token down is also labeled "CF".
 This time, since we remember where we just dropped the last token we can repeat
-the action with little fuss.  We can quickly transfer the remaining sequence of
-six "CF" tokens into their slot, until we need to repeat the search for the
-first of the next sequence of tokens.
+the action for it and the subsequent six "CF" tokens.  Each time we hit a new
+token label we will re-scan the slots.  In this analogy latency is the time it
+takes to find a slot, and the bandwidth the rate at which we can transfer tokens
+into the slot once we locate it.
 
 Imagine instead if the board we had been given looked as follows:
 
@@ -266,30 +299,24 @@ DT CF UE PF KI DW FD GE UA EQ UE GE
 UZ RM JO PF QS DW UA SQ PF PF EQ EQ
 ```
 
-Whatever we do we'll be stuck re-scanning the slots with each token, or scanning
-the tokens for a particular label.  If our short term memory is good we might be
-remember the location for a few of the labels and transfer those without a scan,
-but unless we can remember the location of every slot it will take us much
-longer than in the sorted case.
+Whatever we do we'll be stuck re-scanning the slots with each
+token[^scan-slots].  If our short term memory is good we might remember the
+location for a few of the labels and transfer those without a scan, but unless
+we can remember the location of every slot it will take us much longer than in
+the sorted case.
 
-Computers will also struggle with randomly order input for similar reasons.
-Memory is a major bottle neck, and computer architectures will resort to all
-sorts of hacks to mitigate this.  The most advertised one is the use of cache:
-a special sort of very fast and very expensive memory.  Cache is akin to the
-short term memory that allows us to quickly recall the label of the most
-recently seen token/slot label: fast, but limited in capacity.  
+Computers will also struggle with randomly order input for similar reasons.  The
+`split` process is akin to our tokens and slots, except with ten million tokens
+and ~one million slots.  Like us, computers have fast but limited short term
+memory in the CPU cache, but the problem is too large for the cache so the high
+latency main memory must be used.  There are additional complexities that defeat
+the second class of optimizations (better packing of freight train) that we will 
+discuss in the next section.
 
 # Modelling Cache Effects
 
-<figure class='post-inset-image'>
-<div class='post-inset-image-frame'><img
-  id='front-img' 
-  src='/post/2019-03-03-faster-group-stats-in-base-r_files/images/cpu-die_westmere-6core_edited.jpg'
-/></div>
-</figure>
-
-My system has three levels of cache, each one larger but slower than the
-previous one:
+My system has a 3 level cache hierarchy as in the [pictured die](#cpu-die).
+Each level is larger but slower than the previous one[^mem-latency]:
 
 <!--
 Some question whether 250 cycle for main memory is right.  Most quote 100ns,
@@ -299,7 +326,7 @@ which maybe with the processors
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
 labels <- c('L1', 'L2', 'L3', 'Main')
 # access.times <- c(3, 15, 40, 250)
-access.times <- c(4, 10, 40, 250)
+access.times <- c(4, 14, 40, 250)
 sizes <- c(2^15, 2^18, 2^21, 2^33)
 
 library(ggplot2)
@@ -402,16 +429,23 @@ dat.label <- as.data.frame(
 ) )
 
 format_log_2 <- function(x) parse(text=paste0('2^', x))
+format_mb <- function(x)
+  ifelse(
+    x >= 20,
+    paste0(round(2^(x-20)), 'MB'),
+    paste0(round(2^(x-10)), 'KB')
+  )
+
 format_cycles <- function(x) round(2^x)
 clrs <- c(random='#cccc00', sorted='#33ee33', random2='#3333ee')
 extra <- list(
   scale_y_continuous(label=format_cycles),
-  scale_x_continuous(label=format_log_2, expand=expand_scale(c(0.05, 0.10))),
+  scale_x_continuous(label=format_mb, expand=expand_scale(c(0.05, 0.10))),
   scale_shape_manual(values=c(Single=16, Median=18)),
   scale_color_manual(values=clrs),
   scale_fill_manual(values=clrs),
   ylab("CPU Cycles Per Item, log2"),
-  xlab("Result Size in Bytes, log2"),
+  xlab("Working Set Size, log2"),
   theme(legend.title=element_blank()) #legend.position='bottom',
 )
 
@@ -430,16 +464,6 @@ ggplot(mdl.dat, aes(x, y)) +
   # coord_cartesian(ylim=c(4, 9))
 ```
 
-Main memory latency is terrible, but bandwidth is better.  It takes
-many cycles to get access to a specific main memory element, but if we request
-a memory _region_ around that element, we amortize the latency of the request
-across the entire region.  The first element is still subject to the full
-latency, but subsequent elements can be streamed at a high rate reducing the
-average latency. Our model assumes that sequential accesses do this and are met
-on average at L1 speeds.  In our (sorted) token/slot analogy the latency is the
-time it takes to find a slot, and the bandwidth the rate at which we can
-transfer tokens into their slots.
-
 `split.default` has six memory accesses[^split-ops].  When the working set fits
 in L1 cache they are all done at L1 speeds, which explains why the chart starts
 at 24 cycles per element in both cases[^access-dominates].  In the token/slots
@@ -447,12 +471,19 @@ analogy, a working set that fits in L1 is akin to a set of distinct labels small
 enough that we can memorize the slot locations for each of them.
 
 Of the six accesses four will always be sequential.  The other two are
-sequential only for the sorted set.  Once we exceed L1 cache size with the
-random set, things slows down as an increasing number of the non-sequential
-accesses must come from slower memory.  Each transition to a slower level of
-memory is manifests as an increase in per-element time increase that
-asymptotically[^asymptotic-latency] approaches the slower memory's incremental
-latency[^access-anomaly].
+sequential only for the sorted set.  We assume that all sequential accesses can
+be met at L1 cache speeds without actually using L1 cache due to prefetching /
+stream buffers[^streams].  This is one of those ["pack the freight train"
+optimizations](#second-trick) where the memory system detects sequential
+accesses and starts sending the likely-to-be-needed-data before it is actually
+needed.  The first element is still subject to the full latency, but subsequent
+elements will follow in quick succession.
+
+Once we exceed L1 cache size with the random set, things slows down as an
+increasing number of the non-sequential accesses must come from slower memory.
+Each transition to a slower level of memory is manifests as an increase in
+per-element time increase that asymptotically[^asymptotic-latency] approaches
+the slower memory's incremental latency[^access-anomaly].
 
 This simple model predicts the random inputs will be ~13 times slower to process
 than the sorted ones for 10MM long inputs, which is close to the [ observed ~15
@@ -498,17 +529,25 @@ ggplot(
   # facet_wrap(~facet, scales='free_y')
 ```
 
-Outside of a few anomalies[^model-anomalies] the model works remarkably well,
+Outside of a few anomalies[^model-anomalies] the model works remarkably well.
+This implies that none of the tricks other than cache are having a substantive
+effect on performance.  It is also possible the reality is more complicated and
+there are offsetting factors cancelling each other out[^model-caveat].
+
+A possible reason why culprit is that the algorithm uses an offset vector to
+track where in each group vector to write the next value and it is updated in
+each iteration.  This introduces a dependency across iterations[^loop-dep],
+which likely hamstrings out-of-order execution.
+
+
+
+# Randomness Is Not Completely Pathological
+
+,
 which is surprising because computers use many tricks outside of sequential
 access streams and cache to conceal latency, and our model does not account for
 them.  These normally include things such as out-of-order / speculative
-execution, parallel memory access, and other tricks. A possible culprit is that
-the algorithm uses an offset vector to track where in each group vector to write
-the next value and it is updated in each iteration.  This introduces a
-dependency across iterations[^loop-dep], which likely hamstrings out-of-order
-execution.
-
-
+execution, parallel memory access, and other tricks. 
 While this explains why `split` works so much faster with sorted inputs, we are
 still left to deal with the unsorted inputs:
 
@@ -765,10 +804,123 @@ Vs.
 ```{r sys-time, echo=FALSE}
 ```
 
+[^model-caveat]: I have no easy way of knowing that my inferences about what is
+  happening are correct.  I'm relying exclusively on the simple model producing
+  reasonably results, and common sense based on the information I have been able
+  to gather.  Ideally I would be able to query performance counters to confirm
+  that cache misses can indeed explain the observed timings, but those are
+  hard to access on OS X, and even harder still for code that is run as part of
+  R.  One element that is almost undoubtedly influencing performance is
+  Translation Lookaside Buffer (TLB) misses, which we do not model at all.
+[^mem-latency]: The latency figures are approximate.  In particular, the main
+  memory latency may be incorrect.  For cache we use the numbers provided in
+  [Agner Fog's "The microarchitecture of Intel, AMD and VIA CPUs"][57].  For L3
+  we picked a seemingly reasonable number in the provided range.
+[^streams]: [Nima Honarmand's "Memory Prefetching"][28] lecture strongly suggests
+  data streams can be supported without polluting cache (p13,21-22), as does the
+  [Paul Wicks "Miss Caches, Victim Caches and Stream Buffers" presentation][59]
+  (p14-15), both of them based off of the Jouppi paper.  But the term "stream
+  buffer" does not appear to be an Intel term, and the [Intel 64 and IA-32
+  Optimization Reference Manual][58] is not super clear about the presence of
+  such buffers that would support L1 access speeds (sections 2.1.5, 2.2.4,
+  3.7.3, 7.2, 7.6.3), stating that prefetches go into L2.  However, my
+  observations are consistent with streams being met at L1 speeds, although it
+  could be due to other factors (e.g. accesses are met at L2 speeds, but
+  multiple accesses are done simultaneously).
 [^rabbit-hole]: Yes, this is a bit of a theme for me.
+[^freight-train]: Perhaps a conveyor belt would be a better analogy, but that
+  lacks the visual impact of the freight train.
+[^treeprof-manip]: We manually juxtaposed the output of two `treeprof` runs.
+[^split-ops]: We are including only the operations used to process the inputs
+  in the main loop.  These are: read input value (1), read factor level (2),
+  fetch target vector from result list (3), read offset for target vector (4),
+  write value to target vector at offset (5), and increment offset (6).
+[^working-set-size]: We use for working set size the portion of the data that
+  cannot be accessed sequentially when the input is randomized.  This is the
+  size of the result list of vectors which will be a little over 10MM elements
+  each 8 bytes in size, and the offset tracking vector which will be ~1MM
+  elements, each 4 bytes in size.  In reality there is more data involved, but
+  because the rest of it are accessed sequentially, their impact on cache
+  utilization is much lower.
+[^model-anomalies]: The decreasing times per item for the smaller sets are
+  likely a result of R function call overhead being amortized over an increasing
+  number of entries, and the jump up for the largest working set size likely
+  corresponds to that size defeating the normal latency-concealing optimizations
+  used for sequential accesses.  One point of failure could be that some level
+  of the [Translation Lookaside Buffer][29] that acts as cache for the
+  translation of virtual to physical memory addresses is also exceeded and a
+  full main memory table walk is required.
+[^access-dominates]: There are a few other operations involved, such as
+  allocating memory and incrementing offset counters, but these are a small
+  portion of the overall time.
+[^asymptotic-latency]: Keep in mind that the x-axis is log base 2, so each step
+  corresponds to a doubling of the working set size.  After the first past a
+  cache level transition, only half the working set can be accessed from the
+  faster cache.  After two only a quarter, and so on.
+[^access-anomaly]: One seeming anomaly is that there are only three transitions
+  from faster to slower memory, yet there are four bumps in the plot.  This is
+  because our working set contains two randomly accessed elements: the result
+  list with the double precision vectors that correspond to each group, and an
+  integer vector that tracks the offsets within each group that the next element
+  will be written to.  The last bump corresponds to the point at which the
+  offset integer vector outgrows L3 cache.  With ten elements pre group on
+  average, we will need ~1 million elements in the offset vector to track each
+  group with a 10MM working set size.  At 4 bytes an element, that makes for a
+  ~4MB integer vector, which is the size of L3 cache.
+[^ooo-interleave]: See this [University of Utah CS7810 presentation][32]
+  for some discussion of the parallelism obtained from banks in DRAM memory, and
+  the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
+  interleaving, and pipelining.
+[^proc-group]: Prior to this step the group vector is turned into integer group
+  numbers that match the offset into the result list that the values of a group
+  will be stored in.
+[^split-internal]: The timing corresponds to the [`.Internal` call that
+  invokes][29] the [C code][25] that does the allocation of the result vector
+  and the copying, although the bulk of the time is spent copying .   The
+  `.Internal` call does not show up in the R profile data used to build the
+  `treeprof` output because `.Internal` is both "special" (i.e.
+  `typeof(.Internal) == "special"`, see `?Rprof`) _and_ a primitive.  "special"
+  functions are those that can access their arguments unevaluated.
+  See [R Internals][23] for details.
+[^loop-dep]: `split` tracks the offset at which the next value in a group will be
+  written to, and increments that offset each time a value is written.  In other
+  words, in order to know where in the result vector a value needs to go, the
+  CPU needs to know how many times previously that group was written to, which
+  is difficult to do without a level of insight into the code the CPU is
+  unlikely to have.
+[^game-size]: Eighteen is an arbitrary number of distinct elements picked to be
+  large enough so that it is non trivial for humans to scan through them.
+[^l1-data-vs-inst]: My system actually has 64KB of L1 cache, but it is split
+  into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).
+[^time-in-cycles]: `$2^{-25.6}s per element / (1 / 1.2GHz) \approx 24 cycles per
+  element$`.
+[^sys-time]: It runs `system.time` eleven times and returns the median timing.
+  It is [defined in the appendix](#sys.time).
+[^cache-labels]: These are labeled on a best-efforts basis and may be incorrect.
+[^scan-slots]: Alternatively, we could scan the tokens for a particular label.
 
 [3]: https://stackoverflow.com/a/11227902/2725969
 [21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
+[22]: https://github.com/brodieG/treeprof
+
+<!-- 
+Ulrich Drepper Paper, lots of goodies.
+
+Table 2.2: DDR3 array/bus frequencies (933MHz for DDR3-1866)
+Bottom pg 15: Latency numbers for Pentium M, including 240 cycles for main
+memory.
+
+Oddly doesn't really talk about interleaved access.
+-->
+
+[27]: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf
+
+<!--
+Nima Honarmand Memory Prefetching, including discussion of stream buffers.
+-->
+
+[28]: https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf
+
 [51]: https://en.wikipedia.org/wiki/Lernaean_Hydra
 <!-- Original Hydra Link 
 Larry Wentzel
@@ -776,3 +928,53 @@ https://www.flickr.com/photos/wentzelepsy/
 Attribution-NonCommercial 2.0 Generic (CC BY-NC 2.0)
 -->
 [52]: https://www.flickr.com/photos/wentzelepsy/15431618539/in/photolist-pvD5yB-orMGkS-oD9tMr-6Hy4vZ-dHArXF-4MkiSq-fmXesZ-fnKybA-7PdCYt-nKGMUu-9DwyBF-4RGwKf-95vYq-4YHwip-69ckvt-FwgCQm-95vLz-6w9W6f-bVZLqM-95vWc-4YHsJc-4YJhhV-fnvhfn-9DzB8h-4YHxAB-9db7nP-fnvrrP-Ww91p9-8Yhwn3-4tLnpy-bsHuHt-4RGJSU-8nLdkA-4MkjF5-4tLnzC-5Zr3e9-fnKFf7-69gAij-5sR6jQ-9DwEzx-gfesaD-fnf39A-6w5JmX-69gz5o-5xYUVS-6MLZD9-5N2EcN-X463Df-G23wk-fmXqjH
+
+<!-- 
+Interesting review of microcode with details on actual execution
+-->
+
+[53]: https://pdziepak.github.io/2019/05/02/on-lists-cache-algorithms-and-microarchitecture/
+
+<!--
+The microarchitecture of Intel, AMD and VIA CPUs
+
+Looks like a full on reference guide.  Has cache timings among other things, but
+no memory access times?
+-->
+[56]: https://www.agner.org/optimize/microarchitecture.pdf
+
+<!--
+Westmere wiki page points out 32 entries of 2MB, which would match the cliff we
+see at 64MB
+-->
+
+[57]: https://en.wikipedia.org/wiki/Westmere_(microarchitecture)
+
+<!--
+Intel optimization manual
+
+Trying to use this to bridge the line-fill buff vs stream buffer.  Section 2.1.5
+discusses this, although it isn't clear what the level of cache pollution is,
+and how L1 and L2 interact since stuff seems to be prefetched to L2, not L1.
+This also doesn't exactly match the Honarmand model since:
+
+"The streamer and spatial prefetcher prefetch the data to the last level cache.
+Typi-cally data is brought also to the L2 unless the L2 cache is heavily loaded
+with missing demand requests" 
+
+Figure 2-1 on page 42 does show the "Line Fill Buffers" to be between L2 and
+L1d, and these are said to have 10 entries (cache line sized), and 20 for L2 (?).
+
+Also, Table 2-9 on p58 has DTLB sizes for Sandy bridge (64 4KB entries, 32
+2/4MB entries, 4 1 GB entries)
+-->
+
+[58]: https://www.intel.com/content/dam/doc/manual/64-ia-32-architectures-optimization-manual.pdf
+
+<!--
+Miss Caches, Victim Caches and Stream Buffers
+
+Another course presentation discussing the Joupi paper, also suggests stream
+buffers are there, real, and between L1 and L2
+-->
+[59]: https://cseweb.ucsd.edu/classes/fa11/cse240A-a/Slides1/04_Jouppi.pdf

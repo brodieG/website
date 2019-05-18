@@ -280,7 +280,7 @@ img { margin: 0 auto; }
 .size-medium,
 .size-thumbnail {
   height: auto;
-  line-height: 0;
+  line-height: auto;
   max-width: 100%;
   max-width: calc(100% - 48px);
 }
@@ -325,11 +325,14 @@ figure.post-inset-image img {
   height: 100%;
   object-fit: cover;
 }
-figure.post-inset-image figcaption {
+/* End image inset */
+
+figure figcaption {
   font-size: 0.8em;
   font-style: italic;
 }
-/* End image inset */
+
+
 
 .alignleft {
   float: left;
