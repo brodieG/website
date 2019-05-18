@@ -166,7 +166,7 @@ The one leading down the rabbit hole[^rabbit-hole].  And here I am, flat on my
 back with a fat hydra sitting on my chest, licking its paws rather unconcerned
 with my flailing efforts to cut off its remaining heads.
 
-# The Memory System Sucks
+# Latency Is The Enemy
 
 <figure class='post-inset-image'>
 <div class='post-inset-image-frame'><img
@@ -325,7 +325,7 @@ which maybe with the processors
 
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
 labels <- c('L1', 'L2', 'L3', 'Main')
-# access.times <- c(3, 15, 40, 250)
+ # access.times <- c(3, 15, 40, 250)
 access.times <- c(4, 14, 40, 250)
 sizes <- c(2^15, 2^18, 2^21, 2^33)
 
@@ -502,7 +502,7 @@ time_med <- function(x) {
   )
 }
 resdfmm <- time_med(resdfm)
-# ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
+ # ymax <- stack(tapply(log2(resdfm$time.per), resdfm$facet, max))
 ymax <- max(log2(resdfm$time.per))
 
 ggplot(
@@ -531,31 +531,25 @@ ggplot(
 
 Outside of a few anomalies[^model-anomalies] the model works remarkably well.
 This implies that none of the tricks other than cache are having a substantive
-effect on performance.  It is also possible the reality is more complicated and
-there are offsetting factors cancelling each other out[^model-caveat].
+effect on performance[^model-caveat].  A possible reason may be that the
+splitting algorithm uses an offset vector to track where in each group vector to
+write the next value.  This offset vector is updated at the end of each
+iteration and is read from the next introducing a cross-iteration
+dependency[^loop-dep], which likely hamstrings out-of-order execution.
 
-A possible reason why culprit is that the algorithm uses an offset vector to
-track where in each group vector to write the next value and it is updated in
-each iteration.  This introduces a dependency across iterations[^loop-dep],
-which likely hamstrings out-of-order execution.
+# Degrees of Pathology
 
-
-
-# Randomness Is Not Completely Pathological
-
-,
-which is surprising because computers use many tricks outside of sequential
-access streams and cache to conceal latency, and our model does not account for
-them.  These normally include things such as out-of-order / speculative
-execution, parallel memory access, and other tricks. 
-While this explains why `split` works so much faster with sorted inputs, we are
-still left to deal with the unsorted inputs:
+We now have a reasonable understanding for why `split` works much faster with
+ordered than unordered input.  What this doesn't explain is why the combination
+of ordering the inputs and splitting them is faster than splitting them
+directly.  After all the ordering process itself involves random memory
+accesses:
 
 ```{r eval=FALSE}
 o <- order(grp)
-go <- grp[o]
-xo <- x[o]
-split.default(xo, go)
+go <- grp[o]            # random access
+xo <- x[o]              # random access
+split.default(xo, go)   # sequential
 ```
 
 Even ignoring the `order` call, the indexing steps required to order `x` and
@@ -576,10 +570,11 @@ mdl.dat <- data.frame(
 )
 resdfm <- proc_times(readRDS(sprintf(base, '-4')))
 ymax <- max(resdfm$time.per, 2^mdl.dat$y)
+cache.sizes.new <- c(head(cache.sizes, -1), log2(8*1e7))
 dat.label <- as.data.frame(
   c(
     values=lapply(log2(ymax), rep, each=length(cache.sizes)),
-    list(size=unname(cache.sizes)),
+    list(size=unname(cache.sizes.new)),
     list(label=cache.lab), list(style=cache.styles)
 ) )
 resdfmm <- time_med(resdfm)
@@ -604,22 +599,57 @@ ggplot(
   ) +
   geom_line(data=mdl.dat, aes(x, y)) +
   geom_point(data=resdfmm, size=3) +
-  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
+  geom_vline(data=NULL, xintercept=cache.sizes.new, linetype=cache.styles)
 ```
 
 There are many interesting things going on, but the most notable one is that the
-random case substantially outperforms our naive model.  Most likely this is
-happening because of out-of-order execution and memory interleaving /
+random case substantially outperforms our naive cache-only model.  Most likely
+this is happening because of out-of-order execution and memory interleaving /
 pipelining.  A pseudo code version of the [subset C code][31] might look like:
 
 ```{r eval=FALSE}
 res <- numeric(length(grp))
 for(i in seq_along(grp)) {
-  idx <- o[i]        # fetch group offset
-  val <- x[i]        # fetch x value
-  res[idx] <- val    # write x value at offset
+  val <- x[i]        # sequential - fetch x value to copy
+  idx <- o[i]        # sequential - fetch write offset
+  res[idx] <- val    # random - write x value at offset
 }
 ```
+
+The slow step is `res[idx] <- val` as `idx` can point to any location in the
+result vector and will not be met from cache at large enough working set sizes.
+But the nice thing about this loop is that each iteration is independent of all
+others.  This allows the processor to begin execution of multiple loop
+iterations before the first one completes.  Subsequent requests for writes at
+random locations can be made as quickly as the fast sequential reads of offsets
+from `o`.
+
+As we saw previously, the latency of the first random access will still be the
+full main memory latency, but we can amortize this cost by the lesser of how
+many iterations processor cycles we can get ahead while waiting for the slow
+step[^rob], and how many different memory banks our requests
+points[^mem-parallelism].  In this case the out-of-order execution and
+parallelized memory access allows the vector re-order to be carried out
+substantially faster than the cache-only model would suggest[^ooo-interleave].
+
+One way to confirm that out-of-order execution is indeed happening we can
+compare with a similar work load where there is a loop iteration dependency.  We
+can use "chasing indices" like this one:
+
+<img
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/index-chasing.png"
+  class='aligncenter'
+/>
+
+Each vector element contains in it the (0-based) index of the next element to
+visit.  The arrows illustrate the path that results from following the indices.
+This is effectively equivalent to pointer chasing.  Unfortunately it isn't
+possible to engage in such index chasing efficiently in pure R code, so instead
+we wrote a C function to do it.  The code to generate the "chasing indices" as
+well as the C logic to "walk" them is [in the appendix](#index-chasing).
+
+We added the timings of that function on top of the prior runs, shown as the
+blue `random2` data set:
 
 ```{r echo=FALSE}
 resdfm2 <- proc_times(readRDS(sprintf(base, '-7')))
@@ -630,8 +660,8 @@ resdfm3 <- rbind(
 ymax <- max(resdfm3$time.per, 2^mdl.dat$y)
 dat.label <- as.data.frame(
   c(
-    values=lapply(log2(ymax), rep, each=length(cache.sizes)),
-    list(size=unname(cache.sizes)),
+    values=lapply(log2(ymax), rep, each=length(cache.sizes.new)),
+    list(size=unname(cache.sizes.new)),
     list(label=cache.lab), list(style=cache.styles)
 ) )
 resdfmm <- time_med(resdfm3)
@@ -656,89 +686,18 @@ ggplot(
   ) +
   geom_line(data=mdl.dat, aes(x, y)) +
   geom_point(data=subset(resdfmm, !is.na(time.per)), size=3) +
-  geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
+  geom_vline(data=NULL, xintercept=cache.sizes.new, linetype=cache.styles)
 ```
 
-The slow step is `res[idx] <- val` as `idx` can point to any location in the
-result vector and will not be met from cache at large enough working set sizes.
-But the nice thing about this loop is that each iteration is independent of all
-others.  This allows the processor to execute multiple loop cycles concurrently,
-using cycles that would be idle waiting for the slow step to complete to process
-subsequent iterations.  Even before the first result value is recorded there
-will be multiple `res[idx] <- val` commands with different `idx` values en route
-to main memory.  Since the accesses are random they will each likely point to
-different memory banks, so requests can be interleaved so that idle banks can be
-used without waiting on the busy ones.
+Sure enough, adding the sequential dependency brings timings much closer to the
+theoretical cache-only model, particularly once the working set exceeds L3 cache
+size.
 
-As we saw previously, the latency of the first random access will still be the
-full main memory latency, but we can amortize this cost by the lesser of how
-many iterations processor cycles we can get ahead while waiting for the slow
-step, and how many different memory banks our requests points to and how many of
-them can be served simultaneously.  I have no way of knowing that this is what
-is happening, but both out-of-order command execution and memory interleaving /
-pipelining are well established techniques that can explain faster-than-memory
-random accesses[^ooo-interleave].
+Random accesses are somewhat pathological to modern memory systems, but random
+memory accesses that depend on prior accesses are downright killer.  Ordering
+our input vectors allows us to avoid truly pathological outcomes by randomly
+accessing our data without prior access dependency.
 
-So why did these optimizations not work in the `split.default` case?  Let's look
-at the pseudo code:
-
-```{r eval=FALSE}
-# setup
-
-grpi <- match(as.factor(grp), unique(sort(grp)))
-offsets <- integer(length(levels(grpf)))
-sizes <- integer(length(levels(grpf)))
-for(i in grpi) sizes[i] <- sizes[i] + 1L
-res <- lapply(sizes, numeric)
-
-#actual work
-
-for(i in seq_along(grpi)) {
-
-  res[
-
-
-}
-
-offsets <- 
-res <- numeric(length(grp))
-
-```
-The exact pattern of time per element versus working set size will vary
-depending on memory system architecture and other factors.  Even though our
-model appears to approximate real timings well, it may be a coincidence.
-
-There are many factors that might affect memory access times that we are not
-modeling.  Despite the complexity of memory systems there are a two points that
-should be generally applicable:
-
-1. Performance can vary greatly with work load size.
-2. Performance can vary greatly with work load type.
-    * Sequential accesses are likely to be highly optimized.
-    * Random accesses will almost always be pathological.
-
-by pipelining subsequent loop iterations into different
-memory 
-
-I have no way of knowing this is actually what is happening 
-
-in
-the random case we can keep up L2 speeds up to 4x the L2
-cache size, and we can stay well below main memory latency for working sets up
-to 1GB, the largest we tried.  Presumably the values of `o` are recognized as
-the pointer offsets they are
-index
-access pattern is simple and common enough (read offsets from indexing vector,
-fetch values using offsets) that the memory system can prefetch and hide a good
-amount of the latency associated with the random accesses[^random-prefetch].
-Do note that final YMMV: it is conceivable that some system are not able to
-conceal access latency even in the simple random indexing case, in which case
-ordering before the split may fail to improve or even degrade performance.
-
-One final note: I clearly remember peeking at the [most popular QA on
-Stackoverlfow][3] a few years ago and thinking "oh, that's not a problem I need
-to worry about as an R user".  I'm kind of tickled that I was wrong and I got to
-see these effects at play first hand.
 
 <!-- Notes on Hash Tables in R - For Integers
 
@@ -801,17 +760,172 @@ Vs.
 
 ## Function Definitions
 
+### sys.time
+
 ```{r sys-time, echo=FALSE}
 ```
 
-[^model-caveat]: I have no easy way of knowing that my inferences about what is
-  happening are correct.  I'm relying exclusively on the simple model producing
-  reasonably results, and common sense based on the information I have been able
-  to gather.  Ideally I would be able to query performance counters to confirm
-  that cache misses can indeed explain the observed timings, but those are
-  hard to access on OS X, and even harder still for code that is run as part of
-  R.  One element that is almost undoubtedly influencing performance is
-  Translation Lookaside Buffer (TLB) misses, which we do not model at all.
+### Index Chasing
+
+Simulate a pointer chasing chain by generating indices that reference the next
+index to go to.  We make the index a numeric rather than an integer just to
+match working set sizes we used in other examples.
+
+```{r eval=FALSE}
+rand_path <- function(size) {
+  if(!is.numeric(size) || length(size) != 1 || is.na(size) || size < 1)
+    stop("bad input size")
+  idx <- sample(as.integer(size - 1L)) + 1
+  res <- numeric(size)
+  res[c(1, head(idx, -1))] <- idx
+  res[tail(idx, 1)] <- 1
+  res - 1
+}
+```
+
+We can then "walk" these indices with some C code.  Note the result vector is
+modified by reference.  This was not really necessary but for some reason I
+wanted to run timings excluding the allocation of the result vector.  We write
+effectively meaningless but iteration dependent values to the result vector to
+try to avoid any clever optimizations from the memory system.
+
+```{r eval=FALSE}
+walkrand <- inline::cfunction(
+  sig=c(x='numeric', times='integer', res='numeric'),
+  body="
+  // make sure x only contains values in seq_along(x) - 1
+  R_xlen_t len = XLENGTH(x);
+  double total = 0;
+  double *pointer = REAL(x);
+  double *resvec = REAL(res);
+  int jmax = asInteger(times);
+  for(int j = 0; j < jmax; ++j) {
+    total = 0;
+    R_xlen_t idx = 0;
+    for(R_xlen_t i = 0; i < len; ++i) {
+      idx = pointer[idx];
+      total += idx;
+      resvec[i] = total;
+  } }
+  return res;
+")
+```
+
+## Benchmarking Code
+
+```{r eval=FALSE}
+times <- c(
+   1e4, 1e4,  1e4,  5e3,   1e3,  1e3, 1e3,  1e2,  1e2,    50,   25,    25,
+   10,    5,    3
+)
+reps <- c(
+    11,  11,   11,   11,    11,   11,   5,    5,     5,    5,    5,     5,
+     5,   5,    5
+)
+ns <- rev(ns)
+times <- rev(times) * 2
+reps <- rep(reps)
+
+res <- vector('list', 0)
+for(i in seq_along(ns)) {
+  RNGversion("3.5.2"); set.seed(42)
+  n <- ns[i]
+  x <- runif(n)
+  g <- sample(n/10, n, rep=TRUE)
+  go <- sort(g)
+  gfo <- as.factor(go)
+  gf <- as.factor(g)
+
+  writeLines(sprintf('------ %f -------', n))
+  time.normal <-
+    # sys.time(for(j in seq_len(times[i])) duplicated.default(g))
+    sys.time(for(j in seq_len(times[i])) split.default(x, gf), reps=reps[i])
+  time.sorted <-
+    sys.time(for(j in seq_len(times[i])) split.default(x, gfo), reps=reps[i])
+    # sys.time(for(j in seq_len(times[i])) duplicated.default(go))
+
+  res <- append(
+    res, list(
+      normal=time.normal, sorted=time.sorted, n=n, times=times[i]
+  ) )
+  print(time.normal)
+  print(time.sorted)
+}
+
+colnames <- unique(names(res))
+resmx <- matrix(
+  unname(res), ncol=length(colnames), dimnames=list(NULL, colnames),
+  byrow=TRUE
+)
+```
+```{r echo=FALSE, eval=FALSE}
+scanrand <- inline::cfunction(
+  sig=c(x='numeric', times='integer', res='integer'), 
+  body="
+  // make sure x only contains values of sample(length(x)) - 1L
+  R_xlen_t len = XLENGTH(x);
+  double *pointer = REAL(x);
+  double *resvec = REAL(res);
+  int jmax = asInteger(times);
+  for(int j = 0; j < jmax; ++j) {
+    for(R_xlen_t i = 0; i < len; ++i) {
+      resvec[i] = pointer[(int) pointer[i]];
+  } }
+  return res;
+")
+
+ftest <- function(size, reps) {
+  if(!is.numeric(reps) || length(reps) != 1 || is.na(reps) || reps < 1)
+    stop("bad input reps")
+  x <- sample(as.integer(size)) - 1L
+  fint(x, as.integer(reps))
+}
+sizes <- 2^(10:27)
+times <- pmax(2^24 / sizes, 1)
+sizes.sub <- seq_along(sizes) # tail(seq_along(sizes), 3)
+samps <- lapply(sizes[sizes.sub], rand_path)
+ress <- lapply(sizes[sizes.sub], numeric)
+y <- 10
+
+ #res <- vector('list', 0)
+for(i in seq_along(samps)) {
+  idx <- sizes.sub[i]
+  writeLines(sprintf('------ %f -------', sizes[idx]))
+  time.normal <- sys.time(walkrand(samps[[i]], times[[idx]], ress[[i]]), y)
+  time.sorted <- sys.time(scanrand(samps[[i]], times[[idx]], ress[[i]]), y)
+
+  res <- append(
+    res, list(
+      normal=time.normal, sorted=time.sorted, n=sizes[[idx]], times=times[idx]
+  ) )
+  print(time.normal)
+  print(time.sorted)
+}
+```
+
+[^rob]: Assuming no instruction dependencies, CPUs that can engage in
+  out-of-order execution can get ahead by as many micro-operations as will fit
+  in the re-order buffer.  Re-order buffer sizes vary by architecture.  On my
+  skylake system the reorder buffer supports 224 micro-operations ([Agner
+  Fog][57], p149).  Do note that while our pseudo-code loop appears to have
+  three instructions per iteration, in reality there will be far more
+  micro-operations because the actual R code is [more][31] [complex][60]
+  than the pseudo code would indicate.
+[^mem-parallelism]: It is difficult to get information on exactly how many
+  independently accessible  banks my system has, but it seems likely to be at
+  least 16.  So long as the random accesses are from different banks they should
+  all be addressable concurrently.  This [anandtech article][35] goes into some
+  detail on memory banks.
+[^model-caveat]: It is also possible the reality is more complicated and
+  there are offsetting factors cancelling each other out.  I have no easy way of
+  knowing that my inferences about what is happening are correct.  I'm relying
+  exclusively on the simple model producing reasonably results, and common sense
+  based on the information I have been able to gather.  Ideally I would be able
+  to query performance counters to confirm that cache misses can indeed explain
+  the observed timings, but those are hard to access on OS X, and even harder
+  still for code that is run as part of R.  One element that is almost
+  undoubtedly influencing performance is Translation Lookaside Buffer (TLB)
+  misses, which I do not model at all.
 [^mem-latency]: The latency figures are approximate.  In particular, the main
   memory latency may be incorrect.  For cache we use the numbers provided in
   [Agner Fog's "The microarchitecture of Intel, AMD and VIA CPUs"][57].  For L3
@@ -841,32 +955,37 @@ Vs.
   each 8 bytes in size, and the offset tracking vector which will be ~1MM
   elements, each 4 bytes in size.  In reality there is more data involved, but
   because the rest of it are accessed sequentially, their impact on cache
-  utilization is much lower.
-[^model-anomalies]: The decreasing times per item for the smaller sets are
-  likely a result of R function call overhead being amortized over an increasing
-  number of entries, and the jump up for the largest working set size likely
-  corresponds to that size defeating the normal latency-concealing optimizations
-  used for sequential accesses.  One point of failure could be that some level
-  of the [Translation Lookaside Buffer][29] that acts as cache for the
-  translation of virtual to physical memory addresses is also exceeded and a
-  full main memory table walk is required.
+  utilization is much lower.  Additionally, because the offset tracking vector
+  is so much smaller than the main result list we assume that it will not
+  substantively alter the eviction rate of the larger result set, and it will
+  also not be evicted as any part of it is likely to have been accessed more
+  recently than the result set.
 [^access-dominates]: There are a few other operations involved, such as
   allocating memory and incrementing offset counters, but these are a small
   portion of the overall time.
 [^asymptotic-latency]: Keep in mind that the x-axis is log base 2, so each step
-  corresponds to a doubling of the working set size.  After the first past a
-  cache level transition, only half the working set can be accessed from the
+  corresponds to a doubling of the working set size.  After the first step past
+  a cache level transition, only half the working set can be accessed from the
   faster cache.  After two only a quarter, and so on.
-[^access-anomaly]: One seeming anomaly is that there are only three transitions
-  from faster to slower memory, yet there are four bumps in the plot.  This is
-  because our working set contains two randomly accessed elements: the result
-  list with the double precision vectors that correspond to each group, and an
-  integer vector that tracks the offsets within each group that the next element
-  will be written to.  The last bump corresponds to the point at which the
-  offset integer vector outgrows L3 cache.  With ten elements pre group on
-  average, we will need ~1 million elements in the offset vector to track each
-  group with a 10MM working set size.  At 4 bytes an element, that makes for a
-  ~4MB integer vector, which is the size of L3 cache.
+[^model-anomalies]: Two notable Anomalies are (1) decreasing times per item for
+  the smaller sets that are possibly a result of R function call overhead being
+  amortized over an increasing number of entries, and (2) a jump up at largest
+  working set sizes for sequential access that could correspond to the
+  [Translation Lookaside Buffer][29] being exhausted.  This is a cache for
+  translation of virtual to physical memory addresses.  The [Intel 64 and IA-32
+  Optimization Reference Manual][58] notes in table 2-9 that there are 32 2/4MB
+  DTLB entries, which would suggest a TLB walk after 64 or 128MB, around the
+  point we see a timing anomaly.
+[^access-anomaly]: There are only three transitions from faster to slower
+  memory, yet there are four bumps in the plot.  This is because our working set
+  contains two randomly accessed elements: the result list with the double
+  precision vectors that correspond to each group, and an integer vector that
+  tracks the offsets within each group that the next element will be written to.
+  The last bump corresponds to the point at which the offset integer vector
+  outgrows L3 cache.  With ten elements per group on average, we will need ~1
+  million elements in the offset vector to track each group with a 10MM working
+  set size.  At 4 bytes an element, that makes for a ~4MB integer vector, which
+  is the size of L3 cache.
 [^ooo-interleave]: See this [University of Utah CS7810 presentation][32]
   for some discussion of the parallelism obtained from banks in DRAM memory, and
   the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
@@ -920,6 +1039,39 @@ Nima Honarmand Memory Prefetching, including discussion of stream buffers.
 -->
 
 [28]: https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf
+
+[29]: https://en.wikipedia.org/wiki/Translation_lookaside_buffer
+
+<!-- subset C code -->
+
+[31]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L72
+
+<!-- Parallelism from Banks -->
+
+[32]: https://pubweb.eng.utah.edu/~cs7810/pres/11-7810-12.pdf
+[33]: https://en.wikipedia.org/wiki/Synchronous_dynamic_random-access_memory#Command_interactions
+
+<!-- 
+Good layperson layout of various factors affecting RAM performance,
+including discussion of banks and ability to use them to saturate bandwidth  
+
+There is ambiguity about how many banks there are, and if they are confined to
+one integrated circuit (IC) or not.  It sounds like not?  I.e bank 1 in IC 1 is
+the same bank and bank 2 in IC2?  Same number of banks as ICs, so hard to
+dissambiguate.
+
+> It's important to understand that each page of memory is segmented evenly
+> across Bank n of each IC for the associated rank.
+
+> We can now see why the DDR3 core has a 8n-prefetch (where n refers to the
+> number of banks per rank) as every read access to the memory requires a
+> minimum of 64 bits (8 bytes) of data to be transferred. This is because each
+> bank, of which there are eight for DDR3, fetches no less than 8 bits (1 byte)
+> of data per read request - the equivalent of one column's worth of data.
+
+-->
+
+[35]: https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2
 
 [51]: https://en.wikipedia.org/wiki/Lernaean_Hydra
 <!-- Original Hydra Link 
@@ -978,3 +1130,8 @@ Another course presentation discussing the Joupi paper, also suggests stream
 buffers are there, real, and between L1 and L2
 -->
 [59]: https://cseweb.ucsd.edu/classes/fa11/cse240A-a/Slides1/04_Jouppi.pdf
+
+<!-- subset C code -->
+
+[60]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L126
+
