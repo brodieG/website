@@ -40,7 +40,7 @@ writeFansi <- function(x) {
 
 <!-- this needs to become a shortcode -->
 <img
-  id='front-img' 
+  id='front-img'
   src= "/post/2019-05-17-pixie-dust_files/user-imgs/hydra-white.png"
   class='post-inset-image'
 />
@@ -110,8 +110,8 @@ In my case I was splitting data to compute group statistics:
 sys.time(gs <- split(x, grp))
 ```
 ```
-   user  system elapsed 
-  5.643   0.056   5.704 
+   user  system elapsed
+  5.643   0.056   5.704
 ```
 
 `split` will split our vector `x` into a list of vectors as per `grp`, so the
@@ -138,8 +138,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  1.973   0.060   2.054 
+   user  system elapsed
+  1.973   0.060   2.054
 ```
 
 Sorting values by group prior to running `split` makes it twice as fast,
@@ -170,7 +170,7 @@ with my flailing efforts to cut off its remaining heads.
 
 <figure class='post-inset-image'>
 <div class='post-inset-image-frame'><img
-  id='front-img' 
+  id='front-img'
   src='/post/2019-03-03-faster-group-stats-in-base-r_files/images/coal-train.jpg'
 /></div>
 <figcaption>Just one lump of coal please</figcaption>
@@ -188,11 +188,11 @@ There are two classes of tricks memory systems use to mask the latency and
 leverage the bandwidth.  The first one involves having some amount of low
 latency memory known as cache.  This memory is very limited because it requires
 a more expensive design _and_ it must be close to the CPU, typically on the
-limited real estate of the CPU die:  
+limited real estate of the CPU die:
 
 <figure class='aligncenter' style='max-width: 500px;'>
 <img
-  id='cpu-die' 
+  id='cpu-die'
   src= "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_annotated2.jpeg"
 />
 <figcaption>Half of a Westmere 6 Core Xeon Die</figcaption>
@@ -310,7 +310,7 @@ Computers will also struggle with randomly order input for similar reasons.  The
 and ~one million slots.  Like us, computers have fast but limited short term
 memory in the CPU cache, but the problem is too large for the cache so the high
 latency main memory must be used.  There are additional complexities that defeat
-the second class of optimizations (better packing of freight train) that we will 
+the second class of optimizations (better packing of freight train) that we will
 discuss in the next section.
 
 # Modelling Cache Effects
@@ -320,7 +320,7 @@ Each level is larger but slower than the previous one[^mem-latency]:
 
 <!--
 Some question whether 250 cycle for main memory is right.  Most quote 100ns,
-which maybe with the processors 
+which maybe with the processors
 -->
 
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
@@ -606,7 +606,7 @@ There are many interesting things going on, but the most notable one is that the
 random case substantially outperforms our naive cache-only model.  Most likely
 this is happening because of out-of-order execution and memory interleaving /
 pipelining.  A pseudo code version of the [subset C code][31] might look like:
-
+<span id=subset-pseudo></span>
 ```{r eval=FALSE}
 res <- numeric(length(grp))
 for(i in seq_along(grp)) {
@@ -652,9 +652,9 @@ We added the timings of that function on top of the prior runs, shown as the
 blue `random2` data set:
 
 ```{r echo=FALSE}
-resdfm2 <- proc_times(readRDS(sprintf(base, '-7')))
+resdfm2 <- proc_times(readRDS(sprintf(base, '-8')))
 resdfm3 <- rbind(
-  resdfm, 
+  resdfm,
   transform(subset(resdfm2, variable=='random'), variable='random2')
 )
 ymax <- max(resdfm3$time.per, 2^mdl.dat$y)
@@ -691,12 +691,182 @@ ggplot(
 
 Sure enough, adding the sequential dependency brings timings much closer to the
 theoretical cache-only model, particularly once the working set exceeds L3 cache
-size.
+size.  Random accesses are somewhat pathological to modern memory systems, but
+those that depend on prior accesses are downright killer.  Ordering our input
+vectors first isolates random accesses to the simplest operations, thereby
+giving the memory system optimizations the best chance to mitigate main memory
+latency.
 
-Random accesses are somewhat pathological to modern memory systems, but random
-memory accesses that depend on prior accesses are downright killer.  Ordering
-our input vectors allows us to avoid truly pathological outcomes by randomly
-accessing our data without prior access dependency.
+# Branch Prediction
+
+One optimization we glossed over is branch prediction which is used to attempt
+to resolve a class of sequential dependency that would otherwise limit how far
+ahead out-of-order execution could get.  We can re-write our [subset pseudo
+code](#subset-pseudo) to emphasize the issue:
+
+```{r eval=FALSE}
+res <- numeric(length(grp))
+i <- 0
+repeat {
+  if((i <- i + 1) > length(grp)) {
+    break
+  } else {
+    val <- x[i]
+    idx <- o[i]
+    res[idx] <- val
+  }
+}
+```
+
+Here we converted the for loop into a repeat / break conditional loop, which is
+really what the for loop is anyway.  In order for the processor to initiate
+future loop iteration calls, it must make an assumption about whether there will
+indeed be a next iteration.  If it turns out to be wrong, all the operations
+that were initiated out of order past the termination point will have to be
+thrown out, and the processor will stall while the correct instructions are
+loaded.
+
+In the case of a long for loop as we have here processors will do very well just
+by assuming that the loop will be repeated.  Eventually they will be wrong when
+the loop terminates, but the cost of the incorrect branch prediction at the end
+is well amortized over the rest of the loop.
+
+```{r eval=FALSE}
+#include <stdlib.h>
+#include <stdlib.h>
+int *crazy_add(int *x, int *y, int size) {
+  int * res = (int*) malloc(size, sizeof(int));
+  for(i = 0; i < size; ++i) {
+    if(*y > 0){
+      *res = *x - *y;
+    } else {
+      *res = *x + 1 + *y;
+    }
+    ++res;
+    ++x;
+    ++y;
+  }
+  return res;
+}
+crazy_add2 <- inline::cfunction(
+  sig=c(x='integer', y='logical', res='integer'), body="
+  if(XLENGTH(x) != XLENGTH(y)) error(\"invalid inputs\");
+  if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
+  R_xlen_t i, len = XLENGTH(x);
+  int *res_ptr=INTEGER(res);
+  int *x_ptr=INTEGER(x);
+  int *y_ptr=INTEGER(y);
+  int accum = 0;
+
+  for(i = 0; i < len; ++i) {
+    if(y_ptr[i] > 0){
+      accum -= i % 3;
+      res_ptr[i] = x_ptr[i] + accum;
+    } else {
+      accum += i % 3;
+      res_ptr[i] = x_ptr[i] + accum;
+    }
+  }
+  return(res);
+")
+crazy_add <- inline::cfunction(
+  sig=c(x='integer', y='logical', res='integer'), body="
+  if(XLENGTH(x) != XLENGTH(y)) error(\"invalid inputs\");
+  if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
+  R_xlen_t i, len = XLENGTH(x);
+  int *res_ptr=INTEGER(res);
+  int *x_ptr=INTEGER(x);
+  int *y_ptr=INTEGER(y);
+
+  for(i = 0; i < len; ++i) {
+    if(y_ptr[i] > 0){
+      res_ptr[i] = x_ptr[i] - y_ptr[i];
+    } else {
+      res_ptr[i] = x_ptr[i] + 1 + y_ptr[i];
+    }
+  }
+  return(res);
+")
+sane_add <- inline::cfunction(
+  sig=c(x='integer', y='logical', res='integer'), body="
+  if(XLENGTH(x) != XLENGTH(y)) error(\"invalid inputs\");
+  if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
+  R_xlen_t i, len = XLENGTH(x);
+  int *res_ptr=INTEGER(res);
+  int *x_ptr=INTEGER(x);
+  int *y_ptr=INTEGER(y);
+
+  for(i = 0; i < len; ++i) {
+    res_ptr[i] = x_ptr[i] + 1 - 2 * y_ptr[i];
+  }
+  return(res);
+")
+y <- sample(c(TRUE, FALSE), 1e7, rep=TRUE)
+z <- 1:1e7 + 1L - 1L
+res1 <- integer(1e7)
+res2 <- integer(1e7)
+microbenchmark::microbenchmark(
+  crazy_add(z, y, res1),
+  sane_add(z, y, res2)
+)
+sys.time(sane_add(z, y, res2))
+```
+
+
+
+```{r eval=FALSE}
+o2 <- o
+o2[sample(length(o), floor(length(o)/2))] <- length(o) + 1L
+sys.time(x[o])
+sys.time(x[o2])
+
+x2 <- rep(NA_real_, length(x))
+sys.time(x2[o] <- x)
+sys.time(x2[o2] <- x)
+```
+
+
+# Loose Ends
+
+The internal code in `split.default` had the largest proportional difference
+between sorted and unsorted cases, but both `as.factor` and `unique.default`
+together account for a larger part of the overall difference:
+
+```{r echo=FALSE}
+string <- "times in milliseconds
+                                         random  |      sorted
+split --------------------------- : 7239 -    0  |  1573 -   0
+    split.default --------------- : 7239 - 1997  |  1573 - 137
+        as.factor --------------- : 5242 - \033[43m2471\033[m    |  1436 - \033[43m630\033[m
+            sort ---------------- : 2771 -    0  |   806 -   0
+                unique.default -- : 2705 - \033[43m2705\033[m  |   789 - \033[43m789\033[m
+                sort.default ---- :   67 -    0  |    17 -   0
+                    sort.int ---- :   67 -   27  |    17 -   7
+                        order --- :   40 -   40  |     9 -   9"
+writeLines(string)
+```
+
+These are the steps that turn the groups into factor levels so they can be used
+as offsets into the result vector for `split.default`.  Both of them rely on
+[hash tables][2]: `unique` uses one to detect whether [a value is
+duplicated][61], and [`as.factor` uses one][63] via [`match` to assign a unique
+index][62] to each distinct value in its input.
+
+Why is the sorting effect less pronounced with these?  Most likely because
+hashing by its nature undoes some of the benefits of the sort.  In R, hash
+tables are stored as vectors twice the size of the vector being
+hashed[^hash-tables-in-r].  So in `unique.default(grp)`, we are generating a
+hash table with **twenty million** elements, of which we will eventually use
+~one million.  Worse, from a memory system perspective, the hashing function
+will try to distribute the values evenly [and randomly][64] throughout the hash
+vector.  Nothing like large memory allocations accessed randomly to make the
+memory system happy.
+
+Sorting the data still helps because for each group the same hash key will be
+accessed repeatedly such that only the first access for each group is subjected
+to the full main memory latency, other optimizations notwithstanding.
+
+
 
 
 <!-- Notes on Hash Tables in R - For Integers
@@ -747,8 +917,39 @@ Vs.
 
 -->
 
+# Better Algorithms
 
-
+```{r eval=FALSE}
+sys.time(u0 <- unique(grp))
+```
+```
+   user  system elapsed
+  1.197   0.039   1.244
+```
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+})
+```
+```
+   user  system elapsed
+  0.439   0.002   0.443
+```
+```{r eval=FALSE}
+sys.time(u1 <- unique(go))
+```
+```
+   user  system elapsed
+  0.349   0.039   0.389
+```
+```{r eval=FALSE}
+sys.time({u2 <- go[c(TRUE, go[-1L] != go[length(go)])]})
+```
+```
+   user  system elapsed
+  0.129   0.011   0.141
+```
 
 # Conclusions
 
@@ -762,7 +963,7 @@ Vs.
 
 ### sys.time
 
-```{r sys-time, echo=FALSE}
+```{r sys-time, eval=FALSE}
 ```
 
 ### Index Chasing
@@ -783,35 +984,41 @@ rand_path <- function(size) {
 }
 ```
 
-We can then "walk" these indices with some C code.  Note the result vector is
-modified by reference.  This was not really necessary but for some reason I
-wanted to run timings excluding the allocation of the result vector.  We write
-effectively meaningless but iteration dependent values to the result vector to
-try to avoid any clever optimizations from the memory system.
+We can then "walk" these indices with some C code.  We write effectively
+meaningless but iteration dependent values to the result vector to try to avoid
+any clever optimizations from the memory system.  This is not equivalent
+to indexing a vector in random order, but the number of memory accesses should
+be comparable and that is the limiting element.
 
 ```{r eval=FALSE}
 walkrand <- inline::cfunction(
-  sig=c(x='numeric', times='integer', res='numeric'),
+  sig=c(x='numeric', times='integer'),
   body="
   // make sure x only contains values in seq_along(x) - 1
   R_xlen_t len = XLENGTH(x);
   double total = 0;
   double *pointer = REAL(x);
-  double *resvec = REAL(res);
   int jmax = asInteger(times);
+  SEXP res;
   for(int j = 0; j < jmax; ++j) {
+    res = PROTECT(allocVector(REALSXP, len));
+    double *resvec = REAL(res);
     total = 0;
     R_xlen_t idx = 0;
     for(R_xlen_t i = 0; i < len; ++i) {
       idx = pointer[idx];
       total += idx;
       resvec[i] = total;
-  } }
+    }
+    UNPROTECT(1);
+  }
   return res;
 ")
 ```
 
 ## Benchmarking Code
+
+### Split timings
 
 ```{r eval=FALSE}
 times <- c(
@@ -858,51 +1065,59 @@ resmx <- matrix(
   byrow=TRUE
 )
 ```
-```{r echo=FALSE, eval=FALSE}
+
+### Random Walk
+
+<!-- we used this one originally to confirm we were doing something similar to
+indexing -->
+```{r eval=FALSE, echo=FALSE}
 scanrand <- inline::cfunction(
-  sig=c(x='numeric', times='integer', res='integer'), 
+  sig=c(x='numeric', times='integer'),
   body="
   // make sure x only contains values of sample(length(x)) - 1L
   R_xlen_t len = XLENGTH(x);
   double *pointer = REAL(x);
-  double *resvec = REAL(res);
   int jmax = asInteger(times);
+  SEXP res;
   for(int j = 0; j < jmax; ++j) {
+    res = PROTECT(allocVector(REALSXP, len));
+    double *resvec = REAL(res);
     for(R_xlen_t i = 0; i < len; ++i) {
       resvec[i] = pointer[(int) pointer[i]];
-  } }
+    }
+    UNPROTECT(1);
+  }
   return res;
 ")
-
-ftest <- function(size, reps) {
-  if(!is.numeric(reps) || length(reps) != 1 || is.na(reps) || reps < 1)
-    stop("bad input reps")
-  x <- sample(as.integer(size)) - 1L
-  fint(x, as.integer(reps))
-}
+```
+```{r eval=FALSE}
 sizes <- 2^(10:27)
 times <- pmax(2^24 / sizes, 1)
 sizes.sub <- seq_along(sizes) # tail(seq_along(sizes), 3)
 samps <- lapply(sizes[sizes.sub], rand_path)
-ress <- lapply(sizes[sizes.sub], numeric)
-y <- 10
+y <- 11
 
- #res <- vector('list', 0)
+res <- vector('list', 0)
 for(i in seq_along(samps)) {
   idx <- sizes.sub[i]
   writeLines(sprintf('------ %f -------', sizes[idx]))
-  time.normal <- sys.time(walkrand(samps[[i]], times[[idx]], ress[[i]]), y)
-  time.sorted <- sys.time(scanrand(samps[[i]], times[[idx]], ress[[i]]), y)
+  time.normal <- sys.time(walkrand(samps[[i]], times[[idx]]), y)
 
+  # subsequent processing code relied on having sorted vs unsorted data, so
+  # that's why we write the same value twice
   res <- append(
     res, list(
-      normal=time.normal, sorted=time.sorted, n=sizes[[idx]], times=times[idx]
+      normal=time.normal, sorted=time.normal, n=sizes[[idx]], times=times[idx]
   ) )
   print(time.normal)
-  print(time.sorted)
 }
 ```
 
+[^hash-tables-in-r]: Hash tables used to take up 4x the size of the hashed
+  input, but in [2004 that was switched to 2x][65].  A tidbit I found
+  fascinating is that the R hash tables are [open-addressed][67], meaning that
+  collisions are resolved by walking along the hash vector until an open slot is
+  found instead of appending an element to the end of a linked list or similar.
 [^rob]: Assuming no instruction dependencies, CPUs that can engage in
   out-of-order execution can get ahead by as many micro-operations as will fit
   in the re-order buffer.  Re-order buffer sizes vary by architecture.  On my
@@ -994,7 +1209,7 @@ for(i in seq_along(samps)) {
   numbers that match the offset into the result list that the values of a group
   will be stored in.
 [^split-internal]: The timing corresponds to the [`.Internal` call that
-  invokes][29] the [C code][25] that does the allocation of the result vector
+  invokes][30] the [C code][25] that does the allocation of the result vector
   and the copying, although the bulk of the time is spent copying .   The
   `.Internal` call does not show up in the R profile data used to build the
   `treeprof` output because `.Internal` is both "special" (i.e.
@@ -1018,11 +1233,14 @@ for(i in seq_along(samps)) {
 [^cache-labels]: These are labeled on a best-efforts basis and may be incorrect.
 [^scan-slots]: Alternatively, we could scan the tokens for a particular label.
 
+[2]: https://en.wikipedia.org/wiki/Hash_table
 [3]: https://stackoverflow.com/a/11227902/2725969
 [21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
 [22]: https://github.com/brodieG/treeprof
+[23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
+[25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
 
-<!-- 
+<!--
 Ulrich Drepper Paper, lots of goodies.
 
 Table 2.2: DDR3 array/bus frequencies (933MHz for DDR3-1866)
@@ -1042,6 +1260,8 @@ Nima Honarmand Memory Prefetching, including discussion of stream buffers.
 
 [29]: https://en.wikipedia.org/wiki/Translation_lookaside_buffer
 
+[30]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/split.R#L31
+
 <!-- subset C code -->
 
 [31]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L72
@@ -1051,9 +1271,9 @@ Nima Honarmand Memory Prefetching, including discussion of stream buffers.
 [32]: https://pubweb.eng.utah.edu/~cs7810/pres/11-7810-12.pdf
 [33]: https://en.wikipedia.org/wiki/Synchronous_dynamic_random-access_memory#Command_interactions
 
-<!-- 
+<!--
 Good layperson layout of various factors affecting RAM performance,
-including discussion of banks and ability to use them to saturate bandwidth  
+including discussion of banks and ability to use them to saturate bandwidth
 
 There is ambiguity about how many banks there are, and if they are confined to
 one integrated circuit (IC) or not.  It sounds like not?  I.e bank 1 in IC 1 is
@@ -1074,14 +1294,14 @@ dissambiguate.
 [35]: https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2
 
 [51]: https://en.wikipedia.org/wiki/Lernaean_Hydra
-<!-- Original Hydra Link 
+<!-- Original Hydra Link
 Larry Wentzel
 https://www.flickr.com/photos/wentzelepsy/
 Attribution-NonCommercial 2.0 Generic (CC BY-NC 2.0)
 -->
 [52]: https://www.flickr.com/photos/wentzelepsy/15431618539/in/photolist-pvD5yB-orMGkS-oD9tMr-6Hy4vZ-dHArXF-4MkiSq-fmXesZ-fnKybA-7PdCYt-nKGMUu-9DwyBF-4RGwKf-95vYq-4YHwip-69ckvt-FwgCQm-95vLz-6w9W6f-bVZLqM-95vWc-4YHsJc-4YJhhV-fnvhfn-9DzB8h-4YHxAB-9db7nP-fnvrrP-Ww91p9-8Yhwn3-4tLnpy-bsHuHt-4RGJSU-8nLdkA-4MkjF5-4tLnzC-5Zr3e9-fnKFf7-69gAij-5sR6jQ-9DwEzx-gfesaD-fnf39A-6w5JmX-69gz5o-5xYUVS-6MLZD9-5N2EcN-X463Df-G23wk-fmXqjH
 
-<!-- 
+<!--
 Interesting review of microcode with details on actual execution
 -->
 
@@ -1112,7 +1332,7 @@ This also doesn't exactly match the Honarmand model since:
 
 "The streamer and spatial prefetcher prefetch the data to the last level cache.
 Typi-cally data is brought also to the L2 unless the L2 cache is heavily loaded
-with missing demand requests" 
+with missing demand requests"
 
 Figure 2-1 on page 42 does show the "Line Fill Buffers" to be between L2 and
 L1d, and these are said to have 10 entries (cache line sized), and 20 for L2 (?).
@@ -1131,7 +1351,21 @@ buffers are there, real, and between L1 and L2
 -->
 [59]: https://cseweb.ucsd.edu/classes/fa11/cse240A-a/Slides1/04_Jouppi.pdf
 
-<!-- subset C code -->
+<!-- subset C code, see 67 -->
 
 [60]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L126
+[66]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L74
 
+<!--
+Where duplicated and match initialize hash tables
+-->
+
+[61]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L545
+[62]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L979
+[63]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/factor.R#L80
+[64]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L64
+[65]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L336
+[67]: https://en.wikipedia.org/wiki/Open_addressing
+
+<!-- Intel Intro to X64 Assembly -->
+[68]: https://software.intel.com/sites/default/files/m/d/4/1/d/8/Introduction_to_x64_Assembly.pdf
