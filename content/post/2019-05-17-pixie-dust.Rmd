@@ -36,6 +36,9 @@ writeFansi <- function(x) {
 }
 ```
 
+More time that can be reasonably justified following the siren call of the
+unexplained.
+
 # Often the Road Least Travelled is so For Good Reasons
 
 <!-- this needs to become a shortcode -->
@@ -207,7 +210,7 @@ L1 cache is split between data cache (L1d) and instruction cache (L1i).
 interpreting instructions in such a way that the bandwidth "freight train" can
 be fully loaded before it leaves the depot[^freight-train].  This includes
 preloading memory areas the CPU is likely to need based on prior access
-patterns, executing operations out of order so that memory requests for later
+patterns, executing operations out-of-order so that memory requests for later
 operations are initiated while earlier ones wait for theirs to be fulfilled,
 guessing at which conditional branch will be executed before its condition is
 known, and other optimizations.
@@ -609,7 +612,8 @@ pipelining.  A pseudo code version of the [subset C code][31] might look like:
 <span id=subset-pseudo></span>
 ```{r eval=FALSE}
 res <- numeric(length(grp))
-for(i in seq_along(grp)) {
+seqi <- seq_along(grp)
+for(i in seqi) {
   val <- x[i]        # sequential - fetch x value to copy
   idx <- o[i]        # sequential - fetch write offset
   res[idx] <- val    # random - write x value at offset
@@ -631,6 +635,63 @@ step[^rob], and how many different memory banks our requests
 points[^mem-parallelism].  In this case the out-of-order execution and
 parallelized memory access allows the vector re-order to be carried out
 substantially faster than the cache-only model would suggest[^ooo-interleave].
+
+# Out of Order Execution
+
+We can visualize the out-of-order execution in a system that allows up to twelve
+instructions in flight simultaneously as follows.  Again we use some
+pseudo-R-code as stand-ins for what would actually be machine
+micro-operations[^micro-ops]:
+
+```{r eval=FALSE}
+## loop iteration 1
+i1        <- seqi[1]               # pending
+val1      <- x[i1]                 # pending
+idx1      <- o[i1]                 # pending
+res[idx1] <- val1                  # pending
+## loop iteration 2
+i2        <- seqi[2]               # pending
+val2      <- x[i2]                 # pending
+idx2      <- o[i2]                 # pending
+res[idx2] <- val2                  # pending
+## loop iteration 2
+i3        <- seqi[3]               # pending
+val3      <- x[i3]                 # pending
+idx3      <- o[i3]                 # pending
+res[idx3] <- val3                  # pending
+```
+
+This corresponds to the first three iterations of the loop.  For convenience we
+will pretend there are only three loop iterations in total.  Due to the code
+dependencies, the actual execution order of the instructions will look something
+like:
+
+```{r eval=FALSE}
+i1        <- seqi[1]               # pending
+i2        <- seqi[2]               # pending
+i3        <- seqi[3]               # pending
+
+val1      <- x[i1]                 # pending
+val2      <- x[i2]                 # pending
+val3      <- x[i3]                 # pending
+
+idx1      <- o[i1]                 # pending
+idx2      <- o[i2]                 # pending
+idx3      <- o[i3]                 # pending
+
+res[idx1] <- val1                  # pending
+res[idx2] <- val2                  # pending
+res[idx3] <- val3                  # pending
+```
+
+Notice how I renamed the `i`, `val`, and `idx` variables by appending the loop
+number to each of them.  This allows us to keep multiple `i` values in flight
+without later ones clobbering earlier ones.
+
+
+With a large enough
+working set everything is going to be coming from main memory, so 
+
 
 One way to confirm that out-of-order execution is indeed happening we can
 compare with a similar work load where there is a loop iteration dependency.  We
@@ -718,10 +779,41 @@ repeat {
 }
 ```
 
-Here we converted the for loop into a repeat / break conditional loop, which is
-really what the for loop is anyway.  In order for the processor to initiate
-future loop iteration calls, it must make an assumption about whether there will
-indeed be a next iteration.  If it turns out to be wrong, all the operations
+We converted the for loop into a repeat / break conditional loop, which is
+really what the for loop is anyway.  In order for the processor to be able
+to out-of-order execute multiple loop iterations it needs to decide whether the
+condition that triggers the break statement will be met or not.
+
+Suppose that our CPU can have up to ten operations in flight:
+
+```{r eval=FALSE}
+i1 <- i0 + 1
+i2 <- i1 + 1
+i3 <- i2 + 1
+i4 <- i3 + 1
+    val <- x[i]
+    idx <- o[i]
+    res[idx] <- val
+
+
+```
+
+While it's
+obvious to anyone looking at the
+
+If it guesses
+wrong we will suffer a ~20 CPU cycle penalty.  If it guesses right we get to
+execute out-of-order and take advantage
+
+be met with a penalty of about 20 CPU cycles.
+
+
+initiate
+future loop iteration calls
+, it must make an assumption about whether there will
+be an additional iteration or whether it should execute the operation that
+follows the loop.
+.  If it turns out to be wrong, all the operations
 that were initiated out of order past the termination point will have to be
 thrown out, and the processor will stall while the correct instructions are
 loaded.
@@ -748,66 +840,70 @@ int *crazy_add(int *x, int *y, int size) {
   }
   return res;
 }
-crazy_add2 <- inline::cfunction(
-  sig=c(x='integer', y='logical', res='integer'), body="
-  if(XLENGTH(x) != XLENGTH(y)) error(\"invalid inputs\");
-  if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
-  R_xlen_t i, len = XLENGTH(x);
-  int *res_ptr=INTEGER(res);
-  int *x_ptr=INTEGER(x);
-  int *y_ptr=INTEGER(y);
+int *crazy_add(int *y, int size) {
+  int * res = (int*) malloc(size * sizeof(int));
   int accum = 0;
-
-  for(i = 0; i < len; ++i) {
-    if(y_ptr[i] > 0){
-      accum -= i % 3;
-      res_ptr[i] = x_ptr[i] + accum;
-    } else {
-      accum += i % 3;
-      res_ptr[i] = x_ptr[i] + accum;
-    }
+  for(int i = 0; i < size; ++i) {
+    if(*y > 0) {accum++;} else {accum--;}
+    *res = accum;
+    ++res;
+    ++y;
   }
-  return(res);
-")
-crazy_add <- inline::cfunction(
-  sig=c(x='integer', y='logical', res='integer'), body="
-  if(XLENGTH(x) != XLENGTH(y)) error(\"invalid inputs\");
+  return res;
+}
+crazy_add3 <- inline::cfunction(
+  sig=c(x='logical', res='integer'),
+  body="
   if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
-  R_xlen_t i, len = XLENGTH(x);
-  int *res_ptr=INTEGER(res);
-  int *x_ptr=INTEGER(x);
-  int *y_ptr=INTEGER(y);
+  int *res_ptr = INTEGER(res);
+  int *x_ptr = INTEGER(x);
+  int accum = 0;
+  R_xlen_t size = XLENGTH(x);
 
-  for(i = 0; i < len; ++i) {
-    if(y_ptr[i] > 0){
-      res_ptr[i] = x_ptr[i] - y_ptr[i];
-    } else {
-      res_ptr[i] = x_ptr[i] + 1 + y_ptr[i];
-    }
+  for(R_xlen_t i = 0; i < size; ++i) {
+    if(*x_ptr > 0) {accum++;} else {accum--;}
+    *res_ptr = accum;
+    ++res_ptr;
+    ++x_ptr;
   }
-  return(res);
-")
-sane_add <- inline::cfunction(
-  sig=c(x='integer', y='logical', res='integer'), body="
-  if(XLENGTH(x) != XLENGTH(y)) error(\"invalid inputs\");
+  return res;",
+  verbose=TRUE,
+  cxxargs='-O0'
+)
+sane_add3 <- inline::cfunction(
+  sig=c(x='logical', res='integer'),
+  body="
   if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
-  R_xlen_t i, len = XLENGTH(x);
-  int *res_ptr=INTEGER(res);
-  int *x_ptr=INTEGER(x);
-  int *y_ptr=INTEGER(y);
+  int *res_ptr = INTEGER(res);
+  int *x_ptr = INTEGER(x);
+  int accum = 0;
+  R_xlen_t size = XLENGTH(x);
 
-  for(i = 0; i < len; ++i) {
-    res_ptr[i] = x_ptr[i] + 1 - 2 * y_ptr[i];
+  for(R_xlen_t i = 0; i < size; ++i) {
+    accum += *x_ptr + 33;
+    *res_ptr = accum;
+    ++res_ptr;
+    ++x_ptr;
   }
-  return(res);
-")
+  return res;", verbose
+)
+
+
 y <- sample(c(TRUE, FALSE), 1e7, rep=TRUE)
+y2 <- logical(1e7)
 z <- 1:1e7 + 1L - 1L
 res1 <- integer(1e7)
 res2 <- integer(1e7)
+res3 <- integer(1e7)
 microbenchmark::microbenchmark(
-  crazy_add(z, y, res1),
-  sane_add(z, y, res2)
+  crazy_add3(y, res1),
+  crazy_add3(y2, res3),
+  times=20
+)
+microbenchmark::microbenchmark(
+  .Call('crazy_val', y, res1),
+  .Call('crazy_val', y2, res2)
+  times=20
 )
 sys.time(sane_add(z, y, res2))
 ```
@@ -1113,19 +1209,25 @@ for(i in seq_along(samps)) {
 }
 ```
 
-[^hash-tables-in-r]: Hash tables used to take up 4x the size of the hashed
-  input, but in [2004 that was switched to 2x][65].  A tidbit I found
+[^micro-ops]: The twelve operations we show here will likely correspond to
+  substantially more micro-operations.
+[^hash-tables-in-r]: Hash tables used to take up 4x the size of the
+  hashed input, but in [2004 that was switched to 2x][65].  A tidbit I found
   fascinating is that the R hash tables are [open-addressed][67], meaning that
   collisions are resolved by walking along the hash vector until an open slot is
   found instead of appending an element to the end of a linked list or similar.
 [^rob]: Assuming no instruction dependencies, CPUs that can engage in
   out-of-order execution can get ahead by as many micro-operations as will fit
   in the re-order buffer.  Re-order buffer sizes vary by architecture.  On my
-  skylake system the reorder buffer supports 224 micro-operations ([Agner
+  Skylake system the reorder buffer supports 224 micro-operations ([Agner
   Fog][57], p149).  Do note that while our pseudo-code loop appears to have
-  three instructions per iteration, in reality there will be far more
-  micro-operations because the actual R code is [more][31] [complex][60]
-  than the pseudo code would indicate.
+  three (four including the `for` index increment) instructions per iteration,
+  in reality there will be far more micro-operations because the actual R code
+  is [more][31] [complex][60] than the pseudo code would indicate.  The
+  re-order buffer is a faster than cache memory location where pending and
+  completed operations can wait to be retired in logical order.  Operations that
+  complete ahead of others that logically precede them in the program will
+  wait in the reorder buffer until those preceding operations complete.
 [^mem-parallelism]: It is difficult to get information on exactly how many
   independently accessible  banks my system has, but it seems likely to be at
   least 16.  So long as the random accesses are from different banks they should
@@ -1369,3 +1471,49 @@ Where duplicated and match initialize hash tables
 
 <!-- Intel Intro to X64 Assembly -->
 [68]: https://software.intel.com/sites/default/files/m/d/4/1/d/8/Introduction_to_x64_Assembly.pdf
+
+<!--
+Dan Luu Pseudo-Transcript on branch prediction talk
+
+Some useful stuff on pipelining.
+Goes in depth into branch prediction techniques and effectiveness.
+-->
+
+[69]: https://danluu.com/branch-prediction/
+
+<!-- List 10-20 cycles for branch misprediction -->
+
+[70]: https://en.wikipedia.org/wiki/Branch_misprediction
+
+<!--
+John McCalpin who seems to now what he's talking about discusses concurrency
+limits.
+
+This is a very interesting thread.  Gets to the meat of how reorder buffer and
+memory loads interact.
+
+A few interesting points:
+
+* On main mem latency:
+    * 2.6GHZ has 85ns memory latency, which is ~220 cycles
+    * For a single-socket system the latency may be as low as ~60 ns, so at
+      3.0 GHz the latency would be about 180 cycles.
+* L1d misses supported by line fill buffers, of which there are 10 on Sandy
+  bridge, suspects same for skylake.
+* If no miss there are way more buffers available (72 load, 42 store)
+* To get more than 10 memory requests you need to go to L2 hardware prefetchers.
+-->
+
+[71]: https://software.intel.com/en-us/forums/software-tuning-performance-optimization-platform-monitoring/topic/595220
+
+<!--
+Anandtech articles showing haswell microarchitectural details
+Looked at it trying to better understand relation between reservation station
+and reorder buffer-->
+
+[72]: https://www.anandtech.com/show/6355/intels-haswell-architecture/8
+[73]: https://www.anandtech.com/show/9582/intel-skylake-mobile-desktop-launch-architecture-analysis/5
+
+[74]: https://en.wikipedia.org/wiki/Re-order_buffer
+
+

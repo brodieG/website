@@ -1987,127 +1987,7 @@ mapply(
 ```{r group_sum_int3, eval=FALSE}
 ```
 
-## Benchmarking Code
 
-```{r eval=FALSE}
-times <- c(
-   1e4, 1e4,  1e4,  5e3,   1e3,  1e3, 1e3,  1e2,  1e2,    50,   25,    25,
-   10,    5,    3
-)
-reps <- c(
-    11,  11,   11,   11,    11,   11,   5,    5,     5,    5,    5,     5,
-     5,   5,    5
-)
-ns <- rev(ns)
-times <- rev(times) * 2
-reps <- rep(reps)
-
-res <- vector('list', 0)
-for(i in seq_along(ns)) {
-  RNGversion("3.5.2"); set.seed(42)
-  n <- ns[i]
-  x <- runif(n)
-  g <- sample(n/10, n, rep=TRUE)
-  go <- sort(g)
-  gfo <- as.factor(go)
-  gf <- as.factor(g)
-
-  writeLines(sprintf('------ %f -------', n))
-  time.normal <-
-    # sys.time(for(j in seq_len(times[i])) duplicated.default(g))
-    sys.time(for(j in seq_len(times[i])) split.default(x, gf), reps=reps[i])
-  time.sorted <-
-    sys.time(for(j in seq_len(times[i])) split.default(x, gfo), reps=reps[i])
-    # sys.time(for(j in seq_len(times[i])) duplicated.default(go))
-
-  res <- append(
-    res, list(
-      normal=time.normal, sorted=time.sorted, n=n, times=times[i]
-  ) )
-  print(time.normal)
-  print(time.sorted)
-}
-
-colnames <- unique(names(res))
-resmx <- matrix(
-  unname(res), ncol=length(colnames), dimnames=list(NULL, colnames),
-  byrow=TRUE
-)
-```
-```{r echo=FALSE, eval=FALSE}
- # this is for the chain following
-walkrand <- inline::cfunction(
-  sig=c(x='numeric', times='integer', res='integer'), 
-  body="
-  // make sure x only contains values of sample(length(x)) - 1L
-  R_xlen_t len = XLENGTH(x);
-  double total = 0;
-  double *pointer = REAL(x);
-  double *resvec = REAL(res);
-  int jmax = asInteger(times);
-  for(int j = 0; j < jmax; ++j) {
-    total = 0;
-    R_xlen_t idx = 0;
-    for(R_xlen_t i = 0; i < len; ++i) {
-      idx = pointer[idx];
-      total += idx;
-      resvec[i] = total;
-  } }
-  return res;
-")
-scanrand <- inline::cfunction(
-  sig=c(x='numeric', times='integer', res='integer'), 
-  body="
-  // make sure x only contains values of sample(length(x)) - 1L
-  R_xlen_t len = XLENGTH(x);
-  double *pointer = REAL(x);
-  double *resvec = REAL(res);
-  int jmax = asInteger(times);
-  for(int j = 0; j < jmax; ++j) {
-    for(R_xlen_t i = 0; i < len; ++i) {
-      resvec[i] = pointer[(int) pointer[i]];
-  } }
-  return res;
-")
-
-ftest <- function(size, reps) {
-  if(!is.numeric(reps) || length(reps) != 1 || is.na(reps) || reps < 1)
-    stop("bad input reps")
-  x <- sample(as.integer(size)) - 1L
-  fint(x, as.integer(reps))
-}
-rand_path <- function(size) {
-  if(!is.numeric(size) || length(size) != 1 || is.na(size) || size < 1)
-    stop("bad input size")
-  idx <- sample(as.integer(size - 1L)) + 1
-  res <- numeric(size)
-  res[c(1, head(idx, -1))] <- idx
-  res[tail(idx, 1)] <- 1
-  res - 1
-}
-sizes <- 2^(10:27)
-times <- pmax(2^24 / sizes, 1)
-sizes.sub <- seq_along(sizes) # tail(seq_along(sizes), 3)
-samps <- lapply(sizes[sizes.sub], rand_path)
-ress <- lapply(sizes[sizes.sub], numeric)
-y <- 10
-
-#res <- vector('list', 0)
-for(i in seq_along(samps)) {
-  idx <- sizes.sub[i]
-  writeLines(sprintf('------ %f -------', sizes[idx]))
-  time.normal <- sys.time(walkrand(samps[[i]], times[[idx]], ress[[i]]), y)
-  time.sorted <- sys.time(scanrand(samps[[i]], times[[idx]], ress[[i]]), y)
-
-  res <- append(
-    res, list(
-      normal=time.normal, sorted=time.sorted, n=sizes[[idx]], times=times[idx]
-  ) )
-  print(time.normal)
-  print(time.sorted)
-}
-
-```
 
 
 
@@ -2201,7 +2081,6 @@ for(i in seq_along(samps)) {
 8. Write offset          (int)    Should still be in cache
 
 [1]: https://twitter.com/BrodieGaslam/status/976616435836510210
-[2]: https://en.wikipedia.org/wiki/Hash_table
 [3]: https://stackoverflow.com/a/11227902/2725969
 [4]: https://www.extremetech.com/extreme/188776-how-l1-and-l2-cpu-caches-work-and-why-theyre-an-essential-part-of-modern-chips
 [5]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L1514
@@ -2221,9 +2100,7 @@ for(i in seq_along(samps)) {
 [19]: https://twitter.com/BrodieGaslam/status/1113783101262585856
 [20]: https://www.ibm.com/blogs/research/2018/12/8-bit-precision-training/
 [21]: /2019/02/24/a-strategy-for-faster-group-statisitics/
-[23]: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals
 [24]: https://twitter.com/BrodieGaslam/status/1106231241488154626
-[25]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
 <!-- 
 Analysis of cache replacement policies with experiments.
 -->
@@ -2242,34 +2119,8 @@ Oddly doesn't really talk about interleaved access.
 [27]: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf
 
 [28]: https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf
-[29]: https://en.wikipedia.org/wiki/Translation_lookaside_buffer
-[30]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/split.R#L31
-[31]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L72
-[32]: https://pubweb.eng.utah.edu/~cs7810/pres/11-7810-12.pdf
-[33]: https://en.wikipedia.org/wiki/Synchronous_dynamic_random-access_memory#Command_interactions
 [34]: https://iis-people.ee.ethz.ch/~gmichi/asocd/addinfo/Out-of-Order_execution.pdf
 
-<!-- 
-Good layperson layout of various factors affecting RAM performance,
-including discussion of banks and ability to use them to saturate bandwidth  
-
-There is ambiguity about how many banks there are, and if they are confined to
-one integrated circuit (IC) or not.  It sounds like not?  I.e bank 1 in IC 1 is
-the same bank and bank 2 in IC2?  Same number of banks as ICs, so hard to
-dissambiguate.
-
-> It's important to understand that each page of memory is segmented evenly
-> across Bank n of each IC for the associated rank.
-
-> We can now see why the DDR3 core has a 8n-prefetch (where n refers to the
-> number of banks per rank) as every read access to the memory requires a
-> minimum of 64 bits (8 bytes) of data to be transferred. This is because each
-> bank, of which there are eight for DDR3, fetches no less than 8 bits (1 byte)
-> of data per read request - the equivalent of one column's worth of data.
-
--->
-
-[35]: https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2
 
 <!-- Paper that discusses memory page handling, some details on banks, and of
 most interest is the idea that you can have a policy that closes pages right
