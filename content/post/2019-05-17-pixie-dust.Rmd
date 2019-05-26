@@ -406,16 +406,24 @@ res3 <- readRDS(sprintf(base, '-3'))
 res.all <- c(res1, res2, res3)
 proc_times <- function(res) {
   colnames <- unique(names(res))
-  res.mx <- matrix(res, ncol=4, dimnames=list(NULL, colnames), byrow=TRUE)
+  res.mx <- matrix(
+    res, ncol=length(colnames), dimnames=list(NULL, colnames), byrow=TRUE
+  )
   mx.lens <- vapply(res.mx[,1], nrow, 0)
-  resdf <- data.frame(
-    random=unlist(lapply(res.mx[, 1], function(x) x[,3])),
-    sorted=unlist(lapply(res.mx[, 2], function(x) x[,3])),
-    n=rep(unlist(res.mx[, 3]), mx.lens),
-    times=rep(unlist(res.mx[, 4]), mx.lens)
+  rep.cols <- !colnames %in% c('normal', 'sorted')
+  rep.col.vals <- lapply(
+    colnames[rep.cols],
+    function(x) rep(unlist(res.mx[, x]), mx.lens)
+  )
+  resdf <- cbind(
+    data.frame(
+      random=unlist(lapply(res.mx[, 1], function(x) x[,3])),
+      sorted=unlist(lapply(res.mx[, 2], function(x) x[,3]))
+    ),
+    setNames(rep.col.vals, colnames[rep.cols])
   )
   resdfm <- transform(
-    melt(resdf, id.vars=c('n', 'times')),
+    melt(resdf, id.vars=colnames[rep.cols]),
     # time.per=ifelse(variable=='ratio', value, value/(n*times)),
     time.per=value/(n*times)/(1/1.2e9),
     shape='Single'
