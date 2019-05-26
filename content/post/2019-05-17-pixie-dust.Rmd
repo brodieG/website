@@ -887,18 +887,40 @@ predicting the higher frequency branch on average.  In the sorted case there is
 essentially no misprediction penalty as predicting recently seen branch
 directions is a good strategy.
 
+# A Faustian Bargain
 
-```{r eval=FALSE}
-o2 <- o
-o2[sample(length(o), floor(length(o)/2))] <- length(o) + 1L
-sys.time(x[o])
-sys.time(x[o2])
+<figure class='post-inset-image'>
+<div class='post-inset-image-frame'><img
+  id='front-img'
+  src='/post/2019-05-17-pixie-dust_files/user-imgs/exploit-collage.png'
+/></div>
+<figcaption>Meltdown, Specter, MDS, and Foreshadow, clockwise.</figcaption>
+</figure>
 
-x2 <- rep(NA_real_, length(x))
-sys.time(x2[o] <- x)
-sys.time(x2[o2] <- x)
-```
+So much ingenuity has gone into designing and implementing modern memory
+systems that it's easy to forget the whole thing is a massive hack.  We are
+stuck between slow commodity memory on one hand, and the expensive, limited, and
+complex micro-architecture required to make it useful on the other.  The
+limitations of the micro-architecture expose its supposedly hidden
+implementation details to probing via observation of timings.  The expense of
+the silicon that implements it has led to it being shared concurrently across
+processes.  The combination has led to an entirely new class of security
+vulnerabilities that will be difficult or impossible to fix in existing
+processors.
 
+The bottom right icon corresponds to the [MDS vulnerability][82] announced while
+I was in the process of writing this post.  What is staggering is that the
+changes that Intel introduced to its processors to mitigate the top left
+vulnerability discovered over a year ago ([Meltdown][83]) have made some of MDS
+vulnerabilities worse.
+
+My little seguë here has little relevance to the post other than
+micro-architecture is involved and the timing of the disclosures of the most
+recent vulnerabilities, but is enough to compel me to comment.  If you have been
+reading the headlines over the past year or so and have wondered exactly what
+this was all about, I encourage you to read the papers.  I've read the
+[Spectre][84] and [Fallout][85] papers which are remarkably accessible, and
+occasionally [downright funny][86].
 
 # Loose Ends
 
@@ -911,7 +933,7 @@ string <- "times in milliseconds
                                          random  |      sorted
 split --------------------------- : 7239 -    0  |  1573 -   0
     split.default --------------- : 7239 - 1997  |  1573 - 137
-        as.factor --------------- : 5242 - \033[43m2471\033[m    |  1436 - \033[43m630\033[m
+        as.factor --------------- : 5242 - \033[43m2471\033[m  |  1436 - \033[43m630\033[m
             sort ---------------- : 2771 -    0  |   806 -   0
                 unique.default -- : 2705 - \033[43m2705\033[m  |   789 - \033[43m789\033[m
                 sort.default ---- :   67 -    0  |    17 -   0
@@ -931,10 +953,10 @@ hashing by its nature undoes some of the benefits of the sort.  In R, hash
 tables are stored as vectors twice the size of the vector being
 hashed[^hash-tables-in-r].  So in `unique.default(grp)`, we are generating a
 hash table with **twenty million** elements, of which we will eventually use
-~one million.  Worse, from a memory system perspective, the hashing function
-will try to distribute the values evenly [and randomly][64] throughout the hash
-vector.  Nothing like large memory allocations accessed randomly to make the
-memory system happy.
+~one million[^one-million].  Worse, from a memory system perspective, the
+hashing function will try to distribute the values evenly [and randomly][64]
+throughout the hash vector.  Nothing like large memory allocations accessed
+randomly to make the memory system happy.
 
 Sorting the data still helps because for each group the same hash key will be
 accessed repeatedly such that only the first access for each group is subjected
@@ -1187,30 +1209,44 @@ for(i in seq_along(samps)) {
 }
 ```
 
-[^micro-ops]: The twelve operations we show here will likely correspond to
-  substantially more micro-operations.
+[^one-million]: Even though we're only using one million elements from the hash
+  table the cache effective size of it will be likely at least 8 times that as
+  memory is always brought into cache in cache-line size, or 64 bytes.  In order
+  to bring in one eight byte numeric value from the hashtable, we have to bring
+  in another 56 bytes of mostly unused hash table around it.  In many cases it
+  will be even worse as the hardware prefetcher may bring in two cache lines
+  instead of just one.
+[^bp-penalty]: Agner Fog lists 15-20 cycles for Haswell, Broadwell, and Skylake
+  on [p29 of "The microarchitecture of Intel, AMD and VIA CPUs"][56].
+[^tomasulo]: The 1963 [Tomasulo Paper][75] introduced the concept of register
+  renaming that breaks the false dependency that exists when names/registers
+  are re-used and allows increased instruction-level parallelism.
+[^uops]: The eight instructions we show here will likely correspond to
+  substantially more micro-operations, both because they are intended to
+  symbolize assembler instructions and not micro-operations, and also because
+  the actual C implementation of the R code is [more][31] [complex][60] than the
+  pseudo code indicates.
 [^hash-tables-in-r]: Hash tables used to take up 4x the size of the
   hashed input, but in [2004 that was switched to 2x][65].  A tidbit I found
   fascinating is that the R hash tables are [open-addressed][67], meaning that
   collisions are resolved by walking along the hash vector until an open slot is
   found instead of appending an element to the end of a linked list or similar.
+  Additionally, it is the index into the vector that is hashed that is stored,
+  no the value itself.  This means all vector types can have an integer hash
+  table (or double if using LONG_VECTOR_SUPPORT).
 [^rob]: Assuming no instruction dependencies, CPUs that can engage in
   out-of-order execution can get ahead by as many micro-operations as will fit
   in the re-order buffer.  Re-order buffer sizes vary by architecture.  On my
   Skylake system the reorder buffer supports 224 micro-operations ([Agner
-  Fog][57], p149).  Do note that while our pseudo-code loop appears to have
-  three (four including the `for` index increment) instructions per iteration,
-  in reality there will be far more micro-operations because the actual R code
-  is [more][31] [complex][60] than the pseudo code would indicate.  The
-  re-order buffer is a faster than cache memory location where pending and
-  completed operations can wait to be retired in logical order.  Operations that
-  complete ahead of others that logically precede them in the program will
-  wait in the reorder buffer until those preceding operations complete.
+  Fog][57], p149).
 [^mem-parallelism]: It is difficult to get information on exactly how many
   independently accessible  banks my system has, but it seems likely to be at
   least 16.  So long as the random accesses are from different banks they should
-  all be addressable concurrently.  This [anandtech article][35] goes into some
-  detail on memory banks.
+  all be addressable concurrently.  [Anandtech][35] goes into some
+  detail on memory banks.  See this [University of Utah CS7810 presentation][32]
+  for some discussion of the parallelism obtained from banks in DRAM memory, and
+  the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
+  interleaving, and pipelining.
 [^model-caveat]: It is also possible the reality is more complicated and
   there are offsetting factors cancelling each other out.  I have no easy way of
   knowing that my inferences about what is happening are correct.  I'm relying
@@ -1281,10 +1317,6 @@ for(i in seq_along(samps)) {
   million elements in the offset vector to track each group with a 10MM working
   set size.  At 4 bytes an element, that makes for a ~4MB integer vector, which
   is the size of L3 cache.
-[^ooo-interleave]: See this [University of Utah CS7810 presentation][32]
-  for some discussion of the parallelism obtained from banks in DRAM memory, and
-  the introduction to the [Wikipedia SDRAM page][33] which also mentions banks,
-  interleaving, and pipelining.
 [^proc-group]: Prior to this step the group vector is turned into integer group
   numbers that match the offset into the result list that the values of a group
   will be stored in.
@@ -1312,6 +1344,14 @@ for(i in seq_along(samps)) {
   It is [defined in the appendix](#sys.time).
 [^cache-labels]: These are labeled on a best-efforts basis and may be incorrect.
 [^scan-slots]: Alternatively, we could scan the tokens for a particular label.
+[^mem-parallel-caveat]: This assumes the memory locations are in separate banks,
+  which should be the case for most random accesses, although occasionally it
+  won't be the case.
+[^simulataneous-ops]: Almost all processors nowadays are [superscalar][77],
+  meaning that they have multiple execution units that can compute
+  simultaneously.  More recent processors can execute up to [eight
+  micro-operations in parallel][72], although execution units are specialized so
+  it is not possible to have eight arbitrary operations done in parallel.
 
 [2]: https://en.wikipedia.org/wiki/Hash_table
 [3]: https://stackoverflow.com/a/11227902/2725969
@@ -1487,11 +1527,66 @@ A few interesting points:
 <!--
 Anandtech articles showing haswell microarchitectural details
 Looked at it trying to better understand relation between reservation station
-and reorder buffer-->
+and reorder buffer.
+
+Architectural details including execution units, etc.
+
+Bonus skylake as well in second link, but only real additional info is size of
+ROB, etc.
+-->
 
 [72]: https://www.anandtech.com/show/6355/intels-haswell-architecture/8
 [73]: https://www.anandtech.com/show/9582/intel-skylake-mobile-desktop-launch-architecture-analysis/5
 
 [74]: https://en.wikipedia.org/wiki/Re-order_buffer
 
+<!--
+Original Tomasulo Paper (1965)
+-->
+[75]: https://www.cs.virginia.edu/~evans/greatworks/tomasulo.pdf
+
+<!--
+Overview of ooo
+
+Yoav Etsion
+-->
+[76]: https://iis-people.ee.ethz.ch/~gmichi/asocd/addinfo/Out-of-Order_execution.pdf
+
+[77]: https://en.wikipedia.org/wiki/Superscalar_processor
+
+<!-- microarchitecture details of skylake -->
+[78]: https://en.wikichip.org/wiki/intel/microarchitectures/skylake_(client)
+
+<!--
+Several presentations that make clear the relationship between ROB and the
+Tomasulo algorithm: in particular, the ROB allows the possibility of branch
+speculation as we can toss everything in case of a misprediction or exception.
+Exception was the original intent.  Second link is particularly useful.
+
+The wiki entry suggests the re-order buffer existed originally.
+-->
+
+[79]: https://courses.cs.washington.edu/courses/cse471/07sp/lectures/Lecture4.pdf
+[80]: https://home.deib.polimi.it/silvano/FilePDF/AAC/Lectures_2017/Lesson_7_Reorder_Buffer_V2.pdf
+
+<!--
+2008 Intel Article discussing prefetching / streaming
+-->
+
+
+[81]: https://software.intel.com/en-us/articles/optimizing-application-performance-on-intel-coret-microarchitecture-using-hardware-implemented-prefetchers/
+
+<!--
+MDS/RIDL/Fallout Attacks
+And Meltdown/Spectre
+-->
+
+[82]: https://mdsattacks.com/
+[83]: https://meltdownattack.com/
+[84]: https://spectreattack.com/spectre.pdf
+[85]: https://mdsattacks.com/files/fallout.pdf
+
+<!-- Tweet about WTF -->
+
+[86]: https://twitter.com/BrodieGaslam/status/1129101973259784192
 
