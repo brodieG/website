@@ -812,154 +812,80 @@ system the best chance to mitigate latency.
 
 # Branch Prediction
 
-One optimization we glossed over is branch prediction which is used to attempt
-to resolve a class of sequential dependency that would otherwise limit how far
-ahead out-of-order execution could get.  We can re-write our [subset pseudo
-code](#subset-pseudo) to emphasize the issue:
+One optimization we glossed over is branch prediction.  An out-of-order CPU
+cannot put instructions "in-flight" past a branch (e.g. `if` statement) that
+depends on incomplete previous instructions because it does not know which side
+of the branch to put "in-flight".  Modern CPUs will make an educated guess and
+keep putting instructions "in-flight" so we can maintain the benefits of
+out-of-order execution in branched code.
 
-```{r eval=FALSE}
-res <- numeric(length(grp))
-i <- 0
-repeat {
-  if((i <- i + 1) > length(grp)) {
-    break
-  } else {
-    val <- x[i]
-    idx <- o[i]
-    res[idx] <- val
-  }
-}
-```
+Ironically the key feature of branch predicting CPUs is not the ability to
+guess, but rather the ability to recover from an incorrect guess.  The reorder
+buffer assists in this by marking all "in-flight" operations predicated on
+a branch guess as speculative.  These may then be discarded if the guess is
+discovered to be incorrect when the branch condition computation completes.
+Mispredictions do have a cost (15-20 cycles on my system[^bp-penalty]), so CPU
+designers invest a substantial amount of effort to improve branch prediction. 
 
-We converted the for loop into a repeat / break conditional loop, which is
-really what the for loop is anyway.  In order for the processor to be able
-to out-of-order execute multiple loop iterations it needs to decide whether the
-condition that triggers the break statement will be met or not.
+Branch prediction likely only plays a minor role in our examples[^bp-minor];
+however, for completeness sake I've contrived a new one that demonstrates its
+effect.  In order to control the branching I wrote the example in C.  I also had
+to compile it with all **optimizations turned off** (`-O0`) because compilers
+are very aggressive at removing branches in code, precisely because they
+interfere with out-of-order execution.  The function computes the cumulative sum
+of a logical vector where FALSE is -1 and TRUE +1:
 
-Suppose that our CPU can have up to ten operations in flight:
-
-```{r eval=FALSE}
-i1 <- i0 + 1
-i2 <- i1 + 1
-i3 <- i2 + 1
-i4 <- i3 + 1
-    val <- x[i]
-    idx <- o[i]
-    res[idx] <- val
-
-
-```
-
-While it's
-obvious to anyone looking at the
-
-If it guesses
-wrong we will suffer a ~20 CPU cycle penalty.  If it guesses right we get to
-execute out-of-order and take advantage
-
-be met with a penalty of about 20 CPU cycles.
-
-
-initiate
-future loop iteration calls
-, it must make an assumption about whether there will
-be an additional iteration or whether it should execute the operation that
-follows the loop.
-.  If it turns out to be wrong, all the operations
-that were initiated out of order past the termination point will have to be
-thrown out, and the processor will stall while the correct instructions are
-loaded.
-
-In the case of a long for loop as we have here processors will do very well just
-by assuming that the loop will be repeated.  Eventually they will be wrong when
-the loop terminates, but the cost of the incorrect branch prediction at the end
-is well amortized over the rest of the loop.
-
-```{r eval=FALSE}
-#include <stdlib.h>
-#include <stdlib.h>
-int *crazy_add(int *x, int *y, int size) {
-  int * res = (int*) malloc(size, sizeof(int));
-  for(i = 0; i < size; ++i) {
-    if(*y > 0){
-      *res = *x - *y;
-    } else {
-      *res = *x + 1 + *y;
-    }
-    ++res;
-    ++x;
-    ++y;
-  }
-  return res;
-}
-int *crazy_add(int *y, int size) {
-  int * res = (int*) malloc(size * sizeof(int));
-  int accum = 0;
-  for(int i = 0; i < size; ++i) {
-    if(*y > 0) {accum++;} else {accum--;}
-    *res = accum;
-    ++res;
-    ++y;
-  }
-  return res;
-}
-crazy_add3 <- inline::cfunction(
-  sig=c(x='logical', res='integer'),
-  body="
-  if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
-  int *res_ptr = INTEGER(res);
-  int *x_ptr = INTEGER(x);
-  int accum = 0;
+```{c eval=FALSE}
+SEXP add_walk2(SEXP x) {
   R_xlen_t size = XLENGTH(x);
+  int *x_ptr=INTEGER(x);
+  int accum = 0;
 
   for(R_xlen_t i = 0; i < size; ++i) {
-    if(*x_ptr > 0) {accum++;} else {accum--;}
-    *res_ptr = accum;
-    ++res_ptr;
+    if(*x_ptr > 0) {accum++;} else {accum--;}  // BRANCH
     ++x_ptr;
   }
-  return res;",
-  verbose=TRUE,
-  cxxargs='-O0'
-)
-sane_add3 <- inline::cfunction(
-  sig=c(x='logical', res='integer'),
-  body="
-  if(XLENGTH(x) != XLENGTH(res)) error(\"invalid inputs\");
-  int *res_ptr = INTEGER(res);
-  int *x_ptr = INTEGER(x);
-  int accum = 0;
-  R_xlen_t size = XLENGTH(x);
-
-  for(R_xlen_t i = 0; i < size; ++i) {
-    accum += *x_ptr + 33;
-    *res_ptr = accum;
-    ++res_ptr;
-    ++x_ptr;
-  }
-  return res;", verbose
-)
-
-
-y <- sample(c(TRUE, FALSE), 1e7, rep=TRUE)
-y2 <- logical(1e7)
-z <- 1:1e7 + 1L - 1L
-res1 <- integer(1e7)
-res2 <- integer(1e7)
-res3 <- integer(1e7)
-microbenchmark::microbenchmark(
-  crazy_add3(y, res1),
-  crazy_add3(y2, res3),
-  times=20
-)
-microbenchmark::microbenchmark(
-  .Call('crazy_val', y, res1),
-  .Call('crazy_val', y2, res2)
-  times=20
-)
-sys.time(sane_add(z, y, res2))
+  return ScalarInteger(accum);
+}
 ```
 
+We can then test this function with logical vectors with varying proportions of
+TRUE values, both random and sorted:
+
+```{r echo=FALSE, message=FALSE}
+res2 <- readRDS(sprintf(base, '-12'))
+resdfm <- proc_times(res2)
+resdfm <- transform(resdfm, time.per=time.per/1e7)
+fracs <- sort(unique(resdfm[['fraction']]))
+min.time <- median(subset(resdfm, fraction == 0)[['time.per']])
+mdldf <- rbind(
+  data.frame(
+    fraction=fracs, time.per=min.time + pmin(fracs, 1-fracs) * 15,
+    variable='random'
+  ),
+  data.frame(fraction=fracs, time.per=min.time, variable='sorted')
+)
+ggplot(
+  resdfm,
+  aes(x=fraction, y=time.per, color=variable, fill=variable)
+  #aes(x=log2(n * (8 + 4/10)), y=log2(time.per), color=variable, shape=shape)
+) +
+  geom_quasirandom(position='dodge', alpha=0.20) +
+  geom_line(data=mdldf) +
+  extra +
+  scale_y_continuous(label=identity) +
+  scale_x_continuous(label=identity) +
+  xlab("Fraction TRUE") +
+  ylab("CPU Cycles Per Item") +
+  ggtitle("add_walk timings with 1e7 logical input")
+```
+
+The branch misprediction penalty models (lines) use 15 cycles penalty per
+misprediction, which fits the observed timings well[^bp-penalty-variability].
+In the randomly ordered case the branch predictor cannot do better than
+predicting the higher frequency branch on average.  In the sorted case there is
+essentially no misprediction penalty as predicting recently seen branch
+directions is a good strategy.
 
 
 ```{r eval=FALSE}
