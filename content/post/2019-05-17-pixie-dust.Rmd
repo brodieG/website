@@ -615,8 +615,8 @@ ggplot(
 
 There are many interesting things going on, but the most notable one is that the
 random case substantially outperforms our naive cache-only model.  Most likely
-this is happening because of out-of-order execution and memory interleaving /
-pipelining.  A pseudo code version of the [subset C code][31] might look like:
+this is happening because of out-of-order execution and parallelism in the
+memory system. A pseudo code version of the [subset C code][31] might look like:
 <span id=subset-pseudo></span>
 ```{r eval=FALSE}
 res <- numeric(length(grp))
@@ -638,71 +638,117 @@ from `o`.
 
 As we saw previously, the latency of the first random access will still be the
 full main memory latency, but we can amortize this cost by the lesser of how
-many iterations processor cycles we can get ahead while waiting for the slow
-step[^rob], and how many different memory banks our requests
-points[^mem-parallelism].  In this case the out-of-order execution and
-parallelized memory access allows the vector re-order to be carried out
-substantially faster than the cache-only model would suggest[^ooo-interleave].
+many loop iterations we can put "in-flight" out-of-order , and the degree
+of parallelism available in main memory[^mem-parallelism].
 
-# Out of Order Execution
+# Visualizing Out of Order Execution
 
-We can visualize the out-of-order execution in a system that allows up to twelve
-instructions in flight simultaneously as follows.  Again we use some
-pseudo-R-code as stand-ins for what would actually be machine
-micro-operations[^micro-ops]:
+Out-of-order instructions are kept "in-flight" in the reorder buffer
+(ROB)[^rob], a memory structure that can store a number of both pending and
+complete instructions.  The purpose of the buffer is to allow instructions to be
+executed out-of-order, but have their results committed in logical program
+order.
+
+Let's pretend our system's ROB supports up to eight "instructions" "in-flight".
+The first two iterations of the [previous `for` loop](#pseudo-random) are turned
+into the following instructions:<span id=linear-ops></span>
 
 ```{r eval=FALSE}
 ## loop iteration 1
-i1        <- seqi[1]               # pending
-val1      <- x[i1]                 # pending
-idx1      <- o[i1]                 # pending
-res[idx1] <- val1                  # pending
+i1        <- seqi[1]               # PENDING
+val1      <- x[i1]                 # PENDING
+idx1      <- o[i1]                 # PENDING
+res[idx1] <- val1                  # PENDING
 ## loop iteration 2
-i2        <- seqi[2]               # pending
-val2      <- x[i2]                 # pending
-idx2      <- o[i2]                 # pending
-res[idx2] <- val2                  # pending
-## loop iteration 2
-i3        <- seqi[3]               # pending
-val3      <- x[i3]                 # pending
-idx3      <- o[i3]                 # pending
-res[idx3] <- val3                  # pending
+i2        <- seqi[2]               # PENDING
+val2      <- x[i2]                 # PENDING
+idx2      <- o[i2]                 # PENDING
+res[idx2] <- val2                  # PENDING
 ```
 
-This corresponds to the first three iterations of the loop.  For convenience we
-will pretend there are only three loop iterations in total.  Due to the code
-dependencies, the actual execution order of the instructions will look something
-like:
+Again we use some pseudo-R-code as a stand-in for what would actually be machine
+micro-operations[^uops].  Notice how we renamed the `i`, `val`, and `idx`
+variables by appending the loop number to each of them[^tomasulo].  This allows
+the CPU to re-order them without instructions from later iterations overwriting
+earlier ones.  For example, they could now be executed in the following order:
 
 ```{r eval=FALSE}
-i1        <- seqi[1]               # pending
-i2        <- seqi[2]               # pending
-i3        <- seqi[3]               # pending
+i1        <- seqi[1]               # PENDING
+i2        <- seqi[2]               # PENDING
 
-val1      <- x[i1]                 # pending
-val2      <- x[i2]                 # pending
-val3      <- x[i3]                 # pending
+val1      <- x[i1]                 # PENDING
+val2      <- x[i2]                 # PENDING
 
-idx1      <- o[i1]                 # pending
-idx2      <- o[i2]                 # pending
-idx3      <- o[i3]                 # pending
+idx1      <- o[i1]                 # PENDING
+idx2      <- o[i2]                 # PENDING
 
-res[idx1] <- val1                  # pending
-res[idx2] <- val2                  # pending
-res[idx3] <- val3                  # pending
+res[idx1] <- val1                  # PENDING
+res[idx2] <- val2                  # PENDING
 ```
 
-Notice how I renamed the `i`, `val`, and `idx` variables by appending the loop
-number to each of them.  This allows us to keep multiple `i` values in flight
-without later ones clobbering earlier ones.
+The processor should be free to chose any instruction to execute that does not
+depend on others.  In this case both the `i1` and `i2` instructions are
+eligible, so the processor could execute one, the other, or even both
+simultaneously[^simulataneous-ops].  As a result shortly after the first main
+memory access is complete this will be the state:
 
+```{r eval=FALSE}
+# i1      <- seqi[1]               # retired
+i2        <- seqi[2]               # complete
+i3        <- seqi[3]               # PENDING
 
-With a large enough
-working set everything is going to be coming from main memory, so 
+val1      <- x[i1]                 # PENDING
+val2      <- x[i2]                 # PENDING
 
+idx1      <- o[i1]                 # PENDING
+idx2      <- o[i2]                 # PENDING
 
-One way to confirm that out-of-order execution is indeed happening we can
-compare with a similar work load where there is a loop iteration dependency.  We
+res[idx1] <- val1                  # PENDING
+res[idx2] <- val2                  # PENDING
+```
+
+`i1`, and `i2` are both computed.  Additionally, the `i1` instruction is retired,
+meaning its result can be treated as final and it no longer occupies one of the
+eight "in-flight" slots.  The `i2` instruction cannot be retired despite being
+complete because in the logical flow of the program it comes after the `val1`,
+`idx1`, and `res[idx1]` commands that are still pending.  The `i3` instruction
+takes up the slot freed by the retirement of the `i1` instruction.
+
+The same dynamic will play out for the `val*` and `idx*` steps, which will lead
+to:
+
+```{r eval=FALSE}
+# i1      <- seqi[1]               # retired
+# val1    <-   x[i1]               # retired
+# idx1    <-   o[i1]               # retired
+
+i2        <- seqi[2]               # complete
+i3        <- seqi[3]               # complete
+
+val2      <- x[i2]                 # complete
+val3      <- x[i3]                 # complete
+
+idx2      <- o[i2]                 # complete
+idx3      <- o[i3]                 # complete
+
+res[idx1] <- val1                  # PENDING
+res[idx2] <- val2                  # PENDING
+```
+
+This is where the benefit of out-of-order execution becomes apparent.  All
+memory accesses up to this were sequential, so executing out-of-order is
+of marginal value as subsequent reads would be fast anyway.  But the
+writes to `res` are random and so subject to the full memory latency.  Out of
+order execution allows us to run them both concurrently taking advantage of the
+memory system parallelism to satisfy them together in roughly the same amount of
+time as it would take to run a single one[^mem-parallel-caveat].  [Without
+out-of-order execution](#linear-ops) we would not be able to run the second
+write to `res` until after the first one completed.  The effective bandwidth of
+our system would continue to grow with the number of instructions we can keep
+"in-flight" up until we saturate the parallelism available in main memory.
+
+One way to confirm that out-of-order execution is indeed happening is to prevent
+it with a cross-iteration loop dependency for an otherwise similar work load. We
 can use "chasing indices" like this one:
 
 <img
@@ -712,10 +758,8 @@ can use "chasing indices" like this one:
 
 Each vector element contains in it the (0-based) index of the next element to
 visit.  The arrows illustrate the path that results from following the indices.
-This is effectively equivalent to pointer chasing.  Unfortunately it isn't
-possible to engage in such index chasing efficiently in pure R code, so instead
-we wrote a C function to do it.  The code to generate the "chasing indices" as
-well as the C logic to "walk" them is [in the appendix](#index-chasing).
+Unfortunately it isn't possible to engage in such index chasing efficiently in
+pure R code, so instead we wrote a [C function to do it](#index-chasing).
 
 We added the timings of that function on top of the prior runs, shown as the
 blue `random2` data set:
@@ -758,13 +802,13 @@ ggplot(
   geom_vline(data=NULL, xintercept=cache.sizes.new, linetype=cache.styles)
 ```
 
-Sure enough, adding the sequential dependency brings timings much closer to the
-theoretical cache-only model, particularly once the working set exceeds L3 cache
-size.  Random accesses are somewhat pathological to modern memory systems, but
-those that depend on prior accesses are downright killer.  Ordering our input
-vectors first isolates random accesses to the simplest operations, thereby
-giving the memory system optimizations the best chance to mitigate main memory
-latency.
+Sure enough, adding the sequential dependency as exists in `split.default`
+brings timings much closer to the theoretical cache-only model, particularly
+once the working set exceeds L3 cache size.  Random accesses are somewhat
+pathological to modern memory systems, but those that depend on prior accesses
+are downright killer.  Ordering our input vectors first isolates random accesses
+to simple operations without sequential dependencies giving the memory
+system the best chance to mitigate latency.
 
 # Branch Prediction
 
