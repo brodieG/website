@@ -36,10 +36,7 @@ writeFansi <- function(x) {
 }
 ```
 
-More time that can be reasonably justified following the siren call of the
-unexplained.
-
-# Often the Road Least Travelled is so For Good Reasons
+# In Which it Dawns On Us That We Know Nothing
 
 <!-- this needs to become a shortcode -->
 <img
@@ -51,18 +48,17 @@ unexplained.
 It wasn't supposed to be this way.  You shouldn't be looking at drawing of a
 [Lernean Hydra][51] laughing its ass off.  This post was going to be short,
 sweet, and useful.  Instead it turned into a many-headed monster that is smugly
-sitting on my chest smothering all productivity out of me.  What follows here is
-a re-telling of my flailing attempt at chopping off one its heads.
+sitting on my chest smothering me.  What follows here is a retelling of my
+flailing attempt at chopping off one its heads.
 
 It all started on a lark to see if I could make base R competitive with the
 undisputed champ `data.table` [at computing group statistics][21].  That thought
-alone is scoff-worthy enough that I deserve little sympathy for what happened
-next.  **Warning**: this is an optimization post in a blog about R, so please
-set your expectations for riveting stories about adventures appropriately.
+alone is scoff-worthy enough that I deserve little sympathy for the plight I
+find myself in[^plight].
 
 > TL;DR: ordering data can have a huge impact on how quickly it can be processed
-> because of micro-architectural factors and because of better algorithms that
-> become available.
+> because of micro-architectural factors such as cache, out-of-order execution,
+> and branch prediction.  Yes, even in R.
 
 Let's skip back to the care-free, hydra-less days when I should have known
 better:
@@ -72,10 +68,10 @@ blogdown::shortcode("tweet", "1106231241488154626")
 ```
 
 "More on this next week"... &#x1f923;&#x1f923;&#x1f923;.  Aaaah, what a fool.
-That was two months ago.  The key observations back then were that:
+That was almost three months ago.  The key observations back then were that:
 
 * `data.table` contributed its radix sort to R in R3.3.0.
-* As a result, `order` became 50x faster under at least some work loads.
+* As a result, `order` became 50x faster under some work loads.
 
 I was also alluding that something fairly remarkable happens when you order data
 before you process it.  Let's illustrate with 10MM items in ~1MM groups: <span
@@ -164,11 +160,18 @@ R user".  I'm tickled that I was wrong and I get to see this type of effect in
 play first hand, although here there are more issues than just branch
 prediction.
 
-Two months ago I reached a fork in the road and I could have taken the "oh,
+Three months ago I reached a fork in the road and I could have taken the "oh,
 neat, let's move on and do something useful" one.  Instead I took the other one.
 The one leading down the rabbit hole[^rabbit-hole].  And here I am, flat on my
 back with a fat hydra sitting on my chest, licking its paws rather unconcerned
-with my flailing efforts to cut off its remaining heads.
+with my flailing efforts to cut off its heads.
+
+> **Disclaimer**: Before I started writing this post all I knew about
+> micro-architecture is what I could infer from its constituent words,
+> particularly the 80s-90s marketing hype around the first one.  My only
+> expertise is that my relative lack of knowledge of the topic might make my
+> writing about it more accessible. I cannot guarantee the accuracy of all
+> the details in this post, but the broad outlines should be mostly correct.
 
 # Latency Is The Enemy
 
@@ -182,30 +185,37 @@ with my flailing efforts to cut off its remaining heads.
 
 _Something_ is going on underneath the hood that dramatically affects the
 performance of the random scenario. The fundamental problem is that main
-memory access is laggy.  Over the decades CPU processing speed has
+memory access is laggy.  Over the past few decades CPU processing speed has
 grown faster than memory latency has dropped.  Nowadays it may take ~200 CPU
 cycles to have a CPU data request fulfilled from main memory.
 
 Chip designers have engaged in micro-architectural heroics to conceal main
-memory latency.  What is micro-architecture?  Imagine you have a room full of
+memory latency.  What is microarchitecture?  Imagine you have a room full of
 children at a sleepover, and as it is past midnight you have firmly instructed
 them to sleep.  Sure enough when you open the door to check on them they are all
 in their beds, eyes screwed shut.  Never mind that when you close the door and
 walk down the stairs the raging pillow fight resumes unabated.  Similarly the
 CPU is free to implement assembly instructions[^assembly] however it wants
-provided that when the program interacts with it the visible CPU state is
-consistent with the instructions.
+provided that when the program interacts with it the CPU state visible to the
+program is consistent with its instructions.
 
 A more sober analogy: microarchitecture is to assembly instructions as a
-compiler is to a C program.
+compiler is to a C program[^c-to-assembly].  I am inclined to the drunker
+analogy because once upon a time I used to think writing C code was being close
+to the "metal".  I'm realizing instead that writing C to be close to the metal
+is like dwelling in the sewer system to be close to the iron core of the
+planet[^unfair-to-c].  If I'm being over-dramatic it's because I'm still a
+little pissed at how little control I have over my program's execution, and more
+so that that is likely a good thing.
 
-Unlike with latency, main memory bandwidth has kept pace with processor speeds.
-The micro-architectural freedom chip designers have allows them to develop
-tricks to take advantage of the bandwidth.  The over-used analogy is
-that of a long conveyor belt connecting a storage warehouse (main memory) to an
-assembly station (CPU).  The first item requested from the warehouse will be
-slow to get to you (latency), but if the conveyor belt is carefully loaded
-you'll have your hands full as soon as the first arrives (bandwidth).
+Main memory latency is terrible, but thankfully its bandwidth has kept pace with
+processor speeds.  The micro-architectural freedom chip designers have allows
+them to develop tricks to take advantage of the bandwidth.  The over-used
+analogy is that of a long conveyor belt connecting a storage warehouse (main
+memory) to the factor (CPU).  The first item requested from the warehouse will
+be slow to arrive (latency), but if the conveyor belt is loaded efficiently
+it will keep the factory fully supplied from the moment the first item arrives
+(bandwidth).
 
 There are two main classes of micro-architectural tricks used to mask the main
 memory latency.  The first involves having some amount of low latency memory
@@ -239,12 +249,12 @@ picture.  Main memory is on a different continent:
 
 <span id=second-trick></span>The second latency concealing trick involves
 interpreting instructions in such a way that the conveyor belt can be kept fully
-utilized after the first item is requested.  This includes preloading memory
-areas the CPU is likely to need based on prior access patterns, executing
-operations out-of-order so that memory requests for later operations are
-initiated while earlier ones wait for theirs to be fulfilled, guessing at which
-conditional branch will be executed before its condition is known, and other
-optimizations.
+utilized (i.e. few gaps) after the first item is requested.  This includes
+preloading memory areas the CPU is likely to need based on prior access
+patterns, executing operations out-of-order so that memory requests for later
+operations are initiated while earlier ones wait for theirs to be fulfilled,
+guessing at which conditional branch will be executed before its condition is
+known, and other optimizations.
 
 # Pathological Data
 
@@ -940,8 +950,9 @@ directions is a good strategy.
 So much ingenuity has gone into designing and implementing modern memory
 systems that it's easy to forget the whole thing is a massive hack.  We are
 stuck between slow commodity memory on one hand, and the expensive, limited, and
-complex micro-architecture required to make it useful on the other.  The
-limitations of the micro-architecture expose its supposedly hidden
+complex micro-architecture that makes it useful on the other.  
+
+The limitations of the micro-architecture expose its supposedly hidden
 implementation details to probing via observation of timings.  The expense of
 the silicon that implements it has led to it being shared concurrently across
 processes.  The combination has led to an entirely new class of security
@@ -1050,44 +1061,24 @@ Vs.
 4. Write value           (double)*
 
 
-
 -->
 
-# Better Algorithms
-
-```{r eval=FALSE}
-sys.time(u0 <- unique(grp))
-```
-```
-   user  system elapsed
-  1.197   0.039   1.244
-```
-```{r eval=FALSE}
-sys.time({
-  o <- order(grp)
-  go <- grp[o]
-})
-```
-```
-   user  system elapsed
-  0.439   0.002   0.443
-```
-```{r eval=FALSE}
-sys.time(u1 <- unique(go))
-```
-```
-   user  system elapsed
-  0.349   0.039   0.389
-```
-```{r eval=FALSE}
-sys.time({u2 <- go[c(TRUE, go[-1L] != go[length(go)])]})
-```
-```
-   user  system elapsed
-  0.129   0.011   0.141
-```
-
 # Conclusions
+
+The joke in all this is that the micro-architectural mess we just slogged
+through is a side-show.  I care about ordering data not because of the cache
+and other benefits, but because ordered data opens up possibilities for
+different and more efficient processing algorithms, independent of
+micro-architectural factors.  It's just that when I noticed the
+micro-architectural factors wagging their tongues in my face I felt
+compelled to understand what was going on.
+
+So, stay tuned for Part II of the Hydra Chronicles, in which we will explore how
+ordered data can do amazing things.  Originally I was planning on ending the
+post with the hydra drawing minus a couple of heads, but its kinda grown on me
+and I feel bad doing that.  Henceforth it will be a mascot and the name of this
+series of blog posts, and it won't make any sense except to those like you that
+read the first one.  That's okay, it will be our inside joke.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -1249,6 +1240,26 @@ for(i in seq_along(samps)) {
 }
 ```
 
+[^unfair-to-c]: Clearly this is an unfair characterization, but there is enough
+  truth to it that I feel entitled to poetic license.  I actual quite enjoy
+  (usually) coding in C, and you do have way more control of things than you do
+  with R or other even-higher-level languages.
+[^c-to-assembly]: In both cases a process will interpret a set of instructions
+  (C code, assembly) into a different lower-level set of instructions
+  (assembly, CPU micro-operations).  The processes must abide by constraints (a
+  flavor of the C standard, an [Instruction Set Architecture][99]), but these
+  are loose enough to allow outrageous re-interpretation.  There are few things
+  quite as humbling as learning just enough assembly that you can look at the
+  disassembly of what you thought was a simple C function and realize there is
+  almost no relationship between what you wrote and what the program is doing
+  other than the semantics are the same.   Well, they should be provided you did
+  not have the misfortune of using unintended undefined behavior.
+[^plight]: The source of this post is nearing two thousand lines and I haven't
+  even started addressing the question I set out to answer.
+[^assembly]: Assembly instructions are low level commands that can be directly
+  interpreted by the CPU.  Programs that are not written in assembly are
+  translated into assembly directly by a compiler, or indirectly by mapping
+  program instructions to pre-compiled assembly instructions.
 [^bp-minor]: There are a few spots where branch prediction is likely happening.
   First in the loops proper as the break condition is a condition.  Since our
   loops are long guessing that the loop will continue indefinitely is an easy
@@ -1752,3 +1763,7 @@ switch split point
 -->
 
 [97]: https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8
+
+[98]: https://en.wikipedia.org/wiki/Assembly_language
+[99]: https://en.wikipedia.org/wiki/Instruction_set_architecture
+

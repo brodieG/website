@@ -59,6 +59,41 @@ TL;DR: some surprising results, close encounters with cache effects and branch
 prediction from R, and an epic battle with double precision imprecision.  Oh,
 and pixie dust.
 
+# Better Algorithms
+
+```{r eval=FALSE}
+sys.time(u0 <- unique(grp))
+```
+```
+   user  system elapsed
+  1.197   0.039   1.244
+```
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+})
+```
+```
+   user  system elapsed
+  0.439   0.002   0.443
+```
+```{r eval=FALSE}
+sys.time(u1 <- unique(go))
+```
+```
+   user  system elapsed
+  0.349   0.039   0.389
+```
+```{r eval=FALSE}
+sys.time({u2 <- go[c(TRUE, go[-1L] != go[length(go)])]})
+```
+```
+   user  system elapsed
+  0.129   0.011   0.141
+```
+
+
 # The Ring
 
 Ten million observations, ~one million groups, no holds barred:
