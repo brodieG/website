@@ -25,18 +25,8 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```{r echo=FALSE, comment="", results='asis'}
 old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
 ```
-```{r, echo=FALSE}
-writeFansi <- function(x) {
-  writeLines(
-    paste0(
-      "<pre></pre><pre><code>",
-      paste0(fansi::sgr_to_html(x), collapse="\n"),
-      "</code></pre>"
-  ) )
-}
-```
 
-# In Which it Dawns On Us That We Know Nothing
+# In Which It Dawns On Me That I Know Nothing
 
 <!-- this needs to become a shortcode -->
 <img
@@ -160,12 +150,6 @@ R user".  I'm tickled that I was wrong and I get to see this type of effect in
 play first hand, although here there are more issues than just branch
 prediction.
 
-Three months ago I reached a fork in the road and I could have taken the "oh,
-neat, let's move on and do something useful" one.  Instead I took the other one.
-The one leading down the rabbit hole[^rabbit-hole].  And here I am, flat on my
-back with a fat hydra sitting on my chest, licking its paws rather unconcerned
-with my flailing efforts to cut off its heads.
-
 > **Disclaimer**: Before I started writing this post all I knew about
 > micro-architecture is what I could infer from its constituent words,
 > particularly the 80s-90s marketing hype around the first one.  My only
@@ -185,22 +169,22 @@ with my flailing efforts to cut off its heads.
 
 _Something_ is going on underneath the hood that dramatically affects the
 performance of the random scenario. The fundamental problem is that main
-memory access is laggy.  Over the past few decades CPU processing speed has
-grown faster than memory latency has dropped.  Nowadays it may take ~200 CPU
+memory (RAM) access is laggy.  Over the past few decades CPU processing speed
+has grown faster than memory latency has dropped.  Nowadays it may take ~200 CPU
 cycles to have a CPU data request fulfilled from main memory.
 
 Chip designers have engaged in micro-architectural heroics to conceal main
 memory latency.  What is microarchitecture?  Imagine you have a room full of
 children at a sleepover, and as it is past midnight you have firmly instructed
-them to sleep.  Sure enough when you open the door to check on them they are all
-in their beds, eyes screwed shut.  Never mind that when you close the door and
-walk down the stairs the raging pillow fight resumes unabated.  Similarly the
-CPU is free to implement assembly instructions[^assembly] however it wants
-provided that when the program interacts with it the CPU state visible to the
+them to sleep.  When you open the door to check on them they are all in their
+beds, eyes screwed shut.  Never mind that the moment you close the door and walk
+down the stairs the raging pillow fight resumes unabated.  Similarly the CPU is
+free to implement assembly instructions[^assembly] however it wants provided
+that when the program interacts with it the CPU state visible to the
 program is consistent with its instructions.
 
 A more sober analogy: microarchitecture is to assembly instructions as a
-compiler is to a C program[^c-to-assembly].  I am inclined to the drunker
+compiler is to a C program[^c-to-assembly].  I am inclined to the less sober
 analogy because once upon a time I used to think writing C code was being close
 to the "metal".  I'm realizing instead that writing C to be close to the metal
 is like dwelling in the sewer system to be close to the iron core of the
@@ -210,10 +194,10 @@ so that that is likely a good thing.
 
 Main memory latency is terrible, but thankfully its bandwidth has kept pace with
 processor speeds.  The micro-architectural freedom chip designers have allows
-them to develop tricks to take advantage of the bandwidth.  The over-used
-analogy is that of a long conveyor belt connecting a storage warehouse (main
-memory) to the factor (CPU).  The first item requested from the warehouse will
-be slow to arrive (latency), but if the conveyor belt is loaded efficiently
+them to deploy tricks to take advantage of bandwidth to mask latency.  The
+over-used analogy is that of a long conveyor belt connecting a storage warehouse
+(main memory) to the factor (CPU).  The first item requested from the warehouse
+will be slow to arrive (latency), but if the conveyor belt is loaded efficiently
 it will keep the factory fully supplied from the moment the first item arrives
 (bandwidth).
 
@@ -286,79 +270,76 @@ code will take the same exact number of steps irrespective of input order, yet
 there is a ~15x speed-up between the sorted (137ms) and randomized versions
 (1,997ms).
 
-The following analogy may be helpful in understanding what is going on.  Imagine
-we have been given a board full of tokens, each identified by one of eighteen
-two letter combinations[^game-size].  We have also been given a box with
-eighteen slots, each one labeled with one of those letter combinations.  Our job
-is to transfer each token into the slot bearing its label:
+Our conveyor belt analogy can give us some idea of the type of problems
+caused by random inputs.  Suppose the factory places a request for items from
+the warehouse, taking care to order the items in the request form.  This is what
+the request will look like mid-process, with processed items in yellow:
 
 ```{r echo=FALSE, eval=FALSE}
-strings <- sample(do.call(paste0, expand.grid(LETTERS, LETTERS)), 18)
-strings.r <- strings.s <- matrix(sample(rep(strings, 8)), ncol=12)
+strings <- sample(do.call(paste0, expand.grid(LETTERS, LETTERS)), 5)
+strings.r <- strings.s <- matrix(sample(rep(strings, 4)), ncol=5)
 strings.s[] <- sort(strings.s)
 for(i in seq_len(nrow(strings.s))) cat(strings.s[i,], '\n')
 for(i in seq_len(nrow(strings.r))) cat(strings.r[i,], '\n')
 for(i in sample(unique(c(strings.s)))) cat(i, "[ ]\n")
 ```
-```
-              TOKENS                            SLOTS
-              ------                            -----
-CF DT EQ FD GE JO PF PL QS RM UA UE
-CF DT EQ FD GE JO PF PL QS RM UA UE       PF->[  ]  DT->[  ]
-CF DT EQ FD GE JO PF PL QS RM UA UE       QO->[  ]  KI->[  ]
-CF DT EQ FD GE JO PF PL QS RM UA UE       RM->[  ]  GE->[  ]
-CF DW EQ FM GE KI PF QO QS SQ UA UZ       SQ->[  ]  UZ->[  ]
-CF DW EQ FM GE KI PF QO QS SQ UA UZ       UE->[  ]  QS->[  ]
-CF DW EQ FM GE KI PF QO QS SQ UA UZ       FD->[  ]  FM->[  ]
-CF DW EQ FM GE KI PF QO QS SQ UA UZ       PL->[  ]  CF->[  ]
-DT DW FD FM JO KI PL QO RM SQ UE UZ       JO->[  ]  UA->[  ]
-DT DW FD FM JO KI PL QO RM SQ UE UZ       DW->[  ]  EQ->[  ]
-DT DW FD FM JO KI PL QO RM SQ UE UZ
-DT DW FD FM JO KI PL QO RM SQ UE UZ
-```
 
-We pick up the first token and scan the slots until we find the one with the
-"CF" label and drop the token in it.  The next token down is also labeled "CF".
-This time, since we remember where we just dropped the last token we can repeat
-the action for it and the subsequent six "CF" tokens.  Each time we hit a new
-token label we will re-scan the slots.  In this analogy latency is the time it
-takes to find a slot, and the bandwidth the rate at which we can transfer tokens
-into the slot once we locate it.
-
-Imagine instead if the board we had been given looked as follows:
-
-```
-              TOKENS                            SLOTS
-              ------                            -----
-KI DW CF EQ JO GE PF FM UE UA UE CF
-SQ QS JO QS QS QO GE DT QS PL FD DT        PF->[  ]  DT->[  ]
-CF RM QO SQ KI FD QS GE DW PF FD FD        QO->[  ]  KI->[  ]
-UA SQ DW FM QO EQ SQ UE UE UZ SQ QO        RM->[  ]  GE->[  ]
-RM UE FM JO GE FD KI PL UA UZ RM PL        SQ->[  ]  UZ->[  ]
-QO PF JO PF GE CF UA UA DT QO GE DW        UE->[  ]  QS->[  ]
-KI JO PL PL DW DT QO FD FM UZ DT RM        FD->[  ]  FM->[  ]
-EQ UE SQ RM PL CF UZ EQ DT KI UZ FM        PL->[  ]  CF->[  ]
-JO RM KI UZ QS UZ DT PL KI JO PL UA        JO->[  ]  UA->[  ]
-FD FM QO EQ FM CF CF SQ DW RM QS FM        DW->[  ]  EQ->[  ]
-DT CF UE PF KI DW FD GE UA EQ UE GE
-UZ RM JO PF QS DW UA SQ PF PF EQ EQ
+```{r echo=FALSE}
+writeLines("
+                                   | WAREHOUSE
+  ---------------------------------+-----------------------
+  < < < < < < 📦📦📦📦< < < < 📦📦📦📦< < < < 📦< < < < <
+  ---------------------------------+-----------------------
+                                   |           👷
+  Request:                         | FP   TZ   GZ   FT   YJ
+  \033[43mFP\033[m \033[43mFT\033[m \033[43mGZ\033[m TZ YJ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  \033[43mFP\033[m \033[43mFT\033[m GZ TZ YJ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  \033[43mFP\033[m \033[43mFT\033[m GZ TZ YJ                   | ⬜ | 📦 | 📦 | ⬜ | 📦
+  \033[43mFP\033[m \033[43mFT\033[m GZ TZ YJ                   | ⬜ | 📦 | 📦 | ⬜ | 📦
+                                   | ⬜ | 📦 | 📦 | ⬜ | 📦
+                                   | ⬜ | 📦 | ⬜ | ⬜ | 📦
+")
 ```
 
-Whatever we do we'll be stuck re-scanning the slots with each
-token[^scan-slots].  If our short term memory is good we might remember the
-location for a few of the labels and transfer those without a scan, but unless
-we can remember the location of every slot it will take us much longer than in
-the sorted case.
+It takes time for the worker to change stations.  So long as packages are
+requested repeatedly from the same station the worker can fully utilize the
+conveyor belt.  As soon as they need to change stations, there will be a gap in
+the conveyor belt corresponding to the time it takes to do so.  Unsurprisingly
+when the items are requested randomly the ratio of package to gaps is worse:
 
-Computers will also struggle with randomly order input for similar reasons.  The
-`split` process is akin to our tokens and slots, except with ten million tokens
-and ~one million slots.  Like us, computers have fast but limited short term
-memory in the CPU cache, but the problem is too large for the cache so the high
-latency main memory must be used.  There are additional complexities that defeat
-the second class of optimizations (better loading of conveyor belt) that we will
-discuss in the next section.
+```{r echo=FALSE}
+writeLines("
+                                   | WAREHOUSE
+  ---------------------------------+-----------------------
+  < < < < < < 📦< < < < 📦< < < < 📦< < < < 📦< < < < < <
+  ---------------------------------+-----------------------
+                                   |           👷
+  Request:                         | FP   TZ   GZ   FT   YJ
+  \033[43mFT\033[m YJ TZ YJ FP                   | 📦 | 📦 | 📦 | 📦 | 📦
+  \033[43mTZ\033[m FT YJ GZ GZ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  \033[43mFP\033[m TZ FT TZ GZ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  \033[43mGZ\033[m FP YJ FP FT                   | 📦 | 📦 | 📦 | 📦 | 📦
+                                   | 📦 | 📦 | 📦 | 📦 | 📦
+                                   | ⬜ | ⬜ | ⬜ | ⬜ | 📦
+")
+```
+
+In both cases the first package will arrive at the same time after the full
+access latency, but in the first case we will be able to ship data at a much
+higher average rate.
+
+While this analogy only bears a passing resemblance to some parts of what
+happens in the memory system, the concept applies generally.  Anytime you have
+high latency and high bandwidth, predictable requests will utilize bandwidth
+much better than unpredictable ones.
 
 # Modelling Cache Effects
+
+In our warehouse example we implicitly assumed that the working set was too
+large to fit in cache.  If it had fit in cache, we could have drawn our packages
+directly from the local storage in the factory with no need to resort to the
+warehouse and long conveyor belt.  We're interested in verifying that cache is
+effective at mitigating memory system latency.
 
 My system has a three level cache hierarchy as in the [pictured die](#cpu-die).
 Each level is larger but slower than the previous one[^mem-latency]:
@@ -396,12 +377,12 @@ ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
   # coord_cartesian(ylim=c(0,2^4))
 ```
 
-L1 cache is quite fast, but at 32KB[^l1-data-vs-inst], like our short term
-memory, it is completely insufficient to hold any meaningfully large working
-set.
+Unlike other levels, L1 has two types: data, and instruction[^l1-data-vs-inst].
+As our workload is data rather than instruction heavy we focus on the data
+cache.
 
 Given the cache structure of my system we can we can build a model of memory
-access time by working set size.  For reference we show our [current working
+access time by working set size.  If cache is effective we would expect average access times to follow our model. For reference we show our [current working
 set](#working-set) size as a vertical dashed line[^working-set-size]:
 
 ```{r echo=FALSE}
@@ -519,31 +500,28 @@ ggplot(mdl.dat, aes(x, y)) +
 
 `split.default` has six memory accesses[^split-ops].  When the working set fits
 in L1 cache they are all done at L1 speeds, which explains why the chart starts
-at 24 cycles per element in both cases[^access-dominates].  In the token/slots
-analogy, a working set that fits in L1 is akin to a set of distinct labels small
-enough that we can memorize the slot locations for each of them.
+at 24 cycles per element in both cases[^access-dominates].
 
 Of the six accesses four will always be sequential.  The other two are
-sequential only for the sorted set.  Sequential accesses are important because
-they are easy to predict.  This is one of those ["load the load conveyor belt"
-optimizations](#second-trick).  In the analogy workers notice the sequential
-pattern and pack the conveyor belt with the subsequent but as of yet unrequested
-boxes.  The memory system does the same.  We assume that all sequential accesses
-can be met at L1 cache speeds after the first element without consuming cache.
-This optimization is likely some combination of prefetching[^prefetch] and
-stream buffers[^streams].
+sequential for the sorted set, and random for the random set.  We assume that
+random accesses are subject to the full memory system latency, the magnitude of
+which will vary depending on what level of cache the working set fits in.
+Conversely we assume the sequential accesses can be met at L1 cache speeds
+without actually consuming cache.  This is because as in our conveyor belt
+analogy workers can fully use the main memory bandwidth when they don't have to
+hunt around for the packages.  Only the first element is subject to the
+latency and that is amortized over the rest of the process.  In memory systems
+this is implemented as a combination of what is known as prefetching[^prefetch]
+and stream buffers[^streams].
 
-The random set cannot benefit from this optimization as the access is not
-predictable.  When the working set exceeds L1 cache, accesses slow down as an
-increasing number of them must come from slower memory without streaming.  Each
-transition to a slower level of memory is manifests as an increase in
-per-element time that asymptotically[^asymptotic-latency] approaches the slower
-memory's incremental latency[^access-anomaly].
+For the random set, accesses slow down with working set size as an increasing
+proportion of accesses come from slower memory without the benefit of
+prefetching/streaming.  Each transition to a slower level of memory is manifests
+as an increase in per-element time that asymptotically[^asymptotic-latency]
+approaches the slower memory's incremental latency[^access-anomaly].
 
-This simple model predicts the random inputs will be ~13 times slower to process
-than the sorted ones for 10MM long inputs, which is close to the [ observed ~15
-times in `split.default`](#split-times).  We tested different working set sizes:
-
+We can time `split.default` across a range of working set sizes to compare to
+our model:
 
 ```{r echo=FALSE, fig.height=5}
 time_med <- function(x) {
@@ -583,10 +561,12 @@ ggplot(
   geom_vline(data=NULL, xintercept=cache.sizes, linetype=cache.styles)
   # facet_wrap(~facet, scales='free_y')
 ```
-
 <span id=anomaly></span>Outside of a few anomalies[^model-anomalies] the model
-works remarkably well.  This implies that none of the tricks other than cache
-are having a substantive effect on performance[^model-caveat].
+works remarkably well across variety of working set sizes.  It predicts
+a ~13x slowdown in the random vs. sorted case for the 10MM element working set,
+which is close to the [earlier observed ~15x](#split-times).  Since we are only
+modeling cache effects and the timings line up so closely, this implies that
+there are no other optimizations in effect[^model-caveat].
 
 # Degrees of Pathology
 
@@ -604,7 +584,7 @@ split.default(xo, go)   # sequential
 ```
 
 Even ignoring the `order` call, the indexing steps required to order `x` and
-`grp` into `xo` and `go` employ random accesses.  I ran the timings for `x[o]`
+`grp` into `xo` and `go` are random accesses.  I ran the timings for `x[o]`
 as well as for a version with `x` and `o` pre-sorted, and superimposed them with
 a cache-only model for those accesses:
 
@@ -656,8 +636,7 @@ ggplot(
 
 There are many interesting things going on[^subset-order], but the most notable
 one is that the random case substantially outperforms the corresponding
-cache-only model.  Most likely this is happening because of out-of-order
-execution enables the memory system to use the parallelism in main memory.
+cache-only model.
 
 A pseudo code version of the [subset C code][31] might look like:
 <span id=subset-pseudo></span>
@@ -672,20 +651,10 @@ for(i in seqi) {
 ```
 
 The slow step is `res[idx] <- val` as `idx` can point to any location in the
-result vector and will not be met from cache at large enough working set sizes.
-But the nice thing about this loop is that each iteration is independent of all
-others.  This allows the processor to begin execution of multiple loop
-iterations without waiting for the first one to complete.  Imagine having
-multiple workers feeding the conveyor belt.  We could instruct each of them to
-find a different random item in the warehouse.  Enough workers would be able to
-pack the conveyor belt fully even if each individual worker was slow to find
-the requested item.
-
-We can amortize the memory latency cost by the lesser of how many loop
-iterations we can put "in-flight" out-of-order, and the degree of parallelism
-(warehouse workers) available in main memory[^mem-parallelism].
-
-# Visualizing Out of Order Execution
+result vector.  But the nice thing about this loop is that each iteration is
+independent of all others.  This allows the processor to begin execution of
+multiple loop iterations without waiting for the first one to complete, i.e.
+out-of-order.
 
 Out-of-order instructions are kept "in-flight" in the reorder buffer[^rob], an
 on-die memory structure that can store a number of both pending and complete
@@ -695,8 +664,8 @@ Once a result is committed it becomes part of the CPU state visible to the
 program.
 
 Let's pretend our system's reorder buffer supports up to eight "instructions"
-"in-flight".  The first two iterations of the [previous `for`
-loop](#pseudo-random) are turned into the following instructions:<span
+"in-flight".  We can recast the first two iterations of the [previous `for`
+loop](#pseudo-random) into the following instructions:<span
 id=linear-ops></span>
 
 ```{r eval=FALSE}
@@ -784,17 +753,21 @@ res[idx2] <- val2                  # PENDING
 This is where the benefit of out-of-order execution becomes apparent.  All
 memory accesses up to this point were sequential, so executing out-of-order is
 of marginal value as subsequent reads would be fast anyway.  But the
-writes to `res` are random so subject to the full main memory latency.  Out of
-order execution allows us to run them both concurrently which allows the memory
-system parallelism to satisfy them both in roughly the same amount of time as it
-would take to run a single one[^mem-parallel-caveat].  [Without out-of-order
-execution](#linear-ops) the second write to `res` would wait for the first one
-to complete.  Processing speed for this type of access will grow with main
-memory parallelism and our ability to put more instructions "in-flight".
+writes to `res` are random so subject to the full main memory latency, assuming
+the working set does not fit in cache.  Out-of-order execution allows us to run
+them both concurrently.  This is of value because main memory has substantial
+parallelism built-in[^mem-parallelism].  In our analogy the equivalent is
+multiple workers available to load (or unload) the conveyor belt at different
+stations.
+
+In this example we would be able to meet both random accesses in the same time
+as one[^mem-parallel-caveat].  Processing speed for this type of access will
+grow with main memory parallelism and our ability to put more instructions
+"in-flight".
 
 One way to confirm that out-of-order execution is indeed happening is to prevent
-it by adding a sequential iteration loop dependency for an otherwise similar
-work load. We can use "chasing indices" like this one:
+it by adding a sequential loop dependency to an otherwise similar work load. We
+can use "chasing indices" like this one:
 
 <img
   src= "/post/2019-05-17-pixie-dust_files/user-imgs/index-chasing.png"
@@ -950,7 +923,7 @@ directions is a good strategy.
 So much ingenuity has gone into designing and implementing modern memory
 systems that it's easy to forget the whole thing is a massive hack.  We are
 stuck between slow commodity memory on one hand, and the expensive, limited, and
-complex micro-architecture that makes it useful on the other.  
+complex micro-architecture that makes it useful on the other.
 
 The limitations of the micro-architecture expose its supposedly hidden
 implementation details to probing via observation of timings.  The expense of
@@ -1240,8 +1213,12 @@ for(i in seq_along(samps)) {
 }
 ```
 
+[^cache-line]: Cache line are typically 64 byte blocks, which for a numeric
+  vector would correspond to eight elements.  Cache lines are themselves a form
+  of prefetching as they only make sense under the assumption that you are
+  likely to need the elements adjoining a requested memory location.
 [^unfair-to-c]: Clearly this is an unfair characterization, but there is enough
-  truth to it that I feel entitled to poetic license.  I actual quite enjoy
+  truth to it that I feel entitled to the poetic license.  I actual quite enjoy
   (usually) coding in C, and you do have way more control of things than you do
   with R or other even-higher-level languages.
 [^c-to-assembly]: In both cases a process will interpret a set of instructions
@@ -1423,8 +1400,6 @@ for(i in seq_along(samps)) {
   CPU needs to know how many times previously that group was written to, which
   is difficult to do without a level of insight into the code the CPU is
   unlikely to have.
-[^game-size]: Eighteen is an arbitrary number of distinct elements picked to be
-  large enough so that it is non trivial for humans to scan through them.
 [^l1-data-vs-inst]: My system actually has 64KB of L1 cache, but it is split
   into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).
 [^time-in-cycles]: `$2^{-25.6}s per element / (1 / 1.2GHz) \approx 24 cycles per
@@ -1432,7 +1407,6 @@ for(i in seq_along(samps)) {
 [^sys-time]: It runs `system.time` eleven times and returns the median timing.
   It is [defined in the appendix](#sys.time).
 [^cache-labels]: These are labeled on a best-efforts basis and may be incorrect.
-[^scan-slots]: Alternatively, we could scan the tokens for a particular label.
 [^mem-parallel-caveat]: This assumes the memory locations are in separate banks,
   which should be the case for most random accesses, although occasionally it
   won't be the case.
