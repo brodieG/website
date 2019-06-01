@@ -332,6 +332,10 @@ figure figcaption {
   font-style: italic;
 }
 
+a.image-credit {
+  border-bottom: none;
+  box-shadow: none;
+}
 
 
 .alignleft {
