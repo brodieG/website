@@ -247,14 +247,15 @@ much better than unpredictable ones.
 # Micro-architecture To The Rescue?
 
 Chip designers have engaged in micro-architectural heroics to conceal main
-memory latency.  Micro-architecture is The Implementation Detail.  Higher level
-programs like C are compiled into [machine instructions][99].  In simpler times,
-machines would just follow those instructions.  Nowadays modern CPUs just
-pretend to do that.  Behind the scenes, they re-interpret them in whatever way
-they see fit[^assembly-is-to-c].  The only constraint is that the CPU state
-visible to the instructions must be consistent with them.  "Behind the scenes"
-anything goes, so to speak, including some hair raising optimizations.
-Everything that happens "behind the scenes" is the micro-architecture.
+memory latency.  Micro-architecture is _The Implementation Detail_.  Higher
+level programs like C are compiled into [machine instructions][99].  In simpler
+times, machines would just follow those instructions.  Nowadays a CPU only
+pretends to do that.  "Behind the scenes", out of sight of the program it
+re-interprets them in whatever way it sees fit[^assembly-is-to-c].  The key
+constraint is that the CPU state visible to the program must be consistent with
+the instructions, but that leaves room for some truly hair raising
+optimizations.  Everything that happens "behind the scenes" is the
+micro-architecture.
 
 There are two main classes of micro-architectural tricks used to mask the main
 memory latency.  <span id=second-trick></span>The first one involves
@@ -338,6 +339,34 @@ My system has a three level cache hierarchy as in the [pictured
 die](#cpu-die)[^l1-data-vs-inst].  Each level is larger but slower than the
 previous one[^mem-latency]:
 
+```{r cache-access-model, echo=FALSE}
+test.sizes <- c(9:25)
+access.times <- c(4, 14, 40, 250)
+mem.sizes <- c(L1=15, L2=18, L3=22, Main=33)
+
+cache_times <- function(set.sizes, mem.sizes, access.times) {
+  hit.rates <- outer(
+    set.sizes, mem.sizes, function(x, y) 1 - pmax(0, x - y) / x
+  )
+  times <- matrix(numeric(), nrow=nrow(hit.rates), ncol=ncol(hit.rates))
+  mult <- rep(1, nrow(hit.rates))
+  for(i in seq_len(ncol(hit.rates))) {
+    times[,i] <- hit.rates[,i] * access.times[i] * mult
+    mult <- mult * (1 - hit.rates[,i])
+  }
+  times
+}
+### Two randomly accessed data sets, the result vector (numeric),
+### and the offset vector, integer, and roughly a tenth of the size of the
+### result vector since there is one offset per group
+
+set.sizes.1 <- setNames(2^test.sizes * 8, test.sizes)
+set.sizes.2 <- setNames(2^test.sizes * 4 / 10, test.sizes)
+
+times1 <- cache_times(set.sizes.1, 2^mem.sizes, access.times)
+times2 <- cache_times(set.sizes.2, 2^mem.sizes, access.times)
+times <- rowSums(times1) + rowSums(times2)
+```
 ```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
 labels <- c('L1', 'L2', 'L3', 'Main')
  # access.times <- c(3, 15, 40, 250)
@@ -381,6 +410,7 @@ library(reshape2)
 cache.sizes <- c(15, 18, 22, log2(1e7 * (8 + 4/10)))
 cache.lab <- c('L1d\n32KB', 'L2\n256KB', 'L3\n4MB', '10MM\nItems')
 cache.styles <- c(rep('solid', 3), 'dashed')
+
 test.sizes <- c(9:25)
 mem.sizes <- c(L1=15, L2=18, L3=22, Main=33)
 set.sizes.1 <- setNames(2^test.sizes * 8, test.sizes)
@@ -517,25 +547,26 @@ sizes.
 
 `split.default` has six memory accesses[^split-ops] per element
 processed[^access-dominates].  When the inputs are ordered all of them are
-sequential.  When they are not two of those are no longer sequential.  In the
-model we assume sequential accesses can be met at L1 speed without consuming
-cache.  This is an example of where memory systems can use of bandwidth to
-mitigate latency, and is typically implemented as a combination of
-prefetching[^prefetch] and stream buffers[^streams].  In the conveyor belt
-analogy this would be approximated by requests always being made from the same
-station.
+sequential.  When they are not two of those are no longer sequential.  
 
-Additionally, we assume that random accesses are subject to the full memory
-system latency, the magnitude of which will vary depending on what proportion of
-the working set fits in each level of cache.  Each transition to a slower level
-of memory manifests as an increase in per-element time that
+Sequential access are simple and predictable, and as a result memory systems
+have built-in optimizations for them such as prefetching[^prefetch] and stream
+buffers[^streams].  We assume sequential accesses can be met at L1
+cache speeds without consuming cache.  Conversely random accesses do not benefit
+from these optimizations.   We assume they are subject to the full memory
+system latency, the magnitude of which will vary depending on how much of the
+working set fits in each level of cache.  Transitions to a slower level of
+memory manifests as an increase in per-element time that
 asymptotically[^asymptotic-latency] approaches the slower memory's
-latency[^access-anomaly].
+latency[^access-anomaly].  
+
+The implementation of this cache model is [available in the
+appendix](#cache-model).
 
 Since we are only modeling cache effects and the timings line up so closely,
 this implies that there are no other optimizations for random accesses in
 effect[^model-caveat].  Cache does mitigate the cost of random accesses, but
-this effect quickly dissipates as working set size increases.
+its effect quickly dissipates as working set size increases.
 
 # Degrees of Pathology
 
@@ -607,7 +638,8 @@ There are many interesting things going on[^subset-order], but the most notable
 one is that the random case substantially outperforms the corresponding
 cache-only model.
 
-A pseudo code version of the [subset C code][31] might look like:
+Let's examine what the [subset C code][31] is doing, shown here in pseudo R
+guise:
 <span id=subset-pseudo></span>
 ```{r eval=FALSE}
 res <- numeric(length(grp))
@@ -634,8 +666,8 @@ program.
 
 Let's pretend our system's reorder buffer supports up to eight "instructions"
 "in-flight".  We can recast the first two iterations of the [previous `for`
-loop](#pseudo-random) into the following instructions:<span
-id=linear-ops></span>
+loop](#pseudo-random) into the following instructions pseudo R code
+instructions[^uops]:<span id=linear-ops></span>
 
 ```{r eval=FALSE}
 ## loop iteration 1
@@ -650,11 +682,10 @@ idx2      <- o[i2]                 # PENDING
 res[idx2] <- val2                  # PENDING
 ```
 
-Again we use some pseudo-R-code as a stand-in for what would actually be machine
-micro-operations[^uops].  Notice how we renamed the `i`, `val`, and `idx`
-variables by appending the loop number to each of them[^tomasulo].  This allows
-the CPU to re-order them without instructions from later iterations overwriting
-earlier ones.  For example, they could now be executed in the following order:
+Notice how we renamed the `i`, `val`, and `idx` variables by appending the loop
+number to each of them[^tomasulo].  This allows the CPU to re-order them without
+instructions from later iterations overwriting earlier ones.  For example, they
+could now be executed in the following order:
 
 ```{r eval=FALSE}
 i1        <- seqi[1]               # PENDING
@@ -670,11 +701,11 @@ res[idx1] <- val1                  # PENDING
 res[idx2] <- val2                  # PENDING
 ```
 
-The processor should be free to chose any instruction to execute that does not
-depend on others.  In this case both the `i1` and `i2` instructions are
-eligible, so the processor could execute one, the other, or even both
-simultaneously[^simulataneous-ops].  As a result shortly after the first main
-memory access is complete this will be the state:
+The processor is free to chose any instruction to execute that does not depend
+on others.  In this case both the `i1` and `i2` instructions are eligible, so
+the processor could execute one, the other, or even both
+simultaneously[^simulataneous-ops].  Shortly after the first main memory access
+is complete this will be the state:
 
 ```{r eval=FALSE}
 ## i1     <- seqi[1]               # retired
@@ -692,11 +723,11 @@ res[idx2] <- val2                  # PENDING
 ```
 
 `i1`, and `i2` are both computed.  Additionally, the `i1` instruction is retired,
-meaning its result can be treated as final and it no longer occupies one of the
-eight "in-flight" slots.  The `i2` instruction cannot be retired despite being
-complete because in the logical flow of the program it comes after the `val1`,
-`idx1`, and `res[idx1]` commands that are still pending.  The `i3` instruction
-takes up the slot freed by the retirement of the `i1` instruction.
+meaning its result is visible to the program and it no longer occupies one of
+the eight "in-flight" slots.  The `i2` instruction cannot be retired despite
+being complete because in the logical flow of the program it comes after the
+`val1`, `idx1`, and `res[idx1]` commands that are still pending.  The `i3`
+instruction takes up the slot freed by the retirement of the `i1` instruction.
 
 The same dynamic will play out for the `val*` and `idx*` steps, which will lead
 to:
@@ -725,13 +756,10 @@ subsequent reads would be fast anyway.  But the writes to `res` are random so
 subject to the full main memory latency, assuming the working set does not fit
 in cache.  Out-of-order execution allows us to run them both concurrently.  This
 is of value because main memory has substantial parallelism
-built-in[^mem-parallelism].  In our analogy the equivalent is multiple workers
-available to load (or unload) the conveyor belt at different stations.
-
-In this example we would be able to meet both random accesses in the same time
-as one[^mem-parallel-caveat].  Processing speed for this type of access will
-grow with main memory parallelism and our ability to put more instructions
-"in-flight".
+built-in[^mem-parallelism], i.e. the warehouse has multiple workers available
+to load (or unload) the conveyor belt.  Processing speed for this type of access
+will grow with the degree of main memory parallelism and the size of the
+"in-flight" instruction window[^mem-parallel-caveat].
 
 One way to confirm that out-of-order execution is indeed happening is to prevent
 it by adding a sequential loop dependency to an otherwise similar work load. We
@@ -745,10 +773,8 @@ can use "chasing indices" like this one:
 Each vector element contains in it the (0-based) index of the next element to
 visit.  The arrows illustrate the path that results from following the indices.
 Unfortunately it isn't possible to do this efficiently in pure R code, so
-instead we wrote a [C function to do it](#index-chasing).
-
-We added the timings of that function on top of the prior runs, shown as the
-blue `random2` data set:
+instead I wrote a [C function to do it](#index-chasing), and superimposed its
+timings on the previous ones as the  blue `random2` data set:
 
 ```{r echo=FALSE}
 resdfm2 <- proc_times(readRDS(sprintf(base, '-13')))
@@ -789,7 +815,7 @@ ggplot(
   geom_vline(data=NULL, xintercept=cache.sizes.new, linetype=cache.styles)
 ```
 
-Adding the sequential dependency brings timings much closer to the theoretical
+With the sequential dependency timings are back to the theoretical
 cache-only model, demonstrating that the random subset likely benefited
 substantially from out-of-order execution.
 
@@ -895,7 +921,7 @@ operations as above, the cost would be much higher.
 So much ingenuity has gone into designing and implementing modern memory
 systems that it's easy to forget the whole thing is a massive hack.  
 Case in point: a raft of severe processor security vulnerabilities published
-over the past two years that all exploit micro-architectural optimizations.
+over the past two years that exploit micro-architectural optimizations.
 
 The limitations of the micro-architecture expose its supposedly hidden
 implementation details to probing via observation of timings.  The expense of
@@ -911,11 +937,32 @@ have made some of the MDS vulnerabilities worse.
 
 My little seguë here has little relevance to the post other than
 micro-architecture is involved and the timing of the disclosures of the most
-recent vulnerabilities, but is enough to compel me to comment.  If you have been
-reading the headlines over the past year or so and have wondered exactly what
-this was all about, I encourage you to read the papers.  I've read the
-[Spectre][84] and [Fallout][85] papers which are remarkably accessible, and
-occasionally [downright funny][86].
+recent vulnerabilities.  If you have been reading the headlines over the past
+year or so and have wondered exactly what this was all about, I encourage you to
+read the papers.  They are remarkably accessible, and occasionally [downright
+funny][86].
+
+For those mildly curious, most of the vulnerabilities are similar in spirit to
+the following pattern, again in pseudo-R code:
+
+```{r eval=FALSE}
+try({
+  evict_cache()
+  slow_no_op()
+  val <- illegal_acccess()   # executed speculatively, read 1 byte
+  data_array[val]            # executed speculatively
+})
+timings <- lapply(1:256, function(x) system.time(data_array[x]))
+```
+
+`illegal_access()` should fail, but because of speculative execution the CPU
+will run it and  `data_array[val]` while it waits for `slow_no_op()` to
+complete.  The two speculatively executed steps are not observable to the
+program, but because they _are_ run the value of `data_array[val]` will be in
+cache.  After the error is trapped, we can time how long it takes to load
+`data_array[x]` for different values of `x`. The value of `x` that loads quickly
+from cache is `val` from the speculative run.  Rinse and repeat for different
+illegal accesses.
 
 # Loose Ends
 
@@ -1004,15 +1051,48 @@ the first one.  That's okay, it will be our inside joke.
 
 # Appendix
 
-## Acknowledgments
+## References
 
-### Image Credits
+Here is the subset of the references I consulted that I found particularly
+helpful.  There are many others linked through the main body of the document and
+the footnotes.
+
+* Ulrich Drepper, ["What Every Programmer Should Know About Memory"][27], 2007:
+  a comprehensive of modern memory systems, with an emphasis on main memory and
+  cache.
+* Ed Jorgensen, ["x86-64 Assembly Language Programming with Ubuntu"][200], 2019:
+  If you are interested in exploring micro-architecture further, you'll want at
+  least a very basic understanding of assembly language.  This is a great
+  introduction you can skim through reasonably quickly to get a sense of what's
+  what.
+* R. M. Tomasulo, ["An Efficient Algorithm For Exploiting Multiple Arithmetic
+  Units"][75], 1967: implicitly introduces the concept of register renaming to
+  allow out-of-order execution to better utilize the multiple execution units
+  available in the processor.  This paper substantially pre-dates the reorder
+  buffer and speculative execution, so out-of-order "retirements" were possible,
+  but out-of-order speculation past branches was not.
+* Norman Jouppi, ["Improving Direct-Mapped Cache Performance by the Additionof
+  a Small Fully-Associative Cache and Prefetch Buffers"][92], 1990: introduces
+  the idea of the stream buffer (among other things), which allows fast reads of
+  sequential data without polluting the cache.
+* Agner Fog, ["The microarchitecture of Intel, AMD and VIA CPUs"][56], 2018:
+  micro-architectural details of processors starting with the Pentium.  Includes
+  characteristics such as the number of reorder buffer entries, cache latency
+  times and organization, and an introduction to micro-architectural concepts.
+* Moritz Lipp, etal., [Meltdown: Reading Kernel Memory from User Space][83],
+  2018: Meltdown vulnerability paper includes a useful Background section and
+  gives a good idea of how things can go wrong.
+
+## Image Credits
 <span id=image-credits></span>
 
 * [Hydra With Fedora(s)][52], by [Larry Wentzel][100], under CC BY-NC 2.0,
   haberdashery and haberdasher removed.
 * [Conveyor Belt][91], by unknown, under CC0 Public Domain.
-* [Westmere 6 Core][102], posted by redstern, license unknown.
+* [Westmere 6 Core][102], posted by redstern, license unknown, in-post version
+  annotated and cropped to three cores, the annotations are derived from those
+  in the [Bad Concurrency Post][48] and if those are correct, these should be
+  correct since the Westmere architecture is a shrunken version of the Nehalem.
 * [Intel 14nm Skylake][88], by [Fritzchens Frits][102],
   under CC0 Public Domain, and [Asus Motherboard][90], by Asus PR.
 * [Meltdown][83], [Spectre][84], and [Foreshadow][] logos by [Natascha Eidl][103].
@@ -1023,6 +1103,14 @@ the first one.  That's okay, it will be our inside joke.
 ### sys.time
 
 ```{r sys-time, eval=FALSE}
+```
+
+### Cache Model
+
+The implementation of the cache model for the random accesses for
+`split.default`.
+
+```{r cache-access-model, eval=FALSE}
 ```
 
 ### Index Chasing
@@ -1198,22 +1286,7 @@ for(i in seq_along(vecs)) {
   learning just enough assembly that you can look at the disassembly of what you
   thought was a simple C function and realize there is almost no relationship
   between what you wrote and what the program is doing other than the semantics
-  are the same.  Well, they should be provided you did not have the misfortune
-  of using unintended undefined behavior.  I'm realizing that writing C to be
-  close to the metal is like dwelling in the sewer system to be close to the
-  iron core of the planet.  If I'm being over-dramatic it's because I'm still a
-  little pissed at how little control I have over my program's execution, and
-  more so that that is likely a good thing.  Don't get me wrong, I actually
-  quite enjoy writing C code and undoubtedly you have way more control than you
-  do from even higher level languages.
-[^cache-line]: Cache line are typically 64 byte blocks, which for a numeric
-  vector would correspond to eight elements.  Cache lines are themselves a form
-  of prefetching as they only make sense under the assumption that you are
-  likely to need the elements adjoining a requested memory location.
-[^unfair-to-c]: Clearly this is an unfair characterization, but there is enough
-  truth to it that I feel entitled to the poetic license.  I actual quite enjoy
-  (usually) coding in C, and you do have way more control of things than you do
-  with R or other even-higher-level languages.
+  are the same, assuming no unintended use of undefined behavior.
 [^plight]: The source of this post is nearing two thousand lines and I haven't
   even started addressing the question I set out to answer.
 [^assembly]: Assembly instructions are low level commands that can be directly
@@ -1490,9 +1563,12 @@ and L2 TLBs.
 
 <!--
 Bad concurrency with great but low rez annotated die image
+
+This is a nehalem, which should be the same architecture as the westemere, but
+the westmere with a shrunken die (nehalem is tock, westmere is tick).
 -->
 
-[48]: https://www.flickr.com/search/?text=cpu+die+cache
+[48]: https://bad-concurrency.blogspot.com/2014/12/the-uncanny-valley-of-l3-cache.html
 
 <!--
 Westmere 6 core image
@@ -1791,3 +1867,6 @@ switch split point
 
 Links less than 200 reserved for use above -->
 
+<!-- Ed Jorgensen Assembly Language Programming -->
+
+[200]: http://www.egr.unlv.edu/~ed/assembly64.pdf
