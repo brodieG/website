@@ -386,6 +386,9 @@ ggplot(data.frame(labels=labels, sizes=sizes/2^20), aes(labels, sizes)) +
   # coord_cartesian(ylim=c(0,2^4))
 ```
 
+On a CPU clocked at 1.2GHz like mine a 4 cycle L1 access will take ~3.3ns
+and a 250 cycle main memory access will take ~200ns.
+
 One way to explore the cache effects is to build a model of what we think memory
 access times should be based on working set size and the above data.  If cache
 is effective we would expect processing times to follow our model.  We show our
@@ -1030,9 +1033,9 @@ the footnotes.
   memory and cache.
 * Ed Jorgensen, ["x86-64 Assembly Language Programming with Ubuntu"][200], 2019:
   If you are interested in exploring microarchitecture further, you'll want at
-  least a very basic understanding of assembly language.  This is a great
-  introduction you can skim through reasonably quickly to get a sense of what's
-  what.
+  least a very basic understanding of assembly language[^assembly].  This is a
+  great introduction you can skim through reasonably quickly to get a sense of
+  what's what.
 * R. M. Tomasulo, ["An Efficient Algorithm For Exploiting Multiple Arithmetic
   Units"][75], 1967: implicitly introduces the concept of register renaming to
   allow out-of-order execution.  Back then memory latency was less of an issue
@@ -1063,7 +1066,7 @@ the footnotes.
   annotated and cropped to three cores, the annotations are derived from those
   in the [Bad Concurrency Post][48] and if those are correct, these should be
   correct since the Westmere architecture is a shrunken version of the Nehalem.
-* [Intel 14nm Skylake][88], by [Fritzchens Frits][102],
+* [Intel 14nm Skylake][88], by [Fritzchens Frits][108],
   under CC0 Public Domain, and [Asus Motherboard][90], by Asus PR.
 * [Meltdown][83], [Spectre][84], and [Foreshadow][106] logos by [Natascha
   Eidl][103], under CC0 Public Domain.
@@ -1370,7 +1373,6 @@ for(i in seq_along(vecs)) {
   with streams being met at L1 speeds without cache pollution, although it could
   be due to other factors (e.g. accesses are met at L2 speeds, but multiple
   accesses are done simultaneously).
-[^rabbit-hole]: Yes, this is a bit of a theme for me.
 [^treeprof-manip]: I manually juxtaposed the output of two `treeprof` runs.
 [^split-ops]: We are including only the operations used to process the inputs
   in the main loop.  These are: read input value (1), read factor level (2),
@@ -1434,8 +1436,6 @@ for(i in seq_along(vecs)) {
   unlikely to have.
 [^l1-data-vs-inst]: My system actually has 64KB of L1 cache, but it is split
   into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).
-[^time-in-cycles]: `$2^{-25.6}s per element / (1 / 1.2GHz) \approx 24 cycles per
-  element$`.
 [^sys-time]: It runs `system.time` eleven times and returns the median timing.
   It is [defined in the appendix](#sys.time).
 [^cache-labels]: These are labeled on a best-efforts basis and may be incorrect.
@@ -1764,7 +1764,7 @@ In order:
 [87]: https://www.flickr.com/photos/130561288@N04/albums/72157650403404920
 [88]: https://www.flickr.com/photos/130561288@N04/38926628875/in/album-72157650403404920/
 [89]: https://www.flickr.com/photos/130561288@N04/36260250762/in/album-72157650403404920/
-[102]: https://www.flickr.com/photos/130561288@N04/
+[108]: https://www.flickr.com/photos/130561288@N04/
 
 <!--
 Motherboard, likely press shot
@@ -1839,7 +1839,7 @@ switch split point
 
 <!-- Up to, keep this updated:
 
-107
+108
 
 Links less than 200 reserved for use above -->
 
