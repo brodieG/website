@@ -5,16 +5,14 @@ date: '2019-05-17'
 slug: pixie-dust
 categories: [r]
 tags: [optimization]
-image: "/post/2019-05-15-pixiedust_files/user-images/cpu-die_westmere-6core_edited.jpg"
+image: "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_annotated2.jpeg"
 imagerect: "/post/2019-05-15-pixiedust_files/user-images/cpu-die_westmere-6core_small.jpg"
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: "How cache and other microarchitectural factors affect the
-performance of R code, how the fast ordering contributed by data.table
-mitigates potential problems, and opens up the possibility of faster
-algorithms."
+description: "An exploration of how micro-architectural factors such as cache
+and speculative execution can affect performance of R code."
 ---
 
 ```{r echo=FALSE}
@@ -41,7 +39,7 @@ It wasn't supposed to be this way.  You shouldn't be looking at drawing of a
 [Lernean Hydra][51] laughing its ass off.  This post was going to be short,
 sweet, and useful.  Instead it turned into a many-headed monster that is smugly
 sitting on my chest smothering me.  What follows here is a retelling of my
-flailing attempt at chopping off one its heads.
+flailing attempt at chopping off one of its heads.
 
 It all started on a lark to see if I could make base R competitive with the
 undisputed champ `data.table` [at computing group statistics][21].  That thought
@@ -149,18 +147,11 @@ identical(gs, gso)
 [1] TRUE
 ```
 
-Mind blowing.  I remember peeking at the [most popular QA on Stackoverflow][3] a
-few years ago and thinking "oh, that's not a problem I need to worry about as an
-R user".  I'm tickled that I was wrong and I get to see this type of effect in
-play first hand, although branch prediction proper is a minor element in this
-case.
-
-> **Disclaimer**: Before I started writing this post all I knew about
-> micro-architecture is what I could infer from its constituent words,
-> particularly the 80s-90s marketing hype around the first one.  My only
-> expertise is that my relative lack of knowledge of the topic might make my
-> writing about it more accessible. I cannot guarantee the accuracy of all
-> the details in this post, but the broad outlines should be mostly correct.
+> **Disclaimer**: I have no special knowledge of microarchitecture other than
+> what I learned while researching this post.  I cannot guarantee the accuracy
+> of all the details herein, but the broad outlines should be mostly correct and
+> are backed by experimentation.  I only hope that my relative inexperience on
+> the topic makes my writing on it more accessible.
 
 # Latency Is The Enemy
 
@@ -180,7 +171,7 @@ cycles to have a CPU data request fulfilled from main memory.
 
 Main memory latency is terrible, but thankfully its bandwidth has kept pace with
 processor speeds.  A useful analogy is that of a long conveyor belt connecting a
-storage warehouse (main memory) to the factory (CPU).  The first item requested
+storage warehouse (main memory) to its factory (CPU).  The first item requested
 from the warehouse will be slow to arrive (latency), but if the conveyor belt is
 loaded efficiently it will keep the factory fully supplied from the moment the
 first item arrives (bandwidth).
@@ -244,20 +235,19 @@ happens in the memory system, the concept applies generally.  Anytime you have
 high latency and high bandwidth, predictable requests will utilize bandwidth
 much better than unpredictable ones.
 
-# Micro-architecture To The Rescue?
+# Microarchitecture To The Rescue?
 
 Chip designers have engaged in micro-architectural heroics to conceal main
-memory latency.  Micro-architecture is _The Implementation Detail_.  Higher
+memory latency.  Microarchitecture is _The Implementation Detail_.  Higher
 level programs like C are compiled into [machine instructions][99].  In simpler
 times, machines would just follow those instructions.  Nowadays a CPU only
-pretends to do that.  "Behind the scenes", out of sight of the program it
+pretends to do that.  "Behind the scenes" out of sight of the program it
 re-interprets them in whatever way it sees fit[^assembly-is-to-c].  The key
 constraint is that the CPU state visible to the program must be consistent with
-the instructions, but that leaves room for some truly hair raising
-optimizations.  Everything that happens "behind the scenes" is the
-micro-architecture.
+the instructions, but that leaves room for some hair raising optimizations.
+Everything that happens "behind the scenes" is the microarchitecture.
 
-There are two main classes of micro-architectural tricks used to mask the main
+There are two main classes of microarchitectural tricks used to mask main
 memory latency.  <span id=second-trick></span>The first one involves
 interpreting instructions in such a way that the conveyor belt can be kept fully
 utilized (i.e. few gaps) after the first item is requested.  This includes
@@ -265,7 +255,8 @@ preloading memory areas the CPU is likely to need based on prior access
 patterns, executing operations out-of-order so that memory requests for later
 operations are initiated while earlier ones wait for theirs to be fulfilled,
 guessing at which conditional branch will be executed before its condition is
-known, and other optimizations.
+known so that out-of-order execution can continue past the branch, and other
+optimizations.
 
 The second involves having some amount of low latency memory known as cache.  In
 our conveyor belt analogy it might be a shelf next to the assembly station with
@@ -322,18 +313,18 @@ writeLines(string)
 
 There are many differences between the two runs, but let's focus on the
 highlighted numbers to start.  These correspond to the internal C code that
-scans through the input and processed group vectors[^proc-group] and copies each
-input value into the result vector indicated by the group[^split-internal].  The
-code will take the same exact number of steps irrespective of input order, yet
-there is a ~15x speed-up between the sorted (137ms) and randomized versions
-(1,997ms).
+scans through the input vector and the normalized group vectors[^proc-group],
+and copies each input value into the result vector indicated by the
+group[^split-internal].  The code will take the same exact number of steps
+irrespective of input order, yet there is a ~15x speed-up between the sorted
+(137ms) and randomized versions (1,997ms).
 
 # Modelling Cache Effects
 
 Ideally we would keep our whole working set in cache and not have to worry about
-main memory latency.  Unfortunately it is often the case that the working set
-does not fit in cache.  We're interested in exploring how cache and working set
-size affect the speed of the `split.default` calculation.
+main memory latency.  Unfortunately the working set is often larger than cache.
+We're interested in exploring how cache and working set size affect the speed of
+the `split.default` calculation.
 
 My system has a three level cache hierarchy as in the [pictured
 die](#cpu-die)[^l1-data-vs-inst].  Each level is larger but slower than the
@@ -399,7 +390,7 @@ One way to explore the cache effects is to build a model of what we think memory
 access times should be based on working set size and the above data.  If cache
 is effective we would expect processing times to follow our model.  We show our
 [current working set](#working-set) size (10MM elements) as a vertical dashed
-line[^working-set-size], the access time models as colored lines, and observed
+line[^working-set-size], the modeled access times as colored lines, and observed
 timings as dots:
 
 ```{r echo=FALSE}
@@ -547,7 +538,7 @@ sizes.
 
 `split.default` has six memory accesses[^split-ops] per element
 processed[^access-dominates].  When the inputs are ordered all of them are
-sequential.  When they are not two of those are no longer sequential.  
+sequential.  When they are not two of those are no longer sequential.
 
 Sequential access are simple and predictable, and as a result memory systems
 have built-in optimizations for them such as prefetching[^prefetch] and stream
@@ -556,9 +547,9 @@ cache speeds without consuming cache.  Conversely random accesses do not benefit
 from these optimizations.   We assume they are subject to the full memory
 system latency, the magnitude of which will vary depending on how much of the
 working set fits in each level of cache.  Transitions to a slower level of
-memory manifests as an increase in per-element time that
+memory manifest as an increase in per-element time that
 asymptotically[^asymptotic-latency] approaches the slower memory's
-latency[^access-anomaly].  
+latency[^access-anomaly].
 
 The implementation of this cache model is [available in the
 appendix](#cache-model).
@@ -571,9 +562,9 @@ its effect quickly dissipates as working set size increases.
 # Degrees of Pathology
 
 We now have a reasonable understanding of why `split.default` works much faster
-with ordered than unordered input.  What this doesn't explain is why the
-combination of ordering the inputs and splitting them is faster than splitting
-them directly.  After all the ordering process itself involves random memory
+with ordered than unordered input.  What is not explained is why the combination
+of ordering the inputs and splitting them is faster than splitting them
+directly.  After all the ordering process itself involves random memory
 accesses:
 
 ```{r eval=FALSE}
@@ -682,10 +673,10 @@ idx2      <- o[i2]                 # PENDING
 res[idx2] <- val2                  # PENDING
 ```
 
-Notice how we renamed the `i`, `val`, and `idx` variables by appending the loop
-number to each of them[^tomasulo].  This allows the CPU to re-order them without
-instructions from later iterations overwriting earlier ones.  For example, they
-could now be executed in the following order:
+We renamed the `i`, `val`, and `idx` variables by appending the loop number to
+each of them[^tomasulo].  This allows the CPU to re-order them without
+instructions from later iterations overwriting earlier ones.  They can now be
+executed in the following order:
 
 ```{r eval=FALSE}
 i1        <- seqi[1]               # PENDING
@@ -750,19 +741,18 @@ res[idx1] <- val1                  # PENDING
 res[idx2] <- val2                  # PENDING
 ```
 
-This is where out-of-order execution really shines.  All memory accesses up to
-this point were sequential, so executing out-of-order is of marginal value as
-subsequent reads would be fast anyway.  But the writes to `res` are random so
-subject to the full main memory latency, assuming the working set does not fit
-in cache.  Out-of-order execution allows us to run them both concurrently.  This
-is of value because main memory has substantial parallelism
-built-in[^mem-parallelism], i.e. the warehouse has multiple workers available
-to load (or unload) the conveyor belt.  Processing speed for this type of access
-will grow with the degree of main memory parallelism and the size of the
-"in-flight" instruction window[^mem-parallel-caveat].
+This is where out-of-order execution really shines.  All prior memory accesses
+are sequential, so executing out-of-order is of marginal value as subsequent
+reads would be fast anyway.  But the writes to `res` are random and
+subject to the full memory latency.  Out-of-order execution allows us to run
+them both concurrently.  This is of value because main memory has substantial
+parallelism built-in[^mem-parallelism], i.e. the warehouse has multiple workers
+available to load (or unload) the conveyor belt.  Processing speed for this type
+of access will grow with the degree of main memory parallelism and the size of
+the "in-flight" instruction window[^mem-parallel-caveat].
 
-One way to confirm that out-of-order execution is indeed happening is to prevent
-it by adding a sequential loop dependency to an otherwise similar work load. We
+One way to confirm that out-of-order execution is in play is to prevent
+it in an otherwise similar workload by adding a sequential loop dependency. We
 can use "chasing indices" like this one:
 
 <img
@@ -815,9 +805,9 @@ ggplot(
   geom_vline(data=NULL, xintercept=cache.sizes.new, linetype=cache.styles)
 ```
 
-With the sequential dependency timings are back to the theoretical
-cache-only model, demonstrating that the random subset likely benefited
-substantially from out-of-order execution.
+With the sequential dependency timings are back in line with the theoretical
+cache-only model, demonstrating that the random subset likely benefited from
+out-of-order execution.
 
 Sure enough, it turns out that the `split.default` code has a sequential
 dependency in it too: it uses an offset vector to track where in each group
@@ -867,7 +857,7 @@ SEXP add_walk2(SEXP x) {
 ```
 
 This function computes the sum of a logical vector interpreting TRUE values as
-`+1` and FALSE values as `-`.  We can test it function with logical vectors with
+`+1` and FALSE values as `-1`.  We can test it with logical vectors with
 varying proportions of TRUE values, both random and sorted:
 
 ```{r echo=FALSE, message=FALSE}
@@ -898,7 +888,7 @@ ggplot(
   ggtitle("add_walk timings with 1e7 logical input")
 ```
 
-The branch misprediction penalty models (lines) use 15 cycles penalty per
+The colored branch misprediction penalty model lines use 15 cycles penalty per
 misprediction, which fits the observed timings well.  In the randomly ordered
 case the branch predictor cannot do better than predicting the higher frequency
 branch on average.  In the sorted case there is essentially no misprediction
@@ -919,11 +909,11 @@ operations as above, the cost would be much higher.
 </figure>
 
 So much ingenuity has gone into designing and implementing modern memory
-systems that it's easy to forget the whole thing is a massive hack.  
+systems that it's easy to forget the whole thing is a massive hack.
 Case in point: a raft of severe processor security vulnerabilities published
 over the past two years that exploit micro-architectural optimizations.
 
-The limitations of the micro-architecture expose its supposedly hidden
+The limitations of the microarchitecture expose its supposedly hidden
 implementation details to probing via observation of timings.  The expense of
 the silicon that implements it has led to it being shared concurrently across
 processes.  The combination of these makes for a horror show of severe and
@@ -936,33 +926,11 @@ that changes that Intel introduced to its newest processors to mitigate Meltdown
 have made some of the MDS vulnerabilities worse.
 
 My little seguë here has little relevance to the post other than
-micro-architecture is involved and the timing of the disclosures of the most
+microarchitecture is involved and the timing of the disclosures of the most
 recent vulnerabilities.  If you have been reading the headlines over the past
 year or so and have wondered exactly what this was all about, I encourage you to
 read the papers.  They are remarkably accessible, and occasionally [downright
 funny][86].
-
-For those mildly curious, most of the vulnerabilities are similar in spirit to
-the following pattern, again in pseudo-R code:
-
-```{r eval=FALSE}
-try({
-  evict_cache()
-  slow_no_op()
-  val <- illegal_acccess()   # executed speculatively, read 1 byte
-  data_array[val]            # executed speculatively
-})
-timings <- lapply(1:256, function(x) system.time(data_array[x]))
-```
-
-`illegal_access()` should fail, but because of speculative execution the CPU
-will run it and  `data_array[val]` while it waits for `slow_no_op()` to
-complete.  The two speculatively executed steps are not observable to the
-program, but because they _are_ run the value of `data_array[val]` will be in
-cache.  After the error is trapped, we can time how long it takes to load
-`data_array[x]` for different values of `x`. The value of `x` that loads quickly
-from cache is `val` from the speculative run.  Rinse and repeat for different
-illegal accesses.
 
 # Loose Ends
 
@@ -1058,20 +1026,22 @@ helpful.  There are many others linked through the main body of the document and
 the footnotes.
 
 * Ulrich Drepper, ["What Every Programmer Should Know About Memory"][27], 2007:
-  a comprehensive of modern memory systems, with an emphasis on main memory and
-  cache.
+  a comprehensive review of modern memory systems, with an emphasis on main
+  memory and cache.
 * Ed Jorgensen, ["x86-64 Assembly Language Programming with Ubuntu"][200], 2019:
-  If you are interested in exploring micro-architecture further, you'll want at
+  If you are interested in exploring microarchitecture further, you'll want at
   least a very basic understanding of assembly language.  This is a great
   introduction you can skim through reasonably quickly to get a sense of what's
   what.
 * R. M. Tomasulo, ["An Efficient Algorithm For Exploiting Multiple Arithmetic
   Units"][75], 1967: implicitly introduces the concept of register renaming to
-  allow out-of-order execution to better utilize the multiple execution units
+  allow out-of-order execution.  Back then memory latency was less of an issue
+  and the main objective was to better utilize the multiple execution units
   available in the processor.  This paper substantially pre-dates the reorder
-  buffer and speculative execution, so out-of-order "retirements" were possible,
-  but out-of-order speculation past branches was not.
-* Norman Jouppi, ["Improving Direct-Mapped Cache Performance by the Additionof
+  buffer and speculative execution, so out-of-order "retirements" were possible
+  with independent calculations, but out-of-order speculation past branches was
+  not.
+* Norman Jouppi, ["Improving Direct-Mapped Cache Performance by the Addition of
   a Small Fully-Associative Cache and Prefetch Buffers"][92], 1990: introduces
   the idea of the stream buffer (among other things), which allows fast reads of
   sequential data without polluting the cache.
@@ -1079,7 +1049,7 @@ the footnotes.
   micro-architectural details of processors starting with the Pentium.  Includes
   characteristics such as the number of reorder buffer entries, cache latency
   times and organization, and an introduction to micro-architectural concepts.
-* Moritz Lipp, etal., [Meltdown: Reading Kernel Memory from User Space][83],
+* Moritz Lipp, etal., ["Meltdown: Reading Kernel Memory from User Space"][83],
   2018: Meltdown vulnerability paper includes a useful Background section and
   gives a good idea of how things can go wrong.
 
@@ -1095,8 +1065,9 @@ the footnotes.
   correct since the Westmere architecture is a shrunken version of the Nehalem.
 * [Intel 14nm Skylake][88], by [Fritzchens Frits][102],
   under CC0 Public Domain, and [Asus Motherboard][90], by Asus PR.
-* [Meltdown][83], [Spectre][84], and [Foreshadow][] logos by [Natascha Eidl][103].
-* [MDS][82] logo by [Marina Minkin][105], under CC0.
+* [Meltdown][83], [Spectre][84], and [Foreshadow][106] logos by [Natascha
+  Eidl][103], under CC0 Public Domain.
+* [MDS][82] logo by [Marina Minkin][105], under CC0 Public Domain.
 
 ## Function Definitions
 
@@ -1276,8 +1247,8 @@ for(i in seq_along(vecs)) {
   # saveRDS(res, ...)
 ```
 
-[^assembly-is-to-c]: Another way to think about is that micro-architecture is to
-  assembly instructions as a compiler is to a C program.  In both cases a
+[^assembly-is-to-c]: Another way to think about it is that microarchitecture is
+  to assembly instructions as a compiler is to a C program.  In both cases a
   process will interpret a set of instructions (C code, assembly) into a
   different lower-level set of instructions (assembly, CPU micro-operations).
   The processes must abide by constraints (a flavor of the C standard, an
@@ -1286,7 +1257,11 @@ for(i in seq_along(vecs)) {
   learning just enough assembly that you can look at the disassembly of what you
   thought was a simple C function and realize there is almost no relationship
   between what you wrote and what the program is doing other than the semantics
-  are the same, assuming no unintended use of undefined behavior.
+  are the same, assuming no unintended use of undefined behavior.  And then
+  there is the whole microarchitectural layer on top of that.  Maybe once upon a
+  time C was close to the metal, but nowadays writing in C to be close to the
+  metal is like hanging out in the basement to be closer to the iron core of the
+  planet.
 [^plight]: The source of this post is nearing two thousand lines and I haven't
   even started addressing the question I set out to answer.
 [^assembly]: Assembly instructions are low level commands that can be directly
@@ -1294,12 +1269,12 @@ for(i in seq_along(vecs)) {
   translated into assembly directly by a compiler, or indirectly by mapping
   program instructions to pre-compiled assembly instructions.
 [^bp-minor]: There are a few spots where branch prediction is likely happening.
-  First in the loops proper as the break condition is a condition.  Since our
-  loops are long guessing that the loop will continue indefinitely is an easy
+  First in the loops proper as the break condition is a branch.  Since our
+  loops are long, guessing that the loop will continue indefinitely is an easy
   and effective guess.  More importantly, our loops are dominated by the slow
   random access, so with out-of-order execution the all the other steps can be
-  run quickly, including the loop condition calculation, so the branch will not
-  be the bottleneck and thus the value of branch prediction is limited here.
+  run quickly, including the loop condition calculation.  In this case the
+  branch will not be the bottleneck and value of branch prediction is limited.
   Another place it comes in is checking that indices are not NA, and finally in
   the [type conditional in `split.default`][97].  However, as was the case
   earlier, the bottlenecks remain the random accesses even if branch prediction
@@ -1418,7 +1393,7 @@ for(i in seq_along(vecs)) {
   corresponds to a doubling of the working set size.  After the first step past
   a cache level transition, only half the working set can be accessed from the
   faster cache.  After two only a quarter, and so on.
-[^model-anomalies]: Two notable Anomalies are (1) decreasing times per item for
+[^model-anomalies]: Two notable anomalies are (1) decreasing times per item for
   the smaller sets that are possibly a result of R function call overhead being
   amortized over an increasing number of entries, and (2) a jump up at largest
   working set sizes for sequential access that could correspond to the
@@ -1532,7 +1507,7 @@ dissambiguate.
 
 [35]: https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2
 
-<!-- 
+<!--
 Reorder Buffer Size testing
 
 Of interest:
@@ -1753,10 +1728,10 @@ And Meltdown/Spectre
 [85]: https://mdsattacks.com/files/fallout.pdf
 [106]: https://foreshadowattack.eu/
 
-<!-- 
-Vulnerability Images 
+<!--
+Vulnerability Images
 
-All are available under CC0 as documented on the vulnerability sites proper.  
+All are available under CC0 as documented on the vulnerability sites proper.
 
 Meltdown, Spectre, and Foreshadow logos by  Natascha Eibl
 
@@ -1861,7 +1836,7 @@ switch split point
 [100]: https://www.flickr.com/photos/wentzelepsy/
 
 
-<!-- Up to, keep this updated: 
+<!-- Up to, keep this updated:
 
 107
 
