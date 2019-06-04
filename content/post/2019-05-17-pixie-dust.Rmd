@@ -358,7 +358,7 @@ times1 <- cache_times(set.sizes.1, 2^mem.sizes, access.times)
 times2 <- cache_times(set.sizes.2, 2^mem.sizes, access.times)
 times <- rowSums(times1) + rowSums(times2)
 ```
-```{r fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
+```{r cache-sizes-and-speeds, fig.width=3, fig.height=4, out.width='45%', echo=FALSE, out.extra="style='display: inline;'"}
 labels <- c('L1', 'L2', 'L3', 'Main')
  # access.times <- c(3, 15, 40, 250)
 access.times <- c(4, 14, 40, 250)
@@ -393,7 +393,7 @@ is effective we would expect processing times to follow our model.  We show our
 line[^working-set-size], the modeled access times as colored lines, and observed
 timings as dots:
 
-```{r echo=FALSE}
+```{r split-cache-times, echo=FALSE}
 library(ggplot2)
 library(ggbeeswarm)
 library(reshape2)
@@ -579,7 +579,7 @@ Even ignoring the `order` call, the indexing steps required to order `x` and
 as well as for a version with `x` and `o` pre-sorted, and superimposed them with
 a cache-only model for those accesses:
 
-```{r echo=FALSE, fig.height=5}
+```{r subset-model, echo=FALSE, fig.height=5}
 test.sizes <- 12:30 - 3
 set.sizes <- setNames(2^test.sizes * 8, test.sizes)
 
@@ -766,7 +766,7 @@ Unfortunately it isn't possible to do this efficiently in pure R code, so
 instead I wrote a [C function to do it](#index-chasing), and superimposed its
 timings on the previous ones as the  blue `random2` data set:
 
-```{r echo=FALSE}
+```{r dependency-model, echo=FALSE}
 resdfm2 <- proc_times(readRDS(sprintf(base, '-13')))
  # resdfm2 <- proc_times(readRDS(sprintf(base, '-8')))
 resdfm3 <- rbind(
@@ -860,7 +860,7 @@ This function computes the sum of a logical vector interpreting TRUE values as
 `+1` and FALSE values as `-1`.  We can test it with logical vectors with
 varying proportions of TRUE values, both random and sorted:
 
-```{r echo=FALSE, message=FALSE}
+```{r branch-pred-model, echo=FALSE, message=FALSE}
 res2 <- readRDS(sprintf(base, '-12'))
 resdfm <- proc_times(res2)
 resdfm <- transform(resdfm, time.per=time.per/1e7)
@@ -1289,10 +1289,11 @@ for(i in seq_along(vecs)) {
   load data execution units and one store data execution unit.  After that point
   there is a penalty, which is eventually amortized for the sorted set.  Because
   it is amortized eventually this suggests its not a cache penalty.  It may be a
-  TLB ([Translation Lookaside Buffer][29]) effect, although it seems too early for
-  that to happen as the DTLB supports 64 4KB pages, and with a 32KB working set
-  (`xo`), the total memory we're using is 32KB + 32KB + 16KB (`xo` + `x` + `o`).
-  The next jump at 64MB could be the same DTLB jump we [saw earlier](#anomaly).
+  TLB ([Translation Lookaside Buffer][29]) effect, although it seems too early
+  for that to happen as the DTLB supports 64 4KB pages, and with a 32KB working
+  set (`xo`), the total memory we're using is 32KB + 32KB + 16KB (`xo` + `x` +
+  `o`).  The next jump at 64MB could be the same DTLB jump we [saw
+  earlier](#anomaly).
 [^one-million]: Even though we're only using one million elements from the hash
   table the cache effective size of it will be likely at least 8 times that as
   memory is always brought into cache in cache-line size, or 64 bytes.  In order
