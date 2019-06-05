@@ -280,7 +280,7 @@ img { margin: 0 auto; }
 .size-medium,
 .size-thumbnail {
   height: auto;
-  line-height: 0;
+  line-height: auto;
   max-width: 100%;
   max-width: calc(100% - 48px);
 }
@@ -299,14 +299,45 @@ img.aligncenter {
   display: block;
   margin: auto;
 }
-
+/* Inset image settings
+ *
+ * see min-width 37.5 section for the wider settings
+ */
 img.post-inset-image {
   float: left;
   margin: 5px 15px 5px 0;
   object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+figure.post-inset-image {
+  display: inline-block;
+  float: left;
+  margin: 5px 15px 10px 0;
   width: 200px;
+}
+figure.post-inset-image div.post-inset-image-frame{
+  width: 100%;
   height: 200px;
 }
+figure.post-inset-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* End image inset */
+
+figure figcaption {
+  font-size: 0.8em;
+  font-style: italic;
+}
+
+a.image-credit {
+  border-bottom: none;
+  box-shadow: none;
+}
+
+
 .alignleft {
   float: left;
   margin: 0 1.5em 1.5em 0;
@@ -337,9 +368,18 @@ img {
   max-width: 100%;
 }
 
+/*
 article img {
   max-height: 100%;
   max-width: 100%;
+}
+*/
+/* center twitter widgets, this depends on the twitter shortcode producing
+ * a twitter-widget object */
+
+twitter-widget {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .wp-caption-text {
@@ -1902,10 +1942,10 @@ body pre, body code.hljs {
 pre {
   border: 2px solid #EEE;
 }
-body pre + pre:not([class]) code.hljs  {
+body pre + pre:not([class]) code.hljs, body pre + pre.fansi code.hljs {
   background-color: #EEE;
 }
-body pre + pre:not([class]) {
+body pre + pre:not([class]), body pre + pre.fansi {
   margin-top: -19px;
 }
 .blog .main {
@@ -1964,10 +2004,19 @@ code {
 }
 /* 600px */
 @media all and (min-width: 37.5em) {
+    /* see also default settings for narrower */
     img.post-inset-image {
       width: 250px;
       height: 250px;
     }
+    figure.post-inset-image {
+      width: 250px;
+    }
+    figure.post-inset-image div.post-inset-image-frame{
+      width: 250px;
+      height: 250px;
+    }
+    /* end post-inset */
     .return-top {
       display: block;
       position: fixed;

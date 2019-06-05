@@ -41,6 +41,7 @@ tags: [rstats]
 * `sum`, `mean`, etc.
 * `sort`, `order`, etc.
 * `which`, `which.min`, also `arrInd=TRUE` examples
+* `asplit`, not sure, new in R3.6.0
 
 # Example
 
