@@ -1,0 +1,1294 @@
+---
+title: "Hydra Chronicles, Part I: Pixie Dust"
+author: ~
+date: '2019-05-17'
+slug: pixie-dust
+categories: [r]
+tags: [optimization]
+image: "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_annotated2.jpeg"
+imagerect: "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_small.jpeg"
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "An exploration of how micro-architectural factors such as cache,
+and out-of-order / speculative execution can affect performance of R code."
+---
+
+
+
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
+<div id="in-which-it-dawns-on-me-that-i-know-nothing" class="section level1">
+<h1>In Which It Dawns On Me That I Know Nothing</h1>
+<!-- this needs to become a shortcode -->
+<p><a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='front-img'
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/hydra-white.png"
+  class='post-inset-image'
+/>
+</a></p>
+<p>It wasn’t supposed to be this way. You shouldn’t be looking at drawing of a
+<a href="https://en.wikipedia.org/wiki/Lernaean_Hydra">Lernean Hydra</a> laughing its ass off. This post was going to be short,
+sweet, and useful. Instead it turned into a many-headed monster that is smugly
+sitting on my chest smothering me. What follows here is a retelling of my
+flailing attempt at chopping off one of its heads.</p>
+<p>It all started on a lark to see if I could make base R competitive with the
+undisputed champ <code>data.table</code> <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/">at computing group statistics</a>. That thought
+alone is scoff-worthy enough that I deserve little sympathy for how
+off-the-rails this whole thing has gone<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>.</p>
+<blockquote>
+<p>TL;DR: ordering data can have a huge impact on how quickly it can be processed
+because of micro-architectural factors such as cache, out-of-order execution,
+and branch prediction. Yes, even in R.</p>
+</blockquote>
+<p>Let’s skip back to the care-free, hydra-less days when I should have known
+better:</p>
+{{% tweet "1106231241488154626" %}}
+<p>“More on this next week”… 🤣🤣🤣. Aaaah, what a fool.
+That was almost three months ago. The key observations back then were that:</p>
+<ul>
+<li><code>data.table</code> contributed its radix sort to R in R3.3.0, and as a result</li>
+<li><code>order</code> became 50x faster under some work loads.</li>
+</ul>
+<p>I was also alluding to something fairly remarkable that happens when you order
+data before you process it. Let’s illustrate with 10MM items in ~1MM groups:
+<span id="working-set"></span></p>
+<pre class="r"><code>RNGversion(&quot;3.5.2&quot;); set.seed(42)
+n     &lt;- 1e7
+n.grp &lt;- 1e6
+grp   &lt;- sample(n.grp, n, replace=TRUE)
+x     &lt;- runif(n)</code></pre>
+<p>The first step for computing group statistics is to split the data by group:</p>
+<pre class="r"><code>gs &lt;- split(x, grp)
+str(head(gs, 3))  # display structure of first 3 groups</code></pre>
+<pre><code>List of 3
+ $ 1: num [1:11] 0.216 0.537 0.849 0.847 0.347 ...
+ $ 2: num [1:7] 0.0724 0.1365 0.5364 0.0517 0.1887 ...
+ $ 3: num [1:7] 0.842 0.323 0.325 0.49 0.342 ...</code></pre>
+<p><code>split</code> breaks up our vector <code>x</code> into a list of vectors defined by <code>grp</code>. We
+can see above the structure of the first three of these vectors. This is a slow
+step in group statistic computations, so lets time it with <code>sys.time</code> (a wrapper
+around <code>system.time</code><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>):</p>
+<pre class="r"><code>sys.time(gs &lt;- split(x, grp))</code></pre>
+<pre><code>   user  system elapsed
+  5.643   0.056   5.704</code></pre>
+<p>Compare to what happens if we order the inputs first:</p>
+<pre class="r"><code>sys.time({
+  o &lt;- order(grp)
+  xo &lt;- x[o]
+  go &lt;- grp[o]
+  gso &lt;- split(xo, go)
+})</code></pre>
+<pre><code>   user  system elapsed
+  1.973   0.060   2.054</code></pre>
+<p>Sorting values by group prior to running <code>split</code> makes it over twice as fast,
+<strong>including the time required to sort the data</strong>. We just doubled the speed of
+an important workhorse R function without touching the code. And we get the
+exact same results:</p>
+<pre class="r"><code>identical(gs, gso)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Pixie dust. <code>data.table</code> pixie dust.</p>
+<blockquote>
+<p><strong>Disclaimer</strong>: I have no special knowledge of microarchitecture other than
+what I learned while researching this post. I cannot guarantee the accuracy
+of all the details herein, but the broad outlines should be mostly correct and
+are backed by experimentation. I only hope that my relative inexperience on
+the topic makes my writing on it more accessible.</p>
+</blockquote>
+</div>
+<div id="latency-is-the-enemy" class="section level1">
+<h1>Latency Is The Enemy</h1>
+<figure class="post-inset-image">
+<div class="post-inset-image-frame">
+<a href='#image-credits' title='Click for image credits.' class=image-credit><img
+  id='conveyor'
+  src='/post/2019-05-17-pixie-dust_files/user-imgs/conveyor_small.jpg'
+/></a>
+</div>
+<figcaption>
+3rd package on 4th rack please.
+</figcaption>
+</figure>
+<p><em>Something</em> is going on underneath the hood that dramatically affects the
+performance of the random scenario. The fundamental problem is that main
+memory (RAM) access is laggy. Over the past few decades CPU processing speed
+has grown faster than memory latency has dropped. Nowadays it may take ~200 CPU
+cycles to have a CPU data request fulfilled from main memory.</p>
+<p>Main memory latency is terrible, but thankfully its bandwidth has kept pace with
+processor speeds. A useful analogy is that of a long conveyor belt connecting a
+storage warehouse (main memory) to its factory (CPU). The first item requested
+from the warehouse will be slow to arrive (latency), but if the conveyor belt is
+loaded efficiently it will keep the factory fully supplied from the moment the
+first item arrives (bandwidth).</p>
+<p>This analogy can give us some idea of the type of problems caused by random
+inputs. Suppose the factory places a request for items from the warehouse,
+taking care to order the items in the request form. This is what the request
+will look like mid-process, with processed items in yellow:</p>
+<PRE class="fansi fansi-output"><CODE>
+                                   | WAREHOUSE
+  ---------------------------------+-----------------------
+  &lt; &lt; &lt; &lt; &lt; &lt; 📦📦📦📦&lt; &lt; &lt; &lt; 📦📦📦📦&lt; &lt; &lt; &lt; 📦&lt; &lt; &lt; &lt; &lt;
+  ---------------------------------+-----------------------
+                                   |           👷
+  Request:                         | FP   TZ   GZ   FT   YJ
+  <span style='background-color: #BBBB00;'>FP</span><span> </span><span style='background-color: #BBBB00;'>FT</span><span> </span><span style='background-color: #BBBB00;'>GZ</span><span> TZ YJ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  </span><span style='background-color: #BBBB00;'>FP</span><span> </span><span style='background-color: #BBBB00;'>FT</span><span> GZ TZ YJ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  </span><span style='background-color: #BBBB00;'>FP</span><span> </span><span style='background-color: #BBBB00;'>FT</span><span> GZ TZ YJ                   | ⬜ | 📦 | 📦 | ⬜ | 📦
+  </span><span style='background-color: #BBBB00;'>FP</span><span> </span><span style='background-color: #BBBB00;'>FT</span><span> GZ TZ YJ                   | ⬜ | 📦 | 📦 | ⬜ | 📦
+                                   | ⬜ | 📦 | 📦 | ⬜ | 📦
+                                   | ⬜ | 📦 | ⬜ | ⬜ | 📦
+</span></CODE></PRE>
+<p>It takes time for the worker to change stations. So long as packages are
+requested repeatedly from the same station the worker can fully utilize the
+conveyor belt. As soon as they need to change stations, there will be a gap in
+the conveyor belt corresponding to the time it takes to do so. Unsurprisingly
+when the items are requested randomly the ratio of package to gaps is worse:</p>
+<PRE class="fansi fansi-output"><CODE>
+                                   | WAREHOUSE
+  ---------------------------------+-----------------------
+  &lt; &lt; &lt; &lt; &lt; &lt; 📦&lt; &lt; &lt; &lt; 📦&lt; &lt; &lt; &lt; 📦&lt; &lt; &lt; &lt; 📦&lt; &lt; &lt; &lt; &lt; &lt;
+  ---------------------------------+-----------------------
+                                   |           👷
+  Request:                         | FP   TZ   GZ   FT   YJ
+  <span style='background-color: #BBBB00;'>FT</span><span> YJ TZ YJ FP                   | 📦 | 📦 | 📦 | 📦 | 📦
+  </span><span style='background-color: #BBBB00;'>TZ</span><span> FT YJ GZ GZ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  </span><span style='background-color: #BBBB00;'>FP</span><span> TZ FT TZ GZ                   | 📦 | 📦 | 📦 | 📦 | 📦
+  </span><span style='background-color: #BBBB00;'>GZ</span><span> FP YJ FP FT                   | 📦 | 📦 | 📦 | 📦 | 📦
+                                   | 📦 | 📦 | 📦 | 📦 | 📦
+                                   | ⬜ | ⬜ | ⬜ | ⬜ | 📦
+</span></CODE></PRE>
+<p>While this analogy only bears a passing resemblance to some parts of what
+happens in the memory system, the concept applies generally. Anytime you have
+high latency and high bandwidth, predictable requests will utilize bandwidth
+much better than unpredictable ones.</p>
+</div>
+<div id="microarchitecture-to-the-rescue" class="section level1">
+<h1>Microarchitecture To The Rescue?</h1>
+<p>Chip designers have engaged in micro-architectural heroics to conceal main
+memory latency. Microarchitecture is <em>The Implementation Detail</em>. Higher
+level programs like C are compiled into <a href="https://en.wikipedia.org/wiki/Instruction_set_architecture">machine instructions</a>. In simpler
+times, machines would just follow those instructions. Nowadays a CPU only
+pretends to do that. “Behind the scenes” out of sight of the program it
+re-interprets them in whatever way it sees fit<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. The key
+constraint is that the CPU state visible to the program must be consistent with
+the instructions, but that leaves room for some hair raising optimizations.
+Everything that happens “behind the scenes” is the microarchitecture.</p>
+<p>There are two main classes of microarchitectural tricks used to mask main
+memory latency. <span id="second-trick"></span>The first one involves
+interpreting instructions in such a way that the conveyor belt can be kept fully
+utilized (i.e. few gaps) after the first item is requested. This includes
+preloading memory areas the CPU is likely to need based on prior access
+patterns, executing operations out-of-order so that memory requests for later
+operations are initiated while earlier ones wait for theirs to be fulfilled,
+speculating at which conditional branch will be executed before its condition is
+known so that out-of-order execution can continue past the branch, and other
+optimizations.</p>
+<p>The second involves having some amount of low latency memory known as cache. In
+our conveyor belt analogy it might be a shelf next to the assembly station with
+room for a few items. When items can be retrieved from cache we are insulated
+from main memory latency. Cache is very limited because it requires a more
+expensive design <em>and</em> it must be close to the CPU, typically on the exclusive
+real estate of the CPU die:</p>
+<figure class="aligncenter" style="max-width: 500px;">
+<a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='cpu-die'
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_annotated2.jpeg"
+/></a>
+<figcaption>
+Half of a Westmere 6 Core Xeon Die
+</figcaption>
+</figure>
+<p>We can see three levels of cache labeled L1, L2, and L3<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>, with the
+first two inside the cores, and the last shared across all cores. Each core
+will have its own L1 and L2 cache, though we only label them within one core.
+L1 cache is split between data cache (L1d) and instruction cache (L1i). You can
+get a sense of how different cache and main memory are by looking at the bigger
+picture. Main memory is on a different continent:</p>
+<figure class="aligncenter" style="max-width: 650px;">
+<a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='motherboard'
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/motherboard_techrep.png"
+/>
+</a>
+<figcaption>
+Close-up of motherboard and CPU
+</figcaption>
+</figure>
+<p>In many cases the combination of these tricks is sufficient to conceal or at
+least amortize the latency over many accesses, but there are pathological
+memory access patterns that defeat them. <code>split</code>ting the randomly ordered
+vector is an example of this. <a href="https://github.com/brodieG/treeprof"><code>treeprof</code></a> gives us detailed timings for
+the random and sorted <code>split</code> calls<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>: <span id="split-times"></span></p>
+<PRE class="fansi fansi-output"><CODE>times in milliseconds
+                                         random  |      sorted
+split --------------------------- : 7239 -    0  |  1573 -   0
+    split.default --------------- : 7239 - <span style='background-color: #BBBB00;'>1997</span><span>  |  1573 - </span><span style='background-color: #BBBB00;'>137</span><span>
+        as.factor --------------- : 5242 - 2471  |  1436 - 630
+            sort ---------------- : 2771 -    0  |   806 -   0
+                unique.default -- : 2705 - 2705  |   789 - 789
+                sort.default ---- :   67 -    0  |    17 -   0
+                    sort.int ---- :   67 -   27  |    17 -   7
+                        order --- :   40 -   40  |     9 -   9
+</span></CODE></PRE>
+<p>There are many differences between the two runs, but let’s focus on the
+highlighted numbers to start. These correspond to the internal C code that
+scans through the input vector and the normalized group vectors<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>,
+and copies each input value into the result vector indicated by the
+group<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>. The code will take the same exact number of steps
+irrespective of input order, yet there is a ~15x speed-up between the sorted
+(137ms) and randomized versions (1,997ms).</p>
+</div>
+<div id="modelling-cache-effects" class="section level1">
+<h1>Modelling Cache Effects</h1>
+<p>Ideally we would keep our whole working set in cache and not have to worry about
+main memory latency. Unfortunately the working set is often larger than cache.
+We’re interested in exploring how cache and working set size affect the speed of
+the <code>split.default</code> calculation.</p>
+<p>My system has a three level cache hierarchy as in the <a href="#cpu-die">pictured
+die</a><a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a>. Each level is larger but slower than the
+previous one<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a>:</p>
+<p><img src="/post/2019-05-17-pixie-dust_files/figure-html/cache-sizes-and-speeds-1.png" width="45%" style='display: inline;' style="display: block; margin: auto;" /><img src="/post/2019-05-17-pixie-dust_files/figure-html/cache-sizes-and-speeds-2.png" width="45%" style='display: inline;' style="display: block; margin: auto;" /></p>
+<p>On a CPU clocked at 1.2GHz like mine a 4 cycle L1 access will take ~3.3ns
+and a 250 cycle main memory access will take ~200ns.</p>
+<p>One way to explore the cache effects is to build a model of what we think memory
+access times should be based on working set size and the above data. If cache
+is effective we would expect processing times to follow our model. We show our
+<a href="#working-set">current working set</a> size (10MM elements) as a vertical dashed
+line<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a>, the modeled access times as colored lines, and observed
+timings as dots:</p>
+<p><img src="/post/2019-05-17-pixie-dust_files/figure-html/split-cache-times-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><span id="anomaly"></span>Outside of a few anomalies<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a> the model
+works remarkably well. It predicts a ~13x slowdown in the random vs. sorted
+case for the 10MM element working set, which is close to the <a href="#split-times">observed
+~15x</a>. It is reasonably accurate for most other working set
+sizes.</p>
+<p><code>split.default</code> has six memory accesses<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a> per element
+processed<a href="#fn13" class="footnote-ref" id="fnref13"><sup>13</sup></a>. When the inputs are ordered all of them are
+sequential. When they are not two of those are no longer sequential.</p>
+<p>Sequential access are simple and predictable, and as a result memory systems
+have built-in optimizations for them such as prefetching<a href="#fn14" class="footnote-ref" id="fnref14"><sup>14</sup></a> and stream
+buffers<a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a> (these are both forms of speculative execution<a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a>).
+We assume sequential accesses can be met at L1 cache speeds without consuming
+cache. Conversely random accesses do not benefit from these optimizations. We
+assume they are subject to the full memory system latency, the magnitude of
+which will vary depending on how much of the working set fits in each level of
+cache. Transitions to a slower level of memory manifest as an increase in
+per-element time that asymptotically<a href="#fn17" class="footnote-ref" id="fnref17"><sup>17</sup></a> approaches the slower
+memory’s latency<a href="#fn18" class="footnote-ref" id="fnref18"><sup>18</sup></a>.</p>
+<p>The implementation of this cache model is <a href="#cache-model">available in the
+appendix</a>.</p>
+<p>Since we are only modeling cache effects and the timings line up so closely,
+this implies that there are no other optimizations for random accesses in
+effect<a href="#fn19" class="footnote-ref" id="fnref19"><sup>19</sup></a>. Cache does mitigate the cost of random accesses, but
+its effect quickly dissipates as working set size increases.</p>
+</div>
+<div id="degrees-of-pathology" class="section level1">
+<h1>Degrees of Pathology</h1>
+<p>We now have a reasonable understanding of why <code>split.default</code> works much faster
+with ordered than unordered input. What is not explained is why the combination
+of ordering the inputs and splitting them is faster than splitting them
+directly. After all the ordering process itself involves random memory
+accesses:</p>
+<pre class="r"><code>o &lt;- order(grp)
+go &lt;- grp[o]            # random access
+xo &lt;- x[o]              # random access
+split.default(xo, go)   # sequential</code></pre>
+<p>Even ignoring the <code>order</code> call, the indexing steps required to order <code>x</code> and
+<code>grp</code> into <code>xo</code> and <code>go</code> are random accesses. I ran the timings for <code>x[o]</code>
+as well as for a version with <code>x</code> and <code>o</code> pre-sorted, and superimposed them with
+a cache-only model for those accesses:</p>
+<p><img src="/post/2019-05-17-pixie-dust_files/figure-html/subset-model-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>There are many interesting things going on<a href="#fn20" class="footnote-ref" id="fnref20"><sup>20</sup></a>, but the most notable
+one is that the random case substantially outperforms the corresponding
+cache-only model.</p>
+<p>Let’s examine what the <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L72">subset C code</a> is doing, shown here in pseudo R
+guise:
+<span id="subset-pseudo"></span></p>
+<pre class="r"><code>res &lt;- numeric(length(grp))
+seqi &lt;- seq_along(grp)
+for(i in seqi) {
+  val &lt;- x[i]        # sequential - fetch x value to copy
+  idx &lt;- o[i]        # sequential - fetch write offset
+  res[idx] &lt;- val    # random - write x value at offset
+}</code></pre>
+<p>The slow step is <code>res[idx] &lt;- val</code> as <code>idx</code> can point to any location in the
+result vector. But the nice thing about this loop is that each iteration is
+independent of all others. This allows the processor to begin execution of
+multiple loop iterations without waiting for the first one to complete,
+i.e. out-of-order.</p>
+<p>Out-of-order instructions are kept “in-flight” in the reorder buffer<a href="#fn21" class="footnote-ref" id="fnref21"><sup>21</sup></a>, an
+on-die memory structure that can store a number of both pending and complete
+instructions. The purpose of the buffer is to allow instructions to be executed
+out-of-order, but have their results committed in logical program order.
+Once a result is committed it becomes part of the CPU state visible to the
+program.</p>
+<p>Let’s pretend our system’s reorder buffer supports up to eight “instructions”
+“in-flight”. We can recast the first two iterations of the <a href="#pseudo-random">previous <code>for</code>
+loop</a> into the following instructions pseudo R code
+instructions<a href="#fn22" class="footnote-ref" id="fnref22"><sup>22</sup></a>:<span id="linear-ops"></span></p>
+<pre class="r"><code>## loop iteration 1
+i1        &lt;- seqi[1]               # PENDING
+val1      &lt;- x[i1]                 # PENDING
+idx1      &lt;- o[i1]                 # PENDING
+res[idx1] &lt;- val1                  # PENDING
+## loop iteration 2
+i2        &lt;- seqi[2]               # PENDING
+val2      &lt;- x[i2]                 # PENDING
+idx2      &lt;- o[i2]                 # PENDING
+res[idx2] &lt;- val2                  # PENDING</code></pre>
+<p>We renamed the <code>i</code>, <code>val</code>, and <code>idx</code> variables by appending the loop number to
+each of them<a href="#fn23" class="footnote-ref" id="fnref23"><sup>23</sup></a>. This allows the CPU to re-order them without
+instructions from later iterations overwriting earlier ones. They can now be
+executed in the following order:</p>
+<pre class="r"><code>i1        &lt;- seqi[1]               # PENDING
+i2        &lt;- seqi[2]               # PENDING
+
+val1      &lt;- x[i1]                 # PENDING
+val2      &lt;- x[i2]                 # PENDING
+
+idx1      &lt;- o[i1]                 # PENDING
+idx2      &lt;- o[i2]                 # PENDING
+
+res[idx1] &lt;- val1                  # PENDING
+res[idx2] &lt;- val2                  # PENDING</code></pre>
+<p>The processor is free to chose any instruction to execute that does not depend
+on others. In this case both the <code>i1</code> and <code>i2</code> instructions are eligible, so
+the processor could execute one, the other, or even both
+simultaneously<a href="#fn24" class="footnote-ref" id="fnref24"><sup>24</sup></a>. Shortly after the first main memory access
+is complete this will be the state:</p>
+<pre class="r"><code>## i1     &lt;- seqi[1]               # retired
+i2        &lt;- seqi[2]               # complete
+i3        &lt;- seqi[3]               # PENDING
+
+val1      &lt;- x[i1]                 # PENDING
+val2      &lt;- x[i2]                 # PENDING
+
+idx1      &lt;- o[i1]                 # PENDING
+idx2      &lt;- o[i2]                 # PENDING
+
+res[idx1] &lt;- val1                  # PENDING
+res[idx2] &lt;- val2                  # PENDING</code></pre>
+<p><code>i1</code>, and <code>i2</code> are both computed. Additionally, the <code>i1</code> instruction is retired,
+meaning its result is visible to the program and it no longer occupies one of
+the eight “in-flight” slots. The <code>i2</code> instruction cannot be retired despite
+being complete because in the logical flow of the program it comes after the
+<code>val1</code>, <code>idx1</code>, and <code>res[idx1]</code> commands that are still pending. The <code>i3</code>
+instruction takes up the slot freed by the retirement of the <code>i1</code> instruction.</p>
+<p>The same dynamic will play out for the <code>val*</code> and <code>idx*</code> steps, which will lead
+to:</p>
+<pre class="r"><code>## i1     &lt;- seqi[1]               # retired
+## val1   &lt;-   x[i1]               # retired
+## idx1   &lt;-   o[i1]               # retired
+
+i2        &lt;- seqi[2]               # complete
+i3        &lt;- seqi[3]               # complete
+
+val2      &lt;- x[i2]                 # complete
+val3      &lt;- x[i3]                 # complete
+
+idx2      &lt;- o[i2]                 # complete
+idx3      &lt;- o[i3]                 # complete
+
+res[idx1] &lt;- val1                  # PENDING
+res[idx2] &lt;- val2                  # PENDING</code></pre>
+<p>This is where out-of-order execution really shines. All prior memory accesses
+are sequential, so executing out-of-order is of marginal value as subsequent
+reads would be fast anyway. But the writes to <code>res</code> are random and
+subject to the full memory latency. Out-of-order execution allows us to run
+them both concurrently. This is of value because main memory has substantial
+parallelism built-in<a href="#fn25" class="footnote-ref" id="fnref25"><sup>25</sup></a>, i.e. the warehouse has multiple workers
+available to load (or unload) the conveyor belt. Processing speed for this type
+of access will grow with the degree of main memory parallelism and the size of
+the “in-flight” instruction window<a href="#fn26" class="footnote-ref" id="fnref26"><sup>26</sup></a>.</p>
+<p>One way to confirm that out-of-order execution is in play is to prevent
+it in an otherwise similar workload by adding a sequential loop dependency. We
+can use “chasing indices” like this one:</p>
+<p><img
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/index-chasing.png"
+  class='aligncenter'
+/></p>
+<p>Each vector element contains in it the (0-based) index of the next element to
+visit. The arrows illustrate the path that results from following the indices.
+Unfortunately it isn’t possible to do this efficiently in pure R code, so
+instead I wrote a <a href="#index-chasing">C function to do it</a>, and superimposed its
+timings on the previous ones as the blue <code>random2</code> data set:</p>
+<p><img src="/post/2019-05-17-pixie-dust_files/figure-html/dependency-model-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>With the sequential dependency timings are back in line with the theoretical
+cache-only model, demonstrating that the random subset likely benefited from
+out-of-order execution.</p>
+<p>Sure enough, it turns out that the <code>split.default</code> code has a sequential
+dependency in it too: it uses an offset vector to track where in each group
+vector to write the next value, and this vector is updated in the
+loop<a href="#fn27" class="footnote-ref" id="fnref27"><sup>27</sup></a>.</p>
+<p>Random accesses are pathological to modern memory systems, but those with
+sequential dependencies are downright killer. When we order our input vectors
+first we isolate random accesses to simple operations without sequential
+dependencies and give the memory system the best chance to mitigate latency.</p>
+</div>
+<div id="branch-prediction" class="section level1">
+<h1>Branch Prediction</h1>
+<p>One optimization we glossed over is branch prediction. An out-of-order CPU
+cannot put instructions “in-flight” past a branch (e.g. <code>if</code> statement) that
+depends on incomplete previous instructions because it does not know which side
+of the branch to put “in-flight”. Modern CPUs will make an educated guess and
+speculate about which instructions to put “in-flight” so it can maintain the
+benefits of out-of-order execution when it guesses right.</p>
+<p>Ironically the key feature of branch predicting CPUs is not the ability to
+guess, but rather the ability to recover from an incorrect guess. The reorder
+buffer assists in this by marking all “in-flight” operations predicated on
+a branch guess as speculative. These may then be discarded if the guess is
+discovered to be incorrect when the branch condition computation completes.
+Mispredictions do have a cost (15-20 cycles on my system<a href="#fn28" class="footnote-ref" id="fnref28"><sup>28</sup></a>), so CPU
+designers invest a substantial amount of effort to improve branch prediction.</p>
+<p>Branch prediction likely only plays a minor role in our examples<a href="#fn29" class="footnote-ref" id="fnref29"><sup>29</sup></a>;
+however, for completeness sake I’ve contrived a new one that demonstrates its
+effect. Compilers are notoriously aggressive at removing branches, so for
+controlled testing I wrote a toy example in C and compiled it with all
+<strong>optimizations turned off</strong> (<code>-O0</code>)<span id="add_walk"></span>:</p>
+<pre class="c"><code>SEXP add_walk2(SEXP x) {
+  R_xlen_t size = XLENGTH(x);
+  int *x_ptr=INTEGER(x);
+  int accum = 0;
+
+  for(R_xlen_t i = 0; i &lt; size; ++i) {
+    if(*x_ptr &gt; 0) {accum++;} else {accum--;}  // BRANCH
+    ++x_ptr;
+  }
+  return ScalarInteger(accum);
+}</code></pre>
+<p>This function computes the sum of a logical vector interpreting TRUE values as
+<code>+1</code> and FALSE values as <code>-1</code>. We can test it with logical vectors with
+varying proportions of TRUE values, both random and sorted:</p>
+<p><img src="/post/2019-05-17-pixie-dust_files/figure-html/branch-pred-model-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>The colored branch misprediction penalty model lines use 15 cycles penalty per
+misprediction, which fits the observed timings well. In the randomly ordered
+case the branch predictor cannot do better than predicting the higher frequency
+branch on average. In the sorted case there is essentially no misprediction
+penalty as predicting recently seen branch directions is a good strategy.</p>
+<p>A 15-20 cycle misprediction penalty is likely a best case scenario. If the
+mispredictions interfered with main memory accesses instead of register-only
+operations as above, the cost would be much higher.</p>
+</div>
+<div id="a-faustian-bargain" class="section level1">
+<h1>A Faustian Bargain</h1>
+<figure class="post-inset-image">
+<div class="post-inset-image-frame">
+<a href='#image-credits' title='Click for image credits.' class=image-credit><img
+  id='front-img'
+  src='/post/2019-05-17-pixie-dust_files/user-imgs/exploit-collage.png'
+/></a>
+</div>
+<figcaption>
+Meltdown, Specter, MDS, and Foreshadow, clockwise.
+</figcaption>
+</figure>
+<p>So much ingenuity has gone into designing and implementing modern memory
+systems that it’s easy to forget the whole thing is a massive hack.
+Case in point: a raft of severe processor security vulnerabilities published
+over the past two years that exploit micro-architectural optimizations.</p>
+<p>The limitations of the microarchitecture expose its supposedly hidden
+implementation details to probing via observation of timings. The expense of
+the silicon that implements it has led to it being shared concurrently across
+processes. The combination of these makes for a horror show of severe and
+difficult to fix vulnerabilities.</p>
+<p><a href="https://mdsattacks.com/">MDS</a> (bottom-right in inset) was announced while I was in the process of
+writing this post, about sixteen months after the <a href="https://meltdownattack.com/">Meltdown</a> and
+<a href="https://spectreattack.com/spectre.pdf">Spectre</a> vulnerabilities were disclosed (top row). What’s staggering is
+that changes that Intel introduced to its newest processors to mitigate Meltdown
+have made some of the MDS vulnerabilities worse.</p>
+<p>My little seguë here has little relevance to the post other than
+microarchitecture is involved and the timing of the disclosures of the most
+recent vulnerabilities. If you have been reading the headlines over the past
+year or so and have wondered exactly what this was all about, I encourage you to
+read the papers. They are remarkably accessible, and occasionally <a href="https://twitter.com/BrodieGaslam/status/1129101973259784192">downright
+funny</a>.</p>
+</div>
+<div id="loose-ends" class="section level1">
+<h1>Loose Ends</h1>
+<p>The internal code in <code>split.default</code> had the largest proportional difference
+between sorted and unsorted cases, but both <code>as.factor</code> and <code>unique.default</code>
+together account for a larger part of the overall difference:</p>
+<PRE class="fansi fansi-output"><CODE>times in milliseconds
+                                         random  |      sorted
+split --------------------------- : 7239 -    0  |  1573 -   0
+    split.default --------------- : 7239 - 1997  |  1573 - 137
+        as.factor --------------- : 5242 - <span style='background-color: #BBBB00;'>2471</span><span>  |  1436 - </span><span style='background-color: #BBBB00;'>630</span><span>
+            sort ---------------- : 2771 -    0  |   806 -   0
+                unique.default -- : 2705 - </span><span style='background-color: #BBBB00;'>2705</span><span>  |   789 - </span><span style='background-color: #BBBB00;'>789</span><span>
+                sort.default ---- :   67 -    0  |    17 -   0
+                    sort.int ---- :   67 -   27  |    17 -   7
+                        order --- :   40 -   40  |     9 -   9
+</span></CODE></PRE>
+<p>These are the steps that turn the groups into factor levels so they can be used
+as offsets into the result vector for <code>split.default</code>. Both of them rely on
+<a href="https://en.wikipedia.org/wiki/Hash_table">hash tables</a>: <code>unique</code> uses one to detect whether <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L545">a value is
+duplicated</a>, and <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/factor.R#L80"><code>as.factor</code> uses one</a> via <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L979"><code>match</code> to assign a unique
+index</a> to each distinct value in its input.</p>
+<p>Why is the sorting effect less pronounced with these? Most likely because
+hashing by its nature undoes some of the benefits of the sort. In R, hash
+tables are stored as vectors twice the size of the vector being
+hashed<a href="#fn30" class="footnote-ref" id="fnref30"><sup>30</sup></a>. So in <code>unique.default(grp)</code>, we are generating a
+hash table with <strong>twenty million</strong> elements, of which we will eventually use
+~one million<a href="#fn31" class="footnote-ref" id="fnref31"><sup>31</sup></a>. Worse, from a memory system perspective, the
+hashing function will try to distribute the values evenly <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L64">and randomly</a>
+throughout the hash vector. Nothing like large memory allocations accessed
+randomly to make the memory system happy.</p>
+<p>Sorting the data still helps because for each group the same hash key will be
+accessed repeatedly such that only the first access for each group is subjected
+to the full main memory latency, other optimizations notwithstanding.</p>
+<p>One last thing to point out: we ordered our vectors once, but we reaped the
+micro-architectural benefits in three different places. This in part explains
+how we get so much of a performance improvement even when we account for the
+time it takes to order the data.</p>
+<!-- Notes on Hash Tables in R - For Integers
+
+Haven't thought too hard about distinctions between long vs not long
+
+They are sized to be the closest power of 2 that is larger than twice the
+length of the input vector.
+
+https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L355
+
+Do I have this right?  This is insane if that's the case, as we can just create
+a vector that size and use the vector values as offsets?  Ah, no, because the
+vector value could be e.g. 2^31 - 1 in a vector of length 1000.
+
+One of the mindblowing things is that the hash table is self overlapping.  This
+allows the hash table to be a single integer vector instead of a list of cons
+cells.  It does lead to the odd situation that if you hit a hash code for the
+first time that spot may be occupied from a previous overflow.
+
+-->
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>The irony in all this is that the micro-architectural mess we just slogged
+through is a side-show. The principal reason I care about ordering data is that
+it opens up possibilities for different and more efficient processing
+algorithms, independent of micro-architectural factors. It’s just that when I
+ran into such an in-your-face manifestation of them I could not resist
+exploring.</p>
+<p>Stay tuned for Part II of the Hydra Chronicles, in which we will explore how
+ordered data can do amazing things. Originally I was planning on ending the
+post with the hydra drawing minus a couple of heads, but its grown on me and I
+feel bad doing that. Henceforth it will be a mascot and the name of this series
+of blog posts, and it won’t make any sense except to those like you that read
+the first one. That’s okay, it will be our inside joke.</p>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Here is the subset of the references I consulted that I found particularly
+helpful. There are many others linked through the main body of the document and
+the footnotes.</p>
+<ul>
+<li>Ulrich Drepper, <a href="https://people.freebsd.org/~lstewart/articles/cpumemory.pdf">“What Every Programmer Should Know About Memory”</a>, 2007:
+a comprehensive review of modern memory systems, with an emphasis on main
+memory and cache.</li>
+<li>Ed Jorgensen, <a href="http://www.egr.unlv.edu/~ed/assembly64.pdf">“x86-64 Assembly Language Programming with Ubuntu”</a>, 2019:
+If you are interested in exploring microarchitecture further, you’ll want at
+least a very basic understanding of assembly language<a href="#fn32" class="footnote-ref" id="fnref32"><sup>32</sup></a>. This is a
+great introduction you can skim through reasonably quickly to get a sense of
+what’s what.</li>
+<li>R. M. Tomasulo, <a href="https://www.cs.virginia.edu/~evans/greatworks/tomasulo.pdf">“An Efficient Algorithm For Exploiting Multiple Arithmetic
+Units”</a>, 1967: implicitly introduces the concept of register renaming to
+allow out-of-order execution. Back then memory latency was less of an issue
+and the main objective was to better utilize the multiple execution units
+available in the processor. This paper substantially pre-dates the reorder
+buffer and speculative execution, so out-of-order “retirements” were possible
+with independent calculations, but out-of-order speculation past branches was
+not.</li>
+<li>Norman Jouppi, <a href="https://www.hpl.hp.com/techreports/Compaq-DEC/WRL-TN-14.pdf">“Improving Direct-Mapped Cache Performance by the Addition of
+a Small Fully-Associative Cache and Prefetch Buffers”</a>, 1990: introduces
+the idea of the stream buffer (among other things), which allows fast reads of
+sequential data without polluting the cache.</li>
+<li>Agner Fog, <a href="https://www.agner.org/optimize/microarchitecture.pdf">“The microarchitecture of Intel, AMD and VIA CPUs”</a>, 2018:
+micro-architectural details of processors starting with the Pentium. Includes
+characteristics such as the number of reorder buffer entries, cache latency
+times and organization, and an introduction to micro-architectural concepts.</li>
+<li>Moritz Lipp, etal., <a href="https://meltdownattack.com/">“Meltdown: Reading Kernel Memory from User Space”</a>,
+2018: Meltdown vulnerability paper includes a useful Background section and
+gives a good idea of how things can go wrong.</li>
+</ul>
+</div>
+<div id="image-credits" class="section level2">
+<h2>Image Credits</h2>
+<p><span id="image-credits"></span></p>
+<ul>
+<li><a href="https://www.flickr.com/photos/wentzelepsy/15431618539/in/photolist-pvD5yB-orMGkS-oD9tMr-6Hy4vZ-dHArXF-4MkiSq-fmXesZ-fnKybA-7PdCYt-nKGMUu-9DwyBF-4RGwKf-95vYq-4YHwip-69ckvt-FwgCQm-95vLz-6w9W6f-bVZLqM-95vWc-4YHsJc-4YJhhV-fnvhfn-9DzB8h-4YHxAB-9db7nP-fnvrrP-Ww91p9-8Yhwn3-4tLnpy-bsHuHt-4RGJSU-8nLdkA-4MkjF5-4tLnzC-5Zr3e9-fnKFf7-69gAij-5sR6jQ-9DwEzx-gfesaD-fnf39A-6w5JmX-69gz5o-5xYUVS-6MLZD9-5N2EcN-X463Df-G23wk-fmXqjH">Hydra With Fedora(s)</a>, by <a href="https://www.flickr.com/photos/wentzelepsy/">Larry Wentzel</a>, under CC BY-NC 2.0,
+haberdashery and haberdasher removed.</li>
+<li><a href="https://pxhere.com/en/photo/1070638">Conveyor Belt</a>, by unknown, under CC0 Public Domain.</li>
+<li><a href="https://www.reddit.com/r/pcmasterrace/comments/2e6wug/this_is_the_inside_of_a_westmere_6_core_xeon/">Westmere 6 Core</a>, posted by redstern, license unknown, in-post version
+annotated and cropped to three cores, the annotations are derived from those
+in the <a href="https://bad-concurrency.blogspot.com/2014/12/the-uncanny-valley-of-l3-cache.html">Bad Concurrency Post</a> and if those are correct, these should be
+correct since the Westmere architecture is a shrunken version of the Nehalem.</li>
+<li><a href="https://www.flickr.com/photos/130561288@N04/38926628875/in/album-72157650403404920/">Intel 14nm Skylake</a>, by <a href="https://www.flickr.com/photos/130561288@N04/">Fritzchens Frits</a>,
+under CC0 Public Domain, and <a href="https://techreport.com/review/24818/asus-shows-off-z87-based-haswell-motherboards">Asus Motherboard</a>, by Asus PR.</li>
+<li><a href="https://meltdownattack.com/">Meltdown</a>, <a href="https://spectreattack.com/spectre.pdf">Spectre</a>, and <a href="https://foreshadowattack.eu/">Foreshadow</a> logos by <a href="https://vividfox.me/pages/about/">Natascha
+Eidl</a>, under CC0 Public Domain.</li>
+<li><a href="https://mdsattacks.com/">MDS</a> logo by <a href="http://www-personal.umich.edu/~minkin/index.html">Marina Minkin</a>, under CC0 Public Domain.</li>
+</ul>
+</div>
+<div id="function-definitions" class="section level2">
+<h2>Function Definitions</h2>
+<div id="sys.time" class="section level3">
+<h3>sys.time</h3>
+<pre class="r"><code>sys.time &lt;- function(exp, reps=11) {
+  res &lt;- matrix(0, reps, 5)
+  time.call &lt;- quote(system.time({NULL}))
+  time.call[[2]][[2]] &lt;- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] &lt;- eval(time.call, parent.frame())
+  }
+  structure(res, class=&#39;proc_time2&#39;)
+}
+print.proc_time2 &lt;- function(x, ...) {
+  print(
+    structure(
+      x[order(x[,3]),][floor(nrow(x)/2),],
+      names=c(&quot;user.self&quot;, &quot;sys.self&quot;, &quot;elapsed&quot;, &quot;user.child&quot;, &quot;sys.child&quot;),
+      class=&#39;proc_time&#39;
+) ) }</code></pre>
+</div>
+<div id="cache-model" class="section level3">
+<h3>Cache Model</h3>
+<p>The implementation of the cache model for the random accesses for
+<code>split.default</code>.</p>
+<pre class="r"><code>test.sizes &lt;- c(9:25)
+access.times &lt;- c(4, 14, 40, 250)
+mem.sizes &lt;- c(L1=15, L2=18, L3=22, Main=33)
+
+cache_times &lt;- function(set.sizes, mem.sizes, access.times) {
+  hit.rates &lt;- outer(
+    set.sizes, mem.sizes, function(x, y) 1 - pmax(0, x - y) / x
+  )
+  times &lt;- matrix(numeric(), nrow=nrow(hit.rates), ncol=ncol(hit.rates))
+  mult &lt;- rep(1, nrow(hit.rates))
+  for(i in seq_len(ncol(hit.rates))) {
+    times[,i] &lt;- hit.rates[,i] * access.times[i] * mult
+    mult &lt;- mult * (1 - hit.rates[,i])
+  }
+  times
+}
+### Two randomly accessed data sets, the result vector (numeric),
+### and the offset vector, integer, and roughly a tenth of the size of the
+### result vector since there is one offset per group
+
+set.sizes.1 &lt;- setNames(2^test.sizes * 8, test.sizes)
+set.sizes.2 &lt;- setNames(2^test.sizes * 4 / 10, test.sizes)
+
+times1 &lt;- cache_times(set.sizes.1, 2^mem.sizes, access.times)
+times2 &lt;- cache_times(set.sizes.2, 2^mem.sizes, access.times)
+times &lt;- rowSums(times1) + rowSums(times2)</code></pre>
+</div>
+<div id="index-chasing" class="section level3">
+<h3>Index Chasing</h3>
+<p>Simulate a pointer chasing chain by generating indices that reference the next
+index to go to. We make the index a numeric rather than an integer just to
+match working set sizes we used in other examples.</p>
+<pre class="r"><code>rand_path &lt;- function(size) {
+  if(!is.numeric(size) || length(size) != 1 || is.na(size) || size &lt; 1)
+    stop(&quot;bad input size&quot;)
+  idx &lt;- sample(as.integer(size - 1L)) + 1
+  res &lt;- numeric(size)
+  res[c(1, head(idx, -1))] &lt;- idx
+  res[tail(idx, 1)] &lt;- 1
+  res - 1
+}</code></pre>
+<p>We can then “walk” these indices with some C code that writes the index values
+to a new vector in the order of the walk. This is not exactly equivalent
+to indexing a vector in random order, but the number of random memory accesses
+is the same and that is the limiting element.</p>
+<pre class="r"><code>## CAREFUL: `x` should only be as produced by `rand_path`
+walkrand &lt;- inline::cfunction(
+  sig=c(x=&#39;numeric&#39;),
+  body=&quot;
+  R_xlen_t len = XLENGTH(x);
+  double *x_ptr = REAL(x);
+  SEXP res = PROTECT(allocVector(REALSXP, len));
+  double *resvec = REAL(res);
+  R_xlen_t idx = 0;
+
+  for(R_xlen_t i = 0; i &lt; len; ++i) {
+    idx = x_ptr[idx];
+    resvec[i] = idx;
+  }
+  UNPROTECT(1);
+  return res;
+&quot;)</code></pre>
+</div>
+<div id="branch-prediction-1" class="section level3">
+<h3>Branch Prediction</h3>
+<p>The function is in the <a href="#add_walk">body of the post</a>, but due to the need to
+compile it with optimizations turned off I had to take special steps to use it.
+First I temporarily updated <code>~/.R/Makevars</code>:</p>
+<pre><code>CFLAGS = -S -masm=intel -O0    // For disassembly
+CFLAGS = -O0 -Wall -std=gnu99  // For assembly with no optimization</code></pre>
+<p>Then in an R session:</p>
+<pre class="r"><code>tools::Rcmd(&#39;shlib add-walk2.c&#39;)
+dyn.load(&#39;add-walk2.so&#39;)
+.Call(&#39;add_walk2&#39;, sample(c(TRUE, FALSE), 1e7, rep=TRUE))</code></pre>
+</div>
+</div>
+<div id="benchmarking-code" class="section level2">
+<h2>Benchmarking Code</h2>
+<p>This ended up being a bit messy. The code below runs the benchmarks and stores
+the result as RDSes. The code inline to the post loads the RDSes and displays
+the data.</p>
+<pre class="r"><code>### split.default --------------------------------------------------------------
+
+times &lt;- c(
+   1e4, 1e4,  1e4,  5e3,   1e3,  1e3, 1e3,  1e2,  1e2,    50,   25,    25,
+   10,    5,    3
+)
+reps &lt;- c(
+    11,  11,   11,   11,    11,   11,   5,    5,     5,    5,    5,     5,
+     5,   5,    5
+)
+ns &lt;- rev(ns)
+times &lt;- rev(times) * 2
+reps &lt;- rep(reps)
+
+res &lt;- vector(&#39;list&#39;, 0)
+for(i in seq_along(ns)) {
+  RNGversion(&quot;3.5.2&quot;); set.seed(42)
+  n &lt;- ns[i]
+  x &lt;- runif(n)
+  g &lt;- sample(n/10, n, rep=TRUE)
+  go &lt;- sort(g)
+  gfo &lt;- as.factor(go)
+  gf &lt;- as.factor(g)
+
+  writeLines(sprintf(&#39;------ %f -------&#39;, n))
+  time.normal &lt;-
+    # sys.time(for(j in seq_len(times[i])) duplicated.default(g))
+    sys.time(for(j in seq_len(times[i])) split.default(x, gf), reps=reps[i])
+  time.sorted &lt;-
+    sys.time(for(j in seq_len(times[i])) split.default(x, gfo), reps=reps[i])
+    # sys.time(for(j in seq_len(times[i])) duplicated.default(go))
+
+  res &lt;- append(
+    res, list(
+      normal=time.normal, sorted=time.sorted, n=n, times=times[i]
+  ) )
+  print(time.normal)
+  print(time.sorted)
+}
+  # saveRDS(res, ...)
+
+### Index chasing --------------------------------------------------------------
+
+sizes &lt;- 2^(10:25)
+times &lt;- pmax(2^24 / sizes, 1)
+sizes.sub &lt;- seq_along(sizes) # tail(seq_along(sizes), 3)
+samps &lt;- lapply(sizes[sizes.sub], rand_path)
+y &lt;- 11
+
+res &lt;- vector(&#39;list&#39;, 0)
+for(i in seq_along(samps)) {
+  idx &lt;- sizes.sub[i]
+  writeLines(sprintf(&#39;------ %f -------&#39;, sizes[idx]))
+  time.normal &lt;- sys.time(for(j in seq(times[[idx]])) walkrand(samps[[i]]), y)
+
+  # subsequent processing code relied on having sorted vs unsorted data, so
+  # that&#39;s why we write the same value twice
+  res &lt;- append(
+    res, list(
+      normal=time.normal, sorted=time.normal, n=sizes[[idx]], times=times[idx]
+  ) )
+  print(time.normal)
+}
+  # saveRDS(res, ...)
+
+### Branch Predict -------------------------------------------------------------
+
+fractions &lt;- 0:10
+vecs &lt;- lapply(
+  fractions,
+  function(x) {
+    trues &lt;- x
+    falses &lt;- 10 - x
+    sample(c(rep(TRUE, trues), rep(FALSE, falses)), 1e7, rep=TRUE)
+  }
+)
+vecss &lt;- lapply(vecs, sort)
+res &lt;- list()
+for(i in seq_along(vecs)) {
+  writeLines(sprintf(&#39;------ %f -------&#39;, fractions[[i]]))
+  time.normal &lt;- sys.time(for(j in 1:10) .Call(&#39;add_walk2&#39;, vecs[[i]]))
+  time.sorted &lt;- sys.time(for(j in 1:10) .Call(&#39;add_walk2&#39;, vecss[[i]]))
+
+  res &lt;- append(
+    res, list(
+      normal=time.normal, sorted=time.sorted,
+      n=1, times=10, fraction=fractions[[i]]/10
+  ) )
+  print(time.normal)
+  print(time.sorted)
+}
+  # saveRDS(res, ...)</code></pre>
+<!--
+Ulrich Drepper Paper, lots of goodies.
+
+Table 2.2: DDR3 array/bus frequencies (933MHz for DDR3-1866)
+Bottom pg 15: Latency numbers for Pentium M, including 240 cycles for main
+memory.
+
+Oddly doesn't really talk about interleaved access.
+-->
+<!--
+Nima Honarmand Memory Prefetching, including discussion of stream buffers.
+-->
+<!-- subset C code -->
+<!-- Parallelism from Banks -->
+<!--
+Good layperson layout of various factors affecting RAM performance,
+including discussion of banks and ability to use them to saturate bandwidth
+
+There is ambiguity about how many banks there are, and if they are confined to
+one integrated circuit (IC) or not.  It sounds like not?  I.e bank 1 in IC 1 is
+the same bank and bank 2 in IC2?  Same number of banks as ICs, so hard to
+dissambiguate.
+
+> It's important to understand that each page of memory is segmented evenly
+> across Bank n of each IC for the associated rank.
+
+> We can now see why the DDR3 core has a 8n-prefetch (where n refers to the
+> number of banks per rank) as every read access to the memory requires a
+> minimum of 64 bits (8 bytes) of data to be transferred. This is because each
+> bank, of which there are eight for DDR3, fetches no less than 8 bits (1 byte)
+> of data per read request - the equivalent of one column's worth of data.
+
+-->
+<!--
+Reorder Buffer Size testing
+
+Of interest:
+* Mentions the ~200 cycle main memory access time, but the tests themselves
+  suggest potentially faster (~150) cycles.
+* Shows reorder buffer size likely ~168 for Sandybridge, which is the generation
+  prior to Skylake on my system.
+
+This is superseded by the Agner Fog document.
+-->
+<!--
+Not a reference, but someone that at least seems to have some idea of what's
+going on, but no idea if they are right or not.
+-->
+<!--
+RIDL and Fallout website, in particular has a great diagram of memory system
+architecture, including ROB entry counts, line fill buffer mention, separate L1
+and L2 TLBs.
+-->
+<!--
+Bad concurrency with great but low rez annotated die image
+
+This is a nehalem, which should be the same architecture as the westemere, but
+the westmere with a shrunken die (nehalem is tock, westmere is tick).
+-->
+<!--
+Westmere 6 core image
+-->
+<!-- Original Hydra Link
+Larry Wentzel
+https://www.flickr.com/photos/wentzelepsy/
+Attribution-NonCommercial 2.0 Generic (CC BY-NC 2.0)
+-->
+<!--
+Interesting review of microcode with details on actual execution
+-->
+<!--
+The microarchitecture of Intel, AMD and VIA CPUs
+
+Looks like a full on reference guide.  Has cache timings among other things, but
+no memory access times?
+-->
+<!--
+Westmere wiki page points out 32 entries of 2MB, which would match the cliff we
+see at 64MB
+-->
+<!--
+Intel optimization manual
+
+Trying to use this to bridge the line-fill buff vs stream buffer.  Section 2.1.5
+discusses this, although it isn't clear what the level of cache pollution is,
+and how L1 and L2 interact since stuff seems to be prefetched to L2, not L1.
+This also doesn't exactly match the Honarmand model since:
+
+"The streamer and spatial prefetcher prefetch the data to the last level cache.
+Typi-cally data is brought also to the L2 unless the L2 cache is heavily loaded
+with missing demand requests"
+
+Figure 2-1 on page 42 does show the "Line Fill Buffers" to be between L2 and
+L1d, and these are said to have 10 entries (cache line sized), and 20 for L2 (?).
+
+Also, Table 2-9 on p58 has DTLB sizes for Sandy bridge (64 4KB entries, 32
+2/4MB entries, 4 1 GB entries)
+
+Aha, found it, see a more updated version of the manual (link #93)
+-->
+<!--
+Miss Caches, Victim Caches and Stream Buffers
+
+Another course presentation discussing the Jouppi paper, also suggests stream
+buffers are there, real, and between L1 and L2
+-->
+<!-- subset C code, see 67 -->
+<!--
+Where duplicated and match initialize hash tables
+-->
+<!-- Intel Intro to X64 Assembly -->
+<!--
+Dan Luu Pseudo-Transcript on branch prediction talk
+
+Some useful stuff on pipelining.
+Goes in depth into branch prediction techniques and effectiveness.
+-->
+<!-- List 10-20 cycles for branch misprediction -->
+<!--
+John McCalpin who seems to now what he's talking about discusses concurrency
+limits.
+
+This is a very interesting thread.  Gets to the meat of how reorder buffer and
+memory loads interact.
+
+A few interesting points:
+
+* On main mem latency:
+    * 2.6GHZ has 85ns memory latency, which is ~220 cycles
+    * For a single-socket system the latency may be as low as ~60 ns, so at
+      3.0 GHz the latency would be about 180 cycles.
+* L1d misses supported by line fill buffers, of which there are 10 on Sandy
+  bridge, suspects same for skylake.
+* If no miss there are way more buffers available (72 load, 42 store)
+* To get more than 10 memory requests you need to go to L2 hardware prefetchers.
+-->
+<!--
+Anandtech articles showing haswell microarchitectural details
+Looked at it trying to better understand relation between reservation station
+and reorder buffer.
+
+Architectural details including execution units, etc.
+
+Bonus skylake as well in second link, but only real additional info is size of
+ROB, etc.
+-->
+<!--
+Original Tomasulo Paper (1965)
+-->
+<!--
+Overview of ooo
+
+Yoav Etsion
+-->
+<!-- microarchitecture details of skylake -->
+<!--
+Several presentations that make clear the relationship between ROB and the
+Tomasulo algorithm: in particular, the ROB allows the possibility of branch
+speculation as we can toss everything in case of a misprediction or exception.
+Exception was the original intent.  Second link is particularly useful.
+
+The wiki entry suggests the re-order buffer existed originally.
+-->
+<!--
+2008 Intel Article discussing prefetching / streaming
+-->
+<!--
+MDS/RIDL/Fallout Attacks
+And Meltdown/Spectre
+-->
+<!--
+Vulnerability Images
+
+All are available under CC0 as documented on the vulnerability sites proper.
+
+Meltdown, Spectre, and Foreshadow logos by  Natascha Eibl
+
+MDS by Marina Minkin
+-->
+<!-- Tweet about WTF -->
+<!--
+Motherloade of Die Shots
+
+Fritzchens Fritz
+
+Public Domain
+
+In order:
+
+* The album
+* A good skylake shot with chip on top of case
+* A ryzen shot with case cracked open
+-->
+<!--
+Motherboard, likely press shot
+-->
+<!--
+Conveyor belt, CC0 Public Domain
+-->
+<!--
+The jouppi paper
+
+Miss/Victim Cache, stream buffer.
+-->
+<!--
+A more update version of the intel optimization manual (we have an older one
+linked as #58) clarifies the stream buffer issue:
+
+Two hardware prefetchers load data to the L1 DCache:
+
+* Data cache unit (DCU) prefetcher. This prefetcher, also known as the streaming
+  prefetcher, is triggered by an ascending access to very recently loaded data.
+  The processor assumes that this access is part of a streaming algorithm and
+  automatically fetches the next line.
+* Instruction pointer (IP)-based stride prefetcher. This prefetcher keeps track
+  of individual load instructions. If a load instruction is detected to have a
+  regular stride, then a prefetch is sent to the next address which is the sum
+  of the current address and the stride. This prefetcher can prefetch forward or
+  backward and can detect strides of up to 2K bytes
+
+There are many constraints on these prefetches that suggests its likely the L2
+streamers that are doing the real work (e.g. "The prefetched data is within the
+same 4K byte page as the load instruction that triggered it").
+-->
+<!--
+Intel Smart Memory Access paper
+
+More details on prefetching, particularly the IP stride prefetcher.
+-->
+<!--
+McAlpin blog post on non-temporal stores
+
+Of interest due to the LRU marking comment.
+-->
+<!--
+switch split point
+-->
+<!-- Up to, keep this updated:
+
+108
+
+Links less than 200 reserved for use above -->
+<!-- Ed Jorgensen Assembly Language Programming -->
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>The source of this post is nearing two thousand lines and I haven’t
+even started addressing the question I set out to answer.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>It runs <code>system.time</code> eleven times and returns the median timing.
+It is <a href="#sys.time">defined in the appendix</a>.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>Another way to think about it is that microarchitecture is
+to assembly instructions as a compiler is to a C program. In both cases a
+process will interpret a set of instructions (C code, assembly) into a
+different lower-level set of instructions (assembly, CPU micro-operations).
+The processes must abide by constraints (a flavor of the C standard, an
+<a href="https://en.wikipedia.org/wiki/Instruction_set_architecture">Instruction Set Architecture</a>), but these are loose enough to allow
+outrageous re-interpretation. There are few things quite as humbling as
+learning just enough assembly that you can look at the disassembly of what you
+thought was a simple C function and realize there is almost no relationship
+between what you wrote and what the program is doing other than the semantics
+are the same, assuming no unintended use of undefined behavior. And then
+there is the whole microarchitectural layer on top of that. Maybe once upon a
+time C was close to the metal, but nowadays writing in C to be close to the
+metal is like hanging out in the basement to be closer to the iron core of the
+planet.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>These are labeled on a best-efforts basis and may be incorrect.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>I manually juxtaposed the output of two <code>treeprof</code> runs.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>Prior to this step the group vector is turned into integer group
+numbers that match the offset into the result list that the values of a group
+will be stored in.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>The timing corresponds to the <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/library/base/R/split.R#L31"><code>.Internal</code> call that
+invokes</a> the <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8">C code</a> that does the allocation of the result vector
+and the copying, although the bulk of the time is spent copying . The
+<code>.Internal</code> call does not show up in the R profile data used to build the
+<code>treeprof</code> output because <code>.Internal</code> is both “special” (i.e.
+<code>typeof(.Internal) == &quot;special&quot;</code>, see <code>?Rprof</code>) <em>and</em> a primitive. “special”
+functions are those that can access their arguments unevaluated.
+See <a href="https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Special-internals">R Internals</a> for details.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>My system actually has 64KB of L1 cache, but it is split
+into 32KB of data cache (L1d), and 32KB of instruction cache (L1i).<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p>The latency figures are approximate. In particular, the main
+memory latency may be incorrect. For cache we use the numbers provided in
+<a href="https://en.wikipedia.org/wiki/Westmere_(microarchitecture)">Agner Fog’s “The microarchitecture of Intel, AMD and VIA CPUs”</a>. For L3
+we picked a seemingly reasonable number in the provided range.<a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p>We use for working set size the portion of the data that
+cannot be accessed sequentially when the input is randomized. This is the
+size of the result list of vectors which will be a little over 10MM elements
+each 8 bytes in size, and the offset tracking vector which will be ~1MM
+elements, each 4 bytes in size. In reality there is more data involved, but
+because the rest of it are accessed sequentially, their impact on cache
+utilization is much lower. Additionally, because the offset tracking vector
+is so much smaller than the main result list we assume that it will not
+substantively alter the eviction rate of the larger result set, and it will
+also not be evicted as any part of it is likely to have been accessed more
+recently than the result set.<a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>Two notable anomalies are (1) decreasing times per item for
+the smaller sets that are possibly a result of R function call overhead being
+amortized over an increasing number of entries, and (2) a jump up at largest
+working set sizes for sequential access that could correspond to the
+<a href="https://en.wikipedia.org/wiki/Translation_lookaside_buffer">Translation Lookaside Buffer</a> being exhausted. This is a cache for
+translation of virtual to physical memory addresses. The <a href="https://www.intel.com/content/dam/doc/manual/64-ia-32-architectures-optimization-manual.pdf">Intel 64 and IA-32
+Optimization Reference Manual</a> notes in table 2-9 that there are 32 2/4MB
+DTLB entries, which would suggest a TLB walk after 64 or 128MB, around the
+point we see a timing anomaly. We are being sloppy about accounting as the
+“working set” size we report is just the randomly accessed memory, but
+presumably the sequentially accessed memory must be mapped by the TLB as well.<a href="#fnref11" class="footnote-back">↩</a></p></li>
+<li id="fn12"><p>We are including only the operations used to process the inputs
+in the main loop. These are: read input value (1), read factor level (2),
+fetch target vector from result list (3), read offset for target vector (4),
+write value to target vector at offset (5), and increment offset (6).<a href="#fnref12" class="footnote-back">↩</a></p></li>
+<li id="fn13"><p>There are a few other operations involved, such as
+allocating memory and incrementing offset counters, but these are a small
+portion of the overall time.<a href="#fnref13" class="footnote-back">↩</a></p></li>
+<li id="fn14"><p>When a cache line is fetched, processors will often fetch the
+subsequent cache line as well. This is called prefetching.<a href="#fnref14" class="footnote-back">↩</a></p></li>
+<li id="fn15"><p><a href="https://compas.cs.stonybrook.edu/~nhonarmand/courses/sp16/cse502/slides/13-prefetch.pdf">Nima Honarmand’s “Memory Prefetching”</a> lecture strongly suggests
+data streams can be supported without polluting cache (p13,21-22), that is
+without consuming much of the cache itself. Same with the <a href="https://cseweb.ucsd.edu/classes/fa11/cse240A-a/Slides1/04_Jouppi.pdf">Paul Wicks “Miss
+Caches, Victim Caches and Stream Buffers” presentation</a> (p14-15). Both of
+them are based off of the <a href="https://pxhere.com/en/photo/1070638">Jouppi paper</a>. The <a href="https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-optimization-manual.pdf">June 2016
+iteration of the “Intel 64 and IA-32 Optimization Reference Manual”</a>
+references a “Streaming Prefetcher” a.k.a. “Data Cache Unit Prefetcher” (DCU)
+in section 2.3.5.4 and the “IP Prefetcher” that feed into L1, but their
+constraints suggest that it might not be the one doing the buffering.
+An older <a href="https://www.intel.com/content/dam/doc/manual/64-ia-32-architectures-optimization-manual.pdf">version of the same manual</a> only mentions the L2 streamers
+(sections 2.1.5, 2.2.4, 3.7.3, 7.2, 7.6.3), stating that prefetches go into
+L2. It is also not clear from the Intel docs that the streamers avoid
+cache pollution via e.g. a buffer. <a href="https://sites.utexas.edu/jdm4372/2018/01/01/notes-on-non-temporal-aka-streaming-stores/">John McAlpin suggests</a> cache lines
+can be explicitly marked as LRU so they get evicted first; perhaps this is how
+pollution is avoided without a stream buffer. My observations are consistent
+with streams being met at L1 speeds without cache pollution, although it could
+be due to other factors (e.g. accesses are met at L2 speeds, but multiple
+accesses are done simultaneously).<a href="#fnref15" class="footnote-back">↩</a></p></li>
+<li id="fn16"><p>Actions taken by the microarchitecture that anticipate
+instruction needs to take advantage of microarchitectural parallelism and
+mitigate latency. These include branch prediction, prefetching, and similar.
+Although out-of-order execution is not strictly speculative, in modern systems
+in combination with branch prediction it becomes so anytime it starts
+executing instructions past speculated branches.<a href="#fnref16" class="footnote-back">↩</a></p></li>
+<li id="fn17"><p>Keep in mind that the x-axis is log base 2, so each step
+corresponds to a doubling of the working set size. After the first step past
+a cache level transition, only half the working set can be accessed from the
+faster cache. After two only a quarter, and so on.<a href="#fnref17" class="footnote-back">↩</a></p></li>
+<li id="fn18"><p>There are only three transitions from faster to slower
+memory, yet there are four bumps in the plot. This is because our working set
+contains two randomly accessed elements: the result list with the double
+precision vectors that correspond to each group, and an integer vector that
+tracks the offsets within each group that the next element will be written to.
+The last bump corresponds to the point at which the offset integer vector
+outgrows L3 cache. With ten elements per group on average, we will need ~1
+million elements in the offset vector to track each group with a 10MM working
+set size. At 4 bytes an element, that makes for a ~4MB integer vector, which
+is the size of L3 cache.<a href="#fnref18" class="footnote-back">↩</a></p></li>
+<li id="fn19"><p>It is also possible the reality is more complicated and
+there are offsetting factors cancelling each other out. I have no easy way of
+knowing that my inferences about what is happening are correct. I’m relying
+exclusively on the simple model producing reasonable results, and common sense
+based on the information I have been able to gather. Ideally I would be able
+to query performance counters to confirm that cache misses can indeed explain
+the observed timings, but those are hard to access on OS X, and even harder
+still for code that is run as part of R. One element that is almost
+undoubtedly influencing performance is Translation Lookaside Buffer (TLB)
+misses, which I do not model at all.<a href="#fnref19" class="footnote-back">↩</a></p></li>
+<li id="fn20"><p>With working set less than L1 in size, it looks like the system
+can execute all three memory accesses (two loads, one store) simultaneously.
+This is not entirely surprising given that my <a href="https://en.wikichip.org/wiki/intel/microarchitectures/skylake_(client)#Individual_Core">Skylake processor</a> has two
+load data execution units and one store data execution unit. After that point
+there is a penalty, which is eventually amortized for the sorted set. Because
+it is amortized eventually this suggests its not a cache penalty. It may be a
+TLB (<a href="https://en.wikipedia.org/wiki/Translation_lookaside_buffer">Translation Lookaside Buffer</a>) effect, although it seems too early
+for that to happen as the DTLB supports 64 4KB pages, and with a 32KB working
+set (<code>xo</code>), the total memory we’re using is 32KB + 32KB + 16KB (<code>xo</code> + <code>x</code> +
+<code>o</code>). The next jump at 64MB could be the same DTLB jump we <a href="#anomaly">saw
+earlier</a>.<a href="#fnref20" class="footnote-back">↩</a></p></li>
+<li id="fn21"><p>Assuming no sequential instruction dependencies, CPUs that can engage in
+out-of-order execution can get ahead by as many micro-operations as will fit
+in the re-order buffer. Re-order buffer sizes vary by architecture. On my
+Skylake system the reorder buffer supports 224 micro-operations (<a href="https://en.wikipedia.org/wiki/Westmere_(microarchitecture)">Agner
+Fog</a>, p149). There are some further limitations on the types of
+quantities of any single type of operation in the re-order buffer.<a href="#fnref21" class="footnote-back">↩</a></p></li>
+<li id="fn22"><p>The eight instructions we show here will likely correspond to
+substantially more micro-operations, both because they are intended to
+symbolize assembler instructions and not micro-operations, and also because
+the actual C implementation of the R code is <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L72">more</a> <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/subset.c#L126">complex</a> than the
+pseudo code indicates.<a href="#fnref22" class="footnote-back">↩</a></p></li>
+<li id="fn23"><p>The 1965 <a href="https://www.cs.virginia.edu/~evans/greatworks/tomasulo.pdf">Tomasulo Paper</a> implicitly introduced the concept of
+register renaming that breaks the false dependency that exists when
+names/registers are re-used and allows increased instruction-level
+parallelism.<a href="#fnref23" class="footnote-back">↩</a></p></li>
+<li id="fn24"><p>Almost all processors nowadays are <a href="https://en.wikipedia.org/wiki/Superscalar_processor">superscalar</a>,
+meaning that they have multiple execution units that can compute
+simultaneously. More recent processors can execute up to <a href="https://www.anandtech.com/show/6355/intels-haswell-architecture/8">eight
+micro-operations in parallel</a>, although execution units are specialized so
+it is not possible to have eight arbitrary operations done in parallel.<a href="#fnref24" class="footnote-back">↩</a></p></li>
+<li id="fn25"><p>Main memory parallelism arises from it comprising multiple
+banks that can be accessed independently. It is difficult to get information
+on exactly how many independently accessible banks my system has, but it
+seems likely to be at least 16. So long as the random accesses are from
+different banks they should all be addressable concurrently. <a href="https://www.anandtech.com/show/3851/everything-you-always-wanted-to-know-about-sdram-memory-but-were-afraid-to-ask/2">Anandtech</a>
+goes into some detail on memory banks. See this <a href="https://pubweb.eng.utah.edu/~cs7810/pres/11-7810-12.pdf">University of Utah CS7810
+presentation</a> for some discussion of the parallelism obtained from banks
+in DRAM memory, and the introduction to the <a href="https://en.wikipedia.org/wiki/Synchronous_dynamic_random-access_memory#Command_interactions">Wikipedia SDRAM page</a> which
+also mentions banks, interleaving, and pipelining.<a href="#fnref25" class="footnote-back">↩</a></p></li>
+<li id="fn26"><p>This assumes the memory locations are in separate banks,
+which should be the case for most random accesses, although occasionally it
+won’t be the case.<a href="#fnref26" class="footnote-back">↩</a></p></li>
+<li id="fn27"><p><code>split</code> tracks the offset at which the next value in a group will be
+written to, and increments that offset each time a value is written. In other
+words, in order to know where in the result vector a value needs to go, the
+CPU needs to know how many times previously that group was written to, which
+is difficult to do without a level of insight into the code the CPU is
+unlikely to have.<a href="#fnref27" class="footnote-back">↩</a></p></li>
+<li id="fn28"><p>Agner Fog lists 15-20 cycles for Haswell, Broadwell, and Skylake
+on <a href="https://www.agner.org/optimize/microarchitecture.pdf">p29 of “The microarchitecture of Intel, AMD and VIA CPUs”</a>.<a href="#fnref28" class="footnote-back">↩</a></p></li>
+<li id="fn29"><p>There are a few spots where branch prediction is likely happening.
+First in the loops proper as the break condition is a branch. Since our
+loops are long, guessing that the loop will continue indefinitely is an easy
+and effective guess. More importantly, our loops are dominated by the slow
+random access, so with out-of-order execution the all the other steps can be
+run quickly, including the loop condition calculation. In this case the
+branch will not be the bottleneck and value of branch prediction is limited.
+Another place it comes in is checking that indices are not NA, and finally in
+the <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/split-incl.c#L8">type conditional in <code>split.default</code></a>. However, as was the case
+earlier, the bottlenecks remain the random accesses even if branch prediction
+is successful. For example, even if we successfully guess that the
+group-offset value is not NA, we cannot proceed until we get the offset value
+to write to the group vector. Finally, it is entirely possible that some of
+the branches in question are being eliminated by the compiler and are not even
+in the assembly instructions issued to the processor.<a href="#fnref29" class="footnote-back">↩</a></p></li>
+<li id="fn30"><p>Hash tables used to take up 4x the size of the
+hashed input, but in <a href="https://github.com/wch/r-source/blob/tags/R-3-5-3/src/main/unique.c#L336">2004 that was switched to 2x</a>. A tidbit I found
+fascinating is that the R hash tables are <a href="https://en.wikipedia.org/wiki/Open_addressing">open-addressed</a>, meaning that
+collisions are resolved by walking along the hash vector until an open slot is
+found instead of appending an element to the end of a linked list or similar.
+Additionally, it is the index into the vector that is hashed that is stored,
+no the value itself. This means all vector types can have an integer hash
+table (or double if using LONG_VECTOR_SUPPORT, which nowadays is probably the
+default).<a href="#fnref30" class="footnote-back">↩</a></p></li>
+<li id="fn31"><p>Even though we’re only using one million elements from the hash
+table the cache effective size of it will be likely at least 8 times that as
+memory is always brought into cache in cache-line size, or 64 bytes. In order
+to bring in one eight byte numeric value from the hashtable, we have to bring
+in another 56 bytes of mostly unused hash table around it. In many cases it
+will be even worse as the hardware prefetcher may bring in two cache lines
+instead of just one.<a href="#fnref31" class="footnote-back">↩</a></p></li>
+<li id="fn32"><p>Assembly instructions are low level commands that can be directly
+interpreted by the CPU. Programs that are not written in assembly are
+translated into assembly directly by a compiler, or indirectly by mapping
+program instructions to pre-compiled assembly instructions.<a href="#fnref32" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
