@@ -11,8 +11,8 @@ imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: "An exploration of how micro-architectural factors such as cache
-and speculative execution can affect performance of R code."
+description: "An exploration of how micro-architectural factors such as cache,
+and out-of-order / speculative execution can affect performance of R code."
 ---
 
 ```{r echo=FALSE}
@@ -256,7 +256,7 @@ utilized (i.e. few gaps) after the first item is requested.  This includes
 preloading memory areas the CPU is likely to need based on prior access
 patterns, executing operations out-of-order so that memory requests for later
 operations are initiated while earlier ones wait for theirs to be fulfilled,
-guessing at which conditional branch will be executed before its condition is
+speculating at which conditional branch will be executed before its condition is
 known so that out-of-order execution can continue past the branch, and other
 optimizations.
 
@@ -547,14 +547,14 @@ sequential.  When they are not two of those are no longer sequential.
 
 Sequential access are simple and predictable, and as a result memory systems
 have built-in optimizations for them such as prefetching[^prefetch] and stream
-buffers[^streams].  We assume sequential accesses can be met at L1
-cache speeds without consuming cache.  Conversely random accesses do not benefit
-from these optimizations.   We assume they are subject to the full memory
-system latency, the magnitude of which will vary depending on how much of the
-working set fits in each level of cache.  Transitions to a slower level of
-memory manifest as an increase in per-element time that
-asymptotically[^asymptotic-latency] approaches the slower memory's
-latency[^access-anomaly].
+buffers[^streams] (these are both forms of speculative execution[^spec-exec]).
+We assume sequential accesses can be met at L1 cache speeds without consuming
+cache.  Conversely random accesses do not benefit from these optimizations.   We
+assume they are subject to the full memory system latency, the magnitude of
+which will vary depending on how much of the working set fits in each level of
+cache.  Transitions to a slower level of memory manifest as an increase in
+per-element time that asymptotically[^asymptotic-latency] approaches the slower
+memory's latency[^access-anomaly].
 
 The implementation of this cache model is [available in the
 appendix](#cache-model).
@@ -830,8 +830,8 @@ One optimization we glossed over is branch prediction.  An out-of-order CPU
 cannot put instructions "in-flight" past a branch (e.g. `if` statement) that
 depends on incomplete previous instructions because it does not know which side
 of the branch to put "in-flight".  Modern CPUs will make an educated guess and
-keep putting instructions "in-flight" so we can maintain the benefits of
-out-of-order execution in branched code.
+speculate about which instructions to put "in-flight" so it can maintain the
+benefits of out-of-order execution when it guesses right.
 
 Ironically the key feature of branch predicting CPUs is not the ability to
 guess, but rather the ability to recover from an incorrect guess.  The reorder
@@ -1252,6 +1252,12 @@ for(i in seq_along(vecs)) {
   # saveRDS(res, ...)
 ```
 
+[^spec-exec]: Actions taken by the microarchitecture that anticipate
+  instruction needs to take advantage of microarchitectural parallelism and
+  mitigate latency.  These include branch prediction, prefetching, and similar.
+  Although out-of-order execution is not strictly speculative, in modern systems
+  in combination with branch prediction it becomes so anytime it starts
+  executing instructions past speculated branches.
 [^assembly-is-to-c]: Another way to think about it is that microarchitecture is
   to assembly instructions as a compiler is to a C program.  In both cases a
   process will interpret a set of instructions (C code, assembly) into a
