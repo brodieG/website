@@ -1,7 +1,7 @@
 ---
 title: "Hydra Chronicles, Part I: Pixie Dust"
 author: ~
-date: '2019-05-17'
+date: '2019-06-05'
 slug: pixie-dust
 categories: [r]
 tags: [optimization]
@@ -11,7 +11,7 @@ imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: "An exploration of how micro-architectural factors such as cache,
+description: "An exploration of how micro-architectural factors such as cache
 and out-of-order / speculative execution can affect performance of R code."
 ---
 
@@ -587,6 +587,17 @@ the first one. That’s okay, it will be our inside joke.</p>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
+<div id="software-acknowledgments" class="section level2">
+<h2>Software Acknowledgments</h2>
+<ul>
+<li><a href="https://github.com/mattdowle">Matt Dowle</a> and the other <a href="https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html"><code>data.table</code> authors</a> for contributing the
+radix sort to R.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code> with which
+I made the plots in this post.</li>
+<li>Oleg Sklyar, Duncan Murdoch, Mike Smith, Dirk Eddelbuettel, Romain Francois,
+Karline Soetaert for <a href="https://cran.r-project.org/web/packages/inline/index.html"><code>inline</code></a>.</li>
+</ul>
+</div>
 <div id="references" class="section level2">
 <h2>References</h2>
 <p>Here is the subset of the references I consulted that I found particularly

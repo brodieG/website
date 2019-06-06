@@ -1,7 +1,7 @@
 ---
 title: "Hydra Chronicles, Part I: Pixie Dust"
 author: ~
-date: '2019-05-17'
+date: '2019-06-05'
 slug: pixie-dust
 categories: [r]
 tags: [optimization]
@@ -11,7 +11,7 @@ imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: "An exploration of how micro-architectural factors such as cache,
+description: "An exploration of how micro-architectural factors such as cache
 and out-of-order / speculative execution can affect performance of R code."
 ---
 
@@ -1024,6 +1024,15 @@ the first one.  That's okay, it will be our inside joke.
 
 # Appendix
 
+## Software Acknowledgments
+
+* [Matt Dowle][201] and the other [`data.table` authors][204] for contributing the
+  radix sort to R.
+* [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with which
+  I made the plots in this post.
+* Oleg Sklyar, Duncan Murdoch, Mike Smith, Dirk Eddelbuettel, Romain Francois,
+  Karline Soetaert for [`inline`][205].
+
 ## References
 
 Here is the subset of the references I consulted that I found particularly
@@ -1854,3 +1863,8 @@ Links less than 200 reserved for use above -->
 <!-- Ed Jorgensen Assembly Language Programming -->
 
 [200]: http://www.egr.unlv.edu/~ed/assembly64.pdf
+[201]: https://github.com/mattdowle
+[202]: https://github.com/hadley
+[203]: https://cran.r-project.org/web/packages/ggplot2/index.html
+[204]: https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
+[205]: https://cran.r-project.org/web/packages/inline/index.html
