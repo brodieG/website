@@ -1,7 +1,7 @@
 ---
 title: "Hydra Chronicles, Part I: Pixie Dust"
 author: ~
-date: '2019-06-05'
+date: '2019-05-17'
 slug: pixie-dust
 categories: [r]
 tags: [optimization]
