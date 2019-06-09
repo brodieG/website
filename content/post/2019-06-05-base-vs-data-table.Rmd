@@ -1,0 +1,946 @@
+---
+title: "Hydra Chronicles, Part II: Beating data.table At Its Own Game*"
+author: ~
+date: '2019-06-10'
+slug: base-vs-data-table
+categories: [r]
+tags: [optimization]
+image: /front-img/rock-em-sock-em.png
+imagerect: /front-img/rock-em-sock-em-wide.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "In which scrappy base R takes on the reigning group stats champ
+  data.table, with suprising results, and some controversy."
+---
+
+```{r echo=FALSE}
+options(digits=3, crayon.enabled=TRUE)
+suppressMessages(library(ggplot2))
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+```{r echo=FALSE, comment="", results='asis'}
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+```
+
+# In One Corner...
+
+<!-- this needs to become a shortcode -->
+<a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='front-img' src='/front-img/rock-em-sock-em.png'
+  class='post-inset-image'
+/>
+</a>
+
+As we saw in our [Faster Group Statistics post][108], `data.table` is the 
+heavyweight champ in the field.  Its `gforce` functions and fast grouping put it
+head and shoulders above all challengers. And yet, here we are, about to throw
+our hat in the ring with nothing but base R functionality.  Are we out of our
+minds?
+
+Obviously I wouldn't be writing this if I didn't think we had a chance,
+although the only reason we have a chance is because `data.table` generously
+[contributed its fast radix sort to R 3.3.0][109].  Perhaps it is ungracious of
+us to use it to try to beat `data.table`, but where's the fun in being gracious?
+
+# The Ring, and a Warmup
+
+Ten million observations, ~one million groups, no holds barred:
+
+```{r warning=FALSE}
+RNGversion("3.5.2"); set.seed(42)
+n     <- 1e7
+n.grp <- 1e6
+grp   <- sample(n.grp, n, replace=TRUE)
+noise <- rep(c(.001, -.001), n/2)  # more on this later
+x     <- runif(n) + noise
+y     <- runif(n) + noise          # we'll use this later
+```
+```{r sys-time, echo=FALSE}
+sys.time <- function(exp, reps=11) {
+  res <- matrix(0, reps, 5)
+  time.call <- quote(system.time({NULL}))
+  time.call[[2]][[2]] <- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] <- eval(time.call, parent.frame())
+  }
+  structure(res, class='proc_time2')
+}
+print.proc_time2 <- function(x, ...) {
+  print(
+    structure(
+      x[order(x[,3]),][floor(nrow(x)/2),],
+      names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
+      class='proc_time'
+) ) }
+```
+
+Let's do a warm-up run, with a simple statistic.  We use `vapply`/`split`
+instead of `tapply` as that will allow us to work with more complex statistics
+later.  `sys.time` is a wrapper around `system.time` that runs the expression
+eleven times and returns the median timing.  It is [defined in the
+appendix](#sys.time).
+
+```{r eval=FALSE}
+sys.time({
+  grp.dat <- split(x, grp)
+  x.ref <- vapply(grp.dat, sum, 0)
+})
+```
+```
+   user  system elapsed
+  6.235   0.076   6.316
+```
+
+Let's repeat by ordering the data first because [pixie dust][102]:
+
+```{r echo=FALSE}
+o <- order(grp)
+go <- grp[o]
+```
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+
+  grp.dat <- split(xo, go)
+  xgo.sum <- vapply(grp.dat, sum, numeric(1))
+})
+```
+```
+   user  system elapsed 
+  2.743   0.092   2.840 
+```
+
+And now with `data.table`:
+
+
+```{r eval=FALSE}
+library(data.table)
+DT <- data.table(grp, x)
+setDTthreads(1)             # turn off multi-threading
+sys.time(x.dt <- DT[, sum(x), keyby=grp][[2]])
+```
+```
+   user  system elapsed
+  0.941   0.030   0.973
+```
+
+Ouch.  Even without multithreading `data.table` crushes even the ordered
+`split`/`vapply`.  We use one thread for more stable and comparable results.
+We'll show some multi-threaded benchmarks at the end.
+
+# Interlude - Better Living Through Sorted Data
+
+Pixie dust is awesome, but there is an even more important reason to like sorted
+data: it opens up possibilities for better algorithms.  `unique` makes for a
+good illustration.  Let's start with a simple run:
+
+```{r eval=FALSE}
+sys.time(u0 <- unique(grp))
+```
+```
+   user  system elapsed
+  1.223   0.055   1.290
+```
+
+We are ~40% faster if we order first, including the time to
+order[^unique-ordered]:
+
+<!-- USE SORT, SIMPLIFY? -->
+
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  u1 <- unique(go)
+})
+```
+```
+   user  system elapsed
+  0.884   0.049   0.937
+```
+```{r eval=FALSE}
+identical(sort(u0), u1)
+```
+```
+[1] TRUE
+```
+
+The interesting thing is that once the data is ordered we don't even need to use
+`unique` and its [inefficient hash table][103].  For example, in:
+
+```{r}
+head(go, 60)
+```
+
+We just need to find the positions where the values change to find the unique
+values, which we can do with[^na-caveat]:
+
+```{r eval=FALSE}
+go[-1L] != go[-length(go)]
+```
+
+So to get the unique values, including time to order:
+
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  u2 <- go[c(TRUE, go[-1L] != go[-length(go)])]
+})
+```
+```
+   user  system elapsed
+  0.652   0.017   0.672
+```
+```{r eval=FALSE}
+identical(u1, u2)
+```
+```
+[1] TRUE
+```
+
+Same result, but twice the speed of the original.  Most of the time is spent
+ordering as we can see by how quickly we pick out the unique values once
+the data is ordered:
+
+```{r eval=FALSE}
+sys.time(u2 <- go[c(TRUE, go[-1L] != go[-length(go)])])
+```
+```
+   user  system elapsed
+  0.135   0.016   0.151
+```
+
+The main point I'm trying to make here is that it is a **big deal** that `order`
+is fast enough that we can switch the algorithms we use downstream and get an
+even bigger performance improvement.
+
+> A big thank you to team `data.table` for sharing the pixie dust.
+
+# Group Sums
+
+It's cute that we can use our newfound power to find unique values, but can we
+do something more sophisticated?  It turns out we can.  [John Mount][104], shows
+how to compute group sums [using `cumsum`][105] on group-ordered
+data[^prior-art].  With a little work we can generalize it.
+
+The concept is to order by group, compute cumulative sum, pull out the last
+value for each group, and take their differences.  Visually:
+
+```{r cumsum-ex, echo=FALSE, warning=FALSE}
+library(ggbg)
+RNGversion("3.5.2"); set.seed(42)
+n1 <- 7
+x1 <- seq_len(n1)
+y1 <- runif(n1);
+colors <- c('#3333ee', '#33ee33', '#eeee33')
+g1 <- sample(1:3, n1, replace=TRUE)
+steps <- c(
+  '1 - Start', '2 - Sort By Group', '3 - Cumulative Sum',
+  '4 - Last Value in Group', '5 - Take Differences', '6 - Group Sums!'
+)
+steps <- factor(steps, levels=steps)
+df1 <- data.frame(
+  x1, y1, g1=as.character(g1), step=steps[[1]], stringsAsFactors=FALSE
+)
+df2 <- df1[order(g1),]
+df2[['x1']] <- x1
+df2[['step']] <- steps[[2]]
+df3 <- df2
+df3 <- transform(
+  df3, yc=cumsum(y1), step=steps[[3]],
+  last=c(head(g1, -1) != tail(g1, -1), TRUE)
+)
+df4 <- transform(df3, step=steps[[4]])
+df5 <- transform(
+  subset(df4, last), x1=3:5, y1=c(yc[[1]], diff(yc)), step=steps[[5]]
+)
+df6 <- transform(df5, step=steps[[6]])
+
+plot.extra <- list(
+  facet_wrap(~step, ncol=3),
+  ylab(NULL), xlab(NULL),
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+    axis.ticks=element_blank()
+  ),
+  scale_fill_manual(values=setNames(colors, 1:3), guide=FALSE)
+)
+
+ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
+  geom_col(data=df1) +
+  geom_col(data=df2) +
+  geom_col(data=df3, mapping=aes(y=yc)) +
+  geom_col(
+    data=df4, mapping=aes(y=yc, alpha=I(ifelse(last, 1, .15))),
+    width=0.9
+  ) +
+  geom_col(data=df5, width=0.9, position='waterfall') +
+  geom_col(data=df6, width=0.9) +
+  plot.extra
+```
+
+This is the data we used for the visualization:
+
+```{r echo=FALSE}
+x1 <- y1 # a bit confusing with x/y for ggplot
+```
+```{r}
+g1
+x1
+```
+
+The first three steps are obvious:
+
+```{r}
+ord <- order(g1)
+go <- g1[ord]
+xo <- x1[ord]
+xc <- cumsum(xo)
+```
+
+Picking the last value from each group is a little harder, but we can do so with
+the help of `base::rle`.  `rle` returns the lengths of repeated-value
+sequences within a vector.  In a vector of ordered group ids, we can use it to
+compute the lengths of each group:
+
+```{r}
+go
+grle <- rle(go)
+(gn <- grle[['lengths']])
+```
+
+<span id=gnc-compute></span>This tells us the first group has two elements, the
+second also two, and the last three.  We can translate this into indices of the
+original vector with `cumsum`, and use it to pull out the relevant values from
+the cumulative sum of the `x` values:
+
+```{r}
+(gnc <- cumsum(gn))
+(xc.last <- xc[gnc])
+```
+
+To finish we just take the differences:
+
+```{r}
+diff(c(0, xc.last))
+```
+
+I wrapped the whole thing into the [`group_sum` function](#group_sum) you can
+see in the appendix:
+
+```{r "group_sum-def", echo=FALSE}
+group_sum <- function(x, grp) {
+  ## Order groups and values
+  ord <- order(grp)
+  go <- grp[ord]
+  xo <- x[ord]
+
+  ## Last values
+  grle <- rle(go)
+  gnc <- cumsum(grle[['lengths']])
+  xc <- cumsum(xo)
+  xc.last <- xc[gnc]
+
+  ## Take diffs and return
+  gs <- diff(c(0, xc.last))
+  setNames(gs, grle[['values']])
+}
+```
+```{r}
+group_sum(x1, g1)
+```
+
+Every step of `group_sum` is internally vectorized[^int-vec], so the function is
+fast.  We demonstrate here with the original 10MM data set:
+
+```{r eval=FALSE}
+sys.time(x.grpsum <- group_sum(x, grp))
+```
+```
+   user  system elapsed
+  1.098   0.244   1.344
+```
+```{r eval=FALSE}
+all.equal(x.grpsum, c(x.ref), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+`data.table` is still faster, but we're within striking distance.  Besides, the
+real fight is up ahead.  And since we get to make the rules of engagement,
+we're about to repeat the [Mayweather vs McGregor][106] fight... MMA style.
+
+<span id=rowsums></span>Before we go on, I should note that R provides
+`base::rowsums`, not to be confused with its better known cousin
+`base::rowSums`.  And why would you confuse them?  Clearly the capitalization
+and pluralization provide stark semantic clues that distinguish them like dawn
+does night and day.  Anyhow..., `rowsum` is the only base R function I know of
+that computes group statistics with arbitrary group sizes directly in compiled
+code.  If all we're trying to do is group sums, then we're better off using that
+instead of our homegrown `cumsum` version:
+
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  x.rs <- rowsum(x[o], grp[o], reorder=FALSE)
+})
+```
+```
+   user  system elapsed
+  1.283   0.105   1.430
+```
+```{r eval=FALSE}
+all.equal(x.grpsum, c(x.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+A summary of timings so far:
+
+```{r group-sum-timings, echo=FALSE}
+funs <- c('vapply', 'data.table', 'group_sum', 'group_sum2', 'rowsum')
+times <- data.frame(
+  Function=factor(funs, levels=funs),
+  time=c(2.84, 0.973, 1.344, 1.479, 1.430)
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col() +
+  # facet_wrap(~Function) +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+`vapply/split` and `rowsum` use ordered inputs and include the time to order
+them. `data.table` is single thread, and
+[`group_sum2`](#cumulative-group-sum-with-na-and-inf) is a version of
+`group_sum` that handles NAs and infinite values.  Since performance is
+comparable for `group_sum2` we will ignore the NA/Inf wrinkle going forward.
+
+# So You Think You Can Group-Stat?
+
+Okay, great, we can sum quickly in base R.  One measly stat.  What good is that
+if we want to compute something more complex like the slope of a bivariate
+regression, as we did in our [prior post][106]?  As a refresher this is what the
+calculation looks like:
+
+$$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
+\bar{x})^{2}}$$
+
+The R equivalent is[^slope-mod]:<span id='slope-ex'></a>
+
+```{r eval=FALSE}
+slope <- function(x, y) {
+  x_ux <- x - mean.default(x)
+  y_uy <- y - mean.default(y)
+  sum(x_ux * y_uy) / sum(x_ux ^ 2)
+}
+```
+
+We can see that `sum` shows up explicitly, and somewhat implicitly via
+`mean`[^not-quite-sum].  There are many statistics that essentially boil down to
+adding things together, so we can use `group_sum` (or in this case its simpler
+form `.group_sum_int`) as the wedge to breach the barrier to fast grouped
+statistics in R:
+
+```{r}
+.group_sum_int <- function(x, last.in.group) {
+  xgc <- cumsum(x)[last.in.group]
+  diff(c(0, xgc))
+}
+group_slope <- function(x, y, grp) {
+  ## order inputs by group
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  ## group sizes and group indices
+  grle <- rle(go)
+  gn <- grle[['lengths']]
+  gnc <- cumsum(gn)              # Last index in each group
+  gi <- rep(seq_along(gn), gn)   # Group recycle indices
+
+  ## compute mean(x) and mean(y), and recycle them
+  ## to each element of `x` and `y`:
+  sx <- .group_sum_int(xo, gnc)
+  ux <- (sx/gn)[gi]
+  sy <- .group_sum_int(yo, gnc)
+  uy <- (sy/gn)[gi]
+
+  ## (x - mean(x)) and (y - mean(y))
+  x_ux <- xo - ux
+  y_uy <- yo - uy
+
+  ## Slopes!
+  x_ux.y_uy <- .group_sum_int(x_ux * y_uy, gnc)
+  x_ux2 <- .group_sum_int(x_ux ^ 2, gnc)
+  setNames(x_ux.y_uy / x_ux2, grle[['values']])
+}
+```
+
+The non-obvious steps involve `gn`, `gnc`, and `gi`.   As we [saw
+earlier with `group_sum`](#gnc-compute) `gn` corresponds to how many elements
+there are in each group, and `gnc` to the index of the last element in each
+group.  Let's illustrate with some toy values:
+
+```{r}
+(xo <- 2:6)                              # some values
+(go <- c(3, 3, 5, 5, 5))                 # their groups
+(gn <- rle(go)[['lengths']])             # the size of the groups
+(gnc <- cumsum(gn))                      # index of last item in each group
+```
+
+Since these are the same quantities used by `group_sum`, we can use a
+simpler version `.group_sum_int` that takes the index of the last element in
+each group as an input:
+
+```{r}
+(sx <- .group_sum_int(xo, gnc))          # group sum
+```
+
+We re-use `gnc` four times throughout the calculation, which is a big deal
+because that is the [slow step in the computation](#reusing-last-index).  With
+the group sums we can derive the `$\bar{x}$` values:
+
+```{r}
+(sx/gn)                                 # mean of each group
+```
+
+But we need to compute `$x - \bar{x}$`, which means we need to recycle each
+group's `$\bar{x}$` value for each `$x$`.  This is what `gi` does:
+
+```{r}
+(gi <- rep(seq_along(gn), gn))
+cbind(x=xo, ux=(sx/gn)[gi], g=go)  # cbind to show relationship b/w values
+```
+
+For each original `$x$` value, we have associated the corresponding `$\bar{x}$`
+value.  We compute `uy` the same way as `ux`, and once we have those two values
+the rest of the calculation is straightforward.
+
+While this is quite a bit of work, the results are remarkable:
+
+```{r eval=FALSE}
+sys.time(slope.gs <- group_slope(x, y, grp))
+```
+```
+   user  system elapsed 
+  1.794   0.486   2.312 
+```
+
+Compare to the [hand-optimized version of `data.table`][110] from one of our
+earlier posts:
+
+```{r eval=FALSE}
+sys.time({
+  DT <- data.table(x, y, grp)
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  slope.dt <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})
+```
+```
+   user  system elapsed 
+  2.721   0.412   3.139 
+```
+
+Oh snap, we're ~30% **faster** than `data.table`!  And this is the painstakingly
+optimized version of it that computes on groups directly in C code without the
+per-group R evaluation overhead.  We're ~3x faster than the straight
+"out-of-the-box" version `DT[, slope(x, y), grp]`.
+
+A summary of all the timings:
+
+```{r rowsum-timings-all, echo=FALSE}
+funs <- c(
+  '*pply', '*pply', 'data.table', 'data.table', 'data.table', 'group_slope'
+)
+times <- data.frame(
+  Function=factor(funs, levels=unique(funs)),
+  Version=c('normal', 'ordered', 'normal', 'optim', 'optim(mc)', 'normal'),
+  time=c(12.573, 8.351 , 6.627, 3.139 , 2.412, 2.312)
+)
+ggplot(times, aes(x=Version, y=time)) +
+  geom_col() +
+  facet_grid(.~Function, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+If I let `data.table` use both my cores it comes close to our timings
+(`optim(mc)`), and presumably would do a little better still with more cores,
+but a tie or a slight win for a multi-thread process over a single thread one is
+a loss in my books.
+
+More details for the benchmarks are [in the appendix](#other-slope-benchmarks).
+
+# Controversy
+
+As we bask in the glory of this upset we notice a hubbub around the judges
+table.  A representative of the Commission on Precise Statics, gesticulating,
+points angrily at us.  Oops.  It turns out that our blazing fast benchmark hero
+is cutting some corners:
+
+```{r eval=FALSE}
+all.equal(slope.gs, slope.dt$V1, check.attributes=FALSE)
+```
+```
+[1] "Mean relative difference: 0.0001161377"
+```
+```{r eval=FALSE}
+cor(slope.dt$V1, slope.gs, use='complete.obs')
+```
+```
+[1] 0.9999882
+```
+
+The answers are almost the same, but not exactly.  Our `cumsum` approach is 
+exhausting the precision available in double precision numerics.  We could
+remedy this by using a [`rowsums`](#rowsums) based `group_slope`, but that would
+be slower as we would not be able to re-use the ordering data.
+
+Oh, so close.  We put up a good fight, but CoPS is unforgiving and we are
+disqualified.
+
+# Conclusions
+
+We learned how we can use ordered data to our advantage, and did something quite
+remarkable in the process: beat `data.table` at its own game, but for a
+technicality.  In Part 3 of the Hydra Chronicles we will explore why we're
+running into precision issues and whether we can redeem ourselves (hint: we
+can).
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Appendix
+
+## Acknowledgments
+
+* [John Mount][104], for the initial `cumsum` idea.
+* [Matt Dowle][201] and the other [`data.table` authors][204] for contributing the
+  radix sort to R.
+* [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with which
+  I made the plots in this post.
+
+## Image Credits
+
+* [Rock-em][100], 2009, by [Ariel Waldman][101], under CC BY-SA 2.0, cropped.
+
+## Reusing Last Index
+
+The key advantage `group_slope` has is that it can re-use `gnc`, the vector of
+indices to the last value in each group.  Computing `gnc` is the expensive part
+of the `cumsum` group sum calculation:<span id=basic-calcs></span>
+
+```{r echo=FALSE}
+o <- order(grp)
+go <- grp[o]
+xo <- x[o]
+gn <- rle(go)[['lengths']]
+gi <- rep(seq_along(gn), gn)
+gnc <- cumsum(gn)
+```
+```{r eval=FALSE}
+o <- order(grp)
+go <- grp[o]
+xo <- x[o]
+sys.time({
+  gn <- rle(go)[['lengths']]
+  gi <- rep(seq_along(gn), gn)
+  gnc <- cumsum(gn)
+})
+```
+```
+   user  system elapsed
+  0.398   0.134   0.535
+```
+
+Once we have `gnc` the group sum is blazing fast:
+
+```{r eval=FALSE}
+sys.time(.group_sum_int(xo, gnc))
+```
+```
+   user  system elapsed
+  0.042   0.008   0.050
+```
+
+## Other Slope Benchmarks
+
+### vapply
+
+Normal:
+
+```{r eval=FALSE}
+sys.time({
+  id <- seq_along(grp)
+  id.split <- split(id, grp)
+  slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+```
+```
+   user  system elapsed
+ 12.416   0.142  12.573
+```
+```{r eval=FALSE}
+all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+Sorted version:
+
+
+```{r eval=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  id <- seq_along(grp)[o]
+  id.split <- split(id, go)
+  slope.ply2 <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})
+```
+```
+   user  system elapsed 
+  8.233   0.105   8.351 
+```
+```{r eval=FALSE}
+all.equal(slope.ply2, c(slope.rs), check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+
+### data.table
+
+Normal:
+
+```{r eval=FALSE}
+setDTthreads(1)
+DT <- data.table(grp, x, y)
+sys.time(DT[, slope(x, y), grp])
+```
+```
+   user  system elapsed 
+  6.509   0.066   6.627 
+```
+
+Normal multi-thread:
+
+```{r eval=FALSE}
+setDTthreads(0)
+DT <- data.table(grp, x, y)
+sys.time(DT[, slope(x, y), grp])
+```
+```
+   user  system elapsed 
+  7.979   0.112   6.130 
+```
+
+Optimized:
+
+```{r eval=FALSE}
+library(data.table)
+setDTthreads(1)
+sys.time({
+  DT <- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})
+```
+```
+   user  system elapsed 
+  2.721   0.412   3.139 
+```
+
+Optimized multi-core:
+
+```{r eval=FALSE}
+setDTthreads(0)
+sys.time({
+  DT <- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 <- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})
+```
+```
+   user  system elapsed 
+  5.332   0.842   2.412 
+```
+
+## Function Definitions
+
+```{r sys-time, echo=FALSE}
+```
+
+### group_sum
+
+```{r group_sum-def, eval=FALSE}
+```
+
+### Cumulative Group Sum With NA and Inf
+
+A correct implementation of the single pass `cumsum` based `group_sum` requires
+a bit of work to handle both `NA` and `Inf` values.  Both of these need to be
+pulled out of the data ahead of the cumulative step otherwise they would wreck
+all subsequent calculations.  The rub is they need to be re-injected into the
+results, and with `Inf` we need to account for groups computing to `Inf`,
+`-Inf`, and even `NaN`.
+
+I implemented a version of `group_sum` that handles these for illustrative
+purposes.  It is lightly tested so you should not consider it to be generally
+robust.  We ignore the possibility of NAs in `grp`, although that is something
+that should be handled too as `rle` treats each NA value as distinct.
+
+```{r eval=FALSE}
+group_sum2 <- function(x, grp, na.rm=FALSE) {
+  if(length(x) != length(grp)) stop("Unequal length args")
+  if(!(is.atomic(x) && is.atomic(y))) stop("Non-atomic args")
+  if(anyNA(grp)) stop("NA vals not supported in `grp`")
+
+  ord <- order(grp)
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  grp.rle.c <- cumsum(grp.rle[['lengths']])
+  x.ord <- x[ord]
+
+  # NA and Inf handling. Checking inf makes this 5% slower, but
+  # doesn't seem worth adding special handling for cases w/o Infs
+
+  has.na <- anyNA(x)
+  if(has.na) {
+    na.x <- which(is.na(x.ord))
+    x.ord[na.x] <- 0
+  } else na.x <- integer()
+  inf.x <- which(is.infinite(x.ord))
+  any.inf <- length(inf.x) > 0
+  if(any.inf) {
+    inf.vals <- x.ord[inf.x]
+    x.ord[inf.x] <- 0
+  }
+  x.grp.c <- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] <- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
+
+  # Re-inject NAs and Infs as needed
+
+  if(any.inf) {
+    inf.grps <- findInterval(inf.x, grp.rle.c, left.open=TRUE) + 1L
+    inf.rle <- rle(inf.grps)
+    inf.res <- rep(Inf, length(inf.rle[['lengths']]))
+    inf.neg <- inf.vals < 0
+
+    # If more than one Inf val in group, need to make sure we don't have
+    # Infs of different signs as those add up to NaN
+    if(any(inf.long <- (inf.rle[['lengths']] > 1L))) {
+      inf.pos.g <- group_sum2(!inf.neg, inf.grps)
+      inf.neg.g <- group_sum2(inf.neg, inf.grps)
+      inf.res[inf.neg.g > 0] <- -Inf
+      inf.res[inf.pos.g & inf.neg.g] <- NaN
+    } else {
+      inf.res[inf.neg] <- -Inf
+    }
+    x.grp.c[inf.rle[['values']]] <- inf.res
+  }
+  if(!na.rm && has.na)
+    x.grp.c[findInterval(na.x, grp.rle.c, left.open=TRUE) + 1L] <- NA
+
+  structure(x.grp.c, groups=grp.rle[['values']], n=grp.rle[['lengths']])
+}
+sys.time(x.grpsum2 <- group_sum2(x, grp))
+```
+```
+   user  system elapsed 
+  1.147   0.323   1.479 
+```
+```{r eval=FALSE}
+all.equal(x.grpsum, x.grpsum2)
+```
+```
+[1] TRUE
+```
+```{r echo=FALSE, eval=FALSE}
+  ## some tests
+RNGversion("3.5.2"); set.seed(42)
+g20 <- rep(c(1, 3, 8, 9), c(2, 3, 4, 1))
+x20 <- runif(length(g20))
+rbind(g20, x20)
+o20 <- sample(length(g20))
+oo20 <- order(o20)
+g2 <- g20[o20]
+
+xs <- replicate(4, x20[o20], simplify=FALSE)
+xs[[1]][oo20][c(2, 6)] <- Inf
+xs[[2]][oo20][c(2, 6)] <- NA
+xs[[3]] <- xs[[2]]
+xs[[4]][oo20][c(1, 2, 3, 4, 7, 8, 10)] <- c(Inf, -Inf, Inf, Inf, NA, Inf, -Inf)
+
+mapply(
+  function(x, g, na.rm) {
+    all.equal(
+      group_sum2(x, g, na.rm=na.rm),
+      c(rowsum(x, g, na.rm=na.rm)),
+      check.attributes=FALSE
+    )
+  },
+  xs, list(g2), c(FALSE, FALSE, TRUE, FALSE)
+)
+```
+
+[^na-caveat]: Additional logic will be required for handling NAs.
+[^unique-ordered]: For more details on why the [hash table][111] based `unique`
+is affected by ordering see the [pixie dust post][103].
+[^prior-art]: I did some light research but did not find other
+  obvious uses of this method.  Since this approach was not really practical
+  until `data.table` radix sorting was added to base R in version 3.3.0, its
+  plausible it is somewhat rare.  Send me links if there are other examples.
+[^not-quite-sum]: `mean(x)` in R is not exactly equivalent to
+  `sum(x) / length(x)` because `mean` has a two pass precision improvement
+  algorithm.
+[^int-vec]: R code that carries out looped operations over vectors in compiled
+  code rather than in R-level code.
+[^slope-mod]: This is a slightly modified version of the original from [prior
+  post][107] that is faster because it uses `mean.default` instead of `mean`.
+
+[100]: https://www.flickr.com/photos/ariels_photos/4195885445/in/photolist-7oM1yv-8fyCrd-na8xCB-naaZpy-na8EkB-LTtYa-6WxNKb-9JDyW-qhNGC7-9JDm3-9JDt2-7rYhX7-9JDgE-9JDSo-qighyD-5Eefam-MP7aqp-27hhiHB-9JDNS-9JDoL-7f7eAt-imcMdo-ioeXfv-PEADr-8fyCqS-8f4Nm4-8f4Nm8-8fdcpz-eoigzJ-enHBht-4faLtc-8fyCrq-8fyCrJ-UQBbNR-9JB87-8fdcqR-fuJahW-8eWrsR-8fdcqa-8fyCr1-eoigHu-6PbaCE-idksM7-enHzAn-enHB3p-6P6ZXr-bLw8Sz-4fGYzV-6PbaqN-eoihsS
+[101]: https://www.flickr.com/photos/ariels_photos/
+[102]: /2019/05/17/pixie-dust/
+[103]: /2019/05/17/pixie-dust/#loose-ends
+[104]: https://github.com/JohnMount
+[105]: https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105
+[106]: https://en.wikipedia.org/wiki/Floyd_Mayweather_Jr._vs._Conor_McGregor
+[107]: /2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip
+[108]: /2019/02/24/a-strategy-for-faster-group-statisitics/
+[109]: https://twitter.com/BrodieGaslam/status/1106231241488154626
+[110]: /2019/02/24/a-strategy-for-faster-group-statisitics/#group-slope-optim
+[111]: https://en.wikipedia.org/wiki/Hash_table
+
+[201]: https://github.com/mattdowle
+[202]: https://github.com/hadley
+[203]: https://cran.r-project.org/web/packages/ggplot2/index.html
+[204]: https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
