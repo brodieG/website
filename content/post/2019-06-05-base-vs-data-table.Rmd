@@ -376,8 +376,7 @@ all.equal(x.grpsum, c(x.ref), check.attributes=FALSE)
 ```
 
 `data.table` is still faster, but we're within striking distance.  Besides, the
-real fight is up ahead.  And since we get to make the rules of engagement,
-we're about to repeat the [Mayweather vs McGregor][106] fight... MMA style.
+real fight is up ahead.
 
 <span id=rowsums></span>Before we go on, I should note that R provides
 `base::rowsums`, not to be confused with its better known cousin
@@ -612,7 +611,8 @@ cor(slope.dt$V1, slope.gs, use='complete.obs')
 The answers are almost the same, but not exactly.  Our `cumsum` approach is 
 exhausting the precision available in double precision numerics.  We could
 remedy this by using a [`rowsums`](#rowsums) based `group_slope`, but that would
-be slower as we would not be able to re-use the ordering data.
+be slower as we would not be able to [re-use the group index
+data](#reusing-last-index).
 
 Oh, so close.  We put up a good fight, but CoPS is unforgiving and we are
 disqualified.
@@ -933,7 +933,6 @@ is affected by ordering see the [pixie dust post][103].
 [103]: /2019/05/17/pixie-dust/#loose-ends
 [104]: https://github.com/JohnMount
 [105]: https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105
-[106]: https://en.wikipedia.org/wiki/Floyd_Mayweather_Jr._vs._Conor_McGregor
 [107]: /2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip
 [108]: /2019/02/24/a-strategy-for-faster-group-statisitics/
 [109]: https://twitter.com/BrodieGaslam/status/1106231241488154626
