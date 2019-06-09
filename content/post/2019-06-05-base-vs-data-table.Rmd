@@ -631,7 +631,12 @@ disqualified.
 
 We learned how we can use ordered data to our advantage, and did something quite
 remarkable in the process: beat `data.table` at its own game, but for a
-technicality.  In Part 3 of the Hydra Chronicles we will explore why we're
+technicality.  Granted, this was for a more complex statistic.  We will never be
+able to beat `data.table` for simple statistics with built-in `gforce`
+counterparts (e.g. `sum`, `median`, etc.), but as soon as we step away from
+those we have a chance, and even for those we are competitive[^median].
+
+In Part 3 of the Hydra Chronicles we will explore why we're
 running into precision issues and whether we can redeem ourselves (hint: we
 can).
 
@@ -936,6 +941,8 @@ is affected by ordering see the [pixie dust post][103].
   code rather than in R-level code.
 [^slope-mod]: This is a slightly modified version of the original from [prior
   post][107] that is faster because it uses `mean.default` instead of `mean`.
+[^median]: We leave it as an exercise to the reader to implement a fast
+  `group_median` function.
 
 [100]: https://www.flickr.com/photos/ariels_photos/4195885445/in/photolist-7oM1yv-8fyCrd-na8xCB-naaZpy-na8EkB-LTtYa-6WxNKb-9JDyW-qhNGC7-9JDm3-9JDt2-7rYhX7-9JDgE-9JDSo-qighyD-5Eefam-MP7aqp-27hhiHB-9JDNS-9JDoL-7f7eAt-imcMdo-ioeXfv-PEADr-8fyCqS-8f4Nm4-8f4Nm8-8fdcpz-eoigzJ-enHBht-4faLtc-8fyCrq-8fyCrJ-UQBbNR-9JB87-8fdcqR-fuJahW-8eWrsR-8fdcqa-8fyCr1-eoigHu-6PbaCE-idksM7-enHzAn-enHB3p-6P6ZXr-bLw8Sz-4fGYzV-6PbaqN-eoihsS
 [101]: https://www.flickr.com/photos/ariels_photos/

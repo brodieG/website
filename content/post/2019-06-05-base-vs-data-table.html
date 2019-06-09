@@ -355,7 +355,11 @@ disqualified.</p>
 <h1>Conclusions</h1>
 <p>We learned how we can use ordered data to our advantage, and did something quite
 remarkable in the process: beat <code>data.table</code> at its own game, but for a
-technicality. In Part 3 of the Hydra Chronicles we will explore why we’re
+technicality. Granted, this was for a more complex statistic. We will never be
+able to beat <code>data.table</code> for simple statistics with built-in <code>gforce</code>
+counterparts (e.g. <code>sum</code>, <code>median</code>, etc.), but as soon as we step away from
+those we have a chance, and even for those we are competitive<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>.</p>
+<p>In Part 3 of the Hydra Chronicles we will explore why we’re
 running into precision issues and whether we can redeem ourselves (hint: we
 can).</p>
 <!-- this needs to become a shortcode -->
@@ -583,5 +587,7 @@ post</a> that is faster because it uses <code>mean.default</code> instead of <co
 <li id="fn6"><p><code>mean(x)</code> in R is not exactly equivalent to
 <code>sum(x) / length(x)</code> because <code>mean</code> has a two pass precision improvement
 algorithm.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>We leave it as an exercise to the reader to implement a fast
+<code>group_median</code> function.<a href="#fnref7" class="footnote-back">↩</a></p></li>
 </ol>
 </div>
