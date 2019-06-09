@@ -20,6 +20,11 @@ solution for when those optimizations fail."
 
 
 
+<pre><code>## Registered S3 methods overwritten by &#39;ggplot2&#39;:
+##   method         from 
+##   [.quosures     rlang
+##   c.quosures     rlang
+##   print.quosures rlang</code></pre>
 <div id="group-statistics-in-r" class="section level1">
 <h1>Group Statistics in R</h1>
 <!-- this needs to become a shortcode -->
@@ -307,7 +312,7 @@ res.slope.dt2 &lt;- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]</code></pre>
 <p>And we get the same result as with the base solution:</p>
 <pre><code>all.equal(res.slope.base, res.slope.dt2[[2]], check.attributes=FALSE)</code></pre>
 <pre><code>[1] TRUE</code></pre>
-<p>Let’s time the whole thing:</p>
+<p><span id="group-slope-optim"></span>Let’s time the whole thing:</p>
 <pre class="r"><code>DT &lt;- data.table(grp, x, y)
 system.time({
   setkey(DT, grp)

@@ -18,7 +18,7 @@ demystify some of the optimizations used by data.table and dplyr, and present a
 solution for when those optimizations fail."
 ---
 
-```{r echo=FALSE}
+```{r echo=FALSE, warning=FALSE}
 options(digits=3, datatable.print.topn=2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 library(ggplot2)
@@ -514,7 +514,7 @@ all.equal(res.slope.base, res.slope.dt2[[2]], check.attributes=FALSE)
 [1] TRUE
 ```
 
-Let's time the whole thing:
+<span id=group-slope-optim></span>Let's time the whole thing:
 
 ```{r eval=FALSE}
 DT <- data.table(grp, x, y)
