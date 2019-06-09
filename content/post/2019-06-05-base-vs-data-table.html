@@ -1,0 +1,587 @@
+---
+title: "Hydra Chronicles, Part II: Beating data.table At Its Own Game*"
+author: ~
+date: '2019-06-10'
+slug: base-vs-data-table
+categories: [r]
+tags: [optimization]
+image: /front-img/rock-em-sock-em.png
+imagerect: /front-img/rock-em-sock-em-wide.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "In which scrappy base R takes on the reigning group stats champ
+  data.table, with suprising results, and some controversy."
+---
+
+
+
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
+<div id="in-one-corner" class="section level1">
+<h1>In One Corner…</h1>
+<!-- this needs to become a shortcode -->
+<p><a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='front-img' src='/front-img/rock-em-sock-em.png'
+  class='post-inset-image'
+/>
+</a></p>
+<p>As we saw in our <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/">Faster Group Statistics post</a>, <code>data.table</code> is the
+heavyweight champ in the field. Its <code>gforce</code> functions and fast grouping put it
+head and shoulders above all challengers. And yet, here we are, about to throw
+our hat in the ring with nothing but base R functionality. Are we out of our
+minds?</p>
+<p>Obviously I wouldn’t be writing this if I didn’t think we had a chance,
+although the only reason we have a chance is because <code>data.table</code> generously
+<a href="https://twitter.com/BrodieGaslam/status/1106231241488154626">contributed its fast radix sort to R 3.3.0</a>. Perhaps it is ungracious of
+us to use it to try to beat <code>data.table</code>, but where’s the fun in being gracious?</p>
+</div>
+<div id="the-ring-and-a-warmup" class="section level1">
+<h1>The Ring, and a Warmup</h1>
+<p>Ten million observations, ~one million groups, no holds barred:</p>
+<pre class="r"><code>RNGversion(&quot;3.5.2&quot;); set.seed(42)
+n     &lt;- 1e7
+n.grp &lt;- 1e6
+grp   &lt;- sample(n.grp, n, replace=TRUE)
+noise &lt;- rep(c(.001, -.001), n/2)  # more on this later
+x     &lt;- runif(n) + noise
+y     &lt;- runif(n) + noise          # we&#39;ll use this later</code></pre>
+<p>Let’s do a warm-up run, with a simple statistic. We use <code>vapply</code>/<code>split</code>
+instead of <code>tapply</code> as that will allow us to work with more complex statistics
+later. <code>sys.time</code> is a wrapper around <code>system.time</code> that runs the expression
+eleven times and returns the median timing. It is <a href="#sys.time">defined in the
+appendix</a>.</p>
+<pre class="r"><code>sys.time({
+  grp.dat &lt;- split(x, grp)
+  x.ref &lt;- vapply(grp.dat, sum, 0)
+})</code></pre>
+<pre><code>   user  system elapsed
+  6.235   0.076   6.316</code></pre>
+<p>Let’s repeat by ordering the data first because <a href="/2019/05/17/pixie-dust/">pixie dust</a>:</p>
+<pre class="r"><code>sys.time({
+  o &lt;- order(grp)
+  go &lt;- grp[o]
+  xo &lt;- x[o]
+
+  grp.dat &lt;- split(xo, go)
+  xgo.sum &lt;- vapply(grp.dat, sum, numeric(1))
+})</code></pre>
+<pre><code>   user  system elapsed 
+  2.743   0.092   2.840 </code></pre>
+<p>And now with <code>data.table</code>:</p>
+<pre class="r"><code>library(data.table)
+DT &lt;- data.table(grp, x)
+setDTthreads(1)             # turn off multi-threading
+sys.time(x.dt &lt;- DT[, sum(x), keyby=grp][[2]])</code></pre>
+<pre><code>   user  system elapsed
+  0.941   0.030   0.973</code></pre>
+<p>Ouch. Even without multithreading <code>data.table</code> crushes even the ordered
+<code>split</code>/<code>vapply</code>. We use one thread for more stable and comparable results.
+We’ll show some multi-threaded benchmarks at the end.</p>
+</div>
+<div id="interlude---better-living-through-sorted-data" class="section level1">
+<h1>Interlude - Better Living Through Sorted Data</h1>
+<p>Pixie dust is awesome, but there is an even more important reason to like sorted
+data: it opens up possibilities for better algorithms. <code>unique</code> makes for a
+good illustration. Let’s start with a simple run:</p>
+<pre class="r"><code>sys.time(u0 &lt;- unique(grp))</code></pre>
+<pre><code>   user  system elapsed
+  1.223   0.055   1.290</code></pre>
+<p>We are ~40% faster if we order first, including the time to
+order<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>:</p>
+<!-- USE SORT, SIMPLIFY? -->
+<pre class="r"><code>sys.time({
+  o &lt;- order(grp)
+  go &lt;- grp[o]
+  u1 &lt;- unique(go)
+})</code></pre>
+<pre><code>   user  system elapsed
+  0.884   0.049   0.937</code></pre>
+<pre class="r"><code>identical(sort(u0), u1)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>The interesting thing is that once the data is ordered we don’t even need to use
+<code>unique</code> and its <a href="/2019/05/17/pixie-dust/#loose-ends">inefficient hash table</a>. For example, in:</p>
+<pre class="r"><code>(go.hd &lt;- head(go, 30))</code></pre>
+<pre><code> [1] 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 3 3 3 3 3 3 3 4 4 4 4 4</code></pre>
+<p>We just need to find the positions where the values change to find the unique
+values, which we can do with <code>diff</code>, or the
+slightly-faster-for-this-purpose<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>:</p>
+<pre class="r"><code>go[-1L] != go[-length(go)]</code></pre>
+<p>It is clear looking at the vectors side by side that the groups change when they
+are not equal (showing first 30):</p>
+<PRE class="fansi fansi-output"><CODE>go[-1L]         : 1 1 1 1 1 1 1 1 1 1 <span style='background-color: #BBBB00;'>2</span><span> 2 2 2 2 2 2 </span><span style='background-color: #BBBB00;'>3</span><span> 3 3 3 3 3 3 </span><span style='background-color: #BBBB00;'>4</span><span> 4 4 4 4
+go[-length(go)] : 1 1 1 1 1 1 1 1 1 1 </span><span style='background-color: #BBBB00;'>1</span><span> 2 2 2 2 2 2 </span><span style='background-color: #BBBB00;'>2</span><span> 3 3 3 3 3 3 </span><span style='background-color: #BBBB00;'>3</span><span> 4 4 4 4
+</span></CODE></PRE>
+<p>To get the unique values we can just use the above to index into <code>go</code>, though we
+must offset by one element:</p>
+<pre class="r"><code>sys.time({
+  o &lt;- order(grp)
+  go &lt;- grp[o]
+  u2 &lt;- go[c(TRUE, go[-1L] != go[-length(go)])]
+})</code></pre>
+<pre><code>   user  system elapsed
+  0.652   0.017   0.672</code></pre>
+<pre class="r"><code>identical(u1, u2)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Same result, but twice the speed of the original, again including the time to
+order. Most of the time is spent ordering as we can see by how quickly we pick
+out the unique values once the data is ordered:</p>
+<pre class="r"><code>sys.time(u2 &lt;- go[c(TRUE, go[-1L] != go[-length(go)])])</code></pre>
+<pre><code>   user  system elapsed
+  0.135   0.016   0.151</code></pre>
+<p>The main point I’m trying to make here is that it is a <strong>big deal</strong> that <code>order</code>
+is fast enough that we can switch the algorithms we use downstream and get an
+even bigger performance improvement.</p>
+<blockquote>
+<p>A big thank you to team <code>data.table</code> for sharing the pixie dust.</p>
+</blockquote>
+</div>
+<div id="group-sums" class="section level1">
+<h1>Group Sums</h1>
+<p>It’s cute that we can use our newfound power to find unique values, but can we
+do something more sophisticated? It turns out we can. <a href="https://github.com/JohnMount">John Mount</a>, shows
+how to compute group sums <a href="https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105">using <code>cumsum</code></a> on group-ordered
+data<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. With a little work we can generalize it.</p>
+<p>The concept is to order by group, compute cumulative sum, pull out the last
+value for each group, and take their differences. Visually:</p>
+<p><img src="/post/2019-06-05-base-vs-data-table_files/figure-html/cumsum-ex-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>This is the data we used for the visualization:</p>
+<pre class="r"><code>g1</code></pre>
+<pre><code>[1] 1 2 3 2 3 3 1</code></pre>
+<pre class="r"><code>x1</code></pre>
+<pre><code>[1] 0.915 0.937 0.286 0.830 0.642 0.519 0.737</code></pre>
+<p>The first three steps are obvious:</p>
+<pre class="r"><code>ord &lt;- order(g1)
+go &lt;- g1[ord]
+xo &lt;- x1[ord]
+xc &lt;- cumsum(xo)</code></pre>
+<p>Picking the last value from each group is a little harder, but we can do so with
+the help of <code>base::rle</code>. <code>rle</code> returns the lengths of repeated-value
+sequences within a vector. In a vector of ordered group ids, we can use it to
+compute the lengths of each group:</p>
+<pre class="r"><code>go</code></pre>
+<pre><code>[1] 1 1 2 2 3 3 3</code></pre>
+<pre class="r"><code>grle &lt;- rle(go)
+(gn &lt;- grle[[&#39;lengths&#39;]])</code></pre>
+<pre><code>[1] 2 2 3</code></pre>
+<p><span id="gnc-compute"></span>This tells us the first group has two elements, the
+second also two, and the last three. We can translate this into indices of the
+original vector with <code>cumsum</code>, and use it to pull out the relevant values from
+the cumulative sum of the <code>x</code> values:</p>
+<pre class="r"><code>(gnc &lt;- cumsum(gn))</code></pre>
+<pre><code>[1] 2 4 7</code></pre>
+<pre class="r"><code>(xc.last &lt;- xc[gnc])</code></pre>
+<pre><code>[1] 1.65 3.42 4.87</code></pre>
+<p>To finish we just take the differences:</p>
+<pre class="r"><code>diff(c(0, xc.last))</code></pre>
+<pre><code>[1] 1.65 1.77 1.45</code></pre>
+<p>I wrapped the whole thing into the <a href="#group_sum"><code>group_sum</code> function</a> you can
+see in the appendix:</p>
+<pre class="r"><code>group_sum(x1, g1)</code></pre>
+<pre><code>   1    2    3 
+1.65 1.77 1.45 </code></pre>
+<p>Every step of <code>group_sum</code> is internally vectorized<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>, so the function is
+fast. We demonstrate here with the original 10MM data set:</p>
+<pre class="r"><code>sys.time(x.grpsum &lt;- group_sum(x, grp))</code></pre>
+<pre><code>   user  system elapsed
+  1.098   0.244   1.344</code></pre>
+<pre class="r"><code>all.equal(x.grpsum, c(x.ref), check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p><code>data.table</code> is still faster, but we’re within striking distance. Besides, the
+real fight is up ahead.</p>
+<p><span id="rowsums"></span>Before we go on, I should note that R provides
+<code>base::rowsums</code>, not to be confused with its better known cousin
+<code>base::rowSums</code>. And why would you confuse them? Clearly the capitalization
+and pluralization provide stark semantic clues that distinguish them like dawn
+does night and day. Anyhow…, <code>rowsum</code> is the only base R function I know of
+that computes group statistics with arbitrary group sizes directly in compiled
+code. If all we’re trying to do is group sums, then we’re better off using that
+instead of our homegrown <code>cumsum</code> version:</p>
+<pre class="r"><code>sys.time({
+  o &lt;- order(grp)
+  x.rs &lt;- rowsum(x[o], grp[o], reorder=FALSE)
+})</code></pre>
+<pre><code>   user  system elapsed
+  1.283   0.105   1.430</code></pre>
+<pre class="r"><code>all.equal(x.grpsum, c(x.rs), check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>A summary of timings so far:</p>
+<p><img src="/post/2019-06-05-base-vs-data-table_files/figure-html/group-sum-timings-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><code>vapply/split</code> and <code>rowsum</code> use ordered inputs and include the time to order
+them. <code>data.table</code> is single thread, and
+<a href="#cumulative-group-sum-with-na-and-inf"><code>group_sum2</code></a> is a version of
+<code>group_sum</code> that handles NAs and infinite values. Since performance is
+comparable for <code>group_sum2</code> we will ignore the NA/Inf wrinkle going forward.</p>
+</div>
+<div id="so-you-think-you-can-group-stat" class="section level1">
+<h1>So You Think You Can Group-Stat?</h1>
+<p>Okay, great, we can sum quickly in base R. One measly stat. What good is that
+if we want to compute something more complex like the slope of a bivariate
+regression, as we did in our [prior post][106]? As a refresher this is what the
+calculation looks like:</p>
+<p><span class="math display">\[\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
+\bar{x})^{2}}\]</span></p>
+<p>The R equivalent is<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>:<span id='slope-ex'></a></p>
+<pre class="r"><code>slope &lt;- function(x, y) {
+  x_ux &lt;- x - mean.default(x)
+  y_uy &lt;- y - mean.default(y)
+  sum(x_ux * y_uy) / sum(x_ux ^ 2)
+}</code></pre>
+<p>We can see that <code>sum</code> shows up explicitly, and somewhat implicitly via
+<code>mean</code><a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>. There are many statistics that essentially boil down to
+adding things together, so we can use <code>group_sum</code> (or in this case its simpler
+form <code>.group_sum_int</code>) as the wedge to breach the barrier to fast grouped
+statistics in R:</p>
+<pre class="r"><code>.group_sum_int &lt;- function(x, last.in.group) {
+  xgc &lt;- cumsum(x)[last.in.group]
+  diff(c(0, xgc))
+}
+group_slope &lt;- function(x, y, grp) {
+  ## order inputs by group
+  o &lt;- order(grp)
+  go &lt;- grp[o]
+  xo &lt;- x[o]
+  yo &lt;- y[o]
+
+  ## group sizes and group indices
+  grle &lt;- rle(go)
+  gn &lt;- grle[[&#39;lengths&#39;]]
+  gnc &lt;- cumsum(gn)              # Last index in each group
+  gi &lt;- rep(seq_along(gn), gn)   # Group recycle indices
+
+  ## compute mean(x) and mean(y), and recycle them
+  ## to each element of `x` and `y`:
+  sx &lt;- .group_sum_int(xo, gnc)
+  ux &lt;- (sx/gn)[gi]
+  sy &lt;- .group_sum_int(yo, gnc)
+  uy &lt;- (sy/gn)[gi]
+
+  ## (x - mean(x)) and (y - mean(y))
+  x_ux &lt;- xo - ux
+  y_uy &lt;- yo - uy
+
+  ## Slopes!
+  x_ux.y_uy &lt;- .group_sum_int(x_ux * y_uy, gnc)
+  x_ux2 &lt;- .group_sum_int(x_ux ^ 2, gnc)
+  setNames(x_ux.y_uy / x_ux2, grle[[&#39;values&#39;]])
+}</code></pre>
+<p>The non-obvious steps involve <code>gn</code>, <code>gnc</code>, and <code>gi</code>. As we <a href="#gnc-compute">saw
+earlier with <code>group_sum</code></a> <code>gn</code> corresponds to how many elements
+there are in each group, and <code>gnc</code> to the index of the last element in each
+group. Let’s illustrate with some toy values:</p>
+<pre class="r"><code>(xo &lt;- 2:6)                              # some values</code></pre>
+<pre><code>[1] 2 3 4 5 6</code></pre>
+<pre class="r"><code>(go &lt;- c(3, 3, 5, 5, 5))                 # their groups</code></pre>
+<pre><code>[1] 3 3 5 5 5</code></pre>
+<pre class="r"><code>(gn &lt;- rle(go)[[&#39;lengths&#39;]])             # the size of the groups</code></pre>
+<pre><code>[1] 2 3</code></pre>
+<pre class="r"><code>(gnc &lt;- cumsum(gn))                      # index of last item in each group</code></pre>
+<pre><code>[1] 2 5</code></pre>
+<p>Since these are the same quantities used by <code>group_sum</code>, we can use a
+simpler version <code>.group_sum_int</code> that takes the index of the last element in
+each group as an input:</p>
+<pre class="r"><code>(sx &lt;- .group_sum_int(xo, gnc))          # group sum</code></pre>
+<pre><code>[1]  5 15</code></pre>
+<p>We re-use <code>gnc</code> four times throughout the calculation, which is a big deal
+because that is the <a href="#reusing-last-index">slow step in the computation</a>. With
+the group sums we can derive the <code>$\bar{x}$</code> values:</p>
+<pre class="r"><code>(sx/gn)                                 # mean of each group</code></pre>
+<pre><code>[1] 2.5 5.0</code></pre>
+<p>But we need to compute <code>$x - \bar{x}$</code>, which means we need to recycle each
+group’s <code>$\bar{x}$</code> value for each <code>$x$</code>. This is what <code>gi</code> does:</p>
+<pre class="r"><code>(gi &lt;- rep(seq_along(gn), gn))</code></pre>
+<pre><code>[1] 1 1 2 2 2</code></pre>
+<pre class="r"><code>cbind(x=xo, ux=(sx/gn)[gi], g=go)  # cbind to show relationship b/w values</code></pre>
+<pre><code>     x  ux g
+[1,] 2 2.5 3
+[2,] 3 2.5 3
+[3,] 4 5.0 5
+[4,] 5 5.0 5
+[5,] 6 5.0 5</code></pre>
+<p>For each original <code>$x$</code> value, we have associated the corresponding <code>$\bar{x}$</code>
+value. We compute <code>uy</code> the same way as <code>ux</code>, and once we have those two values
+the rest of the calculation is straightforward.</p>
+<p>While this is quite a bit of work, the results are remarkable:</p>
+<pre class="r"><code>sys.time(slope.gs &lt;- group_slope(x, y, grp))</code></pre>
+<pre><code>   user  system elapsed 
+  1.794   0.486   2.312 </code></pre>
+<p>Compare to the <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#group-slope-optim">hand-optimized version of <code>data.table</code></a> from one of our
+earlier posts:</p>
+<pre class="r"><code>sys.time({
+  DT &lt;- data.table(x, y, grp)
+  setkey(DT, grp)
+  DTsum &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  slope.dt &lt;- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})</code></pre>
+<pre><code>   user  system elapsed 
+  2.721   0.412   3.139 </code></pre>
+<p>Oh snap, we’re ~30% <strong>faster</strong> than <code>data.table</code>! And this is the painstakingly
+optimized version of it that computes on groups directly in C code without the
+per-group R evaluation overhead. We’re ~3x faster than the straight
+“out-of-the-box” version <code>DT[, slope(x, y), grp]</code>.</p>
+<p>A summary of all the timings:</p>
+<p><img src="/post/2019-06-05-base-vs-data-table_files/figure-html/rowsum-timings-all-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>If I let <code>data.table</code> use both my cores it comes close to our timings
+(<code>optim(mc)</code>), and presumably would do a little better still with more cores,
+but a tie or a slight win for a multi-thread process over a single thread one is
+a loss in my books.</p>
+<p>More details for the benchmarks are <a href="#other-slope-benchmarks">in the appendix</a>.</p>
+</div>
+<div id="controversy" class="section level1">
+<h1>Controversy</h1>
+<p>As we bask in the glory of this upset we notice a hubbub around the judges
+table. A representative of the Commission on Precise Statics, gesticulating,
+points angrily at us. Oops. It turns out that our blazing fast benchmark hero
+is cutting some corners:</p>
+<pre class="r"><code>all.equal(slope.gs, slope.dt$V1, check.attributes=FALSE)</code></pre>
+<pre><code>[1] &quot;Mean relative difference: 0.0001161377&quot;</code></pre>
+<pre class="r"><code>cor(slope.dt$V1, slope.gs, use=&#39;complete.obs&#39;)</code></pre>
+<pre><code>[1] 0.9999882</code></pre>
+<p>The answers are almost the same, but not exactly. Our <code>cumsum</code> approach is
+exhausting the precision available in double precision numerics. We could
+remedy this by using a <a href="#rowsums"><code>rowsums</code></a> based <code>group_slope</code>, but that would
+be slower as we would not be able to <a href="#reusing-last-index">re-use the group index
+data</a>.</p>
+<p>Oh, so close. We put up a good fight, but CoPS is unforgiving and we are
+disqualified.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>We learned how we can use ordered data to our advantage, and did something quite
+remarkable in the process: beat <code>data.table</code> at its own game, but for a
+technicality. In Part 3 of the Hydra Chronicles we will explore why we’re
+running into precision issues and whether we can redeem ourselves (hint: we
+can).</p>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="acknowledgments" class="section level2">
+<h2>Acknowledgments</h2>
+<ul>
+<li><a href="https://github.com/JohnMount">John Mount</a>, for the initial <code>cumsum</code> idea.</li>
+<li><a href="https://github.com/mattdowle">Matt Dowle</a> and the other <a href="https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html"><code>data.table</code> authors</a> for contributing the
+radix sort to R.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code> with which
+I made the plots in this post.</li>
+</ul>
+</div>
+<div id="image-credits" class="section level2">
+<h2>Image Credits</h2>
+<ul>
+<li><a href="https://www.flickr.com/photos/ariels_photos/4195885445/in/photolist-7oM1yv-8fyCrd-na8xCB-naaZpy-na8EkB-LTtYa-6WxNKb-9JDyW-qhNGC7-9JDm3-9JDt2-7rYhX7-9JDgE-9JDSo-qighyD-5Eefam-MP7aqp-27hhiHB-9JDNS-9JDoL-7f7eAt-imcMdo-ioeXfv-PEADr-8fyCqS-8f4Nm4-8f4Nm8-8fdcpz-eoigzJ-enHBht-4faLtc-8fyCrq-8fyCrJ-UQBbNR-9JB87-8fdcqR-fuJahW-8eWrsR-8fdcqa-8fyCr1-eoigHu-6PbaCE-idksM7-enHzAn-enHB3p-6P6ZXr-bLw8Sz-4fGYzV-6PbaqN-eoihsS">Rock-em</a>, 2009, by <a href="https://www.flickr.com/photos/ariels_photos/">Ariel Waldman</a>, under CC BY-SA 2.0, cropped.</li>
+</ul>
+</div>
+<div id="reusing-last-index" class="section level2">
+<h2>Reusing Last Index</h2>
+<p>The key advantage <code>group_slope</code> has is that it can re-use <code>gnc</code>, the vector of
+indices to the last value in each group. Computing <code>gnc</code> is the expensive part
+of the <code>cumsum</code> group sum calculation:<span id="basic-calcs"></span></p>
+<pre class="r"><code>o &lt;- order(grp)
+go &lt;- grp[o]
+xo &lt;- x[o]
+sys.time({
+  gn &lt;- rle(go)[[&#39;lengths&#39;]]
+  gi &lt;- rep(seq_along(gn), gn)
+  gnc &lt;- cumsum(gn)
+})</code></pre>
+<pre><code>   user  system elapsed
+  0.398   0.134   0.535</code></pre>
+<p>Once we have <code>gnc</code> the group sum is blazing fast:</p>
+<pre class="r"><code>sys.time(.group_sum_int(xo, gnc))</code></pre>
+<pre><code>   user  system elapsed
+  0.042   0.008   0.050</code></pre>
+</div>
+<div id="other-slope-benchmarks" class="section level2">
+<h2>Other Slope Benchmarks</h2>
+<div id="vapply" class="section level3">
+<h3>vapply</h3>
+<p>Normal:</p>
+<pre class="r"><code>sys.time({
+  id &lt;- seq_along(grp)
+  id.split &lt;- split(id, grp)
+  slope.ply &lt;- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})</code></pre>
+<pre><code>   user  system elapsed
+ 12.416   0.142  12.573</code></pre>
+<pre class="r"><code>all.equal(slope.ply, c(slope.rs), check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Sorted version:</p>
+<pre class="r"><code>sys.time({
+  o &lt;- order(grp)
+  go &lt;- grp[o]
+  id &lt;- seq_along(grp)[o]
+  id.split &lt;- split(id, go)
+  slope.ply2 &lt;- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+})</code></pre>
+<pre><code>   user  system elapsed 
+  8.233   0.105   8.351 </code></pre>
+<pre class="r"><code>all.equal(slope.ply2, c(slope.rs), check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+</div>
+<div id="data.table" class="section level3">
+<h3>data.table</h3>
+<p>Normal:</p>
+<pre class="r"><code>setDTthreads(1)
+DT &lt;- data.table(grp, x, y)
+sys.time(DT[, slope(x, y), grp])</code></pre>
+<pre><code>   user  system elapsed 
+  6.509   0.066   6.627 </code></pre>
+<p>Normal multi-thread:</p>
+<pre class="r"><code>setDTthreads(0)
+DT &lt;- data.table(grp, x, y)
+sys.time(DT[, slope(x, y), grp])</code></pre>
+<pre><code>   user  system elapsed 
+  7.979   0.112   6.130 </code></pre>
+<p>Optimized:</p>
+<pre class="r"><code>library(data.table)
+setDTthreads(1)
+sys.time({
+  DT &lt;- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 &lt;- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})</code></pre>
+<pre><code>   user  system elapsed 
+  2.721   0.412   3.139 </code></pre>
+<p>Optimized multi-core:</p>
+<pre class="r"><code>setDTthreads(0)
+sys.time({
+  DT &lt;- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum &lt;- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum &lt;- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 &lt;- DTsum[, .(grp, V1=x_ux.y_uy / x_ux2)]
+})</code></pre>
+<pre><code>   user  system elapsed 
+  5.332   0.842   2.412 </code></pre>
+</div>
+</div>
+<div id="function-definitions" class="section level2">
+<h2>Function Definitions</h2>
+<div id="group_sum" class="section level3">
+<h3>group_sum</h3>
+<pre class="r"><code>group_sum &lt;- function(x, grp) {
+  ## Order groups and values
+  ord &lt;- order(grp)
+  go &lt;- grp[ord]
+  xo &lt;- x[ord]
+
+  ## Last values
+  grle &lt;- rle(go)
+  gnc &lt;- cumsum(grle[[&#39;lengths&#39;]])
+  xc &lt;- cumsum(xo)
+  xc.last &lt;- xc[gnc]
+
+  ## Take diffs and return
+  gs &lt;- diff(c(0, xc.last))
+  setNames(gs, grle[[&#39;values&#39;]])
+}</code></pre>
+</div>
+<div id="cumulative-group-sum-with-na-and-inf" class="section level3">
+<h3>Cumulative Group Sum With NA and Inf</h3>
+<p>A correct implementation of the single pass <code>cumsum</code> based <code>group_sum</code> requires
+a bit of work to handle both <code>NA</code> and <code>Inf</code> values. Both of these need to be
+pulled out of the data ahead of the cumulative step otherwise they would wreck
+all subsequent calculations. The rub is they need to be re-injected into the
+results, and with <code>Inf</code> we need to account for groups computing to <code>Inf</code>,
+<code>-Inf</code>, and even <code>NaN</code>.</p>
+<p>I implemented a version of <code>group_sum</code> that handles these for illustrative
+purposes. It is lightly tested so you should not consider it to be generally
+robust. We ignore the possibility of NAs in <code>grp</code>, although that is something
+that should be handled too as <code>rle</code> treats each NA value as distinct.</p>
+<pre class="r"><code>group_sum2 &lt;- function(x, grp, na.rm=FALSE) {
+  if(length(x) != length(grp)) stop(&quot;Unequal length args&quot;)
+  if(!(is.atomic(x) &amp;&amp; is.atomic(y))) stop(&quot;Non-atomic args&quot;)
+  if(anyNA(grp)) stop(&quot;NA vals not supported in `grp`&quot;)
+
+  ord &lt;- order(grp)
+  grp.ord &lt;- grp[ord]
+  grp.rle &lt;- rle(grp.ord)
+  grp.rle.c &lt;- cumsum(grp.rle[[&#39;lengths&#39;]])
+  x.ord &lt;- x[ord]
+
+  # NA and Inf handling. Checking inf makes this 5% slower, but
+  # doesn&#39;t seem worth adding special handling for cases w/o Infs
+
+  has.na &lt;- anyNA(x)
+  if(has.na) {
+    na.x &lt;- which(is.na(x.ord))
+    x.ord[na.x] &lt;- 0
+  } else na.x &lt;- integer()
+  inf.x &lt;- which(is.infinite(x.ord))
+  any.inf &lt;- length(inf.x) &gt; 0
+  if(any.inf) {
+    inf.vals &lt;- x.ord[inf.x]
+    x.ord[inf.x] &lt;- 0
+  }
+  x.grp.c &lt;- cumsum(x.ord)[grp.rle.c]
+  x.grp.c[-1L] &lt;- x.grp.c[-1L] - x.grp.c[-length(x.grp.c)]
+
+  # Re-inject NAs and Infs as needed
+
+  if(any.inf) {
+    inf.grps &lt;- findInterval(inf.x, grp.rle.c, left.open=TRUE) + 1L
+    inf.rle &lt;- rle(inf.grps)
+    inf.res &lt;- rep(Inf, length(inf.rle[[&#39;lengths&#39;]]))
+    inf.neg &lt;- inf.vals &lt; 0
+
+    # If more than one Inf val in group, need to make sure we don&#39;t have
+    # Infs of different signs as those add up to NaN
+    if(any(inf.long &lt;- (inf.rle[[&#39;lengths&#39;]] &gt; 1L))) {
+      inf.pos.g &lt;- group_sum2(!inf.neg, inf.grps)
+      inf.neg.g &lt;- group_sum2(inf.neg, inf.grps)
+      inf.res[inf.neg.g &gt; 0] &lt;- -Inf
+      inf.res[inf.pos.g &amp; inf.neg.g] &lt;- NaN
+    } else {
+      inf.res[inf.neg] &lt;- -Inf
+    }
+    x.grp.c[inf.rle[[&#39;values&#39;]]] &lt;- inf.res
+  }
+  if(!na.rm &amp;&amp; has.na)
+    x.grp.c[findInterval(na.x, grp.rle.c, left.open=TRUE) + 1L] &lt;- NA
+
+  structure(x.grp.c, groups=grp.rle[[&#39;values&#39;]], n=grp.rle[[&#39;lengths&#39;]])
+}
+sys.time(x.grpsum2 &lt;- group_sum2(x, grp))</code></pre>
+<pre><code>   user  system elapsed 
+  1.147   0.323   1.479 </code></pre>
+<pre class="r"><code>all.equal(x.grpsum, x.grpsum2)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+</div>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>For more details on why the <a href="https://en.wikipedia.org/wiki/Hash_table">hash table</a> based <code>unique</code>
+is affected by ordering see the <a href="/2019/05/17/pixie-dust/#loose-ends">pixie dust post</a>.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>Additional logic will be required for handling NAs.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>I did some light research but did not find other
+obvious uses of this method. Since this approach was not really practical
+until <code>data.table</code> radix sorting was added to base R in version 3.3.0, its
+plausible it is somewhat rare. Send me links if there are other examples.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>R code that carries out looped operations over vectors in compiled
+code rather than in R-level code.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>This is a slightly modified version of the original from <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip">prior
+post</a> that is faster because it uses <code>mean.default</code> instead of <code>mean</code>.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p><code>mean(x)</code> in R is not exactly equivalent to
+<code>sum(x) / length(x)</code> because <code>mean</code> has a two pass precision improvement
+algorithm.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+</ol>
+</div>

@@ -175,17 +175,27 @@ The interesting thing is that once the data is ordered we don't even need to use
 `unique` and its [inefficient hash table][103].  For example, in:
 
 ```{r}
-head(go, 60)
+(go.hd <- head(go, 30))
 ```
 
 We just need to find the positions where the values change to find the unique
-values, which we can do with[^na-caveat]:
+values, which we can do with `diff`, or the
+slightly-faster-for-this-purpose[^na-caveat]:
 
 ```{r eval=FALSE}
 go[-1L] != go[-length(go)]
 ```
 
-So to get the unique values, including time to order:
+It is clear looking at the vectors side by side that the groups change when they
+are not equal (showing first 30):
+
+```{r echo=FALSE}
+writeLines("go[-1L]         : 1 1 1 1 1 1 1 1 1 1 \033[43m2\033[m 2 2 2 2 2 2 \033[43m3\033[m 3 3 3 3 3 3 \033[43m4\033[m 4 4 4 4
+go[-length(go)] : 1 1 1 1 1 1 1 1 1 1 \033[43m1\033[m 2 2 2 2 2 2 \033[43m2\033[m 3 3 3 3 3 3 \033[43m3\033[m 4 4 4 4")
+```
+
+To get the unique values we can just use the above to index into `go`, though we
+must offset by one element:
 
 ```{r eval=FALSE}
 sys.time({
@@ -205,9 +215,9 @@ identical(u1, u2)
 [1] TRUE
 ```
 
-Same result, but twice the speed of the original.  Most of the time is spent
-ordering as we can see by how quickly we pick out the unique values once
-the data is ordered:
+Same result, but twice the speed of the original, again including the time to
+order.  Most of the time is spent ordering as we can see by how quickly we pick
+out the unique values once the data is ordered:
 
 ```{r eval=FALSE}
 sys.time(u2 <- go[c(TRUE, go[-1L] != go[-length(go)])])
