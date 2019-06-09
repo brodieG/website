@@ -389,7 +389,7 @@ all.equal(x.grpsum, c(x.ref), check.attributes=FALSE)
 real fight is up ahead.
 
 <span id=rowsums></span>Before we go on, I should note that R provides
-`base::rowsums`, not to be confused with its better known cousin
+`base::rowsum`, not to be confused with its better known cousin
 `base::rowSums`.  And why would you confuse them?  Clearly the capitalization
 and pluralization provide stark semantic clues that distinguish them like dawn
 does night and day.  Anyhow..., `rowsum` is the only base R function I know of
