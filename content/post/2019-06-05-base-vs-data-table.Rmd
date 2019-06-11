@@ -440,8 +440,8 @@ comparable for `group_sum2` we will ignore the NA/Inf wrinkle going forward.
 
 Okay, great, we can sum quickly in base R.  One measly stat.  What good is that
 if we want to compute something more complex like the slope of a bivariate
-regression, as we did in our [prior post][106]?  As a refresher this is what the
-calculation looks like:
+regression, as we did in our [prior post][107]?  As a refresher this is what the
+calculation looks like[^slope-orig]:
 
 $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
@@ -598,6 +598,12 @@ a loss in my books.
 
 More details for the benchmarks are [in the appendix](#other-slope-benchmarks).
 
+**UPDATE**: [Michael Chirico][205] points out that it is [possible to
+reformulate][209] the slope equation into a more favorable form, and under that
+form `data.table` is faster (although our methods are close).  I'll defer
+analysis of how generalizable this is to another post, but in the meantime you
+can see [those benchmarks in the appendix](#slope-reformulated).
+
 # Controversy
 
 As we bask in the glory of this upset we notice a hubbub around the judges
@@ -646,9 +652,20 @@ can).
 
 # Appendix
 
+## Updates
+
+* 2019-06-10:
+    * Slope reformulation.
+    * Included missing `sys.time` definition.
+    * Bad links.
+
 ## Acknowledgments
 
 * [John Mount][104], for the initial `cumsum` idea.
+* [Michael Chirico][205] for the clever alternate formulation to slope, and for
+  having the time and patience to remind me of the expected value forms and
+  manipulations of variance and covariance.
+* [Dirk Eddelbuettel][206] for copy edit suggestions.
 * [Matt Dowle][201] and the other [`data.table` authors][204] for contributing the
   radix sort to R.
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with which
@@ -657,6 +674,11 @@ can).
 ## Image Credits
 
 * [Rock-em][100], 2009, by [Ariel Waldman][101], under CC BY-SA 2.0, cropped.
+
+## sys.time
+
+```{r sys-time, eval=FALSE}
+```
 
 ## Reusing Last Index
 
@@ -809,6 +831,108 @@ sys.time({
   5.332   0.842   2.412 
 ```
 
+### Reformulated Slope
+
+Special thanks to [Michael Chirico][205] for providing this alternative
+formulation to the slope calculation:
+
+$$
+\begin{matrix}
+Slope& = &\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i - \bar{x})^{2}}\\
+     & = &\frac{Cov(x, y)}{Var(x)}\\\
+     & = &\frac{E[x - E[x]]E[y - E[y]]}{E[(x - E[x])^2]}\\\
+     & = &\frac{E[xy] - E[x]E[y]}{E[x^2] - E[x]^2}
+\end{matrix}
+$$
+
+Where we take `E[...]` to signify `mean(...)`.  See the Wikipedia pages for
+[Variance][207] and [Covariance][208] for the step-by-step simplifications of
+the expected value expressions.
+
+A key feature of this formulation is there is no interaction between grouped
+statistics and ungrouped as in [the original](#slope-orig).  This saves the
+costly merge step and results in a substantially faster calculation (single
+thread):
+
+```{r eval=FALSE}
+sys.time({
+  DT <- data.table(x, y, xy=x*y, x2=x^2, grp)
+  slope.dt.re <- DT[,
+    .(ux=mean(x), uy=mean(y), uxy=mean(xy), ux2=mean(x2)),
+    keyby=grp
+  ][,
+    setNames((uxy - ux*uy)/(ux2 - ux^2), grp)
+  ]
+})
+```
+```
+   user  system elapsed
+  1.377   0.126   1.507
+```
+
+But careful as there are precision issues here too, as warned on the [variance
+page][207]:
+
+>  This equation should not be used for computations using floating point
+>  arithmetic because it suffers from catastrophic cancellation if the two
+>  components of the equation are similar in magnitude. There exist numerically
+>  stable alternatives.
+
+We observe this to a small extent by comparing to our `vapply` based
+calculation:
+
+```{r eval=FALSE}
+quantile(slope.ply2 - slope.dt.re, na.rm=TRUE)
+```
+```
+           0%           25%           50%           75%          100% 
+-6.211681e-04 -4.996004e-16  0.000000e+00  4.996004e-16  1.651546e-06 
+```
+
+We can apply a similar reformulation to `group_slope`:
+
+```{r eval=FALSE}
+group_slope_re <- function(x, y, grp) {
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  grle <- rle(go)
+  gn <- grle[['lengths']]
+  gnc <- cumsum(gn)              # Last index in each group
+
+  ux <- .group_sum_int(xo, gnc)/gn
+  uy <- .group_sum_int(yo, gnc)/gn
+  uxy <- .group_sum_int(xo * yo, gnc)/gn
+  ux2 <- .group_sum_int(xo^2, gnc)/gn
+
+  setNames((uxy - ux * uy)/(ux2 - ux^2), grle[['values']])
+}
+sys.time(slope.gs.re <- group_slope_re(x, y, grp))
+```
+```
+   user  system elapsed 
+  1.548   0.399   1.957 
+```
+
+In this case `data.table` flips the advantage:
+
+```{r gs-timings-reform, echo=FALSE}
+funs <- c('original', 'original', 'reformulated', 'reformulated')
+times <- data.frame(
+  Function=factor(funs, levels=unique(funs)),
+  Version=c('data.table', 'group_slope', 'data.table', 'group_slope'),
+  time=c(3.139, 2.312, 1.507, 1.957)
+)
+ggplot(times, aes(x=Version, y=time)) +
+  geom_col() +
+  facet_grid(.~Function, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
 ## Function Definitions
 
 ```{r sys-time, echo=FALSE}
@@ -955,8 +1079,12 @@ is affected by ordering see the [pixie dust post][103].
 [109]: https://twitter.com/BrodieGaslam/status/1106231241488154626
 [110]: /2019/02/24/a-strategy-for-faster-group-statisitics/#group-slope-optim
 [111]: https://en.wikipedia.org/wiki/Hash_table
-
 [201]: https://github.com/mattdowle
 [202]: https://github.com/hadley
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html
 [204]: https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
+[205]: https://twitter.com/michael_chirico
+[206]: https://twitter.com/eddelbuettel
+[207]: https://en.wikipedia.org/wiki/Variance#Definition
+[208]: https://en.wikipedia.org/wiki/Covariance#Definition
+[209]: https://twitter.com/michael_chirico/status/1138092237550579712

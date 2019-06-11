@@ -220,8 +220,8 @@ comparable for <code>group_sum2</code> we will ignore the NA/Inf wrinkle going f
 <h1>So You Think You Can Group-Stat?</h1>
 <p>Okay, great, we can sum quickly in base R. One measly stat. What good is that
 if we want to compute something more complex like the slope of a bivariate
-regression, as we did in our [prior post][106]? As a refresher this is what the
-calculation looks like:</p>
+regression, as we did in our <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip">prior post</a>? As a refresher this is what the
+calculation looks like[^slope-orig]:</p>
 <p><span class="math display">\[\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}\]</span></p>
 <p>The R equivalent is<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>:<span id='slope-ex'></a></p>
@@ -332,6 +332,11 @@ per-group R evaluation overhead. We’re ~3x faster than the straight
 but a tie or a slight win for a multi-thread process over a single thread one is
 a loss in my books.</p>
 <p>More details for the benchmarks are <a href="#other-slope-benchmarks">in the appendix</a>.</p>
+<p><strong>UPDATE</strong>: <a href="https://twitter.com/michael_chirico">Michael Chirico</a> points out that it is <a href="https://twitter.com/michael_chirico/status/1138092237550579712">possible to
+reformulate</a> the slope equation into a more favorable form, and under that
+form <code>data.table</code> is faster (although our methods are close). I’ll defer
+analysis of how generalizable this is to another post, but in the meantime you
+can see <a href="#slope-reformulated">those benchmarks in the appendix</a>.</p>
 </div>
 <div id="controversy" class="section level1">
 <h1>Controversy</h1>
@@ -370,10 +375,25 @@ can).</p>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
+<div id="updates" class="section level2">
+<h2>Updates</h2>
+<ul>
+<li>2019-06-10:
+<ul>
+<li>Slope reformulation.</li>
+<li>Included missing <code>sys.time</code> definition.</li>
+<li>Bad links.</li>
+</ul></li>
+</ul>
+</div>
 <div id="acknowledgments" class="section level2">
 <h2>Acknowledgments</h2>
 <ul>
 <li><a href="https://github.com/JohnMount">John Mount</a>, for the initial <code>cumsum</code> idea.</li>
+<li><a href="https://twitter.com/michael_chirico">Michael Chirico</a> for the clever alternate formulation to slope, and for
+having the time and patience to remind me of the expected value forms and
+manipulations of variance and covariance.</li>
+<li><a href="https://twitter.com/eddelbuettel">Dirk Eddelbuettel</a> for copy edit suggestions.</li>
 <li><a href="https://github.com/mattdowle">Matt Dowle</a> and the other <a href="https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html"><code>data.table</code> authors</a> for contributing the
 radix sort to R.</li>
 <li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code> with which
@@ -385,6 +405,26 @@ I made the plots in this post.</li>
 <ul>
 <li><a href="https://www.flickr.com/photos/ariels_photos/4195885445/in/photolist-7oM1yv-8fyCrd-na8xCB-naaZpy-na8EkB-LTtYa-6WxNKb-9JDyW-qhNGC7-9JDm3-9JDt2-7rYhX7-9JDgE-9JDSo-qighyD-5Eefam-MP7aqp-27hhiHB-9JDNS-9JDoL-7f7eAt-imcMdo-ioeXfv-PEADr-8fyCqS-8f4Nm4-8f4Nm8-8fdcpz-eoigzJ-enHBht-4faLtc-8fyCrq-8fyCrJ-UQBbNR-9JB87-8fdcqR-fuJahW-8eWrsR-8fdcqa-8fyCr1-eoigHu-6PbaCE-idksM7-enHzAn-enHB3p-6P6ZXr-bLw8Sz-4fGYzV-6PbaqN-eoihsS">Rock-em</a>, 2009, by <a href="https://www.flickr.com/photos/ariels_photos/">Ariel Waldman</a>, under CC BY-SA 2.0, cropped.</li>
 </ul>
+</div>
+<div id="sys.time" class="section level2">
+<h2>sys.time</h2>
+<pre class="r"><code>sys.time &lt;- function(exp, reps=11) {
+  res &lt;- matrix(0, reps, 5)
+  time.call &lt;- quote(system.time({NULL}))
+  time.call[[2]][[2]] &lt;- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] &lt;- eval(time.call, parent.frame())
+  }
+  structure(res, class=&#39;proc_time2&#39;)
+}
+print.proc_time2 &lt;- function(x, ...) {
+  print(
+    structure(
+      x[order(x[,3]),][floor(nrow(x)/2),],
+      names=c(&quot;user.self&quot;, &quot;sys.self&quot;, &quot;elapsed&quot;, &quot;user.child&quot;, &quot;sys.child&quot;),
+      class=&#39;proc_time&#39;
+) ) }</code></pre>
 </div>
 <div id="reusing-last-index" class="section level2">
 <h2>Reusing Last Index</h2>
@@ -474,6 +514,73 @@ sys.time({
 })</code></pre>
 <pre><code>   user  system elapsed 
   5.332   0.842   2.412 </code></pre>
+</div>
+<div id="reformulated-slope" class="section level3">
+<h3>Reformulated Slope</h3>
+<p>Special thanks to <a href="https://twitter.com/michael_chirico">Michael Chirico</a> for providing this alternative
+formulation to the slope calculation:</p>
+<p><span class="math display">\[
+\begin{matrix}
+Slope&amp; = &amp;\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i - \bar{x})^{2}}\\
+     &amp; = &amp;\frac{Cov(x, y)}{Var(x)}\\\
+     &amp; = &amp;\frac{E[x - E[x]]E[y - E[y]]}{E[(x - E[x])^2]}\\\
+     &amp; = &amp;\frac{E[xy] - E[x]E[y]}{E[x^2] - E[x]^2}
+\end{matrix}
+\]</span></p>
+<p>Where we take <code>E[...]</code> to signify <code>mean(...)</code>. See the Wikipedia pages for
+<a href="https://en.wikipedia.org/wiki/Variance#Definition">Variance</a> and <a href="https://en.wikipedia.org/wiki/Covariance#Definition">Covariance</a> for the step-by-step simplifications of
+the expected value expressions.</p>
+<p>A key feature of this formulation is there is no interaction between grouped
+statistics and ungrouped as in <a href="#slope-orig">the original</a>. This saves the
+costly merge step and results in a substantially faster calculation (single
+thread):</p>
+<pre class="r"><code>sys.time({
+  DT &lt;- data.table(x, y, xy=x*y, x2=x^2, grp)
+  slope.dt.re &lt;- DT[,
+    .(ux=mean(x), uy=mean(y), uxy=mean(xy), ux2=mean(x2)),
+    keyby=grp
+  ][,
+    setNames((uxy - ux*uy)/(ux2 - ux^2), grp)
+  ]
+})</code></pre>
+<pre><code>   user  system elapsed
+  1.377   0.126   1.507</code></pre>
+<p>But careful as there are precision issues here too, as warned on the <a href="https://en.wikipedia.org/wiki/Variance#Definition">variance
+page</a>:</p>
+<blockquote>
+<p>This equation should not be used for computations using floating point
+arithmetic because it suffers from catastrophic cancellation if the two
+components of the equation are similar in magnitude. There exist numerically
+stable alternatives.</p>
+</blockquote>
+<p>We observe this to a small extent by comparing to our <code>vapply</code> based
+calculation:</p>
+<pre class="r"><code>quantile(slope.ply2 - slope.dt.re, na.rm=TRUE)</code></pre>
+<pre><code>           0%           25%           50%           75%          100% 
+-6.211681e-04 -4.996004e-16  0.000000e+00  4.996004e-16  1.651546e-06 </code></pre>
+<p>We can apply a similar reformulation to <code>group_slope</code>:</p>
+<pre class="r"><code>group_slope_re &lt;- function(x, y, grp) {
+  o &lt;- order(grp)
+  go &lt;- grp[o]
+  xo &lt;- x[o]
+  yo &lt;- y[o]
+
+  grle &lt;- rle(go)
+  gn &lt;- grle[[&#39;lengths&#39;]]
+  gnc &lt;- cumsum(gn)              # Last index in each group
+
+  ux &lt;- .group_sum_int(xo, gnc)/gn
+  uy &lt;- .group_sum_int(yo, gnc)/gn
+  uxy &lt;- .group_sum_int(xo * yo, gnc)/gn
+  ux2 &lt;- .group_sum_int(xo^2, gnc)/gn
+
+  setNames((uxy - ux * uy)/(ux2 - ux^2), grle[[&#39;values&#39;]])
+}
+sys.time(slope.gs.re &lt;- group_slope_re(x, y, grp))</code></pre>
+<pre><code>   user  system elapsed 
+  1.548   0.399   1.957 </code></pre>
+<p>In this case <code>data.table</code> flips the advantage:</p>
+<p><img src="/post/2019-06-05-base-vs-data-table_files/figure-html/gs-timings-reform-1.png" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="function-definitions" class="section level2">
