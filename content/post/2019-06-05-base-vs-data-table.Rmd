@@ -652,13 +652,6 @@ can).
 
 # Appendix
 
-## Updates
-
-* 2019-06-10:
-    * Slope reformulation.
-    * Included missing `sys.time` definition.
-    * Bad links.
-
 ## Acknowledgments
 
 * [John Mount][104], for the initial `cumsum` idea.
@@ -675,7 +668,41 @@ can).
 
 * [Rock-em][100], 2009, by [Ariel Waldman][101], under CC BY-SA 2.0, cropped.
 
+## Updates
+
+* 2019-06-10:
+    * Slope reformulation.
+    * Included missing `sys.time` definition.
+    * Bad links.
+* 2019-06-11: session info.
+* 2019-06-12: fix covariance formula.
+
+## Session Info
+
+```{r eval=FALSE}
+sessionInfo()
+```
+```
+R version 3.6.0 (2019-04-26)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.5
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] data.table_1.12.2
+```
+
 ## sys.time
+
 
 ```{r sys-time, eval=FALSE}
 ```
@@ -840,7 +867,7 @@ $$
 \begin{matrix}
 Slope& = &\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i - \bar{x})^{2}}\\
      & = &\frac{Cov(x, y)}{Var(x)}\\\
-     & = &\frac{E[x - E[x]]E[y - E[y]]}{E[(x - E[x])^2]}\\\
+     & = &\frac{E[(x - E[x])(y - E[y])]}{E[(x - E[x])^2]}\\\
      & = &\frac{E[xy] - E[x]E[y]}{E[x^2] - E[x]^2}
 \end{matrix}
 $$
