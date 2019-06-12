@@ -602,7 +602,7 @@ More details for the benchmarks are [in the appendix](#other-slope-benchmarks).
 reformulate][209] the slope equation into a more favorable form, and under that
 form `data.table` is faster (although our methods are close).  I'll defer
 analysis of how generalizable this is to another post, but in the meantime you
-can see [those benchmarks in the appendix](#slope-reformulated).
+can see [those benchmarks in the appendix](#reformulated-slope).
 
 # Controversy
 
