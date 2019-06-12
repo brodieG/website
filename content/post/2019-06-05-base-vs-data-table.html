@@ -375,17 +375,6 @@ can).</p>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
-<div id="updates" class="section level2">
-<h2>Updates</h2>
-<ul>
-<li>2019-06-10:
-<ul>
-<li>Slope reformulation.</li>
-<li>Included missing <code>sys.time</code> definition.</li>
-<li>Bad links.</li>
-</ul></li>
-</ul>
-</div>
 <div id="acknowledgments" class="section level2">
 <h2>Acknowledgments</h2>
 <ul>
@@ -405,6 +394,39 @@ I made the plots in this post.</li>
 <ul>
 <li><a href="https://www.flickr.com/photos/ariels_photos/4195885445/in/photolist-7oM1yv-8fyCrd-na8xCB-naaZpy-na8EkB-LTtYa-6WxNKb-9JDyW-qhNGC7-9JDm3-9JDt2-7rYhX7-9JDgE-9JDSo-qighyD-5Eefam-MP7aqp-27hhiHB-9JDNS-9JDoL-7f7eAt-imcMdo-ioeXfv-PEADr-8fyCqS-8f4Nm4-8f4Nm8-8fdcpz-eoigzJ-enHBht-4faLtc-8fyCrq-8fyCrJ-UQBbNR-9JB87-8fdcqR-fuJahW-8eWrsR-8fdcqa-8fyCr1-eoigHu-6PbaCE-idksM7-enHzAn-enHB3p-6P6ZXr-bLw8Sz-4fGYzV-6PbaqN-eoihsS">Rock-em</a>, 2009, by <a href="https://www.flickr.com/photos/ariels_photos/">Ariel Waldman</a>, under CC BY-SA 2.0, cropped.</li>
 </ul>
+</div>
+<div id="updates" class="section level2">
+<h2>Updates</h2>
+<ul>
+<li>2019-06-10:
+<ul>
+<li>Slope reformulation.</li>
+<li>Included missing <code>sys.time</code> definition.</li>
+<li>Bad links.</li>
+</ul></li>
+<li>2019-06-11: session info.</li>
+<li>2019-06-12: fix covariance formula.</li>
+</ul>
+</div>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.6.0 (2019-04-26)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.5
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] data.table_1.12.2</code></pre>
 </div>
 <div id="sys.time" class="section level2">
 <h2>sys.time</h2>
@@ -523,7 +545,7 @@ formulation to the slope calculation:</p>
 \begin{matrix}
 Slope&amp; = &amp;\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i - \bar{x})^{2}}\\
      &amp; = &amp;\frac{Cov(x, y)}{Var(x)}\\\
-     &amp; = &amp;\frac{E[x - E[x]]E[y - E[y]]}{E[(x - E[x])^2]}\\\
+     &amp; = &amp;\frac{E[(x - E[x])(y - E[y])]}{E[(x - E[x])^2]}\\\
      &amp; = &amp;\frac{E[xy] - E[x]E[y]}{E[x^2] - E[x]^2}
 \end{matrix}
 \]</span></p>
