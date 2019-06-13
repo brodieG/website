@@ -1,0 +1,797 @@
+---
+title: "Hydra Chronicles, Part III: Limits of Precision"
+author: ~
+date: '2019-06-18'
+slug: hydra-precision
+categories: [r]
+tags: [optimization]
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "How we ran face first "
+---
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+suppressMessages(library(ggplot2))
+```
+```{r echo=FALSE, comment="", results='asis'}
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+```
+
+```{r echo=FALSE}
+.group_sum_int <- function(x, last.in.group) {
+  xgc <- cumsum(x)[last.in.group]
+  diff(c(0, xgc))
+}
+group_slope <- function(x, y, grp) {
+  ## order inputs by group
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  ## group sizes and group indices
+  grle <- rle(go)
+  gn <- grle[['lengths']]
+  gnc <- cumsum(gn)              # Last index in each group
+  gi <- rep(seq_along(gn), gn)   # Group recycle indices
+
+  ## compute mean(x) and mean(y), and recycle them
+  ## to each element of `x` and `y`:
+  sx <- .group_sum_int(xo, gnc)
+  ux <- (sx/gn)[gi]
+  sy <- .group_sum_int(yo, gnc)
+  uy <- (sy/gn)[gi]
+
+  ## (x - mean(x)) and (y - mean(y))
+  x_ux <- xo - ux
+  y_uy <- yo - uy
+
+  ## Slopes!
+  x_ux.y_uy <- .group_sum_int(x_ux * y_uy, gnc)
+  x_ux2 <- .group_sum_int(x_ux ^ 2, gnc)
+  setNames(x_ux.y_uy / x_ux2, grle[['values']])
+}
+```
+
+# Recap
+
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+Last week we [slugged it out][100] with the reigning group-stats heavy weight
+champ `data.table`.  The challenge was to compute the slope of a bivariate
+regression fit line over 10MM entries and ~1MM groups.  The formula is:
+
+$$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i - \bar{x})^{2}}$$
+
+While this may seem like a silly task, we do it because computing group
+statistics is both useful and a [weakness in R][102].  We implemented
+[`group_slope`][101] based on [John Mount's][104] [`cumsum` idea][105], and for
+a brief moment we thought we scored an improbable win over
+`data.table`[^reformulation].  Unfortunately our results did not withstand
+scrutiny.
+
+Here is the data we used:
+
+```{r make-data, warning=FALSE}
+RNGversion("3.5.2"); set.seed(42)
+n     <- 1e7
+n.grp <- 1e6
+grp   <- sample(n.grp, n, replace=TRUE)
+noise <- rep(c(.001, -.001), n/2)  # more on this later
+x     <- runif(n) + noise
+y     <- runif(n) + noise          # we'll use this later
+```
+
+The slow and steady base R approach is to define the statistic as a function,
+`split` the data, and apply the function with `vapply` or similar.
+
+```{r eval=FALSE}
+slope <- function(x, y) {
+  x_ux <- x - mean.default(x)
+  y_uy <- y - mean.default(y)
+  sum(x_ux * y_uy) / sum(x_ux ^ 2)
+}
+id <- seq_along(grp)
+id.split <- split(id, grp)
+slope.ply <- vapply(id.split, function(id) slope(x[id], y[id]), 0)
+```
+
+Our [wild child version][101] is [4-6x][108] faster, and should produce the
+same results.  It doesn't quite:
+
+```{r eval=FALSE}
+slope.gs <- group_slope(x, y, grp)  # our new method
+all.equal(slope.gs, slope.ply)
+```
+```
+[1] "Mean relative difference: 0.0001161377"
+```
+
+With a generous tolerance we find equality:
+
+```{r eval=FALSE}
+all.equal(slope.gs, slope.ply, tolerance=2e-3)
+```
+```
+[1] TRUE
+```
+
+> **Disclaimer**: I have no special knowledge of floating point precision
+> issues.  Everything I know is from reading the [wiki page][12], random web
+> research, and experimentation.  If your billion dollar Mars lander burns up on
+> entry because you relied on information in this post, you only have yourself
+> to blame.
+
+## Oh the Horror!
+
+As we've alluded to previously `group_slope` is running into precision issues,
+but we'd like to figure out exactly what's going wrong.  Let's find the worst
+offending result, which for convenience we'll call `B`.  Its index in the group
+list is then `B.gi` and its group is `B.g`:<span id=prec-error></span>
+
+```{r inputs-ordered, echo=FALSE}
+o <- order(grp)
+go <- grp[o]
+xo <- x[o]
+yo <- y[o]
+```
+```{r echo=FALSE}
+ # hard coding the above value so that rest of stuff that we actually
+ # run can use it
+B.gi <- 616793L
+B.g <- 616826L
+```
+```{r eval=FALSE}
+B.gi <- which.max(abs(slope.gs / slope.ply))
+slope.gs[B.gi]
+```
+```
+ 616826
+-3014.2
+```
+```{r eval=FALSE}
+slope.ply[B.gi]
+```
+```
+   616826
+-2977.281
+```
+
+This is horrific.  We are going to look at the underlying values, but to make
+things easier we'll order them first:
+
+```{r inputs-ordered, eval=FALSE}
+```
+
+Now we can look up the indices into the ordered data corresponding to our
+problem group:
+
+```{r eval=FALSE}
+B.g <- as.integer(names(slope.gs[B.gi]))
+B.i <- which(go == B.g)    # indices corresponding to our group
+B.ni <- tail(B.i, 1)       # last element in group
+A.ni <- head(B.i, 1) - 1   # last element in previous group
+```
+
+And the actual values:
+
+```{r eval=FALSE}
+(B.x <- xo[B.i])  # x values in our group
+```
+```
+[1] 0.4239786 0.4239543
+```
+```{r eval=FALSE}
+(B.y <- yo[B.i])  # y values in our group
+```
+```
+[1] 0.7637899 0.8360645
+```
+
+Our group only has two values, but the problem is how close the `x` values are.
+The [double precision floats][12] ("doubles" henceforth), which are what R
+"numeric" values are stored as, have plenty of precision to handle the `x`
+values proper, but things start going pear shaped at the next step which is to
+compute `$\sum{(x - \bar{x})^2}$`.  To see how bad it is we need to calculate
+all the steps up to just before the group sum of `$(x - \bar{x})^2$`.
+
+We'll need the group meta data, explained at length in the [previous post][109]:
+
+```{r}
+grle <- rle(go)               # repeated value "run" lengths
+gn <- grle[['lengths']]       # group sizes
+gnc <- cumsum(gn)             # index of last element in each group
+gi <- rep(seq_along(gn), gn)  # indices to recycle groups to input length
+```
+
+And now we can calculate the values:
+
+```{r}
+old.opt <- options(digits=22, scipen=100) # show more digits
+sx <- .group_sum_int(xo, gnc)  # sum(x)
+ux <- (sx/gn)[gi]              # mean(x), recycled
+x_ux <- xo - ux                # (x - mean(x))
+x_ux2 <- (x_ux ^ 2)            # (x - mean(x)) ^ 2
+x_ux2c <- cumsum(x_ux2)
+```
+
+We now have the cumulative sum of the value we want to examine, `$(x -
+\bar{x})^2$`.  Before we go further, let's revisit our algorithm to see why we
+have a problem:
+
+```{r cumsum-review, echo=FALSE, warning=FALSE}
+library(ggbg)
+RNGversion("3.5.2"); set.seed(42)
+n1 <- 7
+x1 <- seq_len(n1)
+y1 <- runif(n1);
+colors <- c('#3333ee', '#33ee33', '#eeee33')
+g1 <- sample(1:3, n1, replace=TRUE)
+steps <- c(
+  '1 - Start', '2 - Sort By Group', '3 - Cumulative Sum',
+  '4 - Last Value in Group', '5 - Take Differences', '6 - Group Sums!'
+)
+steps <- factor(steps, levels=steps)
+df1 <- data.frame(
+  x1, y1, g1=as.character(g1), step=steps[[1]], stringsAsFactors=FALSE
+)
+df2 <- df1[order(g1),]
+df2[['x1']] <- x1
+df2[['step']] <- steps[[2]]
+df3 <- df2
+df3 <- transform(
+  df3, yc=cumsum(y1), step=steps[[3]],
+  last=c(head(g1, -1) != tail(g1, -1), TRUE)
+)
+df4 <- transform(df3, step=steps[[4]])
+df5 <- transform(
+  subset(df4, last), x1=3:5, y1=c(yc[[1]], diff(yc)), step=steps[[5]]
+)
+df6 <- transform(df5, step=steps[[6]])
+
+plot.extra <- list(
+  facet_wrap(~step, ncol=3),
+  ylab(NULL), xlab(NULL),
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+    axis.ticks=element_blank()
+  ),
+  scale_fill_manual(values=setNames(colors, 1:3), guide=FALSE)
+)
+dfa <- data.frame(
+  x1=1:7, y1=0, label=c('A.1', 'A.n', 'B.1', 'B.n', 'C.1', 'C.2', 'C.n'),
+  step=steps[4]
+)
+dfb <- data.frame(
+  x1=3:5, y1=0, label=c('A.s', 'B.s', 'C.s'), step=steps[[5]]
+)
+ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
+  geom_col(
+    data=df4, mapping=aes(y=yc, alpha=I(ifelse(last, 1, .15))),
+    width=0.9
+  ) +
+  geom_col(data=df5, width=0.9, position='waterfall') +
+  geom_text(data=dfa, aes(fill=NULL, label=label), vjust=1.2) +
+  geom_text(data=dfb, aes(fill=NULL, label=label), vjust=1.2) +
+  plot.extra
+```
+
+The cumulative sums will be quite precise as [R internally uses a
+representation][13] that allows [18-19 digits of precision][14] for
+`cumsum`[^extended-precision].  This additional precision is
+rounded back to standard double precision on exit from `cumsum`.  Where things
+go wrong is when we take the difference of the resulting doubles.  First, let's
+get the indices that correspond to the last values of the group of interest
+(`B`) and the preceding group (`A`):
+
+```{r}
+B.ni <- tail(B.i, 1)       # last element in group
+A.ni <- head(B.i, 1) - 1   # last element in previous group
+```
+
+The values are then:
+
+```{r}
+(B.n <- x_ux2c[B.ni])   # end val of target group
+```
+
+And:
+
+```{r}
+(A.n <- x_ux2c[A.ni])   # end val of prior group
+```
+
+These values are awful close to each other.  In our algorithm we take the
+difference of these two numbers to get the group sum.  But when values are so
+close relative to their magnitudes, doing so is the computing equivalent of
+walking down the stairs into a dark basement with ominous background music in a
+horror flick.  To leave no doubt about the carnage that is about to unfold
+(viewer discretion advised):<span id=carnage></span>
+
+```{r echo=FALSE}
+B.s <- B.n - A.n
+```
+```{r eval=FALSE}
+B.s <- B.n - A.n
+rbind(A.n, B.n, B.s)
+```
+<pre></pre>
+```{r echo=FALSE}
+val <- "                                       [,1]
+A.n  \033[42m462824.40162014\033[43m582\033[m89287984371185302734
+B.n  \033[42m462824.40162014\033[43m611\033[m99671030044555664062
+B.s       0.000000000\033[43m29\033[m10383045673370361328"
+writeLines(val)
+```
+
+We highlight the approximate double precision digits in green, and the
+additional digits that `cumsum` might use internally in yellow[^extended-2].
+The colors here have no semantic relation to those in the illustrative
+plots.<span id=mu-prec></span>  The only precision left is in the extended
+precision range, but that is not actually available outside of `cumsum`.
+
+So how much precision does `B.s` actually have?  The naive decimal view suggests
+quite a bit with all those trailing digits.  The color highlighting tells us
+instead there probably is very little as `B.s` does not have any digits in the
+"green".  Finally, the observed error of -1.2% suggests there must be some
+precision.
+
+We can get a better idea by comparing the binary representation of the `A.n` and
+`B.n` values to their difference `B.s`.  Even though `A.n` and `B.n` were
+computed in 80 bit extended precision by `cumsum`, only the rounded 64 bit
+values are available in the results:
+
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30 -34  <- Exponent (2^n)
+ |       |         |         |         |         |   |
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111110111111\033[m: A.n
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111111000100\033[m: B.n
+\033[34m+\033[m00000000000000000000000000000000000000000000000000\033[42m101\033[m: B.s"
+writeLines(val)
+```
+
+In "doubles" the exponent is encoded with 11 of the 64 bits.  Here it is
+`+18` for `A.n` and `B.n`, and `-32` for `B.s`. Another bit is used to encode
+the sign, and the remaining 53 bits are use to encode the normalized value
+(a.k.a.  significand) shown in green here[^fifty-three].  The precision of
+doubles is dictated by the significand.
+
+After taking the difference of `A.n` and `B.n` we are left with three bits of
+precision for `B.s`[^three-bits].  But what about all those digits we saw
+previously?  Well, check this out:
+
+```{r}
+2^-32 + 2^-34
+```
+```{r}
+B.s
+```
+
+The entire precision of `B.s` is encapsulated in `$2^{-32} + 2^{-34}$`.
+Each non-zero bit in the significand is represented by `$2^{-n}$` where `$n$` is
+the position in the bit field.  All those digits are just an artifact of the
+conversion of a limited precision binary number into decimal representation.
+
+The last significant bit in our starting numbers corresponds to
+`$2^{-34}$`, so at the limit both `A.n` and `B.n` could be off by as much as
+`$\pm2^{-35}$` as a result of rounding down to 64 bit precision.  It follows
+that `B.s`, which is the difference of `A.n` and `B.n`, could have up to twice
+the error:
+
+$$2 \times \pm2^{-35} = \pm2^{-34}$$
+
+With a baseline value of `B.s` of `$2^{-32} + 2^{-34}$`, the relative error
+becomes[^rel-err]:
+
+$$\pm\frac{2^{-34}}{2^{-32} + 2^{-34}} = \pm20\%$$
+
+If the theoretical precision is only `$\pm20\%$`, how did we end up with only a
+`$-1.2\%$` error?  Sheer luck.  Let's look again at the `A.n` and `B.n` values,
+but this time comparing the underlying 80 bit representations used by `cumsum`.
+The 80 bit floating point representation adds 10 bits to the significand.  We'll
+discuss shortly how we got these 80 bit representations, but first let's look at
+`A.n`:<span id='a-err'></span>
+
+```{r a-n-err, echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+\033[34m+\033[42;39m11100001111111010000110011011010000100100111110111111\033[m00000000000: 64 bit
+\033[34m+\033[42;39m11100001111111010000110011011010000100100111110111110\033[43m1110100010\033[m1: 80 bit
+\033[34m+\033[39m00000000000000000000000000000000000000000000000000000000\033[43m1011101\033[m1: A.n Err
+ "
+writeLines(val)
+```
+
+And `B.n`:
+
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111111000100\033[m00000000000: 64 bit
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111111000011\033[43m1111100010\033[m0: 80 bit
+\033[34m+\033[39m0000000000000000000000000000000000000000000000000000000000\033[43m11110\033[m0: B.n Err"
+writeLines(val)
+```
+
+The rounding error between the 80 and 64 bit representations for each of `A.n`
+and `B.n` is small compared to the difference between the `A.n` and `B.n`.
+Additionally, the rounding errors are in the same direction.  As a result the
+total error caused by the rounding from 80 bits to 64 bits should be
+`$(0.00111100 - 1.01111011) \times 2^{-38}$`, or a hair under `$2^{-38}$`:
+
+```{r echo=FALSE}
+options(old.opt) # switch back to normal display
+options(digits=7)
+```
+```{r}
+A.n.err.bits <- c(1,0,1,1,1,0,1,1)
+B.n.err.bits <- c(0,0,1,1,1,1,0,0)
+exps <- 2^-(38:45)
+(err.est <- sum(B.n.err.bits * exps) - sum(A.n.err.bits * exps))
+```
+
+Here we estimated the error in our calculation from the binary representation,
+and got a value very close to the actual error:<span id=prec-loss-err></span>
+
+```{r}
+(err.obs <-  B.s - sum((xo[B.i] - mean(xo[B.i]))^2))
+```
+
+This supports that we are carrying out the calculations on the 80 bit
+representations correctly.  The numbers are not exactly the same because even
+the 80 bit representation is limited in precision so we can only approximate the
+error.
+
+If we had been unlucky maybe the true values of `A.n` and `B.n` would have been
+as follows:
+
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111110111111\033[m00000000000: 64 bit
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111110111110\033[43m1000000000\033[m1: 80 bit
+\033[34m+\033[m00000000000000000000000000000000000000000000000000000\033[43m0111111111\033[m1: A.n Err"
+writeLines(val)
+```
+
+And:
+
+```{r echo=FALSE}
+val <- "+18     +10        0        -10       -20       -30       -40
+ |       |         |         |         |         |   *     |   *
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111111000100\033[m00000000000: 64 bit
+\033[34m+\033[39;42m11100001111111010000110011011010000100100111111000100\033[43m1000000000\033[m0: 80 bit
+\033[31m-\033[39m00000000000000000000000000000000000000000000000000000\033[43m1000000000\033[m0: B.n Err"
+writeLines(val)
+```
+
+These have the same 64 bit representations as the original values, but the error
+is quite different:
+
+```{r}
+A.n.err.bits <- c(0,1,1,1,1,1,1,1,1,1,1)
+B.n.err.bits <- -c(1,0,0,0,0,0,0,0,0,0,0)  # note this is negative
+exps <- 2^-(35:45)
+
+(err.est.max <- sum(B.n.err.bits * exps) - sum(A.n.err.bits * exps))
+err.est.max / B.s
+err.obs / B.s
+```
+
+In this case we get roughly the maximum possible error, which is ~16 times
+larger than the observed one.
+
+## A New Hope
+
+```{r eval=FALSE, echo=FALSE}
+options(old.opt)
+```
+
+Before we give up it is worth pointing out that precision loss in some cases is
+a feature.  For example, [Drew Schmidt's `float`][17] package implements single
+precision numerics for R as an explicit trade-off of precision for memory and
+speed.  In deep learning, [reduced precision is all the rage][20].  In a sense,
+we are trading off precision for speed in our `cumsum` group sums approach,
+though not explicitly.
+
+Still, it would be nice if we could make a version of this method that
+doesn't suffer from this precision infirmity.  And it turns out we can!  The
+main source of precision loss is due to the accumulated sum eventually growing
+much larger than any given individual group in size.  This became particularly
+bad for [cumulative sum of `$(x - \bar{x})^2$`](#carnage) due to the squaring
+that exacerbates relative magnitude differences.
+
+If you are still wondering how we came up with the 80 bit representations of the
+[cumulative sums earlier](#eighty-bit), wonder now more.  For example, for
+`A.n`, we make a copy of `$(x - \bar{x})^2$` vector, and append the negative
+of `A.n` at the position following `A.n` position:
+
+```{r bin_rep, echo=FALSE}
+ # Only works for normal finitite non-zero non-NA scalar doubles
+
+bin_rep <- function(x) {
+  stopifnot(length(x) == 1)
+  sign <- if(x > 0) '+' else '-'
+  x <- abs(x)
+  exp <- floor(log2(x))
+  sig <- integer(53)
+  exps <- ((exp):(exp - 53 + 1))
+
+  for(i in seq_along(exps)) if(sig[i] <- x >= 2^exps[i]) x <- x - 2^exps[i]
+
+  writeLines(sprintf("Exp: 2^%d Sig: %s%s", exp, sign, paste0(sig, collapse="")))
+}
+```
+```{r}
+x_ux2.A.n <- x_ux2[1:(A.ni + 1)]
+x_ux2.A.n[A.ni + 1] <- -A.n
+```
+
+We now have the original `$(x - \bar{x})^2$` values up to the element just past
+group `A`, and at that position, the **cumulative** sum of all the prior values,
+`A.n`.  In theory, if we compute the cumulative sum again the final value should
+be zero.  But it's not:
+
+```{r}
+A.n.err <- tail(cumsum(x_ux2.A.n), 1)
+bin_rep(A.n.err)
+```
+
+`bin_rep`, defined in the appendix, extracts the binary representation of
+doubles.  `A.n.err` is not zero because the cumulative sum was computed with 80
+bit precision.  By adding `-A.n` in 64 bit precision to the end of the vector we
+are left with the difference between the 80 bit and 64 bit versions of the
+cumulative sum.  In this case you might recognize that `A.n.err` as the error we
+showed when we compared the [80 and 64 bit versions of `A.n`](#a-err):
+
+```{r a-n-err, echo=FALSE}
+```
+
+We got the 80 bit version of `A.n` by subtracting the error to the 64 bit
+version[^by-hand].
+
+More generally, we can compute the 80->64 bit conversion errors for every group
+by adding computing the group sums as we did previously, and then adding their
+negatives back to the input vector for a second pass cumulative sum.  Visually:
+
+```{r echo=FALSE}
+steps <- c(
+  '2a - Sort By Group', '3a - Insert Neg Group Sum', '4a - Cumulative Sum',
+  '5a - Last Val Is Error'
+)
+df2a <- transform(df2, step=factor(steps[1], levels=steps))
+df3 <- rbind(
+  transform(df2a, x1=x1+cumsum(c(0, diff(as.integer(g1))))),
+  with(
+    df2,
+    data.frame(
+      x1=c(3L,6L,10L),
+      y1=-rowsum(y1,g1)+(runif(3)-.5)*.05,
+      g1=as.character(1:3),
+      step=step[1]
+) ) )
+df3 <- df3[order(df3[['x1']]),]
+df3[['step']] <- steps[2]
+df4 <- transform(df3, y1=cumsum(y1), step=steps[3])
+df5 <-
+  transform(df4, last=c(head(g1, -1) != tail(g1, -1), TRUE), step=steps[4])
+df5a <- transform(subset(df5, last))
+
+ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
+  geom_col(data=df2) +
+  geom_col(data=df3) +
+  geom_col(data=df4) +
+  geom_col(data=df5, mapping=aes(alpha=I(ifelse(last, 1, .15)))) +
+  geom_tile(
+    data=df5a, mapping=aes(fill=NA, color=g1), alpha=1,
+    height=.6, width=1.2, size=0.5
+  ) +
+  scale_colour_manual(
+    values=setNames(c(colors[1:2], 'yellow'), 1:3), guide=FALSE
+  ) +
+  plot.extra
+```
+
+If the first pass group sum was fully precise, the values inside the
+highlighting boxes in the last panel should be zero. The small values we see
+inside the boxes represent the errors of each group computation[^for-effect].
+Steps that we are not showing above are collecting these values, taking their
+differences, and adding them back to the first pass values.
+
+While the second pass is still subject to precision issues, these are greatly
+reduced because the cumulative sum is reset to near zero after each group, so we
+will never be subtracting two large but near numbers from each other.
+
+`.group_sum_int2` below embodies the approach.  One slight modification is that
+we subtract the first pass group value from the last value in the group instead
+of appending it to the group:
+
+```{r}
+.group_sum_int2 <- function(x, last.in.group){
+  x.grp <- .group_sum_int(x, last.in.group)     # imprecise pass
+  x[last.in.group] <- x[last.in.group] - x.grp  # subtract from each group
+  x.grp + .group_sum_int(x, last.in.group)      # compute errors and add
+}
+```
+```{r eval=FALSE}
+sys.time(slope.gs2 <- group_slope2(x, y, grp, group_sum=.group_sum_int2))
+```
+```
+   user  system elapsed
+  2.477   0.747   3.278
+```
+```{r eval=FALSE}
+all.equal(c(slope.ply), slope.gs2, check.attributes=FALSE)
+```
+```
+[1] TRUE
+```
+```{r eval=FALSE}
+quantile(slope.ply - slope.gs2, na.rm=TRUE)
+```
+```
+       0%       25%       50%       75%      100%
+-7.11e-15 -2.78e-17  0.00e+00  2.78e-17  3.55e-15
+```
+
+This does not match the original calculations exactly, but there is essentially
+no error left.  Compare to the single pass calculation:
+
+```{r eval=FALSE}
+quantile(slope.ply - slope.gs, na.rm=TRUE)
+```
+```
+       0%       25%       50%       75%      100%
+-1.35e-02 -3.65e-12 -3.51e-16  3.60e-12  3.69e+01
+```
+
+The new error is _sixteen_ orders of magnitude smaller than the original.
+
+Two-pass precision improvement methods have been around for long time.  For
+example R's own `mean` uses a [variation on this method][18].
+
+## I Swear, It's a Feature
+
+We noted earlier that precision loss can be a feature.  We can make it so in
+this case by providing some controls for it.  We saw earlier that it is possible
+to [estimate precision loss](#prec-loss-err), so we can use this decide whether
+we want to trigger the second precision correcting pass.  [`.group_sum_int3` in
+the appendix](#adjustable-precision-group-sums) does exactly this by providing a
+`p.bits` parameter.  This parameter specifies the minimum number of bits of
+precision in the resulting group sums.  If as a result of the first pass we
+determine the worst case loss could take us below `p.bits`, we run the second
+precision improvement pass:
+
+```{r group_sum_int3, eval=FALSE, echo=FALSE}
+.group_sum_int3 <- function(x, last.in.group, p.bits=53, info=FALSE) {
+  xgc <- cumsum(x)[last.in.group]
+  gmax <- floor(log2(max(abs(range(xgc)))))
+  gs <- diff(c(0, xgc))
+  gsabs <- abs(gs)
+  gmin <- floor(log2(min(gsabs[gsabs > 0])))
+  precision <- 53 + (gmin - gmax)
+  if(precision < p.bits) {
+    x[last.in.group] <- x[last.in.group] - gs
+    gs <- gs + .group_sum_int(x, last.in.group)
+  }
+  if(info) # info about precision and second pass
+    structure(gs, precision=precision, precision.mitigation=precision < p.bits)
+  else gs
+}
+```
+```{r eval=FALSE}
+microbenchmark::microbenchmark(times=10,
+  .group_sum_int(x_ux2, gnc),            # original single pass
+  .group_sum_int2(x_ux2, gnc),           # two pass, always
+  .group_sum_int3(x_ux2, gnc, p.bits=2), # check, single pass
+  .group_sum_int3(x_ux2, gnc, p.bits=3)  # check, two pass
+)
+```
+```
+                                    expr   min    lq mean median  uq max neval
+              .group_sum_int(x_ux2, gnc)  44.0  94.5  101     97 115 153    10
+             .group_sum_int2(x_ux2, gnc) 196.2 258.2  277    271 294 365    10
+ .group_sum_int3(x_ux2, gnc, p.bits = 2)  79.7 119.4  119    126 128 133    10
+ .group_sum_int3(x_ux2, gnc, p.bits = 3) 294.5 308.3  324    312 349 371    10
+```
+
+In this example the worst case precision is 2 bits, so with `p.bits=2` we run in
+one pass, whereas with `p.bits=3` two passes are required.  There is some
+overhead in checking precision, but it is small enough relative to the cost of
+the second pass that it is probably warranted in many cases.
+
+Let's try our slope calculation, this time again demanding at least 16 bits of
+precision.  For our calculation 16 bits of precision implies the error will be
+at most `$\pm2^{-16} \approx 1.53 \times 10^{-5}$`.
+
+```{r eval=FALSE}
+.group_sum_int_16 <- function(x, last.in.group)
+  .group_sum_int3(x, last.in.group, p.bits=16)
+
+sys.time(slope.gs3 <- group_slope2(x, y, grp, group_sum=.group_sum_int_16))
+```
+```
+   user  system elapsed
+  2.095   0.778   2.874
+```
+<!-- fastest:
+   user  system elapsed
+  2.164   0.682   2.856
+-->
+```
+[1] TRUE
+```
+```{r eval=FALSE}
+quantile((slope.ply - slope.gs3) / slope.ply, na.rm=TRUE)
+```
+```
+       0%       25%       50%       75%      100%
+-2.91e-08 -2.51e-14  0.00e+00  2.51e-14  4.73e-09
+```
+
+Indeed the errors are no larger than that.  The precision check occurs only at
+the group sum step, so if other steps steps accumulate errors it is possible for
+the final precision of a more complex computation to end up below the specified
+levels.
+
+<!-- ed note: fastest recorded, again with wifi off, everything shut down
+   user  system elapsed
+  2.234   0.598   2.842
+-->
+
+Updated reference times for `data.table`.  This is after we killed all
+extraneous processes, including firefox.
+
+
+
+
+Note on vector size[^vec-size].
+
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Precision Schmecision
+
+https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
+
+
+# Appendix
+
+[^slope-mod]: We use `mean.default` because believe it or not the S3 dispatch
+  around `mean` adds substantial overhead for this task.
+[^reformulation]: The win was for a literal implementation of the slope formula,
+  under a [reformulated version][106] as shown by [Michael Chirico][107]
+  `data.table` is faster.
+
+[12]: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
+[13]: https://github.com/wch/r-source/blob/R-3-5-branch/src/main/cum.c#L30
+[14]: https://en.wikipedia.org/wiki/Extended_precision#Working_range
+[15]: https://github.com/romainfrancois
+[16]: https://github.com/ThinkR-open/seven31
+[17]: https://github.com/wrathematics/float
+[18]: https://github.com/wch/r-source/blob/R-3-3-branch/src/main/summary.c#L434
+[19]: https://twitter.com/BrodieGaslam/status/1113783101262585856
+[20]: https://www.ibm.com/blogs/research/2018/12/8-bit-precision-training/
+
+[100]: /2019/06/10/base-vs-data-table/
+[101]: /2019/06/10/base-vs-data-table/#so-you-think-you-can-group-stat
+[102]: /2019/02/24/a-strategy-for-faster-group-statisitics/#group-statistics-in-r
+[104]: https://github.com/JohnMount
+[105]: https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105
+[106]: /2019/06/10/base-vs-data-table/#reformulated-slope
+[107]: https://twitter.com/michael_chirico
+[108]: /2019/06/10/base-vs-data-table/#all-timings
+[109]: /2019/06/10/base-vs-data-table/#group-meta-data
