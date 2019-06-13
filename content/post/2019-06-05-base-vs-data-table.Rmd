@@ -307,7 +307,7 @@ g1
 x1
 ```
 
-The first three steps are obvious:
+<span id=group-meta-data></span>The first three steps are obvious:
 
 ```{r}
 ord <- order(g1)
@@ -572,7 +572,7 @@ optimized version of it that computes on groups directly in C code without the
 per-group R evaluation overhead.  We're ~3x faster than the straight
 "out-of-the-box" version `DT[, slope(x, y), grp]`.
 
-A summary of all the timings:
+<span id=all-timings></span>A summary of all the timings:
 
 ```{r rowsum-timings-all, echo=FALSE}
 funs <- c(
