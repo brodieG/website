@@ -241,7 +241,8 @@ how to compute group sums [using `cumsum`][105] on group-ordered
 data[^prior-art].  With a little work we can generalize it.
 
 The concept is to order by group, compute cumulative sum, pull out the last
-value for each group, and take their differences.  Visually:
+value for each group, and take their differences.  Visually<span
+id=algo-visual></span>:
 
 ```{r cumsum-ex, echo=FALSE, warning=FALSE}
 library(ggbg)
