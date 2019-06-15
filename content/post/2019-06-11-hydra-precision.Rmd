@@ -14,7 +14,7 @@ contenttype: article
 description: "How we ran face first "
 ---
 ```{r echo=FALSE}
-options(digits=3)
+old.opt <- options(digits=3)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 suppressMessages(library(ggplot2))
 ```
@@ -135,14 +135,19 @@ all.equal(slope.gs, slope.ply, tolerance=2e-3)
 As we've alluded to previously `group_slope` is running into precision issues,
 but we'd like to figure out exactly what's going wrong.  Let's find the worst
 offending result, which for convenience we'll call `B`.  Its index in the group
-list is then `B.gi` and its group is `B.g`:<span id=prec-error></span>
+list is then `B.gi`:<span id=prec-error></span>
 
 ```{r inputs-ordered, echo=FALSE}
 o <- order(grp)
 go <- grp[o]
 xo <- x[o]
 yo <- y[o]
+grle <- rle(go)
+gn <- grle[['lengths']]
+gnc <- cumsum(gn)
+gi <- rep(seq_along(gn), gn)
 ```
+
 ```{r echo=FALSE}
  # hard coding the above value so that rest of stuff that we actually
  # run can use it
@@ -165,67 +170,49 @@ slope.ply[B.gi]
 -2977.281
 ```
 
-This is horrific.  We are going to look at the underlying values, but to make
-things easier we'll order them first:
+<span id=obs-err></span>That's a ~1.2% error, which is for a computational error
+is downright ghastly, and on an entirely different plane of existence than the
+comparatively quaint `1 - 0.7 != 0.3`.
 
-```{r inputs-ordered, eval=FALSE}
-```
-
-Now we can look up the indices into the ordered data corresponding to our
-problem group:
+Let's look at the values in our problem group `616826`.  It turns out there are
+only two of them:
 
 ```{r eval=FALSE}
-B.g <- as.integer(names(slope.gs[B.gi]))
-B.i <- which(go == B.g)    # indices corresponding to our group
-B.ni <- tail(B.i, 1)       # last element in group
-A.ni <- head(B.i, 1) - 1   # last element in previous group
-```
-
-And the actual values:
-
-```{r eval=FALSE}
-(B.x <- xo[B.i])  # x values in our group
+x[grp == 616826]
 ```
 ```
-[1] 0.4239786 0.4239543
+[1] 0.4229786 0.4229543
 ```
 ```{r eval=FALSE}
-(B.y <- yo[B.i])  # y values in our group
+y[grp == 616826]
 ```
 ```
 [1] 0.7637899 0.8360645
 ```
 
-Our group only has two values, but the problem is how close the `x` values are.
-The [double precision floats][12] ("doubles" henceforth), which are what R
-"numeric" values are stored as, have plenty of precision to handle the `x`
-values proper, but things start going pear shaped at the next step which is to
-compute `$\sum{(x - \bar{x})^2}$`.  To see how bad it is we need to calculate
-all the steps up to just before the group sum of `$(x - \bar{x})^2$`.
+The `x` values are kinda close to each other, but well within the resolution
+of the [double precision format][12], which are what R "numeric" values are
+stored as.  It gets a bit worse though because the next step is `$\sum(x -
+\bar{x})^2$`:
 
-We'll need the group meta data, explained at length in the [previous post][109]:
-
-```{r}
-grle <- rle(go)               # repeated value "run" lengths
-gn <- grle[['lengths']]       # group sizes
-gnc <- cumsum(gn)             # index of last element in each group
-gi <- rep(seq_along(gn), gn)  # indices to recycle groups to input length
+```{r echo=FALSE}
+x.g <- x[grp == 616826]
+(B.s <- sum((x.g - mean(x.g))^2))
+```
+```{r eval=FALSE}
+(B.s <- sum((x[grp == 616826] - mean(x[grp == 616826]))^2))
+```
+```
+[1] 0.0000000002946472
 ```
 
-And now we can calculate the values:
-
-```{r}
-old.opt <- options(digits=22, scipen=100) # show more digits
-sx <- .group_sum_int(xo, gnc)  # sum(x)
-ux <- (sx/gn)[gi]              # mean(x), recycled
-x_ux <- xo - ux                # (x - mean(x))
-x_ux2 <- (x_ux ^ 2)            # (x - mean(x)) ^ 2
-x_ux2c <- cumsum(x_ux2)
-```
-
-We now have the cumulative sum of the value we want to examine, `$(x -
-\bar{x})^2$`.  Before we go further, let's revisit our algorithm to see why we
-have a problem:
+Yeah, the numbers are starting to get small but still nothing crazy.  In order
+to see why things go pear shaped we need to look back at the algorithm we use in
+`group_slope`.  Remember that we're doing all of this in vectorized code, so we
+don't have the luxury of using things like `sum(x[grp == 616826])` where we
+specify groups explicitly to sum.  Instead, we use `cumsum` on group ordered
+data.  Here is a visual recap of the key steps (these are steps 4 and 5 of the
+[previously described algorithm][110]):
 
 ```{r cumsum-review, echo=FALSE, warning=FALSE}
 library(ggbg)
@@ -285,56 +272,45 @@ ggplot(mapping=aes(x=x1, y=y1, fill=g1)) +
   plot.extra
 ```
 
-The cumulative sums will be quite precise as [R internally uses a
-representation][13] that allows [18-19 digits of precision][14] for
-`cumsum`[^extended-precision].  This additional precision is
-rounded back to standard double precision on exit from `cumsum`.  Where things
-go wrong is when we take the difference of the resulting doubles.  First, let's
-get the indices that correspond to the last values of the group of interest
-(`B`) and the preceding group (`A`):
+Our algorithm uses `cumsum` and some clever indexing to compute the values of
+`A.n` and `B.n`, respectively the total cumulative sum of our statistic up to
+the last value prior to our group and up to the last value in our group:
 
-```{r}
-B.ni <- tail(B.i, 1)       # last element in group
-A.ni <- head(B.i, 1) - 1   # last element in previous group
+```
+                    A.n                     B.n
+462824.4016201458289288 462824.4016201461199671
 ```
 
-The values are then:
-
-```{r}
-(B.n <- x_ux2c[B.ni])   # end val of target group
-```
-
-And:
-
-```{r}
-(A.n <- x_ux2c[A.ni])   # end val of prior group
-```
-
-These values are awful close to each other.  In our algorithm we take the
-difference of these two numbers to get the group sum.  But when values are so
-close relative to their magnitudes, doing so is the computing equivalent of
-walking down the stairs into a dark basement with ominous background music in a
-horror flick.  To leave no doubt about the carnage that is about to unfold
-(viewer discretion advised):<span id=carnage></span>
+In our algorithm we take the difference of these two numbers to get the group
+sum.  But when values are so close relative to their magnitudes, doing so is the
+computing equivalent of walking down the stairs into a dark basement with
+ominous background music in a horror flick.  To leave no doubt about the carnage
+that is about to unfold (viewer discretion advised):<span id=carnage></span>
 
 ```{r echo=FALSE}
-B.s <- B.n - A.n
+ux <- .group_sum_int(xo, gnc) / gn
+x_ux2c <- cumsum((xo - ux[gi])^2)
+i <- which(go == 616826L)
+A.n <- x_ux2c[i[1L] - 1L]
+B.n <- x_ux2c[i[length(i)]]
+B.s.new <- B.n - A.n
 ```
 ```{r eval=FALSE}
-B.s <- B.n - A.n
+B.s.new <- B.n - A.n       # recompute B.s as per our algorithm
 rbind(A.n, B.n, B.s)
 ```
 <pre></pre>
 ```{r echo=FALSE}
 val <- "                                       [,1]
-A.n  \033[42m462824.40162014\033[43m582\033[m89287984371185302734
-B.n  \033[42m462824.40162014\033[43m611\033[m99671030044555664062
-B.s       0.000000000\033[43m29\033[m10383045673370361328"
+A.n      \033[42m462824.40162014\033[43m582\033[m89287984371185302734
+B.n      \033[42m462824.40162014\033[43m611\033[m99671030044555664062
+B.s.new       0.000000000\033[43m29\033[m10383045673370361328"
 writeLines(val)
 ```
 
-We highlight the approximate double precision digits in green, and the
-additional digits that `cumsum` might use internally in yellow[^extended-2].
+We highlight the approximate double precision digits in green.  [R internally
+uses a representation][13] that allows [18-19 digits of precision][14] for
+`cumsum`, and we show that additional precision in yellow[^extended-2].
 The colors here have no semantic relation to those in the illustrative
 plots.<span id=mu-prec></span>  The only precision left is in the extended
 precision range, but that is not actually available outside of `cumsum`.
@@ -342,50 +318,70 @@ precision range, but that is not actually available outside of `cumsum`.
 So how much precision does `B.s` actually have?  The naive decimal view suggests
 quite a bit with all those trailing digits.  The color highlighting tells us
 instead there probably is very little as `B.s` does not have any digits in the
-"green".  Finally, the observed error of -1.2% suggests there must be some
-precision.
+"green".  Finally, the [observed error of ~1.2%](#obs-err) suggests there must
+be some precision.
 
-We can get a better idea by comparing the binary representation of the `A.n` and
-`B.n` values to their difference `B.s`.  Even though `A.n` and `B.n` were
-computed in 80 bit extended precision by `cumsum`, only the rounded 64 bit
-values are available in the results:
+For the actual answer, we need to look at the binary representation of the
+numbers.  Double precision floating points are typically encoded as per the
+[IEEE-754 standard][12].  For our numbers this is roughly what it looks like:
 
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30 -34  <- Exponent (2^n)
  |       |         |         |         |         |   |
 \033[34m+\033[39;42m11100001111111010000110011011010000100100111110111111\033[m: A.n
 \033[34m+\033[39;42m11100001111111010000110011011010000100100111111000100\033[m: B.n
-\033[34m+\033[m00000000000000000000000000000000000000000000000000\033[42m101\033[m: B.s"
+\033[34m+\033[m00000000000000000000000000000000000000000000000000\033[42m101\033[m: B.s.new"
 writeLines(val)
 ```
 
-In "doubles" the exponent is encoded with 11 of the 64 bits.  Here it is
-`+18` for `A.n` and `B.n`, and `-32` for `B.s`. Another bit is used to encode
-the sign, and the remaining 53 bits are use to encode the normalized value
-(a.k.a.  significand) shown in green here[^fifty-three].  The precision of
-doubles is dictated by the significand.
+We've converted the display to a format more amenable to human
+interpretation[^ieee-754-approx].  The ones and zeroes correspond to the
+significand of our number in base two, and it is allocated 52 of the 64 bits
+available.  This is the part that conveys the precision to the number.  The
+exponent captures (most) of the magnitude, and is given 11 bits. The last bit is
+used to encode the sign, shown here as the `+` sign.
 
-After taking the difference of `A.n` and `B.n` we are left with three bits of
-precision for `B.s`[^three-bits].  But what about all those digits we saw
-previously?  Well, check this out:
+In the significand, each "one" dictates that the corresponding power of two is
+part of the value.  So for `A.n`, we can approximately compute the value as:
 
+```{r}
+2^18 + 2^17 + 2^16 + 2^11 + 2^10 + 2^9 + 2^8 + 2^7 + 2^6 + 2^5 + 2^3
+```
+
+We only used the first 15 bits of the significand for illustrative purposes,
+and that allows us to reproduce the integral part of `A.n`.  This is not enough
+to distinguish between differentiate between `A.n` and `B.n`.  Even with all 52
+bits of significand[^fifty-three] we can barely tell the two numbers apart.  As
+a result, when we take the difference between those two numbers, we are left
+with just three bits of precision as most of the precision just cancels
+out[^three-bits].
+
+But, what about all those digits of seeming precision we see in the decimal
+representation of `B.s.new`?  Well check this out:
+
+```{r echo=FALSE}
+options(sci.pen=100, digits=22)
+```
 ```{r}
 2^-32 + 2^-34
 ```
 ```{r}
-B.s
+B.s.new
 ```
 
 The entire precision of `B.s` is encapsulated in `$2^{-32} + 2^{-34}$`.
-Each non-zero bit in the significand is represented by `$2^{-n}$` where `$n$` is
-the position in the bit field.  All those digits are just an artifact of the
-conversion of a limited precision binary number into decimal representation.
+All those digits are just an artifact of the conversion of a limited precision
+binary number into decimal representation.  Subtraction of two nearby
+floating point numbers is a recipe for disaster, and unfortunately for us our
+`cumsum` and `diff` algorithm is prone to causing this.
 
-The last significant bit in our starting numbers corresponds to
-`$2^{-34}$`, so at the limit both `A.n` and `B.n` could be off by as much as
-`$\pm2^{-35}$` as a result of rounding down to 64 bit precision.  It follows
-that `B.s`, which is the difference of `A.n` and `B.n`, could have up to twice
-the error:
+# How Bad Is It, Really?
+
+Given the binary representation of our numbers, we should be able to estimate
+what degree of error we could observe.  The last significant bit in our starting
+numbers corresponds to `$2^{-34}$`, so at the limit both `A.n` and `B.n` could
+be off by as much as `$\pm2^{-35}$`.  It follows that `B.s`, which is the
+difference of `A.n` and `B.n`, could have up to twice the error:
 
 $$2 \times \pm2^{-35} = \pm2^{-34}$$
 
@@ -395,7 +391,7 @@ becomes[^rel-err]:
 $$\pm\frac{2^{-34}}{2^{-32} + 2^{-34}} = \pm20\%$$
 
 If the theoretical precision is only `$\pm20\%$`, how did we end up with only a
-`$-1.2\%$` error?  Sheer luck.  Let's look again at the `A.n` and `B.n` values,
+`$~1.2\%$` error?  Sheer luck.  Let's look again at the `A.n` and `B.n` values,
 but this time comparing the underlying 80 bit representations used by `cumsum`.
 The 80 bit floating point representation adds 10 bits to the significand.  We'll
 discuss shortly how we got these 80 bit representations, but first let's look at
@@ -425,8 +421,9 @@ writeLines(val)
 The rounding error between the 80 and 64 bit representations for each of `A.n`
 and `B.n` is small compared to the difference between the `A.n` and `B.n`.
 Additionally, the rounding errors are in the same direction.  As a result the
-total error caused by the rounding from 80 bits to 64 bits should be
-`$(0.00111100 - 1.01111011) \times 2^{-38}$`, or a hair under `$2^{-38}$`:
+total error caused by the rounding from 80 bits to 64 bits, in "binary"
+representation, should be `$(0.00111100 - 1.01111011) \times 2^{-38}$`, or a
+hair under `$2^{-38}$`:
 
 ```{r echo=FALSE}
 options(old.opt) # switch back to normal display
@@ -440,16 +437,12 @@ exps <- 2^-(38:45)
 ```
 
 Here we estimated the error in our calculation from the binary representation,
-and got a value very close to the actual error:<span id=prec-loss-err></span>
+and basically got it spot on when compared to the actual error:<span
+id=prec-loss-err></span>
 
 ```{r}
-(err.obs <-  B.s - sum((xo[B.i] - mean(xo[B.i]))^2))
+(err.obs <-  B.s.new - B.s)
 ```
-
-This supports that we are carrying out the calculations on the 80 bit
-representations correctly.  The numbers are not exactly the same because even
-the 80 bit representation is limited in precision so we can only approximate the
-error.
 
 If we had been unlucky maybe the true values of `A.n` and `B.n` would have been
 as follows:
@@ -775,6 +768,60 @@ https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
 [^reformulation]: The win was for a literal implementation of the slope formula,
   under a [reformulated version][106] as shown by [Michael Chirico][107]
   `data.table` is faster.
+[^extended-2]: The extended precision digits are never actually directly
+  accessible in R as they are truncated away before return from C code.  We
+  exercise poetic license here for illustrative purposes.  Note the green and
+  yellow here have no semantic relationship to the colors in the algorithm
+  visualization plots.
+[^precision-digits]: Double precision is roughly `log10(2^53)`, or 15.95
+  in decimal, but precision can really only be measured in binary "digits", so
+  you cannot directly compute how much precision is lost by comparing two
+  decimal numbers.  This particular subtraction loses us 21 bits of precision,
+  or about 6.32 digits of decimal precision.
+[^mag-diff]: Adding numbers with low precision but very different magnitudes
+  can create a bit pattern in the double representation that suggests high
+  precision, but that is just an artifact of the computation.  The actual
+  precision is no higher than the precision of the highest magnitude number.
+[^mean-pathological]: Incidentally, this implies that you will get less
+  precise answers if your vector is [sorted by value][19] instead of even just
+  randomly.
+[^mag-prec]: There is still the general order of magnitude left, and since this
+  is a base 2 order of magnitude you should still be at +-50% accuracy (i.e.
+  value is between x and 2x).
+[^prec-mismatch]: Precision mismatch can arise when adding or subtracting
+  numbers different magnitudes, different precisions, or some combination of the
+  two.  Only the most significant digits of the larger magnitude number that are
+  either larger than the largest digit of the other number or overlap with a
+  "precise" digit of the smaller number survive.  As always all these
+  determinations should be made on binary digits, although it should hold
+  roughly true for decimal digits.
+[^for-effect]: We exaggerated the errors for expository purposes.
+[^full-prec-assumption]: This is assuming the entire precision of
+  `x_ux2.cum.pre` and `x_ux2.cum` is real.  As you saw previously these involve
+  numbers that are not [fully precise](#mu-prec), which may cause concern.
+  However, what we actually care about is that the cumulative sum of these
+  numbers is numerically precise, not semantically precise.
+[^plus-minus]: 3 bits allow us to represent `$2^3 == 8$` values, so naively
+  error spans `$1/8$`, or `$\pm1/16 == \pm6.25%$`.
+[^fifty-three]: If you counted closely you would see we show 53 bits in the
+  significand, not 52.  This is because in reality "doubles" only store the last
+  52 bits of the significand.  The first unstored bit is always assumed to be 1,
+  so 52 bits are encoded explicitly, and additional 53rd implicitly.  For
+  clarity we show that first bit explicitly.  There is an exception to the first
+  bit assumption: well the exponent is all zeroes the first implicit bit will be
+  treated as a zero as well.
+[^three-bits]: Internally the `B.s` will be stored with all 53 bits of
+  precision, but the trailing 50 bits will be all zeroes and carry no real
+  precision.
+[^rel-err]: The relative error value will fluctuate depending on the value we
+  are measuring it to.  Our reference value is in binary `1.01` (exp:
+  `$2^{-32}`), but it could also have been `1.11` or `0.01`, so for 3 bit values
+  the relative error can be as low as ~14% or as high as 100%.
+[^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
+  do the binary addition by hand...
+[^ieee-754-approx]: We show the entire significand, including the implicit
+  leading bit, and we show the de-biased exponent explicitly.  See the [IEEE-754
+  wikipedia page for details][12].
 
 [12]: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 [13]: https://github.com/wch/r-source/blob/R-3-5-branch/src/main/cum.c#L30
@@ -795,3 +842,4 @@ https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
 [107]: https://twitter.com/michael_chirico
 [108]: /2019/06/10/base-vs-data-table/#all-timings
 [109]: /2019/06/10/base-vs-data-table/#group-meta-data
+[110]: /2019/06/10/base-vs-data-table/#algo-visual
