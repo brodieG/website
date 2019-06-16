@@ -326,10 +326,24 @@ instead there probably is very little as `B.s` does not have any digits in the
 "green".  Finally, the [observed error of ~1.2%](#obs-err) suggests there must
 be some precision.
 
+# Interlude &mdash; IEEE-754
+
 For the actual answer, we need to look at the binary representation of the
-numbers.  Double precision floating points are typically encoded as per the
-[IEEE-754 standard][12].  Here is a partial binary representation of our numbers
-under that encoding[^ieee-754-approx]:
+numbers.  Double precision floating points are typically encoded in binary as
+per the [IEEE-754 standard][12]:
+
+<figure class='aligncenter' style='max-width: 100%;'>
+<a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='ieee-754-illustration'
+  src='/post/2019-06-11-hydra-precision_files/user-imgs/IEEE-754-double.png'
+/>
+</a>
+<figcaption>IEEE-754 Double Precision: each box represents a bit, big endian.</figcaption>
+</figure>
+
+For clarity we'll used a mixed binary/decimal representation, where the fraction
+is shown in binary, and the exponent in decimal[^ieee-754-approx]:
 
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30 -34  <- Exponent (2^n)
@@ -340,23 +354,18 @@ val <- "+18     +10        0        -10       -20       -30 -34  <- Exponent (2^
 writeLines(val)
 ```
 
-The ones and zeroes correspond to the significand of our number in binary form.
-This is the part that governs the precision of the number.  It is allocated 52
-and it is allocated 52 of the 64 bits available.  The base two exponent shown in
-decimal captures (most) of the magnitude, and is given 11 bits. The last
-bit is used to encode the sign, shown as the leading `+`.
-
-In the significand, each "one" dictates that the corresponding power of two is
-part of the value.  So for `A.n`, we can approximately compute the value as:
+The green portion of the fraction is used to emphasize the precision.  In the
+fraction, each "one" dictates that the corresponding power of two is part of the
+value.  So for `A.n`, we can approximately compute the value as:
 
 ```{r}
 2^18 + 2^17 + 2^16 + 2^11 + 2^10 + 2^9 + 2^8 + 2^7 + 2^6 + 2^5 + 2^3
 ```
 
-We only used the first 15 bits of the significand for illustrative purposes,
+We only used the first 15 bits of the fraction for illustrative purposes,
 and that allows us to reproduce the integral part of `A.n`.  This is not enough
 to differentiate between `A.n` and `B.n`.  Even with all 52 bits of
-significand[^fifty-three] we can barely tell the two numbers apart.  As a
+fraction[^fifty-three] we can barely tell the two numbers apart.  As a
 result, when we take the difference between those two numbers, we are left with
 just three bits of precision as most of the precision just cancels
 out[^three-bits].
@@ -375,13 +384,132 @@ B.s.new
 ```
 
 The entire precision of `B.s` is encapsulated in `$2^{-32} + 2^{-34}$`.
-All those digits are just an artifact of the conversion of a limited precision
-binary number into decimal representation.  Subtraction of two nearby
-floating point numbers is a recipe for disaster, and unfortunately for us our
-`cumsum` and `diff` algorithm is likely to cause this.
+All those extra decimal digits are just an artifact of the conversion, not
+evidence of precision.  Conversely, binary double precision floats can struggle
+to represent seemingly simple decimal numbers.  For example, 0.1 cannot be
+expressed precisely at all with any finite number of bits.  The built-in `iris`
+data set makes for a good illustration as most measures are taken to one decimal
+place.  This is what it looks like in binary format, with the factor levels in
+`Species` converted to their numeric equivalents:
+
+<figure class='aligncenter' style='max-width: 100%;'>
+<!--<a href='#image-credits' title='Click for image credits.' class=image-credit>-->
+
+```{r bin_rep, echo=FALSE, fig.height=3}
+ # A bit sloppy
+
+val_to_bit <- function(x, start, end) {
+  sig <- integer(start - end + 1L)
+  exp <- floor(log2(x))
+  exps <- start:end
+  for(i in seq_along(exps)) if(sig[i] <- x >= 2^exps[i]) x <- x - 2^exps[i]
+  sig
+}
+.bin_rep_int <- function(x) {
+  x <- as.numeric(x)
+  if(is.na(x)) {
+    # we're just taking the 731 NA_real_ value, irrespecitve of what type of NA
+    # we're dealing with
+    as.integer(c(0, rep(1, 11), rep(0, 41), c(1,1,1,1,0,1,0,0,0,1,0)))
+  } else {
+    positive <- x > 0
+    x <- abs(x)
+    exp <- floor(log2(x))
+    significand <- val_to_bit(x, exp, exp - 52L)
+    exponent <- val_to_bit(exp + 1023L, 10L, 0L)
+    c(as.integer(!positive), exponent, significand[-1L])
+  }
+}
+bin_rep <- function(x) {
+  if(!all(is.finite(x)))
+    stop("scalar finite non-na inputs only")
+  structure(vapply(x, .bin_rep_int, integer(64)), class='bin_rep')
+}
+print.bin_rep <- function(x, ...) {
+  apply(x, 2,
+    function(y) {
+      sign <- if(!y[1]) '+' else '-'
+      writeLines(
+        sprintf(
+          "%s1.%s * 2^%d", sign,
+          paste0(c(y[-(1:12)]), collapse=""),
+          sum(2^(10:0) * y[2:12]) - 1023L
+  ) ) } )
+  invisible(NULL)
+}
+plot.bin_rep <- function(x, ...) {
+  res <- array(x, c(dim(x), 3))
+  res[1,,3] <- 0
+  res[2:11,,c(1,2)] <- 0
+  res[12:64,,c(1,3)] <- 0
+  # res[rep(rowSums(res, dims=2) == 0, 3)] <- 1
+  # for(i in 10:1) res[i + 1,,] <- pmax(res[i + 1,,], i/20)
+  # for(i in 1:52) res[i + 12,,] <- pmax(res[i + 12,,], i/104)
+
+  plot(as.raster(unclass(aperm(res, c(2,1,3)))))
+}
+plot.new()
+dat <- iris
+lim <- 320
+old.par <- par(mfrow=c(1,ncol(dat)), mar=c(.5, .25, 2, .25))
+for(i in names(dat)) {
+  plot(bin_rep(head(dat[[i]], lim)))
+  title(i)
+}
+```
+<!--</a>-->
+<figcaption>Iris Underlying Binary Representation, Big Endian</figcaption>
+</figure>
+
+Colored cells are ones, and black cells zero, blue ones are the exponent, and
+green ones the fraction.  The sign bit is the first column and would show up
+in yellow if there were any negative numbers.  Let's zoom into the first ten
+elements of the second column:
+
+```{r bin-rep-zoom, fig.height=1, fig.width=4, echo=FALSE}
+dat <- iris[2]
+lim <- 10
+old.par <- par(mfrow=c(1,ncol(dat)), mar=c(0,0,.8,0))
+for(i in names(dat)) {
+  plot(bin_rep(head(dat[[i]], lim)))
+  title(sprintf("%s[1:%d]", i, lim))
+}
+```
+
+And the corresponding decimal values:
+
+```{r echo=FALSE}
+options(digits=7)
+```
+```{r}
+iris$Sepal.Width[1:10]
+```
+
+The first two elements are an integer and a decimal ending in `.5`.  These can
+be represented exactly in binary form, as is somewhat implicit in the trailing
+black (zeroes) in the first two rows[^float-exact].  The other numbers cannot
+be represented precisely, as is implicit in the use of every available bit.  We
+can also see this by showing more digits in the decimals:
+
+```{r}
+options(digits=20)
+iris$Sepal.Width[1:10]
+```
+```{r echo=FALSE}
+options(digits=3)
+```
+
+Before we move on, it's worth remembering that there is a difference between
+recorded precision and measured precision.  There is zero chance that every iris
+measured had dimensions quantized in millimeters.  The measurements themselves
+have no precision past the first decimal, so that the binary representation
+is only correct 15 decimal places or so is irrelevant for the purposes of this
+data.
 
 # How Bad Is It, Really?
 
+Subtraction of two nearby floating point numbers is a recipe for disaster, and
+unfortunately for us our `cumsum` and `diff` algorithm is likely to cause this.
 Given the binary representation of our numbers, we should be able to estimate
 what degree of error we could observe.  The last significant bit in our starting
 numbers corresponds to `$2^{-34}$`, so at the limit both `A.n` and `B.n` could
@@ -398,7 +526,7 @@ $$\pm\frac{2^{-34}}{2^{-32} + 2^{-34}} = \pm20\%$$
 If the theoretical precision is only `$\pm20\%$`, how did we end up with only a
 `$~1.2\%$` error?  Sheer luck.  Let's look again at the `A.n` and `B.n` values,
 but this time comparing the underlying 80 bit representations used by `cumsum`.
-The [80 bit floating point][14] representation adds 10 bits to the significand.
+The [80 bit floating point][14] representation adds 10 bits to the fraction.
 We'll discuss shortly how we got these 80 bit representations, but first let's
 look at `A.n`:<span id='a-err'></span>
 
@@ -511,72 +639,10 @@ bad for [cumulative sum of `$(x - \bar{x})^2$`](#carnage) due to the squaring
 that exacerbates relative magnitude differences.
 
 If you are still wondering how we came up with the 80 bit representations of the
-[cumulative sums earlier](#eighty-bit), wonder now more.  For example, for
+[cumulative sums earlier](#eighty-bit), wonder no more.  For example, for
 `A.n`, we make a copy of `$(x - \bar{x})^2$` vector, and append the negative
 of `A.n` at the position following `A.n` position:
 
-```{r bin_rep, echo=FALSE}
-# A bit sloppy
-
-val_to_bit <- function(x, start, end) {
-  sig <- integer(start - end + 1L)
-  exp <- floor(log2(x))
-  exps <- start:end
-  for(i in seq_along(exps)) if(sig[i] <- x >= 2^exps[i]) x <- x - 2^exps[i]
-  sig
-}
-.bin_rep_int <- function(x) {
-  x <- as.numeric(x)
-  if(is.na(x)) {
-    # we're just taking the 731 NA_real_ value, irrespecitve of what type of NA
-    # we're dealing with
-    as.integer(c(0, rep(1, 11), rep(0, 41), c(1,1,1,1,0,1,0,0,0,1,0)))
-  } else {
-    positive <- x > 0
-    x <- abs(x)
-    exp <- floor(log2(x))
-    significand <- val_to_bit(x, exp, exp - 52L)
-    exponent <- val_to_bit(exp + 1023L, 10L, 0L)
-    c(as.integer(!positive), exponent, significand[-1L])
-  }
-}
-bin_rep <- function(x) {
-  if(!all(is.finite(x)))
-    stop("scalar finite non-na inputs only")
-  structure(vapply(x, .bin_rep_int, integer(64)), class='bin_rep')
-}
-print.bin_rep <- function(x, ...) {
-  apply(x, 2,
-    function(y) {
-      sign <- if(!y[1]) '+' else '-'
-      writeLines(
-        sprintf(
-          "%s1.%s * 2^%d", sign,
-          paste0(c(y[-(1:12)]), collapse=""),
-          sum(2^(10:0) * y[2:12]) - 1023L
-  ) ) } )
-  invisible(NULL)
-}
-plot.bin_rep <- function(x, ...) {
-  res <- array(x, c(dim(x), 3))
-  res[1,,3] <- 0
-  res[2:11,,c(1,3)] <- 0
-  res[12:64,,c(1,2)] <- 0
-  res[] <- pmax(res, 0.2)
-  # for(i in 10:1) res[i + 1,,] <- pmax(res[i + 1,,], i/20)
-  # for(i in 1:52) res[i + 12,,] <- pmax(res[i + 12,,], i/104)
-
-  plot(as.raster(unclass(aperm(res, c(2,1,3)))))
-}
-plot.new()
-dat <- quakes
-lim <- 320
-old.par <- par(mfrow=c(1,ncol(dat)), mar=c(.5, .25, 2, .25))
-for(i in names(dat)) {
-  plot(bin_rep(head(dat[[i]], lim)))
-  title(i)
-}
-```
 ```{r}
 x_ux2.A.n <- x_ux2[1:(A.ni + 1)]
 x_ux2.A.n[A.ni + 1] <- -A.n
@@ -826,6 +892,12 @@ https://link.springer.com/content/pdf/bbm%3A978-1-4939-2122-5%2F1.pdf
 
 # Appendix
 
+## Image Credits
+
+* This floating point representation is a re-creation of [IEEE-754 Double
+  Floating Point Format][112], by Codekaizen.  It is recreated from scratch with
+  a color scheme that better matches the rest of the post.
+
 [^unequal]: One quirk of IEEE-754 floating point numbers is that some decimals
   such as 0.3 and 0.7 cannot be represented exactly in the encoding.  Some
   calculations such as this one expose that quirk.
@@ -870,8 +942,8 @@ https://link.springer.com/content/pdf/bbm%3A978-1-4939-2122-5%2F1.pdf
 [^plus-minus]: 3 bits allow us to represent `$2^3 == 8$` values, so naively
   error spans `$1/8$`, or `$\pm1/16 == \pm6.25%$`.
 [^fifty-three]: If you counted closely you would see we show 53 bits in the
-  significand, not 52.  This is because in reality "doubles" only store the last
-  52 bits of the significand.  The first unstored bit is always assumed to be 1,
+  fraction, not 52.  This is because in reality "doubles" only store the last
+  52 bits of the fraction.  The first unstored bit is always assumed to be 1,
   so 52 bits are encoded explicitly, and the additional 53rd implicitly.  For
   clarity we show that first bit explicitly.  There is an exception to the first
   bit assumption: when the exponent is all zeroes the first implicit bit will be
@@ -885,9 +957,15 @@ https://link.springer.com/content/pdf/bbm%3A978-1-4939-2122-5%2F1.pdf
   the relative error can be as low as ~14% or as high as 100%.
 [^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
   do the binary addition by hand...
-[^ieee-754-approx]: We show the entire significand, including the implicit
+[^ieee-754-approx]: We show the entire fraction, including the implicit
   leading bit, and we show the de-biased exponent explicitly.  See the [IEEE-754
   wikipedia page for details][12].
+[^float-exact]: Integers of magnitude less than $2^53$ can be represented
+  exactly, as well as any decimal that can be expressed as a negative power of
+  two (e.g. `$2^-1 = 0.5$`, `$2^-2 = 0.25$`, etc.) or combination thereof for
+  which the most significant bit is within 53 bits of the least significant one.  
+  Similarly a subset of integers larger than `$2^53$` can be represented exactly
+  with the same constraint.
 
 [12]: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 [13]: https://github.com/wch/r-source/blob/R-3-5-branch/src/main/cum.c#L30
@@ -910,3 +988,5 @@ https://link.springer.com/content/pdf/bbm%3A978-1-4939-2122-5%2F1.pdf
 [109]: /2019/06/10/base-vs-data-table/#group-meta-data
 [110]: /2019/06/10/base-vs-data-table/#algo-visual
 [111]: https://en.wikipedia.org/wiki/Denormal_number
+[112]: https://en.wikipedia.org/wiki/File:IEEE_754_Double_Floating_Point_Format.svg
+[113]: https://creativecommons.org/licenses/by-sa/2.0/deed.en
