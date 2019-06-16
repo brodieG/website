@@ -5,8 +5,8 @@ date: '2019-06-18'
 slug: hydra-precision
 categories: [r]
 tags: [optimization]
-image: /front-img/default.png
-imagerect: ~
+image: /post/2019-06-11-hydra-precision_files/user-imgs/quakes.png
+imagerect: /post/2019-06-11-hydra-precision_files/user-imgs/iris.png
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
@@ -61,7 +61,8 @@ group_slope <- function(x, y, grp) {
 # Recap
 
 <img
-  id='front-img' src='/front-img/default.png'
+  id='front-img' 
+  src='/post/2019-06-11-hydra-precision_files/user-imgs/quakes.png'
   class='post-inset-image'
 />
 
@@ -172,7 +173,11 @@ slope.ply[B.gi]
 
 <span id=obs-err></span>That's a ~1.2% error, which is for a computational error
 is downright ghastly, and on an entirely different plane of existence than the
-comparatively quaint `1 - 0.7 != 0.3`.
+comparatively quaint[^unequal].
+
+```{r}
+1 - 0.7 == 0.3
+```
 
 Let's look at the values in our problem group `616826`.  It turns out there are
 only two of them:
@@ -284,8 +289,8 @@ the last value prior to our group and up to the last value in our group:
 In our algorithm we take the difference of these two numbers to get the group
 sum.  But when values are so close relative to their magnitudes, doing so is the
 computing equivalent of walking down the stairs into a dark basement with
-ominous background music in a horror flick.  To leave no doubt about the carnage
-that is about to unfold (viewer discretion advised):<span id=carnage></span>
+ominous background music. To leave no doubt about the carnage that is about to
+unfold (viewer discretion advised):<span id=carnage></span>
 
 ```{r echo=FALSE}
 ux <- .group_sum_int(xo, gnc) / gn
@@ -323,7 +328,8 @@ be some precision.
 
 For the actual answer, we need to look at the binary representation of the
 numbers.  Double precision floating points are typically encoded as per the
-[IEEE-754 standard][12].  For our numbers this is roughly what it looks like:
+[IEEE-754 standard][12].  Here is a partial binary representation of our numbers
+under that encoding[^ieee-754-approx]:
 
 ```{r echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30 -34  <- Exponent (2^n)
@@ -334,12 +340,11 @@ val <- "+18     +10        0        -10       -20       -30 -34  <- Exponent (2^
 writeLines(val)
 ```
 
-We've converted the display to a format more amenable to human
-interpretation[^ieee-754-approx].  The ones and zeroes correspond to the
-significand of our number in base two, and it is allocated 52 of the 64 bits
-available.  This is the part that conveys the precision to the number.  The
-exponent captures (most) of the magnitude, and is given 11 bits. The last bit is
-used to encode the sign, shown here as the `+` sign.
+The ones and zeroes correspond to the significand of our number in binary form.
+This is the part that governs the precision of the number.  It is allocated 52
+and it is allocated 52 of the 64 bits available.  The base two exponent shown in
+decimal captures (most) of the magnitude, and is given 11 bits. The last
+bit is used to encode the sign, shown as the leading `+`.
 
 In the significand, each "one" dictates that the corresponding power of two is
 part of the value.  So for `A.n`, we can approximately compute the value as:
@@ -350,10 +355,10 @@ part of the value.  So for `A.n`, we can approximately compute the value as:
 
 We only used the first 15 bits of the significand for illustrative purposes,
 and that allows us to reproduce the integral part of `A.n`.  This is not enough
-to distinguish between differentiate between `A.n` and `B.n`.  Even with all 52
-bits of significand[^fifty-three] we can barely tell the two numbers apart.  As
-a result, when we take the difference between those two numbers, we are left
-with just three bits of precision as most of the precision just cancels
+to differentiate between `A.n` and `B.n`.  Even with all 52 bits of
+significand[^fifty-three] we can barely tell the two numbers apart.  As a
+result, when we take the difference between those two numbers, we are left with
+just three bits of precision as most of the precision just cancels
 out[^three-bits].
 
 But, what about all those digits of seeming precision we see in the decimal
@@ -373,7 +378,7 @@ The entire precision of `B.s` is encapsulated in `$2^{-32} + 2^{-34}$`.
 All those digits are just an artifact of the conversion of a limited precision
 binary number into decimal representation.  Subtraction of two nearby
 floating point numbers is a recipe for disaster, and unfortunately for us our
-`cumsum` and `diff` algorithm is prone to causing this.
+`cumsum` and `diff` algorithm is likely to cause this.
 
 # How Bad Is It, Really?
 
@@ -393,9 +398,9 @@ $$\pm\frac{2^{-34}}{2^{-32} + 2^{-34}} = \pm20\%$$
 If the theoretical precision is only `$\pm20\%$`, how did we end up with only a
 `$~1.2\%$` error?  Sheer luck.  Let's look again at the `A.n` and `B.n` values,
 but this time comparing the underlying 80 bit representations used by `cumsum`.
-The 80 bit floating point representation adds 10 bits to the significand.  We'll
-discuss shortly how we got these 80 bit representations, but first let's look at
-`A.n`:<span id='a-err'></span>
+The [80 bit floating point][14] representation adds 10 bits to the significand.
+We'll discuss shortly how we got these 80 bit representations, but first let's
+look at `A.n`:<span id='a-err'></span>
 
 ```{r a-n-err, echo=FALSE}
 val <- "+18     +10        0        -10       -20       -30       -40
@@ -418,12 +423,12 @@ val <- "+18     +10        0        -10       -20       -30       -40
 writeLines(val)
 ```
 
-The rounding error between the 80 and 64 bit representations for each of `A.n`
-and `B.n` is small compared to the difference between the `A.n` and `B.n`.
-Additionally, the rounding errors are in the same direction.  As a result the
-total error caused by the rounding from 80 bits to 64 bits, in "binary"
-representation, should be `$(0.00111100 - 1.01111011) \times 2^{-38}$`, or a
-hair under `$2^{-38}$`:
+The rounding errors `A.n.err` and `B.n.err`  between the 80 and 64 bit
+representations are small compared to the difference between the `A.n` and
+`B.n`.  Additionally, the rounding errors are in the same direction.  As a
+result the total error caused by the rounding from 80 bits to 64 bits, in
+"binary" representation, should be `$(0.00111100 - 1.01111011) \times 2^{-38}$`,
+or a hair under `$2^{-38}$`:
 
 ```{r echo=FALSE}
 options(old.opt) # switch back to normal display
@@ -468,7 +473,7 @@ writeLines(val)
 ```
 
 These have the same 64 bit representations as the original values, but the error
-is quite different:
+relative to the "true" 80 bit representations is quite different:
 
 ```{r}
 A.n.err.bits <- c(0,1,1,1,1,1,1,1,1,1,1)
@@ -477,6 +482,8 @@ exps <- 2^-(35:45)
 
 (err.est.max <- sum(B.n.err.bits * exps) - sum(A.n.err.bits * exps))
 err.est.max / B.s
+```
+```
 err.obs / B.s
 ```
 
@@ -509,19 +516,65 @@ If you are still wondering how we came up with the 80 bit representations of the
 of `A.n` at the position following `A.n` position:
 
 ```{r bin_rep, echo=FALSE}
- # Only works for normal finitite non-zero non-NA scalar doubles
+# A bit sloppy
 
-bin_rep <- function(x) {
-  stopifnot(length(x) == 1)
-  sign <- if(x > 0) '+' else '-'
-  x <- abs(x)
+val_to_bit <- function(x, start, end) {
+  sig <- integer(start - end + 1L)
   exp <- floor(log2(x))
-  sig <- integer(53)
-  exps <- ((exp):(exp - 53 + 1))
-
+  exps <- start:end
   for(i in seq_along(exps)) if(sig[i] <- x >= 2^exps[i]) x <- x - 2^exps[i]
+  sig
+}
+.bin_rep_int <- function(x) {
+  x <- as.numeric(x)
+  if(is.na(x)) {
+    # we're just taking the 731 NA_real_ value, irrespecitve of what type of NA
+    # we're dealing with
+    as.integer(c(0, rep(1, 11), rep(0, 41), c(1,1,1,1,0,1,0,0,0,1,0)))
+  } else {
+    positive <- x > 0
+    x <- abs(x)
+    exp <- floor(log2(x))
+    significand <- val_to_bit(x, exp, exp - 52L)
+    exponent <- val_to_bit(exp + 1023L, 10L, 0L)
+    c(as.integer(!positive), exponent, significand[-1L])
+  }
+}
+bin_rep <- function(x) {
+  if(!all(is.finite(x)))
+    stop("scalar finite non-na inputs only")
+  structure(vapply(x, .bin_rep_int, integer(64)), class='bin_rep')
+}
+print.bin_rep <- function(x, ...) {
+  apply(x, 2,
+    function(y) {
+      sign <- if(!y[1]) '+' else '-'
+      writeLines(
+        sprintf(
+          "%s1.%s * 2^%d", sign,
+          paste0(c(y[-(1:12)]), collapse=""),
+          sum(2^(10:0) * y[2:12]) - 1023L
+  ) ) } )
+  invisible(NULL)
+}
+plot.bin_rep <- function(x, ...) {
+  res <- array(x, c(dim(x), 3))
+  res[1,,3] <- 0
+  res[2:11,,c(1,3)] <- 0
+  res[12:64,,c(1,2)] <- 0
+  res[] <- pmax(res, 0.2)
+  # for(i in 10:1) res[i + 1,,] <- pmax(res[i + 1,,], i/20)
+  # for(i in 1:52) res[i + 12,,] <- pmax(res[i + 12,,], i/104)
 
-  writeLines(sprintf("Exp: 2^%d Sig: %s%s", exp, sign, paste0(sig, collapse="")))
+  plot(as.raster(unclass(aperm(res, c(2,1,3)))))
+}
+plot.new()
+dat <- quakes
+lim <- 320
+old.par <- par(mfrow=c(1,ncol(dat)), mar=c(.5, .25, 2, .25))
+for(i in names(dat)) {
+  plot(bin_rep(head(dat[[i]], lim)))
+  title(i)
 }
 ```
 ```{r}
@@ -556,7 +609,7 @@ More generally, we can compute the 80->64 bit conversion errors for every group
 by adding computing the group sums as we did previously, and then adding their
 negatives back to the input vector for a second pass cumulative sum.  Visually:
 
-```{r echo=FALSE}
+```{r error-correct, echo=FALSE}
 steps <- c(
   '2a - Sort By Group', '3a - Insert Neg Group Sum', '4a - Cumulative Sum',
   '5a - Last Val Is Error'
@@ -756,13 +809,26 @@ Note on vector size[^vec-size].
 <!-- this is populated by JS in feedback.html partial -->
 <div id='feedback-cont'></div>
 
-# Precision Schmecision
+# References
+
+<!--
+What every programmer should know
 
 https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
 
+A discussion with many easily followed examples is in Appendix G “Computational
+Precision and Floating Point Arithmetic”, pages 753–771 of Statistical Analysis
+and Data Display: An Intermediate Course with Examples in R, Richard M.
+Heiberger and Burt Holland (Springer 2015, second edition).
+
+https://link.springer.com/content/pdf/bbm%3A978-1-4939-2122-5%2F1.pdf
+-->
 
 # Appendix
 
+[^unequal]: One quirk of IEEE-754 floating point numbers is that some decimals
+  such as 0.3 and 0.7 cannot be represented exactly in the encoding.  Some
+  calculations such as this one expose that quirk.
 [^slope-mod]: We use `mean.default` because believe it or not the S3 dispatch
   around `mean` adds substantial overhead for this task.
 [^reformulation]: The win was for a literal implementation of the slope formula,
@@ -806,10 +872,10 @@ https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
 [^fifty-three]: If you counted closely you would see we show 53 bits in the
   significand, not 52.  This is because in reality "doubles" only store the last
   52 bits of the significand.  The first unstored bit is always assumed to be 1,
-  so 52 bits are encoded explicitly, and additional 53rd implicitly.  For
+  so 52 bits are encoded explicitly, and the additional 53rd implicitly.  For
   clarity we show that first bit explicitly.  There is an exception to the first
-  bit assumption: well the exponent is all zeroes the first implicit bit will be
-  treated as a zero as well.
+  bit assumption: when the exponent is all zeroes the first implicit bit will be
+  assumed to be zero as well.  This corresponds to ["subnormal" numbers][111].
 [^three-bits]: Internally the `B.s` will be stored with all 53 bits of
   precision, but the trailing 50 bits will be all zeroes and carry no real
   precision.
@@ -843,3 +909,4 @@ https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
 [108]: /2019/06/10/base-vs-data-table/#all-timings
 [109]: /2019/06/10/base-vs-data-table/#group-meta-data
 [110]: /2019/06/10/base-vs-data-table/#algo-visual
+[111]: https://en.wikipedia.org/wiki/Denormal_number
