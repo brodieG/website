@@ -688,7 +688,7 @@ We can then take those errors and add them back to the first-pass group sums.
 
 While the second-pass is still subject to precision issues, these are greatly
 reduced because the cumulative sum is reset to near zero after each group.  This
-prevents the accumulator from becoming large relative to the group sums.
+prevents the accumulator from becoming large relative to the values.
 
 `.group_sum_int2` below embodies the approach.  One slight modification from the
 visualization is that we subtract the first-pass group value from the last value
@@ -910,8 +910,9 @@ warranted.
 I would classify this as a moral victory more than anything else.  We can be as
 fast as `data.table`, or at a minimum close enough, using base R only.  When I
 wrote the [original group stats post][121] I didn't think we could get this
-close.  Mostly this is a curiosity, but for the rare cases where speed is
-required and `data.table` is not available, we now know there is an option.
+close.  Mostly this is a curiosity, but for the rare cases where speedy group
+stats are required and `data.table` is not available, we now know there is an
+option.
 
 One other important point in all this is that double precision floating point
 numbers are dangerous.  They pack precision so far beyond typical measurements
@@ -1121,6 +1122,7 @@ x_ux2 <- (xo - ux[gi])^2
 [116]: /2019/06/10/base-vs-data-table/#sys.time
 [120]: https://link.springer.com/content/pdf/bbm%3A978-1-4939-2122-5%2F1.pdf
 [121]: /2019/02/24/a-strategy-for-faster-group-statisitics/
+[122]: https://github.com/ThinkR-open/seven31
 
 [202]: https://github.com/hadley
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html

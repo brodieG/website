@@ -302,7 +302,7 @@ inside the boxes represent the errors of each group computation<a href="#fn11" c
 We can then take those errors and add them back to the first-pass group sums.</p>
 <p>While the second-pass is still subject to precision issues, these are greatly
 reduced because the cumulative sum is reset to near zero after each group. This
-prevents the accumulator from becoming large relative to the group sums.</p>
+prevents the accumulator from becoming large relative to the values.</p>
 <p><code>.group_sum_int2</code> below embodies the approach. One slight modification from the
 visualization is that we subtract the first-pass group value from the last value
 in the group instead of appending it to the group:</p>
@@ -399,8 +399,9 @@ warranted.</p>
 <p>I would classify this as a moral victory more than anything else. We can be as
 fast as <code>data.table</code>, or at a minimum close enough, using base R only. When I
 wrote the <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/">original group stats post</a> I didn’t think we could get this
-close. Mostly this is a curiosity, but for the rare cases where speed is
-required and <code>data.table</code> is not available, we now know there is an option.</p>
+close. Mostly this is a curiosity, but for the rare cases where speedy group
+stats are required and <code>data.table</code> is not available, we now know there is an
+option.</p>
 <p>One other important point in all this is that double precision floating point
 numbers are dangerous. They pack precision so far beyond typical measurements
 that it is easy to get lulled into a false sense of security about them. Yes,
@@ -425,7 +426,7 @@ Arithmetic”</a>.</p>
 I made the plots in this post.</li>
 <li>Olaf Mersmann etal. for creating <a href="https://cran.r-project.org/web/packages/microbenchmark/index.html">microbenchmark</a>, and <a href="https://github.com/joshuaulrich">Joshua
 Ulrich</a> for maintaining it.</li>
-<li><a href="/2019/02/24/a-strategy-for-faster-group-statisitics/">Romain Francois</a> for [<code>seven31</code>][122], which allowed I used when I first
+<li><a href="/2019/02/24/a-strategy-for-faster-group-statisitics/">Romain Francois</a> for <a href="https://github.com/ThinkR-open/seven31"><code>seven31</code></a>, which allowed I used when I first
 started exploring the binary representation of IEEE-754 double precision
 numbers.</li>
 <li><a href="/about/#acknowledgments">General acknowledgements</a>.</li>
