@@ -1087,6 +1087,10 @@ the footnotes.
 
 ### sys.time
 
+Please note there is an error in this function.  When `reps` is odd, it returns
+the timing of the run just faster than the median run.  Since all timings were
+taken with this error in effect, they should still be comparable.
+
 ```{r sys-time, eval=FALSE}
 ```
 

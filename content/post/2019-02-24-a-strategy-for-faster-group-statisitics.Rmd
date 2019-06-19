@@ -21,7 +21,7 @@ solution for when those optimizations fail."
 ```{r echo=FALSE, warning=FALSE}
 options(digits=3, datatable.print.topn=2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
-library(ggplot2)
+suppressMessages(library(ggplot2))
 ```
 ```{r, echo=FALSE}
 writeFansi <- function(x) {
