@@ -146,14 +146,14 @@ do something more sophisticated? It turns out we can. <a href="https://github.co
 how to compute group sums <a href="https://github.com/WinVector/FastBaseR/blob/f4d4236/R/cumsum.R#L105">using <code>cumsum</code></a> on group-ordered
 data<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. With a little work we can generalize it.</p>
 <p>The concept is to order by group, compute cumulative sum, pull out the last
-value for each group, and take their differences. Visually:</p>
+value for each group, and take their differences. Visually<span id="algo-visual"></span>:</p>
 <p><img src="/post/2019-06-05-base-vs-data-table_files/figure-html/cumsum-ex-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>This is the data we used for the visualization:</p>
 <pre class="r"><code>g1</code></pre>
 <pre><code>[1] 1 2 3 2 3 3 1</code></pre>
 <pre class="r"><code>x1</code></pre>
 <pre><code>[1] 0.915 0.937 0.286 0.830 0.642 0.519 0.737</code></pre>
-<p>The first three steps are obvious:</p>
+<p><span id="group-meta-data"></span>The first three steps are obvious:</p>
 <pre class="r"><code>ord &lt;- order(g1)
 go &lt;- g1[ord]
 xo &lt;- x1[ord]
@@ -325,7 +325,7 @@ earlier posts:</p>
 optimized version of it that computes on groups directly in C code without the
 per-group R evaluation overhead. We’re ~3x faster than the straight
 “out-of-the-box” version <code>DT[, slope(x, y), grp]</code>.</p>
-<p>A summary of all the timings:</p>
+<p><span id="all-timings"></span>A summary of all the timings:</p>
 <p><img src="/post/2019-06-05-base-vs-data-table_files/figure-html/rowsum-timings-all-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>If I let <code>data.table</code> use both my cores it comes close to our timings
 (<code>optim(mc)</code>), and presumably would do a little better still with more cores,

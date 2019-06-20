@@ -266,9 +266,13 @@ th {
   line-height: 1.5;
 }
 
-/* Images */
+/* Images 
+ *
+ * We've used max-width: 100%; for knitr plots so they will scale down, but this
+ * doesn't feel ideal
+ */
 
-img { margin: 0 auto; }
+img { margin: 0 auto; max-width: 100%;}
 
 .alignright,
 .alignleft,

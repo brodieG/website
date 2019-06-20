@@ -655,6 +655,9 @@ Eidl</a>, under CC0 Public Domain.</li>
 <h2>Function Definitions</h2>
 <div id="sys.time" class="section level3">
 <h3>sys.time</h3>
+<p>Please note there is an error in this function. When <code>reps</code> is odd, it returns
+the timing of the run just faster than the median run. Since all timings were
+taken with this error in effect, they should still be comparable.</p>
 <pre class="r"><code>sys.time &lt;- function(exp, reps=11) {
   res &lt;- matrix(0, reps, 5)
   time.call &lt;- quote(system.time({NULL}))
