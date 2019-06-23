@@ -417,11 +417,18 @@ Arithmetic”</a>.</p>
 </div>
 <div id="appendix" class="section level1">
 <h1>Appendix</h1>
+<div id="updates" class="section level2">
+<h2>Updates</h2>
+<ul>
+<li>2019-06-23: Typos.</li>
+</ul>
+</div>
 <div id="acknowledgments" class="section level2">
 <h2>Acknowledgments</h2>
-<div id="software" class="section level3">
-<h3>Software</h3>
+<div id="general" class="section level3">
+<h3>General</h3>
 <ul>
+<li><a href="https://twitter.com/d_olivaw">Elio Campitelli</a> for copy edits.</li>
 <li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code> with which
 I made the plots in this post.</li>
 <li>Olaf Mersmann etal. for creating <a href="https://cran.r-project.org/web/packages/microbenchmark/index.html">microbenchmark</a>, and <a href="https://github.com/joshuaulrich">Joshua
@@ -429,7 +436,7 @@ Ulrich</a> for maintaining it.</li>
 <li><a href="/2019/02/24/a-strategy-for-faster-group-statisitics/">Romain Francois</a> for <a href="https://github.com/ThinkR-open/seven31"><code>seven31</code></a>, which allowed I used when I first
 started exploring the binary representation of IEEE-754 double precision
 numbers.</li>
-<li><a href="/about/#acknowledgments">General acknowledgements</a>.</li>
+<li><a href="/about/#acknowledgments">Site acknowledgements</a>.</li>
 </ul>
 </div>
 <div id="image-credits" class="section level3">
@@ -582,15 +589,15 @@ assumed to be zero as well. This corresponds to <a href="https://en.wikipedia.or
 <li id="fn6"><p>Internally the <code>B.s</code> will be stored with all 53 bits of
 precision, but the trailing 50 bits will be all zeroes and carry no real
 precision.<a href="#fnref6" class="footnote-back">↩</a></p></li>
-<li id="fn7"><p>Integers of magnitude less than <span class="math inline">\(2^53\)</span> can be represented
+<li id="fn7"><p>Integers of magnitude less than <code>$2^{53}$</code> can be represented
 exactly, as well as any decimal that can be expressed as a negative power of
-two (e.g. <code>$2^-1 = 0.5$</code>, <code>$2^-2 = 0.25$</code>, etc.) or combination thereof for
+two (e.g. <code>$2^{-1} = 0.5$</code>, <code>$2^{-2} = 0.25$</code>, etc.) or combination thereof for
 which the most significant bit is within 53 bits of the least significant one.
-Similarly a subset of integers larger than <code>$2^53$</code> can be represented exactly
-with the same constraint.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+Similarly a subset of integers larger than <code>$2^{53}$</code> can be represented
+exactly with the same constraint.<a href="#fnref7" class="footnote-back">↩</a></p></li>
 <li id="fn8"><p>The relative error value will fluctuate depending on the value we
 are measuring it to. Our reference value is in binary <code>1.01</code> (exp:
-<code>$2^{-32}</code>), but it could also have been <code>1.11</code> or <code>0.01</code>, so for 3 bit values
+<code>$2^{-32}$</code>), but it could also have been <code>1.11</code> or <code>0.01</code>, so for 3 bit values
 the relative error can be as low as ~14% or as high as 100%.<a href="#fnref8" class="footnote-back">↩</a></p></li>
 <li id="fn9"><p>Unlike with normal double precision numbers, there is no implicit
 leading 1 bit in 80 bit extended precision, so even though there are 16

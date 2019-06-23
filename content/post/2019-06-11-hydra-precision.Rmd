@@ -929,10 +929,15 @@ Arithmetic"][114].
 
 # Appendix
 
+## Updates
+
+* 2019-06-23: Typos.
+
 ## Acknowledgments
 
-### Software
+### General
 
+* [Elio Campitelli][207] for copy edits.
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with which
   I made the plots in this post.
 * Olaf Mersmann etal. for creating [microbenchmark][205], and [Joshua
@@ -940,7 +945,7 @@ Arithmetic"][114].
 * [Romain Francois][121] for [`seven31`][122], which allowed I used when I first
   started exploring the binary representation of IEEE-754 double precision
   numbers.
-* [General acknowledgements][1].
+* [Site acknowledgements][1].
 
 ### Image Credits
 
@@ -1068,19 +1073,19 @@ x_ux2 <- (xo - ux[gi])^2
   precision.
 [^rel-err]: The relative error value will fluctuate depending on the value we
   are measuring it to.  Our reference value is in binary `1.01` (exp:
-  `$2^{-32}`), but it could also have been `1.11` or `0.01`, so for 3 bit values
+  `$2^{-32}$`), but it could also have been `1.11` or `0.01`, so for 3 bit values
   the relative error can be as low as ~14% or as high as 100%.
 [^by-hand]: since R doesn't support 80 bit doubles at the user level, we had to
   do the binary addition by hand...
 [^ieee-754-approx]: We show the entire fraction, including the implicit
   leading bit, and we show the de-biased exponent explicitly.  See the [IEEE-754
   wikipedia page for details][12].
-[^float-exact]: Integers of magnitude less than $2^53$ can be represented
+[^float-exact]: Integers of magnitude less than `$2^{53}$` can be represented
   exactly, as well as any decimal that can be expressed as a negative power of
-  two (e.g. `$2^-1 = 0.5$`, `$2^-2 = 0.25$`, etc.) or combination thereof for
+  two (e.g. `$2^{-1} = 0.5$`, `$2^{-2} = 0.25$`, etc.) or combination thereof for
   which the most significant bit is within 53 bits of the least significant one.
-  Similarly a subset of integers larger than `$2^53$` can be represented exactly
-  with the same constraint.
+  Similarly a subset of integers larger than `$2^{53}$` can be represented
+  exactly with the same constraint.
 [^exp-desc]: Only the most significant bit's exponent is recorded.  We highlight
   that by coloring it differently.  Note that for `B.s.new`, the most
   significant exponent is actually -32, which is not shown here to try to keep
@@ -1128,5 +1133,5 @@ x_ux2 <- (xo - ux[gi])^2
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html
 [205]: https://cran.r-project.org/web/packages/microbenchmark/index.html
 [206]: https://github.com/joshuaulrich
-
+[207]: https://twitter.com/d_olivaw
 
