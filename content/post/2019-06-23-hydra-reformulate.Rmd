@@ -1,0 +1,438 @@
+---
+title: hydra-reformulate
+author: ~
+date: '2019-07-01'
+slug: hydra-reformulate
+categories: []
+tags: [group-stats,optimization]
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+
+# When Computing You Are Allowed to Cheat
+
+Throughout the [Hydro Chronicles][100] we have explored why group statistics
+are problematic in R and how to how to optimize their calculation.  To refresh
+the issue suppose we wish to compute the by-group variance of the same 10MM row
+~1MM group data set [we've been using][120].  We could use `data.table`'s
+built-in "Gforce" optimized `var` function:
+
+```{r eval=FALSE}
+library(data.table)
+setDTthreads(1)
+
+sys.time({
+  DT <- data.table(x, grp)
+  var.0 <- DT[, var(x), keyby=grp][, setNames(V1, grp)]
+})
+```
+```
+   user  system elapsed
+  1.890   0.024   1.923
+```
+```{r}
+head(var.0)
+```
+```
+     1      2      3      4      5      6 
+0.0793 0.0478 0.0712 0.0656 0.0435 0.0298 
+```
+
+This is fast because simple expressions such as `fun(var)` where `fun` is one of
+the ["Gforce" optimized functions][140] can be evaluated by `data.table` across
+every group entirely in compiled code.  The nature of the beast is that we are
+limited to the pre-defined optimized functions.  What if we wanted the plain
+second central moment instead of the unbiased estimate produced by `var`:
+
+$$E\left[\left(X - E[X]\right)^2\right]$$
+
+Let's start with the obvious method[^alternate-unbiased]:
+
+```{r eval=FALSE}
+sys.time({
+  DT <- data.table(x, grp)
+  var.1 <- DT[, mean((x - mean(x)) ^ 2), keyby=grp][,setNames(V1, grp)]
+})
+```
+```
+   user  system elapsed
+  4.845   0.037   4.938
+```
+```{r eval=FALSE}
+head(var.1)
+```
+```
+     1      2      3      4      5      6
+0.0721 0.0409 0.0610 0.0612 0.0373 0.0261
+```
+
+"Gforce" does not work with more complex expressions, so this ends up
+substantially slower.  We can with some care break up the calculation into
+simple steps so that ["Gforce" can be used][160], but there is an even better
+option.  As [Michael Chirico points out][110], sometimes we can reformulate a
+statistic into a different easier to compute form.
+
+With the algebraic expansion:
+
+$$(x - y)^2 = x^2 - 2 x y + y^2$$
+
+And the expected value identities where `$X$` is a variable and
+`$c$` a constant[^var-vec]:
+
+$$
+E[c] = c\\
+E\left[E[X]\right] = E[X]\\
+E[c X] = c E[X]\\
+E[X + Y] = E[X] + E[Y]
+$$
+
+We can [reformulate the variance calculation][150]:
+
+$$
+\begin{align*}
+Var(X) = &E\left[(X - E\left[X\right])^2\right]\\
+       = &E\left[X^2 - 2X E\left[X\right] + E\left[X\right]^2\right] \\
+       = &E\left[X^2\right] - 2X \left[E\right]\left[X\right] + E\left[X\right]^2 \\
+       = &E\left[X^2\right] - E\left[X\right]^2 \\
+\end{align*}
+$$
+
+The critical aspect of this reformulation is that there are no nested statistics
+anymore, so we can compute all the component statistics in a single pass.  Let's
+try it:
+
+```{r eval=FALSE}
+sys.time({
+  DT <- data.table(x, grp)
+  DT[, x2:=x^2]
+  var.2 <-
+    DT[,.(ux2=mean(x2), ux=mean(x)), keyby=grp][, setNames(ux2 - ux^2, grp)]
+})
+```
+```
+   user  system elapsed
+  1.312   0.072   1.396
+```
+```{r eval=FALSE}
+all.equal(var.1, var.2)
+```
+```
+[1] TRUE
+```
+
+Wow, that's even faster than the "Gforce" optimized "var".  All the expressions
+in the grouping step are also of the form `fun(var)` so they can be "Gforce"
+optimized.
+
+These concepts apply equally to `dplyr`, although :
+
+```{r eval=FALSE}
+sys.time({
+  var.2a <- tibble(x, grp) %>% 
+    mutate(x2=x^2) %>%
+    group_by(grp) %>%
+    summarise(ux2=mean(x2), ux=mean(x)) %>%
+    with(setNames(ux2 - ux^2, grp))
+})
+```
+```
+   user  system elapsed 
+ 10.136   0.276  10.561 
+```
+```{r eval=FALSE}
+all.equal(var.2, var.2a)
+```
+```
+[1] TRUE
+```
+
+# Slow Down Cowboy
+
+I too the [reformulation for the variance][150] from wikipedia, which
+additionally provides a rather scary warning:
+
+> This equation should not be used for computations using floating point
+> arithmetic because it suffers from catastrophic cancellation if the two
+> components of the equation are similar in magnitude.
+
+Uh-oh.  Let's see:
+
+```{r eval=FALSE}
+quantile(var.2 - var.3)
+```
+```
+       0%       25%       50%       75%      100%
+-4.72e-16 -4.16e-17  0.00e+00  4.16e-17  5.01e-16
+```
+```{r eval=FALSE}
+quantile(((var.2 - var.3) / var.2), na.rm=TRUE)
+```
+```
+       0%       25%       50%       75%      100%
+-2.09e-07 -5.91e-16  0.00e+00  5.94e-16  2.91e-09
+```
+
+We did lose some precision, but certainly nothing catastrophic.  So under what
+circumstances do we actually need to worry?  Let's cook up an example that
+actually causes a problem:
+
+```{r}
+X <- c(2^52 + 1, 2^52 - 1)
+mean(X)
+mean((X - mean(X))^2)            # "normal" calc
+mean(X^2) - mean(X)^2            # "reformulated" calc
+```
+
+If we carry out the algebraic expansion of the first element of `$X^2$` we can
+see that problems crop up well before the subtraction:
+
+$$
+\begin{align*}
+(X_1)^2 = &(2^{52} + 2^0)^2\\
+        = &(2^{52})^2 + 2 \times 2^{52} \times 2^0 + (2^0)^2\\
+        = &2^{104} + 2^{53} + 2^0
+\end{align*}
+$$
+
+Double precision floating point numbers only have 53 bits of precision in the
+fraction, which means the difference between the highest power of two and the
+lowest one contained in a number cannot be greater than 52 without loss
+of precision.  Yet, here we are trying to add `$2^0$` to a number that contains
+`$2^{104}$`!  This is completely out of the realm of what double precision
+numbers can handle:
+
+```{r}
+identical(
+  2^104 + 2^53,
+  2^104 + 2^53 + 2^0
+)
+```
+
+One might think, "oh, that's just the last term, it doesn't matter", but it
+does:
+
+$$
+\require{cancel}
+\begin{align*}
+E[X^2]  = &\frac{1}{N}\sum X^2\\
+        = &\frac{1}{2}\left(\left(2^{52} + 2^0\right)^2 + \left(2^{52} - 2^0\right)^2\right)\\
+        = &\frac{1}{2} \left(\left(\left(2^{104} \cancel{+ 2^{53}} + 2^0\right)\right) + \left((2^{104} \cancel{- 2^{53}} + 2^0)\right)\right)\\
+        = &2^{104} + 2^0
+\end{align*}
+$$
+
+The contributions from the middle term cancel out, leaving only the last term as
+the difference between `$E[X^2]$` and `$E[X]^2$`.
+
+It's difficult to clearly define ex-ante the conditions that will lead to
+catastrophic precision loss, but we need to worry when `$\left|E[X]\right| \gg
+Var(X)$`, in particular when `$\left|E[X]\right| / Var(X)$` _nears_ or exceeds
+`$2^{26}$`.   Very roughly speaking that is when there will be many values in
+`$X$` that are close enough to `$E[X]$` to lose meaningful precision when
+squared.
+
+In practice data where `$\left|E[X]\right| \gg Var(X)$` in this way applies
+should be rare.  I can't think of any such situations in my day-to-day work.
+The examples I can make up are of the type where the mean is more or less
+known, as in measurements of precision machined parts.  Since the expected
+measurements are known they can be subtracted from the `$X$` values prior to
+squaring[^sub-penalty].  If there are cases where the expected value is unknown
+but can be guessed to a rough order of magnitude subtracting the guess could
+also dramatically reduce precision issues.
+
+# Beyond Variance
+
+While it's utterly fascinating (to some) that we can reformulate the variance,
+it's essentially useless since both `data.table` and `dplyr` have compiled code
+
+
+
+
+
+
+A key feature of this formulation is there is no interaction between grouped
+statistics and ungrouped as in [the original](#slope-orig).  This saves the
+costly merge step and results in a substantially faster calculation (single
+thread):
+
+```{r eval=FALSE}
+sys.time({
+  DT <- data.table(x, y, xy=x*y, x2=x^2, grp)
+  slope.dt.re <- DT[,
+    .(ux=mean(x), uy=mean(y), uxy=mean(xy), ux2=mean(x2)),
+    keyby=grp
+  ][,
+    setNames((uxy - ux*uy)/(ux2 - ux^2), grp)
+  ]
+})
+```
+```
+   user  system elapsed
+  1.377   0.126   1.507
+```
+
+But careful as there are precision issues here too, as warned on the [variance
+page][207]:
+
+>  This equation should not be used for computations using floating point
+>  arithmetic because it suffers from catastrophic cancellation if the two
+>  components of the equation are similar in magnitude. There exist numerically
+>  stable alternatives.
+
+We observe this to a small extent by comparing to our `vapply` based
+calculation:
+
+```{r eval=FALSE}
+quantile(slope.ply2 - slope.dt.re, na.rm=TRUE)
+```
+```
+           0%           25%           50%           75%          100%
+-6.211681e-04 -4.996004e-16  0.000000e+00  4.996004e-16  1.651546e-06
+```
+
+We can apply a similar reformulation to `group_slope`:
+
+```{r eval=FALSE}
+group_slope_re <- function(x, y, grp) {
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  grle <- rle(go)
+  gn <- grle[['lengths']]
+  gnc <- cumsum(gn)              # Last index in each group
+
+  ux <- .group_sum_int(xo, gnc)/gn
+  uy <- .group_sum_int(yo, gnc)/gn
+  uxy <- .group_sum_int(xo * yo, gnc)/gn
+  ux2 <- .group_sum_int(xo^2, gnc)/gn
+
+  setNames((uxy - ux * uy)/(ux2 - ux^2), grle[['values']])
+}
+sys.time(slope.gs.re <- group_slope_re(x, y, grp))
+```
+```
+   user  system elapsed
+  1.548   0.399   1.957
+```
+
+In this case `data.table` flips the advantage:
+
+```{r gs-timings-reform, echo=FALSE}
+funs <- c('original', 'original', 'reformulated', 'reformulated')
+times <- data.frame(
+  Function=factor(funs, levels=unique(funs)),
+  Version=c('data.table', 'group_slope', 'data.table', 'group_slope'),
+  time=c(3.139, 2.312, 1.507, 1.957)
+)
+ggplot(times, aes(x=Version, y=time)) +
+  geom_col() +
+  facet_grid(.~Function, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  geom_text(aes(label=sprintf("%0.2f", time)), vjust=-1) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
+```
+
+
+
+
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+```{r make-data, warning=FALSE}
+RNGversion("3.5.2"); set.seed(42)
+n     <- 1e7
+n.grp <- 1e6
+grp   <- sample(n.grp, n, replace=TRUE)
+noise <- rep(c(.001, -.001), n/2)  # more on this later
+x     <- runif(n) + noise
+y     <- runif(n) + noise          # we'll use this later
+```
+
+```{r eval=FALSE}
+DT <- data.table(x, y, grp)
+res <- DT[, .(var2=(sum(x^2) - sum(x)^2) / .N, var=var(x)), grp]
+
+DT[grp == 914807, .((sum(x^2) - (2*.N + 1)/.N^2 * sum(x)^ 2) / (.N-1))]
+DT[grp == 914807, .(var(x), sum((x - mean(x))^2)/(.N - 1))]
+DT[grp == 914807, .(var(x), sum((x - mean(x))^2))]
+DT[grp == 914807, .((1/(.N-1))*(sum(x^2) + ((1 - 2*.N)/.N^2)*sum(x)^2))]
+
+# don't really observe catastrophic cancellation
+# any elements in the sum that don't reference any vector elements need to be
+# multiplied by .N
+
+DT[grp == 914807,
+  .((sum(x^2) - sum(x)^2 / .N) / (.N - 1))
+]
+
+DT[, .(sum((x^2) - 2 * x * mean(x) + mean(x)^2)/(.N - 1))]
+
+
+DT[grp == 914807, .(
+  (sum(x^2) - sum(2 * x * mean(x) + mean(x)^2))/(.N - 1))]
+DT[grp == 914807, .(sum((x^2) - 2 * x * mean(x) + mean(x)^2))]
+DT[grp == 914807, .((sum(x^2) - sum(2 * x * mean(x)) + mean(x)^2))]
+DT[grp == 914807, .(sum((x - mean(x))^2)/(.N - 1), var(x))]
+
+DT[]
+
+x <- 1e8 + runif(1e3)
+(sum(x^2) - sum(x)^2 / length(x)) / (length(x) - 1)
+
+n
+
+(2^52 + 2^0) ^ 2
+(2^52)^2 + 2 * (2^52 * 2^0) + (2^0)^2
+2^104 + 2 ^ 53 + 2^1
+
+
+```
+
+# Conclusions
+
+A major point here is to try to understand when we need to worry about
+precision.
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Appendix
+
+## Acknowledgments
+
+Special thanks to [Michael Chirico][205] for providing this alternative
+formulation to the slope calculation:
+
+[^alternate-unbiased]: We could also multiply each group variance by `.N/(.N-1)`
+  to undo the de-biasing, but that's beside the point of what we're trying to
+  explore.
+[^sub-penalty]: In the case where there is a per-group known mean matching that
+  mean to each group in the data is reasonably costly and may undo some of the
+  benefit of the reformulation.
+[^var-vec]: For our purposes, we treat vectors as variables and scalars as
+  constants.
+
+[100]: /tags/group-stats/
+[110]: https://twitter.com/michael_chirico/status/1138092237550579712
+[120]: https://twitter.com/michael_chirico
+[130]: /2019/06/10/base-vs-data-table/#the-ring-and-a-warmup
+[140]: /2019/02/24/a-strategy-for-faster-group-statisitics/#what-is-this-sorcery
+[150]: https://en.wikipedia.org/wiki/Variance#Definition
+[160]: /2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip
