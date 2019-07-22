@@ -4,7 +4,7 @@ author: ~
 date: '2019-05-17'
 slug: pixie-dust
 categories: [r]
-tags: [optimization]
+tags: [group-stats,optimization]
 image: "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_annotated2.jpeg"
 imagerect: "/post/2019-05-17-pixie-dust_files/user-imgs/cpu-die_westmere-6core_small.jpeg"
 imagemrgvt: 0%
