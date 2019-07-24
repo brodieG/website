@@ -1,0 +1,9 @@
+```{r warning=FALSE}
+RNGversion("3.5.2"); set.seed(42)
+n     <- 1e7
+n.grp <- 1e6
+grp   <- sample(n.grp, n, replace=TRUE)
+noise <- rep(c(.001, -.001), n/2)  # more on this later
+x     <- runif(n) + noise
+y     <- runif(n) + noise          # we'll use this later
+```

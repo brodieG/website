@@ -442,7 +442,7 @@ comparable for `group_sum2` we will ignore the NA/Inf wrinkle going forward.
 Okay, great, we can sum quickly in base R.  One measly stat.  What good is that
 if we want to compute something more complex like the slope of a bivariate
 regression, as we did in our [prior post][107]?  As a refresher this is what the
-calculation looks like[^slope-orig]:
+calculation looks like:
 
 $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
