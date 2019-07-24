@@ -5,8 +5,8 @@ date: '2019-07-01'
 slug: hydra-reformulate
 categories: []
 tags: [group-stats,optimization]
-image: /front-img/default.png
-imagerect: ~
+image: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-neg.png
+imagerect: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-wide-neg.png
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
@@ -15,44 +15,67 @@ description: Front page summary
 ---
 
 ```{r echo=FALSE}
-options(digits=3)
+options(digits=3, datatable.print.topn=2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 
 # When Computing You Are Allowed to Cheat
 
-Throughout the [Hydro Chronicles][100] we have explored why group statistics
-are problematic in R and how to how to optimize their calculation.  To refresh
-the issue suppose we wish to compute the by-group variance of the same 10MM row
-~1MM group data set [we've been using][120].  We could use `data.table`'s
-built-in "Gforce" optimized `var` function:
+<figure class='post-inset-image'>
+<div class='post-inset-image-frame'><img
+  id='front-img' 
+  src='/post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-neg.png'
+  class='post-inset-image'
+/></div>
+<figcaption>Reformulation of variance.<figcaption>
+</figure>
+
+Throughout the [Hydra Chronicles][100] we have explored why group statistics
+are problematic in R and how to how to optimize their calculation.  R calls are
+slow, but normally this is not a problem because R will quickly hand off to
+native routines to do the heavily lifting.  With group statistics there must be
+at least one R call per group.  When there are many groups as in the [10MM row
+and ~1MM group data set](#data) we've been using, the R-level overhead adds up.
+
+Both `data.table` and `dplyr` resolve the problem by providing native routines
+to calculate per-group the most common statistics such as sum, mean, etc.  This
+relies on the group expression being in the form `statistic(variable)` so that
+the packages may easily recognize the attempt to compute known group statistics
+and substitute the native code.  There is a more complete discussion of this
+["Gforce" optimization in an earlier post][140].  We can see it an action here:
 
 ```{r eval=FALSE}
 library(data.table)
-setDTthreads(1)
+setDTthreads(1)            # for more stable timings
 
-sys.time({
+sys.time({                 # wrapper around sytem.time; see appendix
   DT <- data.table(x, grp)
-  var.0 <- DT[, var(x), keyby=grp][, setNames(V1, grp)]
+  var.0 <- DT[, .(var=var(x)), keyby=grp]
 })
 ```
 ```
    user  system elapsed
   1.890   0.024   1.923
 ```
+
+`sys.time` is a [wrapper around `system.time` defined in the
+appendix](#sys-time).
+
 ```{r eval=FALSE}
-head(var.0)
+var.0
 ```
 ```
-     1      2      3      4      5      6
-0.0793 0.0478 0.0712 0.0656 0.0435 0.0298
+            grp    var
+     1:       1 0.0793
+     2:       2 0.0478
+    ---               
+999952:  999999 0.1711
+999953: 1000000 0.0668
 ```
 
-This is fast because simple expressions such as `fun(var)` where `fun` is one of
-the ["Gforce" optimized functions][140] can be evaluated by `data.table` across
-every group entirely in compiled code.  The nature of the beast is that we are
-limited to the pre-defined optimized functions.  What if we wanted the plain
-second central moment instead of the unbiased estimate produced by `var`:
+This is fast because simple expressions such as `var(x)` can be "Gforce"
+optimized.  But what if we wanted the plain second central moment instead of the
+unbiased estimate produced by `var`:
 
 $$E\left[\left(X - E[X]\right)^2\right]$$
 
@@ -61,40 +84,51 @@ Let's start with the obvious method[^alternate-unbiased]:
 ```{r eval=FALSE}
 sys.time({
   DT <- data.table(x, grp)
-  var.1 <- DT[, mean((x - mean(x)) ^ 2), keyby=grp][,setNames(V1, grp)]
+  var.1 <- DT[, .(var=mean((x - mean(x)) ^ 2)), keyby=grp]
 })
 ```
 ```
-   user  system elapsed
-  4.845   0.037   4.938
+   user  system elapsed 
+  4.663   0.049   4.728 
 ```
 ```{r eval=FALSE}
-head(var.1)
+var.1
 ```
 ```
-     1      2      3      4      5      6
-0.0721 0.0409 0.0610 0.0612 0.0373 0.0261
+            grp    var
+     1:       1 0.0721
+     2:       2 0.0409
+    ---               
+999952:  999999 0.1466
+999953: 1000000 0.0594
 ```
 
 "Gforce" does not work with more complex expressions, so this ends up
 substantially slower.  We can with some care break up the calculation into
-simple steps so that ["Gforce" can be used][160], but there is an even better
-option.  As [Michael Chirico points out][110], sometimes we can reformulate a
-statistic into a different easier to compute form.
+simple steps so that ["Gforce" can be used][160], but this requires two passes
+and an expensive join.  There is an alternative: as [Michael Chirico points
+out][110], sometimes we can reformulate a statistic into a different easier to
+compute form.
 
 With the algebraic expansion:
 
 $$(x - y)^2 = x^2 - 2 x y + y^2$$
 
-And the expected value identities where `$X$` is a variable and
-`$c$` a constant[^var-vec]:
+And `$E[X]$` the expected value (mean) of a variable (vector) `$X$`, `$c$` a constant (scalar), and the following identities:
 
 $$
-E[c] = c\\
-E\left[E[X]\right] = E[X]\\
-E[c X] = c E[X]\\
-E[X + Y] = E[X] + E[Y]
+\begin{align*}
+E[c] &= c && Expect value (EV) of a constant is the constant.\\
+E\left[E[X]\right] &= E[X] && EV of an EV is itself.\\
+E[c X] &= c E[X] && EV of product of a constant and a variable is the product of
+that constant and the EV of the variable.\\
+E[X + Y] &= E[X] + E[Y] && EV of the sum of two variables is the sum of the EVs
+of each.
+\end{align*}
 $$
+
+And the expected value identities where `$X$` is a variable and
+`$c$` a constant[^var-vec]:
 
 We can [reformulate the variance calculation][150]:
 
@@ -103,6 +137,7 @@ $$
 Var(X) = &E\left[(X - E\left[X\right])^2\right]\\
        = &E\left[X^2 - 2X E\left[X\right] + E\left[X\right]^2\right] \\
        = &E\left[X^2\right] - 2 E\left[X\right]E\left[X\right] + E\left[X\right]^2 \\
+       = &E\left[X^2\right] - 2 E\left[X\right]^2 + E\left[X\right]^2 \\
        = &E\left[X^2\right] - E\left[X\right]^2 \\
 \end{align*}
 $$
@@ -115,13 +150,16 @@ try it:
 sys.time({
   DT <- data.table(x, grp)
   DT[, x2:=x^2]
-  var.2 <-
-    DT[,.(ux2=mean(x2), ux=mean(x)), keyby=grp][, setNames(ux2 - ux^2, grp)]
+  var.2 <- DT[,
+    .(ux2=mean(x2), ux=mean(x)), keyby=grp  # grouping step
+  ][,
+    .(grp, var=ux2 - ux^2)                  # final calculation
+  ]
 })
 ```
 ```
-   user  system elapsed
-  1.312   0.072   1.396
+   user  system elapsed 
+  1.159   0.114   1.277 
 ```
 ```{r eval=FALSE}
 all.equal(var.1, var.2)
@@ -130,32 +168,11 @@ all.equal(var.1, var.2)
 [1] TRUE
 ```
 
-Wow, that's even faster than the "Gforce" optimized "var".  All the expressions
-in the grouping step are also of the form `fun(var)` so they can be "Gforce"
-optimized.
+Wow, that's even faster than the "Gforce" optimized "var".  There is only one
+grouping step, and in that step all expressions are of the form
+`statistic(variable)` so they can be "Gforce" optimized.
 
-These concepts apply equally to `dplyr`, although the slow grouping holds it
-back:
-
-```{r eval=FALSE}
-sys.time({
-  var.2a <- tibble(x, grp) %>%
-    mutate(x2=x^2) %>%
-    group_by(grp) %>%
-    summarise(ux2=mean(x2), ux=mean(x)) %>%
-    with(setNames(ux2 - ux^2, grp))
-})
-```
-```
-   user  system elapsed
- 10.136   0.276  10.561
-```
-```{r eval=FALSE}
-all.equal(var.2, var.2a)
-```
-```
-[1] TRUE
-```
+These concepts [apply equally to `dplyr`](#dplyr-reformulate).
 
 # Slow Down Cowboy
 
@@ -241,9 +258,10 @@ as the difference between `$E[X^2]$` and `$E[X]^2$`.
 Generally we need to worry when `$\left|E[X]\right| \gg Var(X)$`.  The point at
 which catastrophic precision loss happens will be around `$\left|E[X]\right| /
 Var(X) \approx 26$`, as that is when squaring `$X$` values will cause most or
-all the variation precision to overflow.  We can illustrate with a sample with
+all the variance precision to overflow.  We can illustrate with a sample with
 `$n = 100$`, `$Var(X) = 1$`, and varying ratios of 
-`$\left|E[X]\right| / Var(X)$`, repeating the experiment 100 times for each ratio:
+`$\left|E[X]\right| / Var(X)$`, repeating the experiment 100 times for each
+ratio:
 
 <figure class='aligncenter' style='max-width: 100%;'>
 ```{r echo=FALSE, warning=FALSE}
@@ -288,13 +306,15 @@ ggplot(res.df) +
 
 The flat lines that start forming around `$2^{26}$` correspond to when the
 reformulation produces exactly zero for the variance.  Beyond that point the
-errors get dramatic.  Either the variance is incorrectly computed as zero, or
-grossly overestimated.  Unfortunately this means we cannot just measure the
-value of `$\left|E[X]\right| / Var(X)$` to assess ex-post if our calculation
-suffers enough precision loss to warrant a two-pass recalculation.  Under
-particularly egregious true values of `$\left|E[X]\right| / Var(X)$` the
-measured values appear perfectly reasonable, as in when the true ratio is ratio
-is `$2^{50}$`, but the measured ratio is as low as `$2^2$`:
+errors get dramatic.  Either the variance is computed as zero, or grossly
+overestimated.
+
+The overestimation of the variance means we cannot just measure the value of
+`$\left|E[X]\right| / Var(X)$` to assess ex-post if our calculation suffers
+substantial precision loss.  Under particularly egregious actual values of
+`$\left|E[X]\right| / Var(X)$` the measured values appear perfectly reasonable,
+as in when the actual ratio is `$2^{50}$`, but the measured ratio is as low as
+`$2^2$`:
 
 <figure class='aligncenter' style='max-width: 100%;'>
 ```{r echo=FALSE, warning=FALSE}
@@ -313,8 +333,12 @@ ggplot(subset(res.comp, is.finite(reformulate))) +
 ```
 </figure>
 
-Another way to look at the precision loss is to examine the underlying
-representation of the binary values:
+Infinite values (i.e. zero measured variance) are removed from the plot.
+
+Another way to look at the precision loss is to examine the [underlying
+binary representation][170] of the floating point numbers.  We do so here for
+each of the 100 samples of each of the attempted `$\left|E[X]\right| /
+Var(X)$` ratios:
 
 <figure class='aligncenter' style='max-width: 100%;'>
 ```{r echo=FALSE, child='../../static/chunks/bin-rep.Rmd'}
@@ -334,30 +358,21 @@ for(i in names(dat)) {
 <figcaption>Binary representation of reformulated variance value.</figcaption>
 </figure>
 
-In practice data where `$\left|E[X]\right| \gg Var(X)$` should be reasonably
-rare, and in many of those cases we can estimate a rough order-of-magnitude of
-the mean to subtract from the data prior to computation.  If it is really the
-case that `$\left|E[X]\right| \gg Var(X)$` then even picking any value from
-`$X$` to subtract from `$X$` should be sufficient.  We might run into problems
-if we tried to compute the variance of ocean wave heights measured from the
-center of the earth, but it's easy enough to subtract a gross estimate of the
-earth's radius.
+The precision loss shows up as trailing zeroes in those numbers (light green).
+This view makes it obvious that there is essentially no precision by the time we
+get to `$\left|E[X]\right| / Var(X) \approx 26$`, which is why the errors in the
+reformulation start getting so wild.  We can estimate a lower bound on the
+precision by inspecting the bit pattern, but since there may be legitimate
+trailing zeroes this will likely be an under-estimate.  See the appendix for a
+[method that checks](#check-bit-precision) a number has at least `n` bits of
+precision.
 
-Unfortunately for us the "subtract mean approx from `$X$`" solution is costly in
-the context of group statistics.  Much of the time spent computing group stats
-is not the statistic computation, but rather the sorting of values into groups,
-etc.  Any correction that requires a per-group computation such as querying the
-first value of a group dramatically increases the cost of the calculation.  This
-is particularly true because expressions of the form `mean(x - first(x))` defeat
-"Gforce" optimization.  In turn this forces us into a two [pass solution][160],
-at which point we might as well use `mean(x - mean(x))`.
-
-One final note: checks of `$E[X] / Var(X)$` where `Var(X)` is computed with the
-reformulation are tricky.  For example, in the worst case where the actual ratio
-was `$2^{30}$`, the observed ratio would have been `$~2^22$`, **substantially
-understating how bad the problem actually is**.  This makes it difficult to
-ascertain how precise the reformulated calculation is based on its results
-alone.
+We cannot reliably estimate precision loss from the reformulation, but in
+practice data for which `$\left|E[X]\right| \gg Var(X)$` should be reasonably
+rare.  In cases where that might hold true, we will often have a rough
+order-of-magnitude estimate of `$E[X]$` which we can subtract from the data
+prior to computation, though this is only useful if the mean is roughly the same
+across all groups[^sub-penalty].
 
 # Beyond Variance
 
@@ -372,12 +387,12 @@ With a little elbow grease we can reformulate the third moment:
 
 $$
 \begin{align*}
-\left(X - E[X]\right)^3 = &
-  E\left[X^3 - 3 X^2 E\left[X\right] + 3 X E\left[X\right]^2 -
-  \left[E\right]^3\right]\\
+Skew(X) = &E\left[\left(X - E[X]\right)^3\right]\\
+= & E\left[X^3 - 3 X^2 E\left[X\right] + 3 X E\left[X\right]^2 -
+  E\left[X\right]^3\right]\\
                         = &
   E\left[X^3\right] - 3 E\left[X^2\right] E\left[X\right] +
-  3 E\left[X\right] E\left[X\right]^2 - \left[E\right]^3\\
+  3 E\left[X\right] E\left[X\right]^2 - E\left[X\right]^3\\
                         = &
   E\left[X^3\right] - 3 E\left[X^2\right] - 2E\left[X\right]^3
 \end{align*}
@@ -397,9 +412,6 @@ Just beware that precision issues will become increasingly unforgiving with
 larger polynomials as is the case here:
 
 ```{r echo=FALSE, warn=FALSE}
-ns <- c(10, 100, 1000)
-ratios <- c(0, 10, 15, 20, 22, 24, 25, 26, 27, 28, 29, 30)
-reps <- 100
 res <- array(
   numeric(), dim=c(reps, length(ratios), length(ns), 2),
   dimnames=list(NULL, paste0("2^", ratios), ns, c('normal', 'reformulate'))
@@ -415,7 +427,8 @@ for(i in seq_len(reps)) {
     }
   }
 }
-res.rat <- (res[,,2,'normal'] - res[,,2,'reformulate'])/res[,,2,'normal']
+res.rat <- (res[,,'100','normal'] - res[,,'100','reformulate'])/
+  res[,,'100','normal']
 library(reshape2)
 res.df <- melt(res.rat)
 library(ggplot2)
@@ -433,11 +446,16 @@ saw][110] that was not immediately obvious to me is that:
 
 $$
 \begin{align*}
-Slope(X,Y) = &Cov(X,Y) / Var(X)\\
-= \frac{&E\left[(X - E\left[X\right])(Y - E\left[Y\right\)\right]}{
-E\left[(X - E\left[X\right])^2\right]}\\
-= \frac{
-&E\left[XY\right] - E\left[X\right]E\left[Y\right]}{
+Slope(X,Y) 
+= &\frac{Cov(X,Y)}{Var(X)}\\
+= &\frac{
+  E\left[
+      \left(X - E\left[X\right]\right)
+      \left(Y - E\left[Y\right]\right)
+   \right]
+  }{E\left[\left(X - E\left[X\right]\right)^2\right]}\\
+= &\frac{
+E\left[XY\right] - E\left[X\right]E\left[Y\right]}{
 E\left[X^2\right] - E\left[X\right]^2}
 \end{align*}
 $$
@@ -460,16 +478,15 @@ slope.dt.re <- DT[,
 
 As with all the reformulations we've seen the key feature of this one is
 there is no interaction between grouped statistics and ungrouped ones, allowing
-a one-pass group calculation.
-
-
-In this case `data.table` flips the advantage:
+a one-pass group calculation.  With the one-pass reformulation `data.table` is
+able to beat the `cumsum` based base-R method [we studied in the last
+post][180][^prev-bench]:
 
 ```{r gs-timings-reform, echo=FALSE}
 funs <- c('2-pass original', '2-pass original', 'reformulated', 'reformulated')
 times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
-  Version=c('data.table', 'base', 'data.table', 'base'),
+  Version=c('data.table', 'base cumsum', 'data.table', 'base cumsum'),
   time=c(3.139, 2.312, 1.507, 1.957)
 )
 ggplot(times, aes(x=Version, y=time)) +
@@ -480,66 +497,55 @@ ggplot(times, aes(x=Version, y=time)) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1)))
 ```
 
-<!-- this needs to become a shortcode -->
-<img
-  id='front-img' src='/front-img/default.png'
-  class='post-inset-image'
-/>
+In this case you cannot just examine the binary representation of the slope
+value to look for precision issues.  The division of the covariance by the
+variance may produce numbers that look like they are precise based on the bit
+pattern, when in reality that is just the result of the interaction of one or
+two imprecise numbers.  Instead, you will want to look at the covariance and the
+variance values separately.
 
-```{r make-data, warning=FALSE}
-RNGversion("3.5.2"); set.seed(42)
-n     <- 1e7
-n.grp <- 1e6
-grp   <- sample(n.grp, n, replace=TRUE)
-noise <- rep(c(.001, -.001), n/2)  # more on this later
-x     <- runif(n) + noise
-y     <- runif(n) + noise          # we'll use this later
-```
+More generally we should be able to apply this expansion to any nested
+statistics involving `sum` or `mean`, which will cover a broad range of
+interesting statistics.  In the case of `sum`, keep in mind that:
 
-```{r eval=FALSE}
-DT <- data.table(x, y, grp)
-res <- DT[, .(var2=(sum(x^2) - sum(x)^2) / .N, var=var(x)), grp]
+$$
+\sum_i^n c = n c
+$$
 
-DT[grp == 914807, .((sum(x^2) - (2*.N + 1)/.N^2 * sum(x)^ 2) / (.N-1))]
-DT[grp == 914807, .(var(x), sum((x - mean(x))^2)/(.N - 1))]
-DT[grp == 914807, .(var(x), sum((x - mean(x))^2))]
-DT[grp == 914807, .((1/(.N-1))*(sum(x^2) + ((1 - 2*.N)/.N^2)*sum(x)^2))]
+And similarly:
 
-# don't really observe catastrophic cancellation
-# any elements in the sum that don't reference any vector elements need to be
-# multiplied by .N
-
-DT[grp == 914807,
-  .((sum(x^2) - sum(x)^2 / .N) / (.N - 1))
-]
-
-DT[, .(sum((x^2) - 2 * x * mean(x) + mean(x)^2)/(.N - 1))]
-
-
-DT[grp == 914807, .(
-  (sum(x^2) - sum(2 * x * mean(x) + mean(x)^2))/(.N - 1))]
-DT[grp == 914807, .(sum((x^2) - 2 * x * mean(x) + mean(x)^2))]
-DT[grp == 914807, .((sum(x^2) - sum(2 * x * mean(x)) + mean(x)^2))]
-DT[grp == 914807, .(sum((x - mean(x))^2)/(.N - 1), var(x))]
-
-DT[]
-
-x <- 1e8 + runif(1e3)
-(sum(x^2) - sum(x)^2 / length(x)) / (length(x) - 1)
-
-n
-
-(2^52 + 2^0) ^ 2
-(2^52)^2 + 2 * (2^52 * 2^0) + (2^0)^2
-2^104 + 2 ^ 53 + 2^1
-
-
-```
+$$
+\sum_i^n \left(c + X\right) = n c + \sum_i^n X
+$$
 
 # Conclusions
 
-A major point here is to try to understand when we need to worry about
-precision.
+Reformulations is a powerful tool for dealing with group statistics, but
+appropriate care is required to understand and mitigate the associated precision
+issues.  I haven't checked, but I suspect that a strategy based on looking at
+bit patterns and recomputing the suspicious groups will end up slower than a two
+pass approach.  The problem is that the bit pattern check will produce false
+positives because any large enough number of groups will randomly have some of
+them with statistics with  many trailing zeroes.  The cost of retrieving those,
+recomputing them with a two pass calculation, and replacing the results will be
+high.  And there is the risk of misinterpreting the bid patterns.  As noted
+earlier, with the slope statistic we must look at the bit patterns of the
+subcomponents of the statistic, not the statistic itself.
+
+
+
+with 
+
+This requires understanding the statistic and its
+reformulation well enough to 
+
+Given the difficulty
+
+
+should be possible 
+The reformulation approach to group statistics 
+Using the reformulation approach could be useful in circumstances 
+
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -556,18 +562,99 @@ identities.  So far removed in fact that my first reaction on seeing that his
 calculations actually produced the same result was "how is that even
 possible"...
 
+Additionally:
 
-providing this alternative
-formulation to the slope calculation:
+* @coolbutuseless for showing me that `writeBin` can write directly to a raw
+  vector.
+
+## Software
+
+`data.table`
+`ggplot2`
+`ggbeeswarm`
+
+
+## Code
+
+### dplyr Reformulate
+
+We can apply the reformulation to `dplyr`, but the slow grouping holds it
+back.
+
+```{r eval=FALSE}
+sys.time({
+  var.2a <- tibble(x, grp) %>%
+    mutate(x2=x^2) %>%
+    group_by(grp) %>%
+    summarise(ux2=mean(x2), ux=mean(x)) %>%
+    mutate(var=ux2 - ux^2) %>%
+    select(grp, var)
+})
+```
+```
+   user  system elapsed 
+ 11.171   0.299  11.660 
+```
+```{r eval=FALSE}
+all.equal(as.data.frame(var.2), as.data.frame(var.2a))
+```
+```
+[1] TRUE
+```
+### Data
+
+```{r eval=FALSE, child='../../static/chunks/grp-dat.Rmd'}
+```
+
+### sys.time
+
+```{r eval=FALSE, child='../../static/chunks/sys-time.Rmd'}
+```
+
+### Check Bit Precision
+
+The following function will check whether doubles have at least `bits` precision
+as implied by their underlying binary encoding.  The precision is defined by the
+least significant "one" present in the fraction component of the number.  There
+is no guarantee that the least significant "one" correctly represents the
+precision of the number.  There may be trailing zeroes that are significant, or
+a number may gain random trailing noise that is not a measure of precision.
+
+While this implementation is reasonably fast, it is memory inefficient.
+
+```{r}
+# requires double `x` of length > 0, and positive scalar `bits`
+# assumes little endian byte order.  Not tested with NA or infinite values.
+
+has_precision_bits <- function(x, bits) {
+  n <- 53 - min(c(bits-1, 53))
+  mask.full <- n %/% 8
+  mask.extra <- n %% 8
+  mask <- as.raw(c(
+    rep(255, mask.full),
+    if(mask.extra) 2^(mask.extra) - 1,
+    rep(0, 8 - (mask.full + (mask.extra > 0)))
+  ) )
+  colSums(matrix(as.logical(writeBin(x, raw()) & mask), nrow=8)) > 0
+}
+```
 
 [^alternate-unbiased]: We could also multiply each group variance by `.N/(.N-1)`
   to undo the de-biasing, but that's beside the point of what we're trying to
   explore.
-[^sub-penalty]: In the case where there is a per-group known mean matching that
-  mean to each group in the data is reasonably costly and may undo some of the
-  benefit of the reformulation.
+[^sub-penalty]: In the case where each group has means that are very different
+  from the others this is no longer a useful correction as matching each group
+  to its mean-estimate is costly.  At that point and we might as well revert to
+  a two [pass solution][160].
 [^var-vec]: For our purposes, we treat vectors as variables and scalars as
   constants.
+[^bit-pattern]: Be careful though, if you operate on a number with many trailing
+  zeroes the result may well gain trailing ones that are no longer indicative of
+  true precision.
+[^prev-bench]: What we are calling here the two-pass cumsum version is not the
+  precision corrected one.  In this context, two-pass means we compute the group
+  mean first, and then subtract it from the original variables.  For the
+  precision corrected benchmarks see the [Catastrophic Imprecision][190] post.
 
 [100]: /tags/group-stats/
 [110]: https://twitter.com/michael_chirico/status/1138092237550579712
@@ -577,3 +664,6 @@ formulation to the slope calculation:
 [150]: https://en.wikipedia.org/wiki/Variance#Definition
 [160]: /2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip
 [170]: /2019/06/18/hydra-precision/#interlude-ieee-754
+[180]: /2019/06/10/base-vs-data-table/#so-you-think-you-can-group-stat
+[190]: /2019/06/18/hydra-precision/#verdict
+
