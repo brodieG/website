@@ -1,0 +1,461 @@
+---
+title: "Hydra Chronicles Part IV: Reformulation of Statistics"
+author: ~
+date: '2019-07-24'
+slug: hydra-reformulate
+categories: []
+tags: [group-stats,optimization]
+image: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-neg.png
+imagerect: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-wide-neg.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Making group statistics even faster by reformulation, and assessing
+  the precision risks of doing so.
+---
+
+
+
+<div id="when-computing-you-are-allowed-to-cheat" class="section level1">
+<h1>When Computing You Are Allowed to Cheat</h1>
+<figure class="post-inset-image">
+<div class="post-inset-image-frame">
+<img
+  id='front-img' 
+  src='/post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-neg.png'
+  class='post-inset-image'
+/>
+</div>
+</figure>
+<p>Throughout the <a href="/tags/group-stats/">Hydra Chronicles</a> we have explored why group statistics
+are problematic in R and how to optimize their calculation. R calls are
+slow, but normally this is not a problem because R will quickly hand off to
+native routines to do the heavily lifting. With group statistics there must be
+at least one R call per group. When there are many groups as in the <a href="#data">10MM row
+and ~1MM group data set</a> we’ve been using, the R-level overhead adds up.</p>
+<p>Both <code>data.table</code> and <code>dplyr</code> resolve the problem by providing native routines
+that can compute per-group statistics completely in native code for a limited
+number of statistics. This relies on the group expression being in the form
+<code>statistic(variable)</code> so that the packages may recognize the attempt to compute
+known group statistics and substitute the native code. There is a more complete
+discussion of this <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#what-is-this-sorcery">“Gforce” optimization in an earlier post</a>. We can see
+it an action here:</p>
+<pre class="r"><code>library(data.table)
+setDTthreads(1)            # for more stable timings
+
+sys.time({                 # wrapper around sytem.time; see appendix
+  DT &lt;- data.table(x, grp)
+  var.0 &lt;- DT[, .(var=var(x)), keyby=grp]
+})</code></pre>
+<pre><code>   user  system elapsed
+  1.890   0.024   1.923</code></pre>
+<p><code>sys.time</code> is a <a href="#sys-time">wrapper around <code>system.time</code> defined in the
+appendix</a>.</p>
+<pre class="r"><code>var.0</code></pre>
+<pre><code>            grp    var
+     1:       1 0.0793
+     2:       2 0.0478
+    ---               
+999952:  999999 0.1711
+999953: 1000000 0.0668</code></pre>
+<p>But what if we wanted the plain second central moment instead of the
+unbiased estimate produced by <code>var</code>:</p>
+<p><span class="math display">\[E\left[\left(X - E[X]\right)^2\right]\]</span></p>
+<p>Let’s start with the obvious method<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>:</p>
+<pre class="r"><code>sys.time({
+  DT &lt;- data.table(x, grp)
+  var.1 &lt;- DT[, .(var=mean((x - mean(x)) ^ 2)), keyby=grp]
+})</code></pre>
+<pre><code>   user  system elapsed 
+  4.663   0.049   4.728 </code></pre>
+<pre class="r"><code>var.1</code></pre>
+<pre><code>            grp    var
+     1:       1 0.0721
+     2:       2 0.0409
+    ---               
+999952:  999999 0.1466
+999953: 1000000 0.0594</code></pre>
+<p>“Gforce” does not work with more complex expressions, so this ends up
+substantially slower. We can with some care break up the calculation into
+simple steps so that <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip">“Gforce” can be used</a>, but this requires a
+group-join-group dance. There is an alternative: as <a href="https://twitter.com/michael_chirico/status/1138092237550579712">Michael Chirico points
+out</a>, sometimes we can reformulate a statistic into a different easier to
+compute form.</p>
+<p>With the algebraic expansion:</p>
+<p><span class="math display">\[(x - y)^2 = x^2 - 2 x y + y^2\]</span></p>
+<p>And <code>$c$</code> a constant (scalar), <code>$X$</code> a variable (vector), <code>$E[X]$</code> the expected
+value (mean) of <code>$X$</code>, and the following identities:</p>
+<p><span class="math display">\[
+\begin{align*}
+E[c] &amp;= c\\
+E\left[E[X]\right] &amp;= E[X]\\
+E[c X] &amp;= c E[X]\\
+E[X + Y] &amp;= E[X] + E[Y]
+\end{align*}
+\]</span></p>
+<p>We can <a href="https://en.wikipedia.org/wiki/Variance#Definition">reformulate the variance calculation</a>:</p>
+<p><span class="math display">\[
+\begin{align*}
+Var(X) = &amp;E\left[(X - E\left[X\right])^2\right]\\
+       = &amp;E\left[X^2 - 2X E\left[X\right] + E\left[X\right]^2\right] \\
+       = &amp;E\left[X^2\right] - 2 E\left[X\right]E\left[X\right] + E\left[X\right]^2 \\
+       = &amp;E\left[X^2\right] - 2 E\left[X\right]^2 + E\left[X\right]^2 \\
+       = &amp;E\left[X^2\right] - E\left[X\right]^2 \\
+\end{align*}
+\]</span></p>
+<p>The critical aspect of this reformulation is that there are no interactions
+between vectors and grouped values (statistics) so we can compute all the
+component statistics in a single pass. Let’s try it:</p>
+<pre class="r"><code>sys.time({
+  DT &lt;- data.table(x, grp)
+  DT[, x2:=x^2]
+  var.2 &lt;- DT[,
+    .(ux2=mean(x2), ux=mean(x)), keyby=grp  # grouping step
+  ][,
+    .(grp, var=ux2 - ux^2)                  # final calculation
+  ]
+})</code></pre>
+<pre><code>   user  system elapsed 
+  1.159   0.114   1.277 </code></pre>
+<pre class="r"><code>all.equal(var.1, var.2)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Wow, that’s even faster than the “Gforce” optimized “var”. There is only one
+grouping step, and in that step all expressions are of the form
+<code>statistic(variable)</code> so they can be “Gforce” optimized.</p>
+<p>These concepts <a href="#dplyr-reformulate">apply equally to <code>dplyr</code></a>.</p>
+</div>
+<div id="beyond-variance" class="section level1">
+<h1>Beyond Variance</h1>
+<p>While it’s utterly fascinating (to some) that we can reformulate the variance
+computation, it’s of little value since both <code>data.table</code> and <code>dplyr</code> have
+compiled code that obviates the need for it. Fortunately this method is
+generally applicable to any expression that can be expanded and decomposed as we
+did with the variance. For example with a little elbow grease we can
+reformulate the third moment:</p>
+<p><span class="math display">\[
+\begin{align*}
+Skew(X) = &amp;E\left[\left(X - E[X]\right)^3\right]\\
+= &amp; E\left[X^3 - 3 X^2 E\left[X\right] + 3 X E\left[X\right]^2 -
+  E\left[X\right]^3\right]\\
+                        = &amp;
+  E\left[X^3\right] - 3 E\left[X^2\right] E\left[X\right] +
+  3 E\left[X\right] E\left[X\right]^2 - E\left[X\right]^3\\
+                        = &amp;
+  E\left[X^3\right] - 3 E\left[X^2\right] - 2E\left[X\right]^3
+\end{align*}
+\]</span></p>
+<p>And to confirm:</p>
+<pre class="r"><code>X &lt;- runif(100)
+all.equal(
+  mean((X - mean(X))^3),
+  mean(X^3) - 3 * mean(X^2) * mean(X) + 2 * mean(X) ^3
+)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Similarly, and what set me off on this blogpost, it is possible to reformulate
+the slope of a single variable linear regression slope. What <a href="https://twitter.com/michael_chirico/status/1138092237550579712">Michael Chirico
+saw</a> that was not immediately obvious to me is that:<span id="slope-reform"></span></p>
+<p><span class="math display">\[
+\begin{align*}
+Slope(X,Y) 
+= &amp;\frac{Cov(X,Y)}{Var(X)}\\
+= &amp;\frac{
+  E\left[
+      \left(X - E\left[X\right]\right)
+      \left(Y - E\left[Y\right]\right)
+   \right]
+  }{E\left[\left(X - E\left[X\right]\right)^2\right]}\\
+= &amp;\frac{
+E\left[XY\right] - E\left[X\right]E\left[Y\right]}{
+E\left[X^2\right] - E\left[X\right]^2}
+\end{align*}
+\]</span></p>
+<p>In <code>data.table</code>-speak:</p>
+<pre class="r"><code>DT &lt;- data.table(x, y, xy=x*y, x2=x^2, grp)
+slope.dt.re &lt;- DT[,
+  .(ux=mean(x), uy=mean(y), uxy=mean(xy), ux2=mean(x2)),
+  keyby=grp
+][,
+  .(grp, slope=(uxy - ux*uy)/(ux2 - ux^2))
+]</code></pre>
+<pre><code>   user  system elapsed
+  1.377   0.126   1.507</code></pre>
+<p>As with all the reformulations we’ve seen the key feature of this one is
+there is no interaction between grouped statistics and ungrouped ones, allowing
+a single grouping step. With the reformulation <code>data.table</code> is able to
+beat the <code>cumsum</code> based base-R method <a href="/2019/06/10/base-vs-data-table/#so-you-think-you-can-group-stat">we studied in an earlier
+post</a>:</p>
+<p><img src="/post/2019-06-23-hydra-reformulate_files/figure-html/gs-timings-reform-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>“Original” in this case is the <a href="/2019/06/10/base-vs-data-table/#so-you-think-you-can-group-stat">single-pass cumsum method for base</a>
+and the <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip">group-join-group method for <code>data.table</code></a>.</p>
+<p>More generally we should be able to apply this expansion to any nested
+statistics involving <code>sum</code> or <code>mean</code> and possibly other functions, which will
+cover a broad range of interesting statistics. In the case of <code>sum</code>, keep in
+mind that:</p>
+<p><span class="math display">\[
+\sum_i^n c = n c
+\]</span></p>
+<p>And similarly:</p>
+<p><span class="math display">\[
+\sum_i^n \left(c + X\right) = n c + \sum_i^n X
+\]</span></p>
+</div>
+<div id="slow-down-cowboy" class="section level1">
+<h1>Slow Down Cowboy</h1>
+<p>Before we run off and reformulate all the things, it is worth noting that the
+<a href="https://en.wikipedia.org/wiki/Variance#Definition">wikipedia page</a> I took the reformulation of the variance from also
+provides a scary warning:</p>
+<blockquote>
+<p>This equation should not be used for computations using floating point
+arithmetic because it suffers from catastrophic cancellation if the two
+components of the equation are similar in magnitude.</p>
+</blockquote>
+<p>Uh-oh. Let’s see:</p>
+<pre class="r"><code>quantile(((var.2 - var.3) / var.2), na.rm=TRUE)</code></pre>
+<pre><code>       0%       25%       50%       75%      100%
+-2.09e-07 -5.91e-16  0.00e+00  5.94e-16  2.91e-09</code></pre>
+<p>We did lose some precision, but certainly nothing catastrophic. So under what
+circumstances do we actually need to worry? Let’s cook up an example that
+actually causes a problem, as with these values at the edge of precision of
+<a href="/2019/06/18/hydra-precision/#interlude-ieee-754">double precision numbers</a>.</p>
+<pre class="r"><code>X &lt;- c(2^52 + 1, 2^52 - 1)
+mean(X)</code></pre>
+<pre><code>[1] 4.5e+15</code></pre>
+<pre class="r"><code>mean((X - mean(X))^2)            # &quot;normal&quot; calc</code></pre>
+<pre><code>[1] 1</code></pre>
+<pre class="r"><code>mean(X^2) - mean(X)^2            # &quot;reformulated&quot; calc</code></pre>
+<pre><code>[1] 0</code></pre>
+<p>If we carry out the algebraic expansion of the first element of <code>$X^2$</code> we can
+see that problems crop up well before the subtraction:</p>
+<p><span class="math display">\[
+\begin{align*}
+(X_1)^2 = &amp;(2^{52} + 2^0)^2\\
+        = &amp;(2^{52})^2 + 2 \times 2^{52} \times 2^0 + (2^0)^2\\
+        = &amp;2^{104} + 2^{53} + 2^0
+\end{align*}
+\]</span></p>
+<p>Double precision floating point numbers only have 53 bits of precision in the
+fraction, which means the difference between the highest power of two and the
+lowest one contained in a number cannot be greater than 52 without loss
+of precision. Yet, here we are trying to add <code>$2^0$</code> to a number that contains
+<code>$2^{104}$</code>! This is completely out of the realm of what double precision
+numbers can handle:</p>
+<pre class="r"><code>identical(
+  2^104 + 2^53,
+  2^104 + 2^53 + 2^0
+)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>One might think, “oh, that’s just the last term, it doesn’t matter”, but it
+does:</p>
+<p><span class="math display">\[
+\require{cancel}
+\begin{align*}
+E[X^2]  = &amp;\frac{1}{N}\sum X^2\\
+        = &amp;\frac{1}{2}\left(\left(2^{52} + 2^0\right)^2 + \left(2^{52} - 2^0\right)^2\right)\\
+        = &amp;\frac{1}{2} \left(\left(\left(2^{104} \cancel{+ 2^{53}} + 2^0\right)\right) + \left((2^{104} \cancel{- 2^{53}} + 2^0)\right)\right)\\
+        = &amp;2^{104} + 2^0
+\end{align*}
+\]</span></p>
+<p>The contributions from the middle terms cancel out, leaving only the last term
+as the difference between <code>$E[X^2]$</code> and <code>$E[X]^2$</code>.</p>
+<p>In essence squaring of <code>$X$</code> values is causing meaningful precision to overflow
+out of the double precision values. By the time we get to the subtraction in
+<code>$E[X^2] - E[X]^2$</code> the precision has already been lost. While it is true that
+<code>$E[X^2]$</code> and <code>$E[X]^2$</code> are close in the cases of precision loss, it is not
+the subtraction that is the problem.</p>
+<p>Generally we need to worry when <code>$\left|E[X]\right| \gg Var(X)$</code>. The point at
+which catastrophic precision loss happens will be around <code>$\left|E[X]\right| / Var(X) \approx 26$</code>, as that is when squaring <code>$X$</code> values will cause most or
+all the variance precision to overflow. We can illustrate with a sample with
+<code>$n = 100$</code>, <code>$Var(X) = 1$</code>, and varying ratios of <code>$\left|E[X]\right| / Var(X)$</code>, repeating the experiment 100 times for each ratio:</p>
+<p><img src="/post/2019-06-23-hydra-reformulate_files/figure-html/ref-rel-error-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>The flat lines that start forming around <code>$2^{26}$</code> correspond to when overflow
+causes the reformulation to “round down” to zero. The more dramatic errors
+correspond to the last bit(s) rounding up instead of down<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>. As the
+last bits are further and further in magnitude from the true value, the errors
+get dramatic.</p>
+<p>If we know what the true <code>$\left|E[X]\right| / Var(X)$</code> ratio is, we can
+estimate the likely loss of precision. Unfortunately we cannot get a correct
+measure of this value from the reformulated calculations. For example, if the
+true ratio is <code>$2^{50}$</code>, due to the possibility for gross overestimation the
+measured ratio might be as low as <code>$2^2$</code>:</p>
+<figure class="aligncenter" style="max-width: 100%;">
+<img src="/post/2019-06-23-hydra-reformulate_files/figure-html/error-vs-varmeanrat-1.png" width="672" style="display: block; margin: auto;" />
+</figure>
+<p>Infinite values (i.e. zero measured variance) are removed from the plot.</p>
+<p>Another way to look at the precision loss is to examine the <a href="/2019/06/18/hydra-precision/#interlude-ieee-754">underlying
+binary representation</a> of the floating point numbers. We do so here for
+each of the 100 samples of each of the attempted <code>$\left|E[X]\right| / Var(X)$</code> ratios:</p>
+<figure class="aligncenter" style="max-width: 100%;">
+<img src="/post/2019-06-23-hydra-reformulate_files/figure-html/var-bin-rep-1.png" width="672" style="display: block; margin: auto;" />
+<figcaption>
+Binary representation of reformulated variance value.
+</figcaption>
+</figure>
+<p>The fraction of the numbers is shown in green, and the exponent in blue. Dark
+squares are ones and dark ones zeroes. The precision loss shows up as trailing
+zeroes in those numbers (light green). This view makes it obvious that there is
+essentially no precision by the time we get to <code>$\left|E[X]\right| / Var(X) \approx 26$</code>, which is why the errors in the reformulation start getting so
+wild. We can estimate a lower bound on the precision by inspecting the bit
+pattern, but since there may be legitimate trailing zeroes this will likely be
+an under-estimate. See the appendix for a <a href="#check-bit-precision">method that
+checks</a> a number has at least <code>n</code> bits of precision.</p>
+<p>Each reformulation will bring its own precision challenges. The skew
+calculation will exhibit the same overflow problems as the variance, except
+further exacerbated by the cube term. The slope reformulation introduces
+another wrinkle due to the <a href="#slope-reform">division of the covariance by the
+variance</a>. We can illustrate with variables <code>$X$</code> and <code>$Y$</code> each
+with true variance 1, and means <code>$2^{26}$</code> and <code>$2^4$</code> respectively. We sampled
+from these 100 values, 100 times, and plot the resulting bit patterns for the
+resulting finites slopes:</p>
+<figure class="aligncenter" style="max-width: 100%;">
+<img src="/post/2019-06-23-hydra-reformulate_files/figure-html/slope-bin-rep-1.png" width="576" style="display: block; margin: auto;" />
+<figcaption>
+Binary representation of the reformulated slope and its components.
+</figcaption>
+</figure>
+<p>The precision of the overall calculation should be limited by that of the
+variance, but the interaction between the variance and covariance in all cases
+causes the bit pattern to overstate the available precision. In some cases, it
+even gives the illusion that all 53 bits are in use.</p>
+<p>Unlike with our <a href="/2019/06/18/hydra-precision/#how-bad-is-it-really"><code>cumsum</code> based group sum</a>, I have not found a good way to
+estimate a bound on precision loss. The bit pattern method is likely our best
+bet, yet it feels… shaky. Not to mention that for large enough group counts
+it will produce false positives as some groups will randomly have statistics
+with many legitimate trailing zeroes.</p>
+<p>A saving grace might be that, e.g. for the variance, data for which
+<code>$\left|E[X]\right| \gg Var(X)$</code> should be reasonably rare. In cases where that
+might hold true, we will often have a rough order-of-magnitude estimate of
+<code>$E[X]$</code> which we can subtract from the data prior to computation, though this
+is only useful if the mean is roughly the same across all groups<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>Reformulations is a powerful tool for dealing with group statistics, but the
+precision issues are worrying because they are difficult to measure, and may
+take new forms with each different reformulation.</p>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="acknowledgments" class="section level2">
+<h2>Acknowledgments</h2>
+<p>Special thanks to <a href="https://twitter.com/michael_chirico/">Michael Chirico</a> for making me see what should have been
+obvious from the get go. The best optimization is always a better algorithm,
+and I was too far removed from my econ classes to remember the expected value
+identities. So far removed in fact that my first reaction on seeing that his
+calculations actually produced the same result was “how is that even
+possible”…</p>
+<p>Also thank you to:</p>
+<ul>
+<li><a href="https://twitter.com/coolbutuseless">coolbutuseless</a> for showing me that <code>writeBin</code> can write directly to a
+raw vector.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code>, as well
+as <a href="https://github.com/eclarke">Erik Clarke</a> and <a href="https://github.com/sherrillmix">Scott Sherrill-Mix</a> for <a href="https://cran.r-project.org/web/packages/ggbeeswarm/index.html"><code>ggbeeswarm</code></a>,
+with which I made several plots in this post.</li>
+<li>And to <a href="/about/#acknowledgments">all the other developers</a> that make this blog possible.</li>
+</ul>
+</div>
+<div id="code" class="section level2">
+<h2>Code</h2>
+<div id="dplyr-reformulate" class="section level3">
+<h3>dplyr Reformulate</h3>
+<p>We can apply the reformulation to <code>dplyr</code>, but the slow grouping holds it
+back.</p>
+<pre class="r"><code>sys.time({
+  var.2a &lt;- tibble(x, grp) %&gt;%
+    mutate(x2=x^2) %&gt;%
+    group_by(grp) %&gt;%
+    summarise(ux2=mean(x2), ux=mean(x)) %&gt;%
+    mutate(var=ux2 - ux^2) %&gt;%
+    select(grp, var)
+})</code></pre>
+<pre><code>   user  system elapsed 
+ 11.171   0.299  11.660 </code></pre>
+<pre class="r"><code>all.equal(as.data.frame(var.2), as.data.frame(var.2a))</code></pre>
+<pre><code>[1] TRUE</code></pre>
+</div>
+<div id="data" class="section level3">
+<h3>Data</h3>
+<pre class="r"><code>RNGversion(&quot;3.5.2&quot;); set.seed(42)
+n     &lt;- 1e7
+n.grp &lt;- 1e6
+grp   &lt;- sample(n.grp, n, replace=TRUE)
+noise &lt;- rep(c(.001, -.001), n/2)  # more on this later
+x     &lt;- runif(n) + noise
+y     &lt;- runif(n) + noise          # we&#39;ll use this later</code></pre>
+</div>
+<div id="sys.time" class="section level3">
+<h3>sys.time</h3>
+<pre class="r"><code># Run `system.time` `reps` times and return the timing closest to the median
+# timing that is faster than the median.
+
+sys.time &lt;- function(exp, reps=11) {
+  res &lt;- matrix(0, reps, 5)
+  time.call &lt;- quote(system.time({NULL}))
+  time.call[[2]][[2]] &lt;- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] &lt;- eval(time.call, parent.frame())
+  }
+  structure(res, class=&#39;proc_time2&#39;)
+}
+print.proc_time2 &lt;- function(x, ...) {
+  print(
+    structure(
+      x[order(x[,3]),][floor(nrow(x)/2),],
+      names=c(&quot;user.self&quot;, &quot;sys.self&quot;, &quot;elapsed&quot;, &quot;user.child&quot;, &quot;sys.child&quot;),
+      class=&#39;proc_time&#39;
+) ) }</code></pre>
+</div>
+<div id="check-bit-precision" class="section level3">
+<h3>Check Bit Precision</h3>
+<p>The following function will check whether doubles have at least <code>bits</code> precision
+as implied by their underlying binary encoding. The precision is defined by the
+least significant “one” present in the fraction component of the number. There
+is no guarantee that the least significant “one” correctly represents the
+precision of the number. There may be trailing zeroes that are significant, or
+a number may gain random trailing noise that is not a measure of precision.</p>
+<p>While this implementation is reasonably fast, it is memory inefficient.
+Improving it to return the position of the last “one” bit will likely make it
+even more memory inefficient. I have only very lightly tested it so consider it
+more a proof of concept than a correct or robust implementation.</p>
+<pre class="r"><code># requires double `x` of length &gt; 0, and positive scalar `bits`
+# assumes little endian byte order.  Not tested with NA or infinite values.
+
+has_precision_bits &lt;- function(x, bits) {
+  n &lt;- 53 - min(c(bits-1, 53))
+  mask.full &lt;- n %/% 8
+  mask.extra &lt;- n %% 8
+  mask &lt;- as.raw(c(
+    rep(255, mask.full),
+    if(mask.extra) 2^(mask.extra) - 1,
+    rep(0, 8 - (mask.full + (mask.extra &gt; 0)))
+  ) )
+  colSums(matrix(as.logical(writeBin(x, raw()) &amp; mask), nrow=8)) &gt; 0
+}</code></pre>
+</div>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>By “obvious” I mean the most obvious that will also
+advance the narrative in the direction I want it to go in. The most obvious
+one would be to multiply the result of <code>var(...)</code> by <code>.N/(.N-1)</code> to undo the
+bias correction.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>I have no support for this other than it makes sense. I cannot
+explain why there seem to be more than one “rounding up” other than it may be
+an artifact of the specific values that were drawn randomly for any given
+level of <code>$E[X]/Var(X)$</code>. Normally this is something I would chase down and
+pin down, but honestly I’m kinda running out of patience with this endless
+post series.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>In the case where each group has means that are very different
+from the others this is no longer a useful correction as matching each group
+to its mean-estimate is costly. At that point and we might as well revert to
+a two <a href="/2019/02/24/a-strategy-for-faster-group-statisitics/#blood-from-a-turnip">pass solution</a>.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+</ol>
+</div>

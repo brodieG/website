@@ -19,3 +19,4 @@ print.proc_time2 <- function(x, ...) {
       names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
       class='proc_time'
 ) ) }
+```
