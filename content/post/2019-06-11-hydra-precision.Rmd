@@ -390,8 +390,7 @@ Conversely, binary double precision floats can struggle to represent seemingly
 simple decimal numbers.  For example, 0.1 cannot be expressed exactly with any
 finite number of bits.  The built-in `iris` data set makes for a good
 illustration as most measures are taken to one decimal place.  Let's look at it
-in full binary format:
-
+in full binary format (plotting code [in appendix](#binary-representation-plots)):
 <figure class='aligncenter' style='max-width: 100%;'>
 <!--<a href='#image-credits' title='Click for image credits.' class=image-credit>-->
 ```{r echo=FALSE, child='../../static/chunks/bin-rep.Rmd'}
@@ -847,6 +846,7 @@ Arithmetic"][114].
 
 ## Updates
 
+* 2019-07-25: Published bit pattern plotting code.
 * 2019-06-23: Typos.
 
 ## Acknowledgments
@@ -955,11 +955,18 @@ gnc <- cumsum(gn)
 gi <- rep(seq_along(gn), gn)
 ```
 
-We then compute `$\bar{x$` for each group, and use that for the final step:
+We then compute `$\bar{x}$` for each group, and use that for the final step:
 
 ```{r eval=FALSE}
 ux <- .group_sum_int(xo, gnc) / gn
 x_ux2 <- (xo - ux[gi])^2
+```
+
+### Binary Representation Plots
+
+This is definitely "I-did-the-bare-minimum-to-get-it-to-work-code".
+
+```{r =FALSE, child='../../static/chunks/bin-rep.Rmd'}
 ```
 
 [^equiv]: It is possible to [reformulate the statistic][106] to a form that

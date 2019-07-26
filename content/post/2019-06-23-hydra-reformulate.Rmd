@@ -1,5 +1,5 @@
 ---
-title: "Hydra Chronicles Part IV: Reformulation of Statistics"
+title: "Hydra Chronicles, Part IV: Reformulation of Statistics"
 author: ~
 date: '2019-07-24'
 slug: hydra-reformulate

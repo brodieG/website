@@ -1,8 +1,8 @@
-
-```{r echo=FALSE}
- # This does not actually get the binary representation.  It infers it by
- # calculation harcoding the NA and +zero cases, and leaving many others
- # uncovered
+```{r}
+# This does not actually get the binary representation.  It infers it by
+# calculation harcoding the NA and +zero cases, and leaving many others
+# uncovered.  It would be much better to use @coolbutuseless's writeBin method,
+# but since this more or less works...
 
 val_to_bit <- function(x, start, end) {
   sig <- integer(start - end + 1L)
