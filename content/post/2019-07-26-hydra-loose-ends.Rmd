@@ -3,8 +3,8 @@ title: "Hydra Chronicles Part V: Loose Ends"
 author: ~
 date: '2019-07-26'
 slug: hydra-loose-ends
-categories: []
-tags: []
+categories: [r]
+tags: [group-stats,optim,hydra]
 image: /front-img/default.png
 imagerect: ~
 imagemrgvt: 0%
@@ -27,10 +27,10 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
   class='post-inset-image'
 />
 
-Fingers crossed this will be the last post of the Hydra Chronicles, a.k.a.
+Fingers crossed this will be the last post of the [Hydra Chronicles][100], a.k.a.
 "Everything You Didn't Want To Know About Group Statistics But Let Me Tell You
-Anyway".  Well, it's more of a coda than a real post, a few tidbits that ended
-up on the cutting floor from before.
+Anyway".  Well, it's more of an end note rather than a real post: a few tidbits
+that ended up on the cutting floor in the earlier posts.
 
 One of our early "discoveries" about group statistics is that if we can compute
 the group sum, we can build on that to compute many other group statistics.
@@ -113,3 +113,6 @@ other random
 <div id='feedback-cont'></div>
 
 # Appendix
+
+[100]: /tags/hydra/
+

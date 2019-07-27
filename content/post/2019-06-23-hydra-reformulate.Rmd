@@ -3,8 +3,8 @@ title: "Hydra Chronicles, Part IV: Reformulation of Statistics"
 author: ~
 date: '2019-07-24'
 slug: hydra-reformulate
-categories: []
-tags: [group-stats,optimization]
+categories: [r]
+tags: [group-stats,optim,floats,hydra]
 image: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-neg.png
 imagerect: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-wide-neg.png
 imagemrgvt: 0%
@@ -675,7 +675,7 @@ has_precision_bits <- function(x, bits) {
   to its mean-estimate is costly.  At that point and we might as well revert to
   a two [pass solution][160].
 
-[100]: /tags/group-stats/
+[100]: /tags/hydra/
 [110]: https://twitter.com/michael_chirico/status/1138092237550579712
 [120]: https://twitter.com/michael_chirico
 [130]: /2019/06/10/base-vs-data-table/#the-ring-and-a-warmup

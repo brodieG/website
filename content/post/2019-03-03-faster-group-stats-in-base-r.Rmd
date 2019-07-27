@@ -139,66 +139,6 @@ fruitless.  Given the glaring semantic cues in `rowsum` vs `rowSums` I would
 have thought they would do better...  Thankfully years of using "R" as a search
 term have inured me to this type of search disappointment.
 
-## colSums
-
-```{r eval=FALSE}
-sum_g3 <- function(x, grp, na.rm=TRUE) {
-  ord <- order(grp)
-  id.ord <- id[ord]
-  grp.ord <- grp[ord]
-  grp.rle <- rle(grp.ord)
-  max.grp <- max(grp.rle[['lengths']])
-
-  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
-
-  res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
-
-  # each group that isn't as long as the longest group needs padding
-
-  rle.len <- grp.rle[['lengths']]
-  grp.pad <- max.grp - rle.len
-  id.raw <- rep(1L, length(x))
-  id.raw[(cumsum(rle.len) + 1L)[-length(rle.len)]] <-
-    grp.pad[-length(rle.len)] + 1L
-  id <- cumsum(id.raw)
-
-  res[id] <- x[ord]
-  structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
-}
-system.time(sum_g3(x, grp))
-```
-```
-   user  system elapsed
-  1.186   0.374   1.634
-```
-```{r eval=FALSE}
-  # lens: how long each group is
-  # maxlen: longest group
-sum_grp2 <- function(x, lens, maxlen, mode='sum') {
-
-  res <- matrix(NA_real_, ncol=length(lens), nrow=maxlen)
-
-  # Generate indices that will map to the correct spots in `res` from `x`,
-  # which means add whatever padding we need to the index value for the next
-  # column
-
-  len_1 <- lens[-length(lens)]
-  grp.pad <- (maxlen + 1L) - len_1
-  id.raw <- rep(1L, length(x))
-  len_1[1L] <- len_1[1L] + 1L
-  id.raw[cumsum(len_1)] <- grp.pad
-  id <- cumsum(id.raw)
-
-  # Inject the x values according to these indices that should place each gropu
-  # in a column
-
-  res[id] <- x
-
-  if(identical(mode, 'sum')) colSums(res, na.rm=TRUE)
-  else if(identical(mode, 'mean')) colMeans(res, na.rm=TRUE)
-  else stop("Invalid mode")
-}
-```
 ```
 slope2 <- function(x, y, grp) {
   ord <- order(grp)

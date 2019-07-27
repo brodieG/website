@@ -3,8 +3,8 @@ title: "Hydra Chronicles, Part IV: Reformulation of Statistics"
 author: ~
 date: '2019-07-24'
 slug: hydra-reformulate
-categories: []
-tags: [group-stats,optimization]
+categories: [r]
+tags: [group-stats,optim,floats,hydra]
 image: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-neg.png
 imagerect: /post/2019-06-23-hydra-reformulate_files/user-imgs/var-reform-wide-neg.png
 imagemrgvt: 0%
@@ -28,7 +28,7 @@ description: Making group statistics even faster by reformulation, and assessing
 />
 </div>
 </figure>
-<p>Throughout the <a href="/tags/group-stats/">Hydra Chronicles</a> we have explored why group statistics
+<p>Throughout the <a href="/tags/hydra/">Hydra Chronicles</a> we have explored why group statistics
 are problematic in R and how to optimize their calculation. R calls are
 slow, but normally this is not a problem because R will quickly hand off to
 native routines to do the heavily lifting. With group statistics there must be
