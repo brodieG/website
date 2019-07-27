@@ -34,6 +34,67 @@ that ended up on the cutting floor in the earlier posts.
 
 One of our early "discoveries" about group statistics is that if we can compute
 the group sum, we can build on that to compute many other group statistics.
+We'll go over here a few of the other strategies I tested out before I settled
+on the [`cumsum` based approach][110] we used to "beat" `data.table`.
+
+# rowsum
+
+I did mention this one [in passing][120], but it bears re-examining:
+`base::rowsum` is a remarkable creature in the base R ecosystem.  As far as I
+know, it is the only R function that can compute group statistics on unequal
+group sizes in native code.  Despite that, it feels like a relatively
+unknown function.  In my own experience, I've seen infinitely more uses of
+`base::rowSums` than `base::rowsum`.  As you might imagine my attempts to get
+firmer evidence from search engines was fruitless.  Perhaps `rowsum` hides
+from others behind the shadow of the capitalization and pluralization of
+`rowSums`, as it did for many years for me.  Or maybe I'm just the idiot that
+missed The Memo.
+
+In the spirit of a code snippet is worth a thousand words, and using our beaten
+to death 10MM row, ~1MM group [data set](#data):
+
+```{r eval=FALSE}
+sys.time(gsum.0 <- tapply(x, grp, sum))
+```
+```
+   user  system elapsed 
+  6.956   0.112   7.107 
+```
+```{r eval=FALSE}
+sys.time(gsum.1 <- rowsum(x, grp))
+```
+```
+   user  system elapsed 
+  2.359   0.048   2.430 
+```
+
+`sys.time` is a [wrapper around `system.time` defined in the
+appendix](#sys-time).
+
+```{r eval=FALSE}
+all.equal(c(gsum.0), c(gsum.1), check.attributes=FALSE)
+```
+
+`rowsum` provides similar functionality to `tapply(..., sum)` (or equivalently,
+`vapply(split(...), sum, 0)` with a single grouping variable, but with a
+noticeable speed-up as it can avoid the per-group R-level calls.  Speed is
+improved even when pre-ordering the inputs, although the difference between the
+methods is similar as the ordering becomes a substantial portion of the overall
+run time.  `data.table` and the "Gforce" optimized sum remain ahead:
+
+```{r}
+
+```
+
+Even so `rowsum` is sub-optimal because internally it uses a hash table, which
+is [inefficient with ordered data][130].  It also does not return the group
+sizes which is something we are likely to want when computing more complex
+statistics.  Certainly we could compute them with a vector of ones, but that
+requires an additional run.
+
+Out of curiosity I wrote a version of `rowsum` that :
+
+
 
 Inevitably there were some thing I cut
 Right now my plan is to throw in all the couple of random things I ended up
@@ -114,5 +175,16 @@ other random
 
 # Appendix
 
-[100]: /tags/hydra/
+### Data
 
+```{r child='../../static/chunks/grp-dat.Rmd'}
+```
+
+## Acknowledgments
+
+* This blog would not exist but for amazing contributions from many ...
+
+[100]: /tags/hydra/
+[110]: /2019/06/10/base-vs-data-table/#group-sums
+[120]: /2019/06/10/base-vs-data-table/#rowsums
+[130]: /2019/05/17/pixie-dust/#loose-ends
