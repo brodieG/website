@@ -1,0 +1,115 @@
+---
+title: "Hydra Chronicles Part V: Loose Ends"
+author: ~
+date: '2019-07-26'
+slug: hydra-loose-ends
+categories: []
+tags: []
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+
+# Almost Done!
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+Fingers crossed this will be the last post of the Hydra Chronicles, a.k.a.
+"Everything You Didn't Want To Know About Group Statistics But Let Me Tell You
+Anyway".  Well, it's more of a coda than a real post, a few tidbits that ended
+up on the cutting floor from before.
+
+One of our early "discoveries" about group statistics is that if we can compute
+the group sum, we can build on that to compute many other group statistics.
+
+Inevitably there were some thing I cut
+Right now my plan is to throw in all the couple of random things I ended up
+removing from prior posts for the sake of streamlining them, but that I find too
+interesting to leave completely unmentioned.
+
+# Rowsums
+
+# colSums
+
+```{r eval=FALSE}
+sum_g3 <- function(x, grp, na.rm=TRUE) {
+  ord <- order(grp)
+  id.ord <- id[ord]
+  grp.ord <- grp[ord]
+  grp.rle <- rle(grp.ord)
+  max.grp <- max(grp.rle[['lengths']])
+
+  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
+
+  res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
+
+  # each group that isn't as long as the longest group needs padding
+
+  rle.len <- grp.rle[['lengths']]
+  grp.pad <- max.grp - rle.len
+  id.raw <- rep(1L, length(x))
+  id.raw[(cumsum(rle.len) + 1L)[-length(rle.len)]] <-
+    grp.pad[-length(rle.len)] + 1L
+  id <- cumsum(id.raw)
+
+  res[id] <- x[ord]
+  structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
+}
+system.time(sum_g3(x, grp))
+```
+```
+   user  system elapsed
+  1.186   0.374   1.634
+```
+```{r eval=FALSE}
+  # lens: how long each group is
+  # maxlen: longest group
+sum_grp2 <- function(x, lens, maxlen, mode='sum') {
+
+  res <- matrix(NA_real_, ncol=length(lens), nrow=maxlen)
+
+  # Generate indices that will map to the correct spots in `res` from `x`,
+  # which means add whatever padding we need to the index value for the next
+  # column
+
+  len_1 <- lens[-length(lens)]
+  grp.pad <- (maxlen + 1L) - len_1
+  id.raw <- rep(1L, length(x))
+  len_1[1L] <- len_1[1L] + 1L
+  id.raw[cumsum(len_1)] <- grp.pad
+  id <- cumsum(id.raw)
+
+  # Inject the x values according to these indices that should place each gropu
+  # in a column
+
+  res[id] <- x
+
+  if(identical(mode, 'sum')) colSums(res, na.rm=TRUE)
+  else if(identical(mode, 'mean')) colMeans(res, na.rm=TRUE)
+  else stop("Invalid mode")
+}
+```
+
+other random 
+
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Appendix
