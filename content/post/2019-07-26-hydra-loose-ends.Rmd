@@ -80,19 +80,69 @@ all.equal(c(gsum.0), c(gsum.1), check.attributes=FALSE)
 noticeable speed-up as it can avoid the per-group R-level calls.  Speed is
 improved even when pre-ordering the inputs, although the difference between the
 methods is similar as the ordering becomes a substantial portion of the overall
-run time.  `data.table` and the "Gforce" optimized sum remain ahead:
-
-```{r}
-
-```
+run time.
 
 Even so `rowsum` is sub-optimal because internally it uses a hash table, which
 is [inefficient with ordered data][130].  It also does not return the group
-sizes which is something we are likely to want when computing more complex
-statistics.  Certainly we could compute them with a vector of ones, but that
-requires an additional run.
+sizes which could easily be computed along the sums and we are likely to want
+when computing more complex statistics.
 
-Out of curiosity I wrote a version of `rowsum` that :
+Out of curiosity I wrote a version of `rowsum` that orders the data by group and
+takes advantage of that to compute the group sums and counts.  Essentially, as
+we can through the ordered groups, we know each time the group changes, we can
+save the accumulator to the result and reset it to zero.  This ends up slightly
+faster than even `data.table`.
+
+```{r sum-timings, echo=FALSE}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+  tmp <- rowsum(cbind(xo, yo, rep(1, length(o))), grp[o])
+  ux <- tmp[,1]/tmp[,3]
+  uy <- tmp[,2]/tmp[,3]
+  gi <- rep(seq_along(ux), c(tmp[,3]))
+  x_ux <- xo - ux[gi]
+  y_uy <- yo - uy[gi]
+  res <- rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
+})
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  xg <- ogroup_sum(xo, go)
+  yg <- ogroup_sum(yo, go)
+  gn <- attr(xg, 'grp.size')
+  gi <- rep(seq_along(gn), gn)
+
+  x_ux <- xo - (xg/gn)[gi]
+  y_ux <- yo - (yg/gn)[gi]
+
+  res <- ogroup_sum(x_ux * y_ux, go)/ogroup_sum(x_ux^2, go)
+})
+
+```
+
+`group_sum` 
+
+:
+Despite the improvements
+
+For kicks I wrote
+
+
+`data.table` and the "Gforce" optimized sum remain ahead:
+
+```{r}
+
+sys.time(setkey(data.table(x, grp), grp)[, sum(x), keyby=grp])
+
+```
+
+
 
 
 
@@ -175,14 +225,106 @@ other random
 
 # Appendix
 
-### Data
+## Data
 
 ```{r child='../../static/chunks/grp-dat.Rmd'}
+```
+
+## Functions
+
+### sys.time
+
+### group_sum
+
+Similar to `rowsum`, except it returns group sizes and the group ordering vector
+as attributes.  Group sizes allow us to either compute means or recycle the
+result statistic back to the input length.  The ordering vector can be used on
+other variables with the same grouping.
+
+This is a limited implementation that only works for double `x` values and
+relies completely on the native code to handle NA/Infinite values.  It will
+ignore dimensions of matrices, and has undefined behavior if any group has more
+elements than than `INT_MAX`.
+
+Inputs must be ordered in increasing order by group, with if it exists the NA
+group last.  The NA group will be treated as a single group (i.e. NA==NA is
+TRUE).
+
+```{r group_sum, eval=FALSE}
+ogroup_sum <- function(x, group) {
+  stopifnot(
+    typeof(x) == 'double', is.integer(group), length(x) == length(group)
+  )
+  tmp <- .ogroup_sum(x, group)
+  res <- setNames(tmp[[1]], tmp[[2]])
+  attr(res, 'grp.size') <- tmp[[3]]
+  res
+}
+.ogroup_sum <- inline::cfunction(
+  sig=c(x='numeric', g='integer'),
+  body="
+  R_xlen_t len, i, len_u = 1;
+  SEXP res, res_x, res_g, res_n;
+  int *gi = INTEGER(g);
+  double *xi = REAL(x);
+  len = XLENGTH(g);
+  if(len != XLENGTH(x)) error(\"Unequal Length Vectors\");
+  res = PROTECT(allocVector(VECSXP, 3));
+
+  if(len > 1) {
+    // count uniques
+    for(i = 1; i < len; ++i) {
+      if(gi[i - 1] != gi[i]) {
+        ++len_u;
+    } }
+    // allocate and record uniques
+    res_x = PROTECT(allocVector(REALSXP, len_u));
+    res_g = PROTECT(allocVector(INTSXP, len_u));
+    res_n = PROTECT(allocVector(INTSXP, len_u));
+
+    double *res_xi = REAL(res_x);
+    int *res_gi = INTEGER(res_g);
+    int *res_ni = INTEGER(res_n);
+    R_xlen_t j = 0;
+    R_xlen_t prev_n = 0;
+
+    res_xi[0] = 0;
+    for(i = 1; i < len; ++i) {
+      res_xi[j] += xi[i - 1];
+      if(gi[i - 1] == gi[i]) {
+        continue;
+      } else if (gi[i - 1] < gi[i]){
+        res_gi[j] = gi[i - 1];
+        res_ni[j] = i - prev_n;  // this could overflow int; undefined?
+        prev_n = i;
+        ++j;
+        res_xi[j] = 0;
+      } else error(\"Decreasing group order found at index %d\", i + 1);
+    }
+    res_xi[j] += xi[i - 1];
+    res_gi[j] = gi[i - 1];
+    res_ni[j] = i - prev_n;
+
+    SET_VECTOR_ELT(res, 0, res_x);
+    SET_VECTOR_ELT(res, 1, res_g);
+    SET_VECTOR_ELT(res, 2, res_n);
+    UNPROTECT(3);
+  } else {
+    // Don't seem to need to duplicate x/g
+    SET_VECTOR_ELT(res, 0, x);
+    SET_VECTOR_ELT(res, 1, g);
+    SET_VECTOR_ELT(res, 2, PROTECT(allocVector(REALSXP, 0)));
+    UNPROTECT(1);
+  }
+  UNPROTECT(1);
+  return res;
+")
 ```
 
 ## Acknowledgments
 
 * This blog would not exist but for amazing contributions from many ...
+* Rcpp/inline
 
 [100]: /tags/hydra/
 [110]: /2019/06/10/base-vs-data-table/#group-sums
