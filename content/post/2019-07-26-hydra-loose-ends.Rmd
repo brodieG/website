@@ -113,7 +113,7 @@ g.rle <- with(dat20, rle(g))
 
 dat30 <- transform(
   dat20, step='longest',
-  alpha=ifelse(g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .3)
+  alpha=ifelse(g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2)
 )
 g.max <- nrow(subset(dat30, alpha==1))
 dat30 <- rbind(
@@ -121,30 +121,29 @@ dat30 <- rbind(
   transform(subset(dat30, alpha==1), g=NA, alpha=0, label=1)
 )
 dat40 <- rbind(
-  subset(dat30, label==0),
+  transform(subset(dat30, label==0), alpha=1),
   transform(
     subset(dat30, label==1), x=gn + 1, y=-(seq_along(y) - 1),
-    alpha=1
+    alpha=0
   )
 )
 dat40 <- do.call(
   rbind,
   c(
     list(dat40),
-    replicate(
-      gn - 1L, transform(subset(dat40, label==1), alpha=0), simplify=FALSE
-) ) )
+    replicate(gn - 1L, subset(dat40, label==1), simplify=FALSE)
+) )
 dat40 <- transform(dat40, step='nrow')
 dat50 <- transform(dat40, step='allocate')
 dat50[dat50[['label']] == 1,] <- transform(
   subset(dat50, label == 1),
-  x=rep((seq_len(gn)) + gn, each=g.max), alpha=1
+  x=rep((seq_len(gn)) + gn, each=g.max)
 )
 dat60 <- transform(
   rbind(
     subset(dat50, label==1),
     transform(
-      subset(dat50, label==0), x=gn + 1 + g, y=sequence(g.rle[['lengths']])
+      subset(dat50, label==0), x=gn + g, y=-sequence(g.rle[['lengths']]) + 1
     )
   ),
   step='embed'
@@ -155,9 +154,11 @@ dat <- transform(
 )
 
 ggplot(dat) +
-  geom_tile(aes(x, y, fill=g, alpha=alpha), color='#CCCCCC') +
-  scale_fill_viridis_c(guide="legend", breaks=1:10) +
-  facet_wrap(~step)
+  geom_tile(aes(x, y, fill=g, alpha=alpha), color='#AAAAAA') +
+  scale_fill_viridis_c(guide=FALSE, breaks=1:10) +
+  scale_alpha(guide=FALSE, range=c(0,1)) +
+  facet_wrap(~step) +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank())
 
 
 # Pedal To The Metal
