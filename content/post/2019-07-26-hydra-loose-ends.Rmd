@@ -87,6 +87,81 @@ is [inefficient with ordered data][130].  It also does not return the group
 sizes which could easily be computed along the sums and we are likely to want
 when computing more complex statistics.
 
+# ColSums
+
+```
+xx <- matrix(runif(2000*2000), 2000)
+sys.time(rowSums(xx))
+sys.time(colSums(xx))
+```
+```{r}
+set.seed(1)
+gn <- 10
+g <- sample(seq_len(gn), 95, replace=TRUE)
+levels <- c('start', 'order', 'longest', 'nrow', 'allocate', 'embed', 'colSums')
+dat10 <- data.frame(
+  step='start', id=seq_along(g), g,
+  x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10),
+  alpha=1, label=0, stringsAsFactors=FALSE
+)
+dat20 <- transform(
+  dat10[order(g),],
+  step='order', x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10)
+)
+
+g.rle <- with(dat20, rle(g))
+
+dat30 <- transform(
+  dat20, step='longest',
+  alpha=ifelse(g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .3)
+)
+g.max <- nrow(subset(dat30, alpha==1))
+dat30 <- rbind(
+  dat30,
+  transform(subset(dat30, alpha==1), g=NA, alpha=0, label=1)
+)
+dat40 <- rbind(
+  subset(dat30, label==0),
+  transform(
+    subset(dat30, label==1), x=gn + 1, y=-(seq_along(y) - 1),
+    alpha=1
+  )
+)
+dat40 <- do.call(
+  rbind,
+  c(
+    list(dat40),
+    replicate(
+      gn - 1L, transform(subset(dat40, label==1), alpha=0), simplify=FALSE
+) ) )
+dat40 <- transform(dat40, step='nrow')
+dat50 <- transform(dat40, step='allocate')
+dat50[dat50[['label']] == 1,] <- transform(
+  subset(dat50, label == 1),
+  x=rep((seq_len(gn)) + gn, each=g.max), alpha=1
+)
+dat60 <- transform(
+  rbind(
+    subset(dat50, label==1),
+    transform(
+      subset(dat50, label==0), x=gn + 1 + g, y=sequence(g.rle[['lengths']])
+    )
+  ),
+  step='embed'
+)
+dat <- transform(
+  rbind(dat10, dat20, dat30, dat40, dat50, dat60),
+  step=factor(step, levels=levels)
+)
+
+ggplot(dat) +
+  geom_tile(aes(x, y, fill=g, alpha=alpha), color='#CCCCCC') +
+  scale_fill_viridis_c(guide="legend", breaks=1:10) +
+  facet_wrap(~step)
+
+
+# Pedal To The Metal
+
 Out of curiosity I wrote a version of `rowsum` that orders the data by group and
 takes advantage of that to compute the group sums and counts.  Essentially, as
 we can through the ordered groups, we know each time the group changes, we can
