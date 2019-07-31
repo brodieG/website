@@ -95,25 +95,51 @@ sys.time(rowSums(xx))
 sys.time(colSums(xx))
 ```
 ```{r}
+dat2 <- data.frame(
+  x=c(1, 0, 1, 1), y=c(0, 0, 0, 0), 
+  z=c(NA, 1, NA, 1), grp=c(1:2,1:2), frame=rep(c('a','b'), each=2)
+)
+p <- ggplot(dat2) + geom_tile(aes(x, y, fill=z, group=grp))
+p + facet_wrap(~frame)
+anim_save('~/Downloads/test.gif',
+  p + transition_states(frame)
+)
+
+
+ # this is horrible...
+
 set.seed(1)
 gn <- 10
 g <- sample(seq_len(gn), 95, replace=TRUE)
-levels <- c('start', 'order', 'longest', 'nrow', 'allocate', 'embed', 'colSums')
-dat10 <- data.frame(
+levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
+
+# labels are:
+# 0: original colored squares
+# 1: first set of re-allocation (first column)
+# 3: rest of reallocation
+# 4: background for colored squares
+
+dat0 <- data.frame(
   step='start', id=seq_along(g), g,
   x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10),
   alpha=1, label=0, stringsAsFactors=FALSE
 )
-dat20 <- transform(
-  dat10[order(g),],
-  step='order', x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10)
+dat10 <- rbind(transform(dat0, label=4, g=NA), dat0)
+dat20 <- transform(dat10, step='order')
+dat20 <- rbind(
+  subset(dat20, label==4),
+  transform(
+    subset(dat20, label==0)[order(g),],
+    x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10)
+  )
 )
-
-g.rle <- with(dat20, rle(g))
+g.rle <- with(subset(dat20, label==0), rle(g))
 
 dat30 <- transform(
   dat20, step='longest',
-  alpha=ifelse(g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2)
+  alpha=ifelse(
+    g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2
+  )
 )
 g.max <- nrow(subset(dat30, alpha==1))
 dat30 <- rbind(
@@ -121,7 +147,7 @@ dat30 <- rbind(
   transform(subset(dat30, alpha==1), g=NA, label=1)
 )
 dat30 <- rbind(
-  subset(dat30, label==0),
+  subset(dat30, label%in%c(0,4)),
   transform(
     subset(dat30, label==1), x=gn + 1, y=-(seq_along(y) - 1)
   )
@@ -130,34 +156,32 @@ dat30 <- do.call(
   rbind,
   c(
     list(dat30),
-    replicate(gn - 1L, subset(dat30, label==1), simplify=FALSE)
+    replicate(
+      gn - 1L, transform(subset(dat30, label==1), label=3), simplify=FALSE)
 ) )
+dat30[dat30[['label']] == 3, 'id'] <- seq_along(which(dat30[['label']] == 3))
 dat50 <- transform(
-  rbind(
-    dat30,
-    transform(subset(dat30, label==0), label=2)
-  ),
+  dat30,
   step='allocate',
   alpha=1
 )
-dat50[dat50[['label']] == 1,] <- transform(
-  subset(dat50, label == 1),
+dat50[dat50[['label']] %in% c(1,3),] <- transform(
+  subset(dat50, label %in% c(1,3)),
   x=rep((seq_len(gn)) + gn, each=g.max)
 )
 dat60 <- transform(
   rbind(
-    subset(dat50, label == 1),
-    transform(subset(dat50, label == 0), g=NA),
+    subset(dat50, label %in% c(1,3,4)),
     transform(
-      subset(dat50, label==2), x=gn + g, y=-sequence(g.rle[['lengths']]) + 1
+      subset(dat50, label==0), x=gn + g, y=-sequence(g.rle[['lengths']]) + 1
     )
   ),
   step='embed'
 )
 dat70 <- transform(
   rbind(
-    subset(dat60, label %in% 0:1),
-    transform(subset(dat60, label == 2), y=0)
+    subset(dat60, label %in% c(1, 3, 4)),
+    transform(subset(dat60, label == 0), y=0)
   ),
   step='colSums'
 )
@@ -165,9 +189,12 @@ dat <- transform(
   rbind(dat10, dat20, dat30, dat50, dat60, dat70),
   step=factor(step, levels=levels)
 )
-
-ggplot(dat) +
-  geom_tile(aes(x, y, fill=g, alpha=alpha), color='#AAAAAA') +
+dat <- dat[with(dat, order(step, -label)),]
+p <- ggplot(dat) +
+  geom_tile(
+    aes(x, y, fill=g, alpha=alpha, group=paste(label, id)), 
+    color='#AAAAAA'
+  ) +
   scale_fill_viridis_c(guide=FALSE, na.value='#F3F3F3') +
   scale_alpha(guide=FALSE, range=c(0.3,1)) +
   theme(
@@ -176,8 +203,9 @@ ggplot(dat) +
     axis.ticks.x=element_blank(),
     axis.title.y=element_blank(), axis.text.y=element_blank(),
     axis.ticks.y=element_blank()
-  ) +
-  transition_states(step)
+  )
+p + facet_wrap(~step)
+anim_save('~/Downloads/colsums-anim.gif', p +  transition_states(step))
 ```
 
 
