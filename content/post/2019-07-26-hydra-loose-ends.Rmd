@@ -57,15 +57,15 @@ to death 10MM row, ~1MM group [data set](#data):
 sys.time(gsum.0 <- tapply(x, grp, sum))
 ```
 ```
-   user  system elapsed 
-  6.956   0.112   7.107 
+   user  system elapsed
+  6.956   0.112   7.107
 ```
 ```{r eval=FALSE}
 sys.time(gsum.1 <- rowsum(x, grp))
 ```
 ```
-   user  system elapsed 
-  2.359   0.048   2.430 
+   user  system elapsed
+  2.359   0.048   2.430
 ```
 
 `sys.time` is a [wrapper around `system.time` defined in the
@@ -96,7 +96,7 @@ sys.time(colSums(xx))
 ```
 ```{r}
 dat2 <- data.frame(
-  x=c(1, 0, 1, 1), y=c(0, 0, 0, 0), 
+  x=c(1, 0, 1, 1), y=c(0, 0, 0, 0),
   z=c(NA, 1, NA, 1), grp=c(1:2,1:2), frame=rep(c('a','b'), each=2)
 )
 p <- ggplot(dat2) + geom_tile(aes(x, y, fill=z, group=grp))
@@ -120,12 +120,12 @@ levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
 # 4: background for colored squares
 
 dat0 <- data.frame(
-  step='start', id=seq_along(g), g,
+  step=1L, id=seq_along(g), g,
   x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10),
-  alpha=1, label=0, stringsAsFactors=FALSE
+  alpha=1, label=0
 )
 dat10 <- rbind(transform(dat0, label=4, g=NA), dat0)
-dat20 <- transform(dat10, step='order')
+dat20 <- transform(dat10, step=2L)
 dat20 <- rbind(
   subset(dat20, label==4),
   transform(
@@ -136,7 +136,7 @@ dat20 <- rbind(
 g.rle <- with(subset(dat20, label==0), rle(g))
 
 dat30 <- transform(
-  dat20, step='longest',
+  dat20, step=3L,
   alpha=ifelse(
     g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2
   )
@@ -162,7 +162,7 @@ dat30 <- do.call(
 dat30[dat30[['label']] == 3, 'id'] <- seq_along(which(dat30[['label']] == 3))
 dat50 <- transform(
   dat30,
-  step='allocate',
+  step=4L,
   alpha=1
 )
 dat50[dat50[['label']] %in% c(1,3),] <- transform(
@@ -176,24 +176,66 @@ dat60 <- transform(
       subset(dat50, label==0), x=gn + g, y=-sequence(g.rle[['lengths']]) + 1
     )
   ),
-  step='embed'
+  step=5L
 )
 dat70 <- transform(
   rbind(
     subset(dat60, label %in% c(1, 3, 4)),
     transform(subset(dat60, label == 0), y=0)
   ),
-  step='colSums'
+  step=6L
+)
+steps <- c(
+  "Start",
+  "Order by group",
+  "Compute length of longest group",
+  "Alloc matrix that can fit longest group in col",
+  "Copy each group into a col",
+  "Compute colSums"
 )
 dat <- transform(
   rbind(dat10, dat20, dat30, dat50, dat60, dat70),
-  step=factor(step, levels=levels)
+  step=factor(steps[step], levels=steps)
 )
+
+code <- c(
+'x  # values
+g  # groups',
+
+'o <- order(g)
+go <- g[o]
+xo <- x[o]',
+
+"g.rle <- rle(go)
+g.lens <- g.rle[['lengths']]
+g.max <- max(g.lens)",
+
+"res <- matrix(
+  0, ncol=length(g.lens), nrow=g.max
+)",
+
+"pad <- g.max - g.lens + 1L
+id.raw <- rep(1L, length(xo))
+id.raw[(cumsum(g.lens) + 1L)] <- pad
+id <- cumsum(head(id.raw, -1L))
+res[id] <- xo",
+
+"colSums(res)"
+)
+dat.code <- data.frame(text=code, step=factor(steps))
 dat <- dat[with(dat, order(step, -label)),]
+
+# dat <- subset(dat, step==steps[[5]])
+# dat.code <- subset(dat.code, step==steps[[5]])
+
 p <- ggplot(dat) +
   geom_tile(
-    aes(x, y, fill=g, alpha=alpha, group=paste(label, id)), 
+    aes(x, y, fill=g, alpha=alpha, group=paste(label, id)),
     color='#AAAAAA'
+  ) +
+  geom_text(
+    data=dat.code, aes(label=text), x=-0.5, y=-10,
+    hjust=0, vjust=1, size=6, family='mono'
   ) +
   scale_fill_viridis_c(guide=FALSE, na.value='#F3F3F3') +
   scale_alpha(guide=FALSE, range=c(0.3,1)) +
@@ -205,7 +247,12 @@ p <- ggplot(dat) +
     axis.ticks.y=element_blank()
   )
 p + facet_wrap(~step)
-anim_save('~/Downloads/colsums-anim.gif', p +  transition_states(step))
+anim_save(
+  '~/Downloads/colsums-anim.gif',
+  p +  transition_states(step, wrap=FALSE, state_length=2) +
+    labs(title = "{closest_state}"),
+  width=800, height=557
+)
 ```
 
 
@@ -226,8 +273,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  0.936   0.019   1.000 
+   user  system elapsed
+  0.936   0.019   1.000
 ```
 ```{r}
 sys.time({
@@ -242,8 +289,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  2.594   0.366   2.963 
+   user  system elapsed
+  2.594   0.366   2.963
 ```
 ```{r}
 sys.time({
@@ -258,8 +305,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  0.463   0.086   0.550 
+   user  system elapsed
+  0.463   0.086   0.550
 ```
 ```{r}
 sys.time({
@@ -267,8 +314,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  0.067   0.000   0.067 
+   user  system elapsed
+  0.067   0.000   0.067
 ```
 
 Inevitably there were some thing I cut
@@ -279,11 +326,30 @@ interesting to leave completely unmentioned.
 # Rowsums
 
 # colSums
+```{r eval=FALSE}
+
+x <-runif(95)
+
+
+
+
+  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
+
+  res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
+
+  # each group that isn't as long as the longest group needs padding
+
+  rle.len <- grp.rle[['lengths']]
+  grp.pad <- max.grp - rle.len
+
+
+  res[id] <- x[ord]
+  structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
+```
 
 ```{r eval=FALSE}
 sum_g3 <- function(x, grp, na.rm=TRUE) {
   ord <- order(grp)
-  id.ord <- id[ord]
   grp.ord <- grp[ord]
   grp.rle <- rle(grp.ord)
   max.grp <- max(grp.rle[['lengths']])
@@ -339,7 +405,7 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
 }
 ```
 
-other random 
+other random
 
 
 # Conclusions
