@@ -10,6 +10,7 @@ levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
 # 1: first set of re-allocation (first column)
 # 3: rest of reallocation
 # 4: background for colored squares
+# 5: original colored squares, but after the move
 
 dat0 <- data.frame(
   step=1L, id=seq_along(g), g,
@@ -147,6 +148,9 @@ make_plot <- function(dat, dat.code) {
     )
 }
 p <- make_plot(dat, dat.code)
+
+## gganimate
+
 p + facet_wrap(~step)
 anim_save(
   '~/Downloads/colsums-anim.gif',
@@ -154,6 +158,8 @@ anim_save(
     labs(title = "{closest_state}"),
   width=800, height=557, end_pause=5, nframes=350, fps=25
 )
+
+## pngs for flipbook
 
 png.root <- '~/Downloads/colsums/img-%03d.png'
 
@@ -169,3 +175,29 @@ for(i in 1:6) {
   dev.off()
 }
 
+## Additional frames
+
+dat.sub <- rbind(
+  subset(dat, step==steps[[5]]),
+  transform(
+    subset(dat, step==steps[[4]] & label==0), step=steps[[5]], label=5
+  )
+)
+dat.code.sub <- subset(dat.code, step==steps[[5]])
+
+p <- make_plot(dat.sub, dat.code.sub)
+
+idx1 <- subset(dat.sub, label==5, select=c(x, y, g))
+idx2 <- subset(dat.sub, label%in%c(0,1,3), select=c(x, y, g))
+idx2 <- idx2[with(idx2, order(x, -y, g)),]
+idx2.dup <- duplicated(idx2[1:2])
+idx2 <- idx2[!idx2.dup,]
+
+idx <- rbind(
+  transform(idx1[with(idx1, order(x, -y)),], label=seq_along(x)),
+  transform(idx2[with(idx2, order(x, -y)),], label=seq_along(x))
+)
+p + geom_text(data=idx, aes(x, y, label=label, colour=factor(g))) +
+  scale_colour_manual(
+    guide=FALSE, values=rep(c('white', 'black'), c(2, 8)), na.value='black'
+  )

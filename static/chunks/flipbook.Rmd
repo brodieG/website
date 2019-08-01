@@ -20,6 +20,7 @@ Super hacky:
 
 In order to use set the following global variables:
 
+var playing = true;
 var fps_def = 3;
 var img_n = 6;    // one indexed
 var img_dir = '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook';
@@ -79,7 +80,7 @@ harder...
     type='text'
     style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
     line-height: 1; padding: 0;'
-    value=0
+    value=1
     title='Input frame #'
   /> / <span id='bg-flipbook-frame-n'></span>
 </p>
@@ -87,14 +88,12 @@ harder...
 <script type='text/javascript'>
 // - Globals -------------------------------------------------------------------
 
-var playing = false;
 var i_width=0;
 var i_height=0;
 var pad = "000";
 var img_active = 1;
 var fps_last = fps_def;
 var interval;
-var playing = false;
 
 var flipbook = document.getElementById('bg-flipbook-flipbook');
 var imgs = document.getElementById('bg-flipbook-images');
@@ -143,7 +142,7 @@ var intervalID = 0;
 
 function draw() {
   frame.value = img_active;
-  ctx.drawImage(imgs.children[img_active], 0, 0, i_width, i_height);
+  ctx.drawImage(imgs.children[img_active - 1], 0, 0, i_width, i_height);
 }
 function pause_flip() {
   playing = false;
@@ -160,7 +159,7 @@ function step_click(e) {
   if(e.shiftKey) {step_img(-1);} else {step_img(1);}
 }
 function step() {
-  if(img_active == img_n - 1) {
+  if(img_active == img_n) {
     // delay at end for four frames
     step_img(1);
     pause_flip();
@@ -209,7 +208,7 @@ fps.addEventListener("input", function(e) {
 frame.addEventListener("input", function(e) {
   var frame_val = parseInt(frame.value)
   if(
-    (isNaN(frame_val) || frame_val < 0 || frame_val > img_n) ||
+    (isNaN(frame_val) || frame_val < 1 || frame_val >= img_n) ||
     frame_val == img_active
   ) {return;}
   img_active = frame_val;
