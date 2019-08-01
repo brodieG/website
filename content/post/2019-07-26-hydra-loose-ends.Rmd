@@ -89,12 +89,7 @@ when computing more complex statistics.
 
 # ColSums
 
-```
-xx <- matrix(runif(2000*2000), 2000)
-sys.time(rowSums(xx))
-sys.time(colSums(xx))
-```
-```{r}
+```{r eval=FALSE}
 dat2 <- data.frame(
   x=c(1, 0, 1, 1), y=c(0, 0, 0, 0),
   z=c(NA, 1, NA, 1), grp=c(1:2,1:2), frame=rep(c('a','b'), each=2)
@@ -104,7 +99,6 @@ p + facet_wrap(~frame)
 anim_save('~/Downloads/test.gif',
   p + transition_states(frame)
 )
-
 
  # this is horrible...
 
@@ -199,8 +193,9 @@ dat <- transform(
 )
 
 code <- c(
-'x  # values
-g  # groups',
+'set.seed(1)
+g <- sample(10, 95, r=TRUE) # groups
+x <- runif(95)              # values',
 
 'o <- order(g)
 go <- g[o]
@@ -228,33 +223,59 @@ dat <- dat[with(dat, order(step, -label)),]
 # dat <- subset(dat, step==steps[[5]])
 # dat.code <- subset(dat.code, step==steps[[5]])
 
-p <- ggplot(dat) +
-  geom_tile(
-    aes(x, y, fill=g, alpha=alpha, group=paste(label, id)),
-    color='#AAAAAA'
-  ) +
-  geom_text(
-    data=dat.code, aes(label=text), x=-0.5, y=-10,
-    hjust=0, vjust=1, size=6, family='mono'
-  ) +
-  scale_fill_viridis_c(guide=FALSE, na.value='#F3F3F3') +
-  scale_alpha(guide=FALSE, range=c(0.3,1)) +
-  theme(
-    panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
-    axis.title.x=element_blank(), axis.text.x=element_blank(),
-    axis.ticks.x=element_blank(),
-    axis.title.y=element_blank(), axis.text.y=element_blank(),
-    axis.ticks.y=element_blank()
-  )
-p + facet_wrap(~step)
+make_plot <- function(dat, dat.code) {
+  ggplot(dat) +
+    geom_tile(
+      aes(x, y, fill=g, alpha=alpha, group=paste(label, id)),
+      color='#AAAAAA'
+    ) +
+    geom_text(
+      data=dat.code, aes(label=text), x=-0.5, y=-10,
+      hjust=0, vjust=1, size=6, family='mono'
+    ) +
+    scale_fill_viridis_c(guide=FALSE, na.value='#F3F3F3') +
+    scale_alpha(guide=FALSE, range=c(0.3,1)) +
+    theme(
+      panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+      axis.title.x=element_blank(), axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.title.y=element_blank(), axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+}
+p <- make_plot(dat, dat.code)
+p <- p + facet_wrap(~step)
 anim_save(
   '~/Downloads/colsums-anim.gif',
-  p +  transition_states(step, wrap=FALSE, state_length=2) +
+  p +  transition_states(step, wrap=FALSE, state_length=3) +
     labs(title = "{closest_state}"),
-  width=800, height=557
+  width=800, height=557, end_pause=5, nframes=50, fps=3
 )
+
+png.root <- '~/Downloads/colsums/img%s.png'
+
+
+for(i in 1:6) {
+  png(sprintf(png.root, i), width=800, height=557)
+  dat.sub <- subset(dat, step==steps[[i]])
+  dat.code.sub <- subset(dat.code, step==steps[[i]])
+
+  p <- make_plot(dat.sub, dat.code.sub) +
+    ggtitle(steps[[i]]) +
+    coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
+  print(p)
+  dev.off()
+}
+
 ```
 
+<script type='text/javascript'>
+var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
+var fps_def = 0.5;
+var img_n = 5;    // zero indexed, so, this is 6 images
+</script>
+```{r child='../../static/chunks/flipbook.Rmd'}
+```
 
 # Pedal To The Metal
 
@@ -264,7 +285,7 @@ we can through the ordered groups, we know each time the group changes, we can
 save the accumulator to the result and reset it to zero.  This ends up slightly
 faster than even `data.table`.
 
-```{r sum-timings, echo=FALSE}
+```{r sum-timings, echo=FALSE, eval=FALSE}
 sys.time({
   o <- order(grp)
   go <- grp[o]
@@ -276,7 +297,7 @@ sys.time({
    user  system elapsed
   0.936   0.019   1.000
 ```
-```{r}
+```{r eval=FALSE}
 sys.time({
   tmp <- rowsum(cbind(xo, yo, rep(1, length(o))), grp[o])
   ux <- tmp[,1]/tmp[,3]
@@ -292,7 +313,7 @@ sys.time({
    user  system elapsed
   2.594   0.366   2.963
 ```
-```{r}
+```{r eval=FALSE}
 sys.time({
   xg <- ogroup_sum(xo, go)
   yg <- ogroup_sum(yo, go)
@@ -308,7 +329,7 @@ sys.time({
    user  system elapsed
   0.463   0.086   0.550
 ```
-```{r}
+```{r eval=FALSE}
 sys.time({
   gs.2 <- ogroup_slope(xo, yo, go)
 })
@@ -318,10 +339,16 @@ sys.time({
   0.067   0.000   0.067
 ```
 
-Inevitably there were some thing I cut
-Right now my plan is to throw in all the couple of random things I ended up
-removing from prior posts for the sake of streamlining them, but that I find too
-interesting to leave completely unmentioned.
+Benchmark plots needed:
+
+* rowsum vs colsum, ogroup_sum vs data.table
+* slope w/ rowsum, colsum, ogroup_slope vs data.table
+
+Placeholder plot:
+
+```{r sum-benchmarks, echo=FALSE}
+plot(1:10, 1:10)
+```
 
 # Rowsums
 
@@ -404,8 +431,6 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
   else stop("Invalid mode")
 }
 ```
-
-other random
 
 
 # Conclusions
