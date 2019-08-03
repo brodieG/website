@@ -15,8 +15,16 @@ description: Front page summary
 ---
 
 ```{r echo=FALSE}
-options(digits=3)
+old.opt <- options(digits=3)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+suppressMessages(library(ggplot2))
+suppressMessages(library(viridisLite))
+suppressMessages(library(data.table))
+setDTthreads(1)
+```
+```{r echo=FALSE, comment="", results='asis'}
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+options(fansi.term.cap=c('bright', '256', 'truecolor'))
 ```
 
 # Almost Done!
@@ -42,64 +50,153 @@ on the [`cumsum` based approach][110] we used to "beat" `data.table`.
 I did mention this one [in passing][120], but it bears re-examining:
 `base::rowsum` is a remarkable creature in the base R ecosystem.  As far as I
 know, it is the only R function that can compute group statistics on unequal
-group sizes in native code.  Despite that, it feels like a relatively
-unknown function.  In my own experience, I've seen infinitely more uses of
-`base::rowSums` than `base::rowsum`.  As you might imagine my attempts to get
-firmer evidence from search engines was fruitless.  Perhaps `rowsum` hides
-from others behind the shadow of the capitalization and pluralization of
-`rowSums`, as it did for many years for me.  Or maybe I'm just the idiot that
-missed The Memo.
+group sizes in native code[^native-code].  Despite this it is relatively
+unknown, especially when compared with its popular cousin `base::rowSums`.  
 
-In the spirit of a code snippet is worth a thousand words, and using our beaten
-to death 10MM row, ~1MM group [data set](#data):
+It likely doesn't help that the names of the two functions are barely
+distinguishable, despite the difference in behavior.  `rowsum` collapses rows
+together by group, leaving column count unchanged, whereas `rowSums` collapses
+all columns in each row into a single scalar value:
+
+```{r}
+(mx <- matrix(rep(c(1, 2, 3), 2), nrow=3))
+rowsum(mx, c('a', 'b', 'b'))
+matrix(rowSums(mx))   # rowSums returns a vector
+```
+
+In the single column/vector case, `rowsum(x, grp)` is essentially equivalent to
+`tapply(x, grp, sum)` (or `vapply(split(x, grp), sum, 0)`).
+
+Let's look at some examples and timings with our beaten-to-death 10MM row, ~1MM
+group [data set](#data), and our timing function [`sys.time`](#sys-time).  We'll
+order the data first as [that is fastest][140] even when including the time to
+order:
 
 ```{r eval=FALSE}
-sys.time(gsum.0 <- tapply(x, grp, sum))
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+})
 ```
 ```
-   user  system elapsed
-  6.956   0.112   7.107
-```
-```{r eval=FALSE}
-sys.time(gsum.1 <- rowsum(x, grp))
-```
-```
-   user  system elapsed
-  2.359   0.048   2.430
+   user  system elapsed 
+  0.714   0.007   0.729 
 ```
 
-`sys.time` is a [wrapper around `system.time` defined in the
-appendix](#sys-time).
+`tapply` first for reference:
+
+```{r eval=FALSE}
+sys.time(gsum.0 <- tapply(xo, go, sum))
+```
+```
+   user  system elapsed 
+  2.482   0.129   2.624 
+```
+
+And now `rowsum`:
+
+```{r eval=FALSE}
+sys.time(gsum.1 <- rowsum(xo, go))
+```
+```
+   user  system elapsed 
+  0.537   0.043   0.583 
+```
 
 ```{r eval=FALSE}
 all.equal(c(gsum.0), c(gsum.1), check.attributes=FALSE)
 ```
 
-`rowsum` provides similar functionality to `tapply(..., sum)` (or equivalently,
-`vapply(split(...), sum, 0)` with a single grouping variable, but with a
-noticeable speed-up as it can avoid the per-group R-level calls.  Speed is
-improved even when pre-ordering the inputs, although the difference between the
-methods is similar as the ordering becomes a substantial portion of the overall
-run time.
+`rowsum` provides a noticeable speed-up over `tapply` for the same task, though
+`data.table` remains faster.
 
-Even so `rowsum` is sub-optimal because internally it uses a hash table, which
-is [inefficient with ordered data][130].  It also does not return the group
-sizes which could easily be computed along the sums and we are likely to want
-when computing more complex statistics.
+```{r eval=FALSE}
+setDTthreads(1)   # single thread data.table
+sys.time(data.table(x, grp)[, sum(x), keyby=grp][, setNames(V1, grp)])
+```
+```
+   user  system elapsed 
+  0.997   0.021   1.023 
+```
+
+`rowsum` may be fast enough for some applications where `tapply` is not.  To
+summarize:
+
+```{r echo=FALSE}
+step.levels <- c('order', 'compute', 'embed')
+library(viridisLite)
+funs <- c('tapply', 'tapply', 'rowsum', 'rowsum', 'data.table')
+steps <- c('order', 'compute', 'order', 'compute', NA)
+times <- data.frame(
+  Function=factor(funs, levels=unique(funs)),
+  # Version=c('data.table', 'group_slope', 'data.table', 'group_slope'),
+  Step=factor(steps, levels=step.levels),
+  time=c(.729, 2.624, .729, .583, 1.025)
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col(aes(fill=Step)) +
+  # facet_grid(.~Function, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  geom_label(
+    data=data.table(times)[!is.na(Step)][
+      order(Step, decreasing=TRUE),
+      .(time=time, timec=cumsum(c(0,time[-length(time)]))),
+      .(Function)
+    ],
+    aes(label=sprintf("%0.2f", time), y=timec + time/2)
+  ) +
+  geom_text(
+    data=data.table(times)[, .(time=sum(time)), .(Function)],
+    aes(label=sprintf("%0.2f", time)), vjust=-.2
+  ) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1))) +
+  scale_fill_manual(values=viridis(3), na.value='grey50')
+```
+
+The slow step for `data.table` is likely the ordering too, but we don't have a
+good way to break that out.
 
 # colSums
 
-`base::rowSums` and `base::colSums` are better known than `base::rowsum`, and
-they also compute group statistics in native code.  Well, kind of, they do if
-you consider rows and columns respectively to be groups.  This is far more
-restrictive than `rowsum` where we explicitly specify an arbitrary  grouping
-vector, but we can work around it.  The idea is to use clever indexing to embed
-the values associated with each group into their own columns.
+`base::rowSums`, the aforementioned better-known cousin of `rowsum`, also
+computes group statistics in native code.  Well, it kind of does if you consider
+matrix rows to be groups. `base::colSums` does the same except for
+columns.  Suppose we have three equal sized ordered groups:
 
-Suppose we have a vector with 95 elements in ten groups, the vector wrapped
-column-wise every ten elements for display purposes, and the groups designated
-by a color.  The values of the vector are not shown explicitly.  Then, to
-compute group sums we would:
+```{r}
+(G <- rep(1:3, each=2))
+```
+
+And values that belong to them:
+
+```{r}
+set.seed(1)
+(a <- runif(6))
+```
+
+We can compute the group sums using `colSums` by wrapping our vector into a
+matrix with as many columns as there are groups.  Since R internally stores
+matrices as vectors in column-major order, this is a natural operation (and also
+why we use `colSums` instead of `rowSums`):
+
+```{r}
+(a.mx <- matrix(a, ncol=length(unique(G))))
+colSums(a.mx)
+```
+
+This is equivalent to:
+
+```{r}
+c(rowsum(a, G))
+```
+
+We run into problems as soon as we have uneven group lengths, but there is a
+workaround.  The idea is to use clever indexing to embed the values associated
+with each group into columns of a matrix.  We illustrate this process with a
+vector with 95 elements in ten groups.  For display purposes we wrap the vector
+column-wise every ten elements, and designate the groups by a color.  The values
+of the vector are not shown explicitly.
 
 <!--
 See static/post/2019-07-26-hydra-loose-ends_files/scripts/ for the code used to
@@ -117,17 +214,25 @@ var playing = true;
 
 The embedding step warrants additional explanation.  The trick is to generate a
 vector that maps the positions in our irregular input vector into the regular
-matrix.  There are several ways we could do this, but the one that we'll use
-today takes advantage of the underlying storage of matrices as vectors.
-Let's look at our data before and after embedding, showing the indices in vector
-format for both our ordered vector and the target matrix:
+matrix.  There are several ways we can do this, but the one that we'll use today
+takes advantage of the underlying vector nature of matrices.  In particular, we
+will index into our matrices as if they were vectors, e.g.:
+
+```{r}
+(b <- 1:4)
+(b.mx <- matrix(b, 2))
+b[3]
+b.mx[3]  # index vector underlying matrix directly
+```
+
+Let's look at our 95 data before and after embedding, showing the indices in
+vector format for both our ordered vector and the target matrix:
 
 ```{r echo=FALSE}
- # Horrible horrible, but it works
-
 set.seed(1)
 gn <- 10
-g <- sample(seq_len(gn), 95, replace=TRUE)
+g2 <- sample(seq_len(gn), 95, replace=TRUE)
+ # Horrible horrible, but it works
 levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
 
  # labels are:
@@ -138,31 +243,31 @@ levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
  # 5: original colored squares, but after the move
 
 dat0 <- data.frame(
-  step=1L, id=seq_along(g), g,
-  x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10),
+  step=1L, id=seq_along(g2), g2,
+  x=(seq_along(g2) - 1) %/% 10, y=-((seq_along(g2) - 1) %% 10),
   alpha=1, label=0
 )
-dat10 <- rbind(transform(dat0, label=4, g=NA), dat0)
+dat10 <- rbind(transform(dat0, label=4, g2=NA), dat0)
 dat20 <- transform(dat10, step=2L)
 dat20 <- rbind(
   subset(dat20, label==4),
   transform(
-    subset(dat20, label==0)[order(g),],
-    x=(seq_along(g) - 1) %/% 10, y=-((seq_along(g) - 1) %% 10)
+    subset(dat20, label==0)[order(g2),],
+    x=(seq_along(g2) - 1) %/% 10, y=-((seq_along(g2) - 1) %% 10)
   )
 )
-g.rle <- with(subset(dat20, label==0), rle(g))
+g.rle <- with(subset(dat20, label==0), rle(g2))
 
 dat30 <- transform(
   dat20, step=3L,
   alpha=ifelse(
-    g==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2
+    g2==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2
   )
 )
 g.max <- nrow(subset(dat30, alpha==1))
 dat30 <- rbind(
   dat30,
-  transform(subset(dat30, alpha==1), g=NA, label=1)
+  transform(subset(dat30, alpha==1), g2=NA, label=1)
 )
 dat30 <- rbind(
   subset(dat30, label%in%c(0,4)),
@@ -191,7 +296,7 @@ dat60 <- transform(
   rbind(
     subset(dat50, label %in% c(1,3,4)),
     transform(
-      subset(dat50, label==0), x=gn + g, y=-sequence(g.rle[['lengths']]) + 1
+      subset(dat50, label==0), x=gn + g2, y=-sequence(g.rle[['lengths']]) + 1
     )
   ),
   step=5L
@@ -235,10 +340,10 @@ g.max <- max(g.lens)",
 )",
 
 "pad <- g.max - g.lens + 1L
-id.raw <- rep(1L, length(xo))
-id.raw[(cumsum(g.lens) + 1L)] <- pad
-id <- cumsum(head(id.raw, -1L))
-res[id] <- xo",
+id0 <- rep(1L, length(xo))
+id0[(cumsum(g.lens) + 1L)] <- pad
+id1 <- cumsum(head(id0, -1L))
+res[id1] <- xo",
 
 "colSums(res)"
 )
@@ -254,7 +359,7 @@ library(gganimate)
 make_plot <- function(dat, dat.code) {
   ggplot(dat) +
     geom_tile(
-      aes(x, y, fill=g, alpha=I(alpha), group=paste(label, id)),
+      aes(x, y, fill=g2, alpha=I(alpha), group=paste(label, id)),
       color='#AAAAAA'
     ) +
     scale_fill_viridis_c(guide=FALSE, na.value='#F3F3F3') +
@@ -314,9 +419,9 @@ dat.code.sub <- subset(dat.code, step==steps[[5]])
 
 p <- make_plot(dat.sub, NULL)
 
-idx1 <- subset(dat.sub, label==5, select=c(x, y, g))
-idx2 <- subset(dat.sub, label%in%c(0,1,3), select=c(x, y, g))
-idx2 <- idx2[with(idx2, order(x, -y, g)),]
+idx1 <- subset(dat.sub, label==5, select=c(x, y, g2))
+idx2 <- subset(dat.sub, label%in%c(0,1,3), select=c(x, y, g2))
+idx2 <- idx2[with(idx2, order(x, -y, g2)),]
 idx2.dup <- duplicated(idx2[1:2])
 idx2 <- idx2[!idx2.dup,]
 
@@ -324,43 +429,198 @@ idx <- rbind(
   transform(idx1[with(idx1, order(x, -y)),], label=seq_along(x)),
   transform(idx2[with(idx2, order(x, -y)),], label=seq_along(x))
 )
-p + geom_text(data=idx, aes(x, y, label=label, colour=factor(g))) +
+p + geom_text(data=idx, aes(x, y, label=label, colour=factor(g2))) +
   scale_colour_manual(
     guide=FALSE, values=rep(c('white', 'black'), c(2, 8)), na.value='black'
   )
 ```
 
-The indices corresponding to each group stop matching after the first group due
+The indices corresponding to each group diverge after the first group due
 to the unused elements of the embedding matrix.  What we're looking for is a
 fast way to generate the indices in the colored cells in the matrix on the
-right.  Let's illustrate in more detail by looking at the first three groups:
+right.  In other words, we want to generate the `id1` vector below (we show
+the first three groups worth of it here):
 
-One big advantage is that we can recover the rle information and even the
-embedding vector.
+```{r echo=FALSE, eval=FALSE}
+g2.rle <- rle(sort(g2))
 
-It's apparent from the above that as soon as we get past the first group there
-is an index mismatch.
+rle.len <- g2.rle[['lengths']][1:3]
+gs <- rep(g2.rle[['values']][1:3], g2.rle[['lengths']][1:3])
+max.g <- max(g2.rle[['lengths']])
 
-```{r eval=FALSE}
-set.seed(1)
-g <- sample(seq_len(10), 95, replace=TRUE)
-o <- order(g)
-go <- g[o]
-g.rle <- rle(go)
-g.first3 <- seq_len(sum(g.rle[['lengths']][1:3]))
-rbind(
-  go[g.first3]
-)
+g.pad <- max.g - rle.len + 1L
+idx.raw <- rep(1L, length(gs))
+idx.raw[(cumsum(rle.len) + 1L)] <- g.pad
+idx <- cumsum(idx.raw[-length(idx.raw)])
+
+xx <- rbind(gs, seq_along(idx), idx)
+dimnames(xx) <- list(c('group', 'orig', 'embed'), rep('  ', ncol(xx)))
+xx <- rbind(gs, seq_along(idx), c(NA, diff(seq_along(idx))), idx, c(NA, diff(idx)))
+dimnames(xx) <- list(c('group', 'orig', 'orig ∆', 'embed', 'embed ∆'), rep('  ', ncol(xx)))
+xx
+```
+```{r echo=FALSE}
+writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3 
+id0       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m 9 10 11 12 13 14 15 \033[48;2;62;64;136m16 17 18 19 20 21 22 \033[m
+id1       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m15 16 17 18 19 20 21 \033[48;2;62;64;136m29 30 31 32 33 34 35 \033[m')
 ```
 
+A helpful way to emphasize the relationship between these is to look at the
+element by element difference in each index vector, e.g. using `diff`:
+
+```{r echo=FALSE}
+writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3 
+id0       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m 9 10 11 12 13 14 15 \033[48;2;62;64;136m16 17 18 19 20 21 22 \033[m
+diff(id0) NA  1  1  1  1  1  1  1 \033[32m 1 \033[m 1  1  1  1  1  1 \033[42m 1 \033[m 1  1  1  1  1  1 
+id1       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m15 16 17 18 19 20 21 \033[48;2;62;64;136m29 30 31 32 33 34 35 \033[m
+diff(id1) NA  1  1  1  1  1  1  1 \033[32m 7 \033[m 1  1  1  1  1  1 \033[42m 8 \033[m 1  1  1  1  1  1
+')
+```
+
+The indices always increment by one, except for the embedded vector, where they
+increment by `$1 + pad$`, where `$pad$` is how much empty space there is between
+the end of the group and the end of the column it is embedded in.  Flipping this
+around, this means all we need to be able to compute the embedding indices is
+figure out the size of the column padding, which will be a function of the group
+size and the largest group size.  Thankfully the `rle` computes the lengths of
+repeated sequences, which in the case of our ordered group vector corresponds
+exactly to group sizes:
+
+```{r echo=FALSE}
+g <- sort(g2)
+```
+```{r}
+g.rle <- rle(sort(g))
+g.rle
+```
+
+Padding is the difference between each group's size and that of the largest
+group:
+
+```{r}
+g.max <- max(g.rle[['lengths']])  # largest group
+pad <- g.max - g.rle[['lengths']]
+```
+
+To compute the embedding vector we start by a vector of the differences which
+as a baseline are all 1:
+
+```{r}
+id0 <- rep(1L, length(g))
+```
+
+We then add the padding at each group transition.  Conveniently, the group
+transitions are just one element past the length of the previous element, so we
+can add the padding at the positions following the cumulative sum of the group lengths:
+
+```{r}
+id0[cumsum(g.rle[['lengths']]) + 1L] <- pad + 1L
+head(id0, 22)   # first three groups
+```
+
+You'll notice this is essentially the same thing as `diff(id1)` from earlier.
+Thus, if we apply `cumsum` we reproduce `id1`:
+
+```{r}
+head(cumsum(id0), 22)
+```
+A distinguishing feature of these manipulations, outside of being deathly
+boring, is that they are all in fast vectorized code.  This gives us another
+reasonably fast group sum function.  We split it up into a function that
+calculates the embedding index and one that does the embedding and sum, for
+reasons that will become obvious later.  Assuming sorted inputs[^sorted-inputs]:
+
+```{r echo=FALSE}
+og_embed_dat <- function(go) {
+  ## compute run length encoding
+  g.rle <- rle(go)
+  max.g <- max(g.rle[['lengths']])
+
+  ## compute embedding indices
+  rle.len <- g.rle[['lengths']]
+  g.pad <- max.g - rle.len + 1L
+  id0 <- rep(1L, length(go))
+  id0[(cumsum(rle.len) + 1L)] <- g.pad
+  id1 <- cumsum(id0[-length(id0)])
+
+  list(idx=id1, rle=g.rle)
+}
+og_sum_col <- function(xo, embed_dat, na.rm=FALSE) {
+  rle.len <- embed_dat[['rle']][['lengths']]
+  res <- matrix(0, ncol=length(rle.len), nrow=max(rle.len))
+  res[embed_dat[['idx']]] <- xo
+  setNames(colSums(res, na.rm=na.rm), embed_dat[['rle']][['values']])
+}
+sys.time(og_sum_col(xo, og_embed_dat(go)))
+```
+```
+   user  system elapsed 
+  0.544   0.214   0.763 
+```
+
+Most of the run time is actually the embedding index calculation:
+
+```{r eval=FALSE}
+sys.time(emb <- og_embed_dat(go))
+```
+```
+   user  system elapsed 
+  0.405   0.139   0.546 
+```
+
+This is a little slower than `rowsum` for the simple group sum, but as we'll see
+later there are benefits to this approach.  The main drawback is the potential
+for the embedding matrix to become inefficiently large if a small number of
+groups are much larger than the rest.  It may be possible to mitigate this by
+breaking up the data into sub by groups[^colsums-breakup].
 
 # Pedal To The Metal
 
-Out of curiosity I wrote a version of `rowsum` that orders the data by group and
-takes advantage of that to compute the group sums and counts.  Essentially, as
-we can through the ordered groups, we know each time the group changes, we can
-save the accumulator to the result and reset it to zero.  This ends up slightly
-faster than even `data.table`.
+Out of curiosity I wrote a [C version of `rowsum`,
+`og_sum_native`](#og_sum_native) that takes advantage of group ordered
+data to compute the group sums and counts, similar to our [re-implementation of
+`unique` for sorted data][160].  We can detect group transitions any time the
+group vector changes, and use that to store group values/counts and
+reset the accumulators.  Even including sorting time, this ends up slightly
+faster than `data.table`:
+
+```{r}
+sys.time(og_sum_native(xo, go))
+```
+```
+   user  system elapsed 
+  0.039   0.001   0.041 
+```
+
+Most notably the statistic computation takes virtually no time.  Let's compare
+against all the different methods, including our prior [`cumsum` methods][110]:
+
+ADD og_sum_native TIMINGS.
+
+Benchmark plots needed:
+
+* rowsum vs colsum, og_sum_native vs data.table
+* slope w/ rowsum, colsum, og_slope_native vs data.table
+
+Placeholder plot:
+
+```{r sum-benchmarks, echo=FALSE}
+plot(1:10, 1:10)
+```
+
+ADD plot of all group sum timings, including the group slope ones.
+
+Things get interesting when we start building more complex statistics.  As the
+timings show a substantial portion of runtime is devoted to ordering and/or
+rle/embedding computations.  These computations are a function of the grouping,
+so in more complex statistics they can be re-used several times.
+
+We're going to re-use the calculation of the bivariate regression slope:
+
+$$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
+\bar{x})^{2}}$$
+
+The sorting time is now a longer as we need to sort `y` as well:
 
 ```{r sum-timings, echo=FALSE, eval=FALSE}
 sys.time({
@@ -375,213 +635,102 @@ sys.time({
   0.936   0.019   1.000
 ```
 
-Group slope `rowsum` without ordering time.
+For illustrative purposes we'll show the implementation that uses the `colSums`
+based group sum (`og_sum_col`).  This requires pre-sorted inputs, so we
+will need to add the sorting time to it.  Don't worry too much about the
+implementation.  The key thing to note is that we use `og_sum_col` four times,
+but we only compute the embedding data once:
+
+```{r}
+og_slope_col <- function(xo, yo, go) {
+  # compute group means for x/y
+  emb <- og_embed_dat(go)
+  lens <- emb[['rle']][['lengths']]
+  ux <- og_sum_col(xo, emb)/lens
+  uy <- og_sum_col(yo, emb)/lens
+
+  # recycle means to input vector length and compute
+  # (x - mean(x)) and (y - mean(y))
+  gi <- rep(seq_along(ux), lens)
+  x_ux <- xo - ux[gi]
+  y_uy <- yo - uy[gi]
+
+  # Slope calculation
+  gs.cs <- og_sum_col(x_ux * y_uy, emb) / og_sum_col(x_ux ^ 2, emb)
+  setNames(gs.cs, emb[['rle']][['vaues']])
+}
+sys.time(og_slope_col(xo, yo, go))
+```
+```
+   user  system elapsed 
+  1.362   0.709   2.078 
+```
+
+We can compare this to all the previous implementations of the group slope
+calculation, as well as variations on the above based on `rowsum`, 
+[`og_sum_native`](#pedal-to-the-metal) (the C version of `rowsum` that operates
+explicitly on group ordered ordered data), and finally a full C
+version of the slope calculation to define the limit of how fast we can go:
+
+* data.table
+    * naive
+    * group-join-group
+    * group-index-group?
+    * reformulate
+* base
+    * tapply
+    * cumsum 1-pass
+    * cumsum 2-pass
+    * colSums
+    * rowsum
+* native
+    * group sum only
+    * fully native
 
 ```{r eval=FALSE}
-sys.time({
-  tmp <- rowsum(cbind(xo, yo, rep(1, length(o))), grp[o])
+og_slope_rsum <- function(xo, yo, go) {
+  tmp <- rowsum(cbind(xo, yo, rep(1, length(go))), go)
   ux <- tmp[,1]/tmp[,3]
   uy <- tmp[,2]/tmp[,3]
 
   gi <- rep(seq_along(ux), c(tmp[,3]))
   x_ux <- xo - ux[gi]
   y_uy <- yo - uy[gi]
-  gs.0 <- rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
-})
+  rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
+}
+sys.time(og_slope_rsum(xo, yo, go))
 ```
 ```
    user  system elapsed
   2.594   0.366   2.963
 ```
 Group slope with colsums
-```{r}
-o_embed_dat <- function(g) {
-  # g must be ordered
+COMMENT ABOUT WHY NOT colMeans
 
-  g.rle <- rle(g)
-  max.g <- max(g.rle[['lengths']])
-
-  # each group that isn't as long as the longest group needs padding
-
-  rle.len <- g.rle[['lengths']]
-  g.pad <- max.g - rle.len + 1L
-  idx.raw <- rep(1L, length(g))
-  idx.raw[(cumsum(rle.len) + 1L)] <- g.pad
-  idx <- cumsum(idx.raw[-length(idx.raw)])
-
-  list(idx=idx, rle=g.rle)
-}
-ogroup_sum_cs <- function(x, embed_dat, na.rm=FALSE) {
-  # x and g must be ordered
-  rle.len <- embed_dat[['rle']][['lengths']]
-  res <- matrix(0, ncol=length(rle.len), nrow=max(rle.len))
-  res[embed_dat[['idx']]] <- x
-  setNames(colSums(res, na.rm=na.rm), embed_dat[['rle']][['values']])
-}
-sys.time({
-  ed <- o_embed_dat(go)
-  lens <- ed[['rle']][['lengths']]
-  ux <- ogroup_sum_cs(xo, ed)/lens
-  uy <- ogroup_sum_cs(yo, ed)/lens
-  gi <- rep(seq_along(ux), lens)
-
-  x_ux <- xo - ux[gi]
-  y_uy <- yo - uy[gi]
-  gs.cs <- ogroup_sum_cs(x_ux * y_uy, ed) / ogroup_sum_cs(x_ux ^ 2, ed)
-})
-```
-```
-   user  system elapsed 
-  1.351   0.635   1.995 
-```
 ```{r eval=FALSE}
-sys.time({
-  xg <- ogroup_sum(xo, go)
-  yg <- ogroup_sum(yo, go)
+og_slope_nativesum <- function(xo, yo, go) {
+  xg <- og_sum_native(xo, go)
+  yg <- og_sum_native(yo, go)
   gn <- attr(xg, 'grp.size')
   gi <- rep(seq_along(gn), gn)
 
   x_ux <- xo - (xg/gn)[gi]
   y_ux <- yo - (yg/gn)[gi]
-  gs.1 <- ogroup_sum(x_ux * y_ux, go)/ogroup_sum(x_ux^2, go)
-})
+  og_sum_native(x_ux * y_ux, go)/og_sum_native(x_ux^2, go)
+}
+sys.time(gs.ns <- og_slope_nativesum(xo, yo, go))
 ```
 ```
    user  system elapsed
   0.463   0.086   0.550
 ```
 ```{r eval=FALSE}
-sys.time({
-  gs.2 <- ogroup_slope(xo, yo, go)
-})
+sys.time(gs.n <- og_slope_native(xo, yo, go))
 ```
 ```
    user  system elapsed
   0.067   0.000   0.067
 ```
-
-Benchmark plots needed:
-
-* rowsum vs colsum, ogroup_sum vs data.table
-* slope w/ rowsum, colsum, ogroup_slope vs data.table
-
-Placeholder plot:
-
-```{r sum-benchmarks, echo=FALSE}
-plot(1:10, 1:10)
-```
-
-# Rowsums
-
-# colSums
-```{r eval=FALSE}
-
-x <-runif(95)
-
-
-
-
-  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
-
-  res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
-
-  # each group that isn't as long as the longest group needs padding
-
-  rle.len <- grp.rle[['lengths']]
-  grp.pad <- max.grp - rle.len
-
-
-  res[id] <- x[ord]
-  structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
-```
-
-```{r eval=FALSE}
-sum_g3 <- function(x, grp, na.rm=TRUE) {
-  ord <- order(grp)
-  grp.ord <- grp[ord]
-  grp.rle <- rle(grp.ord)
-  max.grp <- max(grp.rle[['lengths']])
-
-  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
-
-  res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
-
-  # each group that isn't as long as the longest group needs padding
-
-  rle.len <- grp.rle[['lengths']]
-  grp.pad <- max.grp - rle.len
-  id.raw <- rep(1L, length(x))
-  id.raw[(cumsum(rle.len) + 1L)[-length(rle.len)]] <-
-    grp.pad[-length(rle.len)] + 1L
-  id <- cumsum(id.raw)
-
-  res[id] <- x[ord]
-  structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
-}
-sum_g3a <- function(x, grp, na.rm=TRUE) {
-  ord <- order(grp)
-  grp.ord <- grp[ord]
-  grp.rle <- rle(grp.ord)
-  max.grp <- max(grp.rle[['lengths']])
-
-  # this NA handling doesn't work b/c for na.rm=FALSE you still get NAs
-
-  res <- matrix(NA_real_, ncol=length(grp.rle[['lengths']]), nrow=max.grp)
-
-  # each group that isn't as long as the longest group needs padding
-
-  rle.len <- grp.rle[['lengths']]
-  grp.pad <- max.grp - rle.len + 1L
-  id.raw <- rep(1L, length(x))
-  id.raw[(cumsum(rle.len) + 1L)] <- grp.pad
-  id <- cumsum(id.raw[-length(id.raw)])
-
-  res[id] <- x[ord]
-  structure(colSums(res, na.rm=na.rm), groups=grp.rle[['values']])
-}
-
-
-system.time(sum_g3(x, grp))
-sys.time(sum_g3(x, grp))
-sys.time(sum_g3a(x, grp))
-sys.time(embed_dat(grp))
-sys.time(zz <- sum_g3b(x, grp))
-
-```
-```
-   user  system elapsed
-  1.186   0.374   1.634
-```
-```{r eval=FALSE}
-  # lens: how long each group is
-  # maxlen: longest group
-sum_grp2 <- function(x, lens, maxlen, mode='sum') {
-
-  res <- matrix(NA_real_, ncol=length(lens), nrow=maxlen)
-
-  # Generate indices that will map to the correct spots in `res` from `x`,
-  # which means add whatever padding we need to the index value for the next
-  # column
-
-  len_1 <- lens[-length(lens)]
-  grp.pad <- (maxlen + 1L) - len_1
-  id.raw <- rep(1L, length(x))
-  len_1[1L] <- len_1[1L] + 1L
-  id.raw[cumsum(len_1)] <- grp.pad
-  id <- cumsum(id.raw)
-
-  # Inject the x values according to these indices that should place each gropu
-  # in a column
-
-  res[id] <- x
-
-  if(identical(mode, 'sum')) colSums(res, na.rm=TRUE)
-  else if(identical(mode, 'mean')) colMeans(res, na.rm=TRUE)
-  else stop("Invalid mode")
-}
-```
-
-
 
 # Conclusions
 
@@ -591,6 +740,15 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
 
 # Appendix
 
+## Acknowledgments
+
+* This blog would not exist but for amazing contributions from many ...
+* Rcpp/inline
+* data.table (computations)
+* ggplot
+* viridisLite
+
+   
 ## Data
 
 ```{r child='../../static/chunks/grp-dat.Rmd'}
@@ -600,33 +758,32 @@ sum_grp2 <- function(x, lens, maxlen, mode='sum') {
 
 ### sys.time
 
-### group_sum
+### og_sum_native
 
-Similar to `rowsum`, except it returns group sizes and the group ordering vector
-as attributes.  Group sizes allow us to either compute means or recycle the
-result statistic back to the input length.  The ordering vector can be used on
-other variables with the same grouping.
+Similar to `rowsum`, except it requires ordered input, and it returns group
+sizes as an attribute.  Group sizes allow us to either compute means or recycle
+the result statistic back to the input length.
 
-This is a limited implementation that only works for double `x` values and
-relies completely on the native code to handle NA/Infinite values.  It will
-ignore dimensions of matrices, and has undefined behavior if any group has more
-elements than than `INT_MAX`.
+This is a limited, lightly tested, implementation that only works for double `x`
+values and relies completely on the native code to handle NA/Infinite values.
+It will ignore dimensions of matrices, and has undefined behavior if any group
+has more elements than than `INT_MAX`.
 
 Inputs must be ordered in increasing order by group, with if it exists the NA
 group last.  The NA group will be treated as a single group (i.e. NA==NA is
 TRUE).
 
 ```{r group_sum, eval=FALSE}
-ogroup_sum <- function(x, group) {
+og_sum_native <- function(x, group) {
   stopifnot(
     typeof(x) == 'double', is.integer(group), length(x) == length(group)
   )
-  tmp <- .ogroup_sum(x, group)
+  tmp <- .og_sum_native(x, group)
   res <- setNames(tmp[[1]], tmp[[2]])
   attr(res, 'grp.size') <- tmp[[3]]
   res
 }
-.ogroup_sum <- inline::cfunction(
+.og_sum_native <- inline::cfunction(
   sig=c(x='numeric', g='integer'),
   body="
   R_xlen_t len, i, len_u = 1;
@@ -687,19 +844,21 @@ ogroup_sum <- function(x, group) {
 ")
 ```
 
-### group_slope
+### og_slope_native
+
+This is lightly tested.
 
 ```{r group_slope, eval=FALSE}
-ogroup_slope <- function(x, y, group) {
+og_slope_native <- function(x, y, group) {
   stopifnot(
     typeof(x) == 'double', is.integer(group), length(x) == length(group),
     typeof(y) == 'double', length(x) == length(y)
   )
-  tmp <- .ogroup_slope(x, y, group)
+  tmp <- .og_slope_native(x, y, group)
   res <- setNames(tmp[[1]], tmp[[2]])
   res
 }
-.ogroup_slope <- inline::cfunction(
+.og_slope_native <- inline::cfunction(
   sig=c(x='numeric', y='numeric',  g='integer'),
   body="
   R_xlen_t len, i, len_u = 1;
@@ -795,12 +954,19 @@ ogroup_slope <- function(x, y, group) {
 ")
 ```
 
-## Acknowledgments
-
-* This blog would not exist but for amazing contributions from many ...
-* Rcpp/inline
+[^sorted-inputs]: We could have the function sort the inputs itself, but doing
+  it this way allows us to compare to the other functions for which we pre-sort,
+  and to re-use the ordering data when summarizing multiple variables.
+[^native-code]: Code that is statically compiled into machine machine language
+  and can be executed without any additional intervention from the R
+  interpreter.
+[^colsums-breakup]: I implemented a test version to test feasibility and it had
+  comparable performance
 
 [100]: /tags/hydra/
 [110]: /2019/06/10/base-vs-data-table/#group-sums
 [120]: /2019/06/10/base-vs-data-table/#rowsums
 [130]: /2019/05/17/pixie-dust/#loose-ends
+[140]: /2019/05/17/pixie-dust/
+[150]: /2019/06/10/base-vs-data-table/#rowsums
+[160]: /2019/06/10/base-vs-data-table/#interlude-better-living-through-sorted-data
