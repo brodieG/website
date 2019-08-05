@@ -50,7 +50,7 @@ on the [`cumsum` based approach][110] we used to "beat" `data.table`.
 I did mention this one [in passing][120], but it bears re-examining:
 `base::rowsum` is a remarkable creature in the base R ecosystem.  As far as I
 know, it is the only R function that can compute group statistics on unequal
-group sizes in native code[^native-code].  Despite this it is relatively
+group sizes in statically compiled C code.  Despite this it is relatively
 unknown, especially when compared with its popular cousin `base::rowSums`.  
 
 It likely doesn't help that the names of the two functions are barely
@@ -124,16 +124,16 @@ sys.time(data.table(x, grp)[, sum(x), keyby=grp][, setNames(V1, grp)])
 summarize:
 
 ```{r echo=FALSE}
-step.levels <- c('order', 'compute', 'embed')
-library(viridisLite)
+step.levels <- c('order',  'rle*', 'sum')
 funs <- c('tapply', 'tapply', 'rowsum', 'rowsum', 'data.table')
-steps <- c('order', 'compute', 'order', 'compute', NA)
+steps <- c('order', 'sum', 'order', 'sum', NA)
 times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
   # Version=c('data.table', 'group_slope', 'data.table', 'group_slope'),
-  Step=factor(steps, levels=step.levels),
+  Step=factor(steps, levels=step.levels[-2]),
   time=c(.729, 2.624, .729, .583, 1.025)
 )
+brewer3 <- c('#66c2a5','#fc8d62','#8da0cb')
 ggplot(times, aes(x=Function, y=time)) +
   geom_col(aes(fill=Step)) +
   # facet_grid(.~Function, scales='free_x', space='free_x') +
@@ -151,18 +151,18 @@ ggplot(times, aes(x=Function, y=time)) +
     aes(label=sprintf("%0.2f", time)), vjust=-.2
   ) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1))) +
-  scale_fill_manual(values=viridis(3), na.value='grey50')
+  scale_fill_manual(values=brewer3[-2], na.value='grey50', drop=FALSE)
 ```
 
-The slow step for `data.table` is likely the ordering too, but we don't have a
+The slow step for `data.table` is also the ordering too, but we don't have a
 good way to break that out.
 
 # colSums
 
 `base::rowSums`, the aforementioned better-known cousin of `rowsum`, also
-computes group statistics in native code.  Well, it kind of does if you consider
-matrix rows to be groups. `base::colSums` does the same except for
-columns.  Suppose we have three equal sized ordered groups:
+computes group statistics with statically compiled code.  Well, it kind of does
+if you consider matrix rows to be groups. `base::colSums` does the same except
+for columns.  Suppose we have three equal sized ordered groups:
 
 ```{r}
 (G <- rep(1:3, each=2))
@@ -577,36 +577,88 @@ breaking up the data into sub by groups[^colsums-breakup].
 # Pedal To The Metal
 
 Out of curiosity I wrote a [C version of `rowsum`,
-`og_sum_native`](#og_sum_native) that takes advantage of group ordered
+`og_sum_C`](#og_sum_C) that takes advantage of group ordered
 data to compute the group sums and counts, similar to our [re-implementation of
 `unique` for sorted data][160].  We can detect group transitions any time the
 group vector changes, and use that to store group values/counts and
-reset the accumulators.  Even including sorting time, this ends up slightly
-faster than `data.table`:
+reset the accumulators.  Once the data is sorted, this takes virtually no time:
 
 ```{r}
-sys.time(og_sum_native(xo, go))
+sys.time(og_sum_C(xo, go))
 ```
 ```
    user  system elapsed 
   0.039   0.001   0.041 
 ```
 
-Most notably the statistic computation takes virtually no time.  Let's compare
-against all the different methods, including our prior [`cumsum` methods][110]:
+Let's compare against all the different methods, including the [original
+`cumsum` based group sum][110] (`cumsum-1`), and the [precision corrected two
+pass version][170] (`cumsum-2`):
 
-ADD og_sum_native TIMINGS.
-
-Benchmark plots needed:
-
-* rowsum vs colsum, og_sum_native vs data.table
-* slope w/ rowsum, colsum, og_slope_native vs data.table
-
-Placeholder plot:
-
-```{r sum-benchmarks, echo=FALSE}
-plot(1:10, 1:10)
+```{r sum-benchmarks, echo=FALSE, warning=FALSE}
+types <- rep(c('base',  'C', 'data.table'), c(5, 1, 1) * 3)
+funs <- c(
+  'tapply', 'cumsum-1', 'cumsum-2', 'rowsum', 'colSums',
+  'simple',
+  'og_sum_C'
+)
+steps <- c(rep(c('order',  'rle*', 'sum'), 6), rep(NA, 3))
+times <- data.frame(
+  Function=factor(rep(funs, each=3), levels=unique(funs)),
+  Type=factor(types, levels=unique(types)),
+  Step=factor(steps, levels=step.levels),
+  time=c(
+    .729,    NA, 2.624, # tapply
+    .729, 0.514, 0.047, # cumsum-1
+    .729, 0.514, 0.231, # cumsum-2
+    .729,    NA, 0.583, # rowsum
+    .729, 0.546, 0.217, # colSums
+    .729,    NA, 0.131, # sum-only
+   #.729  # full
+      NA,    NA, 1.023  # simple
+   #  NA,    NA,        # group-join-group
+   #  NA,    NA,        # reformulate
+  )
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col(aes(fill=Step)) +
+  # facet_wrap(~Type, scales='free_x') +
+  facet_grid(.~Type, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  # geom_label(
+  #   data=data.table(times)[
+  #     order(Step, decreasing=TRUE),
+  #     .(time=time, timec=cumsum(c(0,time[-length(time)]))),
+  #     .(Function, Type)
+  #   ],
+  #   aes(label=sprintf("%0.2f", time), y=timec + time/2)
+  # ) +
+  geom_text(
+    data=data.table(times)[, .(time=sum(time, na.rm=TRUE)), .(Function, Type)],
+    aes(label=sprintf("%0.2f", time)), vjust=-.2
+  ) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1))) +
+  scale_x_discrete(drop=TRUE) +
+  scale_fill_manual(values=brewer3, na.value='grey50', drop=FALSE)
 ```
+
+The plotted times are based on running all steps (i.e. order, rle, sum)
+together, and allocating the times across the three components on a best-efforts
+basis.  The timings may not tie out exactly to the sub-component timings I show
+in the body of the post.
+
+
+We're actually able to beat `data.table` with our custom C code, although that
+is only possible because `data.table` [contributed its fast radix sort to
+R][180], and `data.table` requires more complex code to be able to run a broader
+set of statistics.
+
+
+
+
+
+
+
 
 ADD plot of all group sum timings, including the group slope ones.
 
@@ -620,30 +672,20 @@ We're going to re-use the calculation of the bivariate regression slope:
 $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
 
-The sorting time is now a longer as we need to sort `y` as well:
-
-```{r sum-timings, echo=FALSE, eval=FALSE}
-sys.time({
-  o <- order(grp)
-  go <- grp[o]
-  xo <- x[o]
-  yo <- y[o]
-})
-```
-```
-   user  system elapsed
-  0.936   0.019   1.000
-```
-
 For illustrative purposes we'll show the implementation that uses the `colSums`
-based group sum (`og_sum_col`).  This requires pre-sorted inputs, so we
-will need to add the sorting time to it.  Don't worry too much about the
+based group sum (`og_sum_col`).  Don't worry too much about the
 implementation.  The key thing to note is that we use `og_sum_col` four times,
 but we only compute the embedding data once:
 
 ```{r}
-og_slope_col <- function(xo, yo, go) {
-  # compute group means for x/y
+g_slope_col <- function(x, y, group) {
+  ## order
+  o <- order(group)
+  go <- group[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  ## compute group means for x/y
   emb <- og_embed_dat(go)
   lens <- emb[['rle']][['lengths']]
   ux <- og_sum_col(xo, emb)/lens
@@ -659,18 +701,19 @@ og_slope_col <- function(xo, yo, go) {
   gs.cs <- og_sum_col(x_ux * y_uy, emb) / og_sum_col(x_ux ^ 2, emb)
   setNames(gs.cs, emb[['rle']][['vaues']])
 }
-sys.time(og_slope_col(xo, yo, go))
+sys.time(g_slope_col(x, y, grp))
 ```
 ```
    user  system elapsed 
-  1.362   0.709   2.078 
+  2.268   0.497   2.765 
 ```
 
 We can compare this to all the previous implementations of the group slope
 calculation, as well as variations on the above based on `rowsum`, 
-[`og_sum_native`](#pedal-to-the-metal) (the C version of `rowsum` that operates
+[`og_sum_C`](#pedal-to-the-metal) (the C version of `rowsum` that operates
 explicitly on group ordered ordered data), and finally a full C
 version of the slope calculation to define the limit of how fast we can go:
+
 
 * data.table
     * naive
@@ -678,17 +721,221 @@ version of the slope calculation to define the limit of how fast we can go:
     * group-index-group?
     * reformulate
 * base
-    * tapply
+    * split/vapply
     * cumsum 1-pass
     * cumsum 2-pass
     * colSums
     * rowsum
-* native
+* static compile
     * group sum only
-    * fully native
+    * fully static compiled
+
+```
+slope <- function(x, y) {
+  x_ux <- x - mean.default(x)
+  y_uy <- y - mean.default(y)
+  sum(x_ux * y_uy) / sum(x_ux ^ 2)
+}
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+  id <- seq_along(go)
+  id.split <- split(id, go)
+  res.slope.base <- vapply(id.split, function(id) slope(xo[id], yo[id]), 0)
+})
+```
+```
+   user  system elapsed 
+  8.395   0.075   8.473 
+```
+```
+sys.time(data.table(x, y, grp)[, slope(x, y), grp][, setNames(V1, grp)])
+```
+```
+   user  system elapsed 
+  6.943   0.036   6.981 
+```
+```
+> sys.time(slope.gs2 <- group_slope2(x, y, grp, gsfun=.group_sum_int2))
+   user  system elapsed 
+  2.151   0.573   2.723 
+   user  system elapsed 
+  2.257   0.762   3.020 
+> sys.time(group_slope(x, y, grp))
+   user  system elapsed 
+  1.878   0.463   2.355 
+.group_sum_int_16 <- function(x, last.in.group)
+  .group_sum_int3(x, last.in.group, p.bits=16)
+
+sys.time(slope.gs3 <- group_slope2(x, y, grp, gsfun=.group_sum_int_16))
+```
+```
+g_sum  <- function(x, grp, fun=.group_sum_int) {
+  ## Order groups and values
+  ord <- order(grp)
+  go <- grp[ord]
+  xo <- x[ord]
+
+  ## Last values
+  grle <- rle(go)
+  gnc <- cumsum(grle[['lengths']])
+
+  setNames(fun(xo, gnc), grle[['values']])
+}
+```
+```
+sys.time(g_sum(x, grp, .group_sum_int))
+   user  system elapsed 
+  1.109   0.167   1.279 
+```
+```
+sys.time(g_sum(x, grp, .group_sum_int2))
+```
+```
+   user  system elapsed 
+  1.215   0.221   1.436 
+```
+```
+sys.time(g_sum(x, grp, .group_sum_int_16))
+```
+```
+   user  system elapsed 
+  1.179   0.186   1.370 
+```
+One challenge here is that most of these are probably not hitting GC, so sum of
+parts is not equal to total, so need to arrange that somehow.
+```
+og_last_idx <- function(go) {
+  grle <- rle(go)
+  gnc <- cumsum(grle[['lengths']])
+  list(gnc=gnc, rle=grle)
+}
+og_sum  <- function(xo, idx, fun=.group_sum_int)
+  setNames(fun(xo, idx[['gnc']]), idx[['rle']][['values']])
+```
+```
+sys.time(idx <- og_last_idx(go))
+```
+```
+   user  system elapsed 
+  0.259   0.069   0.330 
+```
+```
+sys.time(og_sum(xo, idx, .group_sum_int))
+```
+```
+   user  system elapsed 
+  0.047   0.000   0.047 
+```
+```
+sys.time(og_sum(xo, idx, .group_sum_int2))
+```
+```
+   user  system elapsed 
+  0.151   0.036   0.188 
+```
+```
+sys.time({
+  o <- order(grp)
+  idx <- og_last_idx(grp[o])
+  gs.gs <- og_sum(x[o], idx)
+})
+```
+```
+   user  system elapsed 
+  1.106   0.175   1.290 
+```
+```
+sys.time({
+  o <- order(grp)
+  idx <- og_last_idx(grp[o])
+  gs.gs <- og_sum(x[o], idx, .group_sum_int2)
+})
+```
+```
+   user  system elapsed 
+  1.218   0.243   1.470 
+```
+```
+sys.time({
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  og_sum_C(xo, go)
+})
+```
+```
+   user  system elapsed 
+  0.861   0.004   0.870 
+```
+
+library(data.table)
+setDTthreads(1)
+sys.time({
+  DT <- data.table(grp, x, y)
+  setkey(DT, grp)
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt2 <- DTsum[, setNames(x_ux.y_uy / x_ux2, grp)]
+})
+```
+Hmm, this is surprisingly quite a bit faster than when we first tested it.
+```
+   user  system elapsed 
+  2.840   0.239   3.084 
+```
+But can't reproduce now.  This is a more typical timing, and in line with what
+we saw earlier:
+```
+   user  system elapsed 
+  3.098   0.519   3.633 
+```
+```
+sys.time({
+  DT <- data.table(x, y, xy=x*y, x2=x^2, grp)
+  slope.dt.re <- DT[,
+    .(ux=mean(x), uy=mean(y), uxy=mean(xy), ux2=mean(x2)),
+    keyby=grp
+  ][,
+    setNames((uxy - ux*uy)/(ux2 - ux^2), grp)
+  ]
+})
+```
+```
+   user  system elapsed 
+  1.402   0.110   1.516 
+```
+This approach loses the key on cbind, so we either need a 
+```
+sys.time({
+  DT <- data.table(grp, x, y)
+  setkey(DT, grp)
+  dt.rle <- rle(DT[['grp']])
+  gi <- rep(seq_along(dt.rle[['lengths']]), dt.rle[['lengths']])
+  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
+  DT[, `:=`(x_ux=x - DTsum[['ux']][gi], y_uy=y - DTsum[['uy']][gi])]
+  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
+  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
+  res.slope.dt3 <- DTsum[, setNames(x_ux.y_uy / x_ux2, grp)]
+})
+```
+```
+   user  system elapsed 
+  2.685   0.483   3.252 
+```
+
 
 ```{r eval=FALSE}
-og_slope_rsum <- function(xo, yo, go) {
+g_slope_rsum <- function(x, y, g) {
+  o <- order(grp)
+  go <- grp[o]
+  xo <- x[o]
+  yo <- y[o]
+
   tmp <- rowsum(cbind(xo, yo, rep(1, length(go))), go)
   ux <- tmp[,1]/tmp[,3]
   uy <- tmp[,2]/tmp[,3]
@@ -698,38 +945,43 @@ og_slope_rsum <- function(xo, yo, go) {
   y_uy <- yo - uy[gi]
   rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
 }
-sys.time(og_slope_rsum(xo, yo, go))
+sys.time(g_slope_rsum(x, y, grp))
 ```
 ```
-   user  system elapsed
-  2.594   0.366   2.963
+   user  system elapsed 
+  3.300   0.389   3.694 
 ```
 Group slope with colsums
 COMMENT ABOUT WHY NOT colMeans
 
 ```{r eval=FALSE}
-og_slope_nativesum <- function(xo, yo, go) {
-  xg <- og_sum_native(xo, go)
-  yg <- og_sum_native(yo, go)
+g_slope_csum <- function(x, y, group) {
+  o <- order(group)
+  go <- group[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  xg <- og_sum_C(xo, go)
+  yg <- og_sum_C(yo, go)
   gn <- attr(xg, 'grp.size')
   gi <- rep(seq_along(gn), gn)
 
   x_ux <- xo - (xg/gn)[gi]
   y_ux <- yo - (yg/gn)[gi]
-  og_sum_native(x_ux * y_ux, go)/og_sum_native(x_ux^2, go)
+  og_sum_C(x_ux * y_ux, go)/og_sum_C(x_ux^2, go)
 }
-sys.time(gs.ns <- og_slope_nativesum(xo, yo, go))
+sys.time(gs.ns <- g_slope_Csum(x, y, grp))
 ```
 ```
-   user  system elapsed
-  0.463   0.086   0.550
+   user  system elapsed 
+  1.540   0.087   1.641 
 ```
 ```{r eval=FALSE}
-sys.time(gs.n <- og_slope_native(xo, yo, go))
+sys.time(gs.n <- g_slope_C(x, y, grp))
 ```
 ```
-   user  system elapsed
-  0.067   0.000   0.067
+   user  system elapsed 
+  1.090   0.002   1.092 
 ```
 
 # Conclusions
@@ -747,6 +999,7 @@ sys.time(gs.n <- og_slope_native(xo, yo, go))
 * data.table (computations)
 * ggplot
 * viridisLite
+* Color Brewer for the palette. http://colorbrewer2.org/#type=qualitative&scheme=Set2&n=3
 
    
 ## Data
@@ -758,7 +1011,7 @@ sys.time(gs.n <- og_slope_native(xo, yo, go))
 
 ### sys.time
 
-### og_sum_native
+### og_sum_C
 
 Similar to `rowsum`, except it requires ordered input, and it returns group
 sizes as an attribute.  Group sizes allow us to either compute means or recycle
@@ -774,16 +1027,16 @@ group last.  The NA group will be treated as a single group (i.e. NA==NA is
 TRUE).
 
 ```{r group_sum, eval=FALSE}
-og_sum_native <- function(x, group) {
+og_sum_C <- function(x, group) {
   stopifnot(
     typeof(x) == 'double', is.integer(group), length(x) == length(group)
   )
-  tmp <- .og_sum_native(x, group)
+  tmp <- .og_sum_C(x, group)
   res <- setNames(tmp[[1]], tmp[[2]])
   attr(res, 'grp.size') <- tmp[[3]]
   res
 }
-.og_sum_native <- inline::cfunction(
+.og_sum_C <- inline::cfunction(
   sig=c(x='numeric', g='integer'),
   body="
   R_xlen_t len, i, len_u = 1;
@@ -844,21 +1097,22 @@ og_sum_native <- function(x, group) {
 ")
 ```
 
-### og_slope_native
+### g_slope_C
 
 This is lightly tested.
 
 ```{r group_slope, eval=FALSE}
-og_slope_native <- function(x, y, group) {
+g_slope_C <- function(x, y, group) {
   stopifnot(
     typeof(x) == 'double', is.integer(group), length(x) == length(group),
     typeof(y) == 'double', length(x) == length(y)
   )
-  tmp <- .og_slope_native(x, y, group)
+  o <- order(group)
+  tmp <- .g_slope_C(x[o], y[o], group[o])
   res <- setNames(tmp[[1]], tmp[[2]])
   res
 }
-.og_slope_native <- inline::cfunction(
+.g_slope_C <- inline::cfunction(
   sig=c(x='numeric', y='numeric',  g='integer'),
   body="
   R_xlen_t len, i, len_u = 1;
@@ -957,11 +1211,13 @@ og_slope_native <- function(x, y, group) {
 [^sorted-inputs]: We could have the function sort the inputs itself, but doing
   it this way allows us to compare to the other functions for which we pre-sort,
   and to re-use the ordering data when summarizing multiple variables.
-[^native-code]: Code that is statically compiled into machine machine language
-  and can be executed without any additional intervention from the R
-  interpreter.
 [^colsums-breakup]: I implemented a test version to test feasibility and it had
   comparable performance
+[^c-times]: Timing ordering and running `og_sum_C` separately versus together
+  produces slightly different times, likely because by running the pieces
+  separately it is possible to side-step a garbage collection event.  The
+  timings in the plot are from running things together, and subtracting out the
+  sorting / rle times.
 
 [100]: /tags/hydra/
 [110]: /2019/06/10/base-vs-data-table/#group-sums
@@ -970,3 +1226,6 @@ og_slope_native <- function(x, y, group) {
 [140]: /2019/05/17/pixie-dust/
 [150]: /2019/06/10/base-vs-data-table/#rowsums
 [160]: /2019/06/10/base-vs-data-table/#interlude-better-living-through-sorted-data
+[170]: /2019/06/18/hydra-precision/#a-new-hope
+[180]: https://twitter.com/BrodieGaslam/status/1106231241488154626
+
