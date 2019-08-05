@@ -29,7 +29,8 @@ Images must reside in that directory and be named in format
 
 img-001.png
 
-First file is 001.
+First file is 001, and its naturalWidth and naturalHeight will set the size of
+the HTML canvas element the images are drawn in.
 
 You must also specify how many images there are under the 'bg-flipbook-frame-n'
 form element.
@@ -88,12 +89,11 @@ harder...
 <script type='text/javascript'>
 // - Globals -------------------------------------------------------------------
 
-var i_width=0;
-var i_height=0;
 var pad = "000";
 var img_active = 1;
 var fps_last = fps_def;
 var interval;
+var flipbook_init = false;
 
 var flipbook = document.getElementById('bg-flipbook-flipbook');
 var imgs = document.getElementById('bg-flipbook-images');
@@ -119,13 +119,7 @@ for(i = 0; i <= img_n; i++) {
 
   img.src = img_src;
   imgs.append(img);
-  if(i == 0) {
-    flipbook.width = img.naturalWidth;
-    flipbook.height = img.naturalHeight;
-  }
 }
-var i_width = flipbook.width;
-var i_height = flipbook.height;
 
 // - Funs ----------------------------------------------------------------------
 
@@ -142,7 +136,17 @@ var intervalID = 0;
 
 function draw() {
   frame.value = img_active;
-  ctx.drawImage(imgs.children[img_active - 1], 0, 0, i_width, i_height);
+  console.log(imgs.children[0].width);
+  console.log(imgs.children[0].naturalWidth);
+  if(!flipbook_init) {
+    flipbook.width = imgs.children[0].naturalWidth;
+    flipbook.height = imgs.children[0].naturalHeight;
+  }
+  console.log(imgs.children[0].src);
+  console.log(flipbook.width + " " + flipbook.height);
+  ctx.drawImage(
+    imgs.children[img_active - 1], 0, 0, flipbook.width, flipbook.height
+  );
 }
 function pause_flip() {
   playing = false;
@@ -215,7 +219,6 @@ frame.addEventListener("input", function(e) {
   pause_flip();
   draw();
 });
-
-window.addEventListener("load", function() {draw();});
+window.addEventListener("load", function() {draw(); flipbook_init=true;});
 </script>
 
