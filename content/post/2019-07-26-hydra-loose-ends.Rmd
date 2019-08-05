@@ -714,274 +714,48 @@ calculation, as well as variations on the above based on `rowsum`,
 explicitly on group ordered ordered data), and finally a full C
 version of the slope calculation to define the limit of how fast we can go:
 
-
-* data.table
-    * naive
-    * group-join-group
-    * group-index-group?
-    * reformulate
-* base
-    * split/vapply
-    * cumsum 1-pass
-    * cumsum 2-pass
-    * colSums
-    * rowsum
-* static compile
-    * group sum only
-    * fully static compiled
-
-```
-slope <- function(x, y) {
-  x_ux <- x - mean.default(x)
-  y_uy <- y - mean.default(y)
-  sum(x_ux * y_uy) / sum(x_ux ^ 2)
-}
-sys.time({
-  o <- order(grp)
-  go <- grp[o]
-  xo <- x[o]
-  yo <- y[o]
-  id <- seq_along(go)
-  id.split <- split(id, go)
-  res.slope.base <- vapply(id.split, function(id) slope(xo[id], yo[id]), 0)
-})
-```
-```
-   user  system elapsed 
-  8.395   0.075   8.473 
-```
-```
-sys.time(data.table(x, y, grp)[, slope(x, y), grp][, setNames(V1, grp)])
-```
-```
-   user  system elapsed 
-  6.943   0.036   6.981 
-```
-```
-> sys.time(slope.gs2 <- group_slope2(x, y, grp, gsfun=.group_sum_int2))
-   user  system elapsed 
-  2.151   0.573   2.723 
-   user  system elapsed 
-  2.257   0.762   3.020 
-> sys.time(group_slope(x, y, grp))
-   user  system elapsed 
-  1.878   0.463   2.355 
-.group_sum_int_16 <- function(x, last.in.group)
-  .group_sum_int3(x, last.in.group, p.bits=16)
-
-sys.time(slope.gs3 <- group_slope2(x, y, grp, gsfun=.group_sum_int_16))
-```
-```
-g_sum  <- function(x, grp, fun=.group_sum_int) {
-  ## Order groups and values
-  ord <- order(grp)
-  go <- grp[ord]
-  xo <- x[ord]
-
-  ## Last values
-  grle <- rle(go)
-  gnc <- cumsum(grle[['lengths']])
-
-  setNames(fun(xo, gnc), grle[['values']])
-}
-```
-```
-sys.time(g_sum(x, grp, .group_sum_int))
-   user  system elapsed 
-  1.109   0.167   1.279 
-```
-```
-sys.time(g_sum(x, grp, .group_sum_int2))
-```
-```
-   user  system elapsed 
-  1.215   0.221   1.436 
-```
-```
-sys.time(g_sum(x, grp, .group_sum_int_16))
-```
-```
-   user  system elapsed 
-  1.179   0.186   1.370 
-```
-One challenge here is that most of these are probably not hitting GC, so sum of
-parts is not equal to total, so need to arrange that somehow.
-```
-og_last_idx <- function(go) {
-  grle <- rle(go)
-  gnc <- cumsum(grle[['lengths']])
-  list(gnc=gnc, rle=grle)
-}
-og_sum  <- function(xo, idx, fun=.group_sum_int)
-  setNames(fun(xo, idx[['gnc']]), idx[['rle']][['values']])
-```
-```
-sys.time(idx <- og_last_idx(go))
-```
-```
-   user  system elapsed 
-  0.259   0.069   0.330 
-```
-```
-sys.time(og_sum(xo, idx, .group_sum_int))
-```
-```
-   user  system elapsed 
-  0.047   0.000   0.047 
-```
-```
-sys.time(og_sum(xo, idx, .group_sum_int2))
-```
-```
-   user  system elapsed 
-  0.151   0.036   0.188 
-```
-```
-sys.time({
-  o <- order(grp)
-  idx <- og_last_idx(grp[o])
-  gs.gs <- og_sum(x[o], idx)
-})
-```
-```
-   user  system elapsed 
-  1.106   0.175   1.290 
-```
-```
-sys.time({
-  o <- order(grp)
-  idx <- og_last_idx(grp[o])
-  gs.gs <- og_sum(x[o], idx, .group_sum_int2)
-})
-```
-```
-   user  system elapsed 
-  1.218   0.243   1.470 
-```
-```
-sys.time({
-  o <- order(grp)
-  go <- grp[o]
-  xo <- x[o]
-  og_sum_C(xo, go)
-})
-```
-```
-   user  system elapsed 
-  0.861   0.004   0.870 
-```
-
-library(data.table)
-setDTthreads(1)
-sys.time({
-  DT <- data.table(grp, x, y)
-  setkey(DT, grp)
-  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
-  DT[DTsum, `:=`(x_ux=x - ux, y_uy=y - uy)]
-  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
-  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
-  res.slope.dt2 <- DTsum[, setNames(x_ux.y_uy / x_ux2, grp)]
-})
-```
-Hmm, this is surprisingly quite a bit faster than when we first tested it.
-```
-   user  system elapsed 
-  2.840   0.239   3.084 
-```
-But can't reproduce now.  This is a more typical timing, and in line with what
-we saw earlier:
-```
-   user  system elapsed 
-  3.098   0.519   3.633 
-```
-```
-sys.time({
-  DT <- data.table(x, y, xy=x*y, x2=x^2, grp)
-  slope.dt.re <- DT[,
-    .(ux=mean(x), uy=mean(y), uxy=mean(xy), ux2=mean(x2)),
-    keyby=grp
-  ][,
-    setNames((uxy - ux*uy)/(ux2 - ux^2), grp)
-  ]
-})
-```
-```
-   user  system elapsed 
-  1.402   0.110   1.516 
-```
-This approach loses the key on cbind, so we either need a 
-```
-sys.time({
-  DT <- data.table(grp, x, y)
-  setkey(DT, grp)
-  dt.rle <- rle(DT[['grp']])
-  gi <- rep(seq_along(dt.rle[['lengths']]), dt.rle[['lengths']])
-  DTsum <- DT[, .(ux=mean(x), uy=mean(y)), keyby=grp]
-  DT[, `:=`(x_ux=x - DTsum[['ux']][gi], y_uy=y - DTsum[['uy']][gi])]
-  DT[, `:=`(x_ux.y_uy=x_ux * y_uy, x_ux2=x_ux^2)]
-  DTsum <- DT[, .(x_ux.y_uy=sum(x_ux.y_uy), x_ux2=sum(x_ux2)), keyby=grp]
-  res.slope.dt3 <- DTsum[, setNames(x_ux.y_uy / x_ux2, grp)]
-})
-```
-```
-   user  system elapsed 
-  2.685   0.483   3.252 
-```
-
-
-```{r eval=FALSE}
-g_slope_rsum <- function(x, y, g) {
-  o <- order(grp)
-  go <- grp[o]
-  xo <- x[o]
-  yo <- y[o]
-
-  tmp <- rowsum(cbind(xo, yo, rep(1, length(go))), go)
-  ux <- tmp[,1]/tmp[,3]
-  uy <- tmp[,2]/tmp[,3]
-
-  gi <- rep(seq_along(ux), c(tmp[,3]))
-  x_ux <- xo - ux[gi]
-  y_uy <- yo - uy[gi]
-  rowsum(x_ux * y_uy, go) / rowsum(x_ux ^ 2, go)
-}
-sys.time(g_slope_rsum(x, y, grp))
-```
-```
-   user  system elapsed 
-  3.300   0.389   3.694 
-```
-Group slope with colsums
-COMMENT ABOUT WHY NOT colMeans
-
-```{r eval=FALSE}
-g_slope_csum <- function(x, y, group) {
-  o <- order(group)
-  go <- group[o]
-  xo <- x[o]
-  yo <- y[o]
-
-  xg <- og_sum_C(xo, go)
-  yg <- og_sum_C(yo, go)
-  gn <- attr(xg, 'grp.size')
-  gi <- rep(seq_along(gn), gn)
-
-  x_ux <- xo - (xg/gn)[gi]
-  y_ux <- yo - (yg/gn)[gi]
-  og_sum_C(x_ux * y_ux, go)/og_sum_C(x_ux^2, go)
-}
-sys.time(gs.ns <- g_slope_Csum(x, y, grp))
-```
-```
-   user  system elapsed 
-  1.540   0.087   1.641 
-```
-```{r eval=FALSE}
-sys.time(gs.n <- g_slope_C(x, y, grp))
-```
-```
-   user  system elapsed 
-  1.090   0.002   1.092 
+<!-- See static/..._files/scripts/benchmark.Rmd -->
+```{r slope-benchmarks, echo=FALSE, warning=FALSE}
+types <- rep(c('base',  'C', 'data.table'), c(5, 2, 3))
+funs <- c(
+  'vapply', 'cumsum-1', 'cumsum-2', 'rowsum', 'colSums',
+  'sum-only', 'full',
+  'simple', 'group\njoin\ngroup', 'reformulated'
+)
+times <- data.frame(
+  Function=factor(funs, levels=funs),
+  Type=factor(types, levels=unique(types)),
+  time=c(
+   8.473, # tapply
+   2.355, # cumsum-1
+   3.020, # cumsum-2
+   3.694, # rowsum
+   2.765, # colSums
+   1.641, # sum-only
+   1.092, # full
+   6.981, # simple
+   3.117, # group-join-group
+   1.516 # reformulate
+  )
+)
+ggplot(times, aes(x=Function, y=time)) +
+  geom_col() +
+  facet_grid(.~Type, scales='free_x', space='free_x') +
+  ylab("Time in Sec (Less is Better)") +
+  # geom_label(
+  #   data=data.table(times)[
+  #     order(Step, decreasing=TRUE),
+  #     .(time=time, timec=cumsum(c(0,time[-length(time)]))),
+  #     .(Function, Type)
+  #   ],
+  #   aes(label=sprintf("%0.2f", time), y=timec + time/2)
+  # ) +
+  geom_text(
+    data=data.table(times)[, .(time=sum(time, na.rm=TRUE)), .(Function, Type)],
+    aes(label=sprintf("%0.2f", time)), vjust=-.2
+  ) +
+  scale_y_continuous(expand=expand_scale(mult=c(0, .1))) +
+  ggtitle("Group Slopes, By Method")
 ```
 
 # Conclusions
