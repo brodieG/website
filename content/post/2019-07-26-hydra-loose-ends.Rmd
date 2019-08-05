@@ -524,13 +524,13 @@ Thus, if we apply `cumsum` we reproduce `id1`:
 ```{r}
 head(cumsum(id0), 22)
 ```
-A distinguishing feature of these manipulations, outside of being deathly
-boring, is that they are all in fast vectorized code.  This gives us another
-reasonably fast group sum function.  We split it up into a function that
+A distinguishing feature of these manipulations other than possibly inducing
+death-by-boredom is that they are all in fast vectorized code.  This gives us
+another reasonably fast group sum function.  We split it up into a function that
 calculates the embedding index and one that does the embedding and sum, for
 reasons that will become obvious later.  Assuming sorted inputs[^sorted-inputs]:
 
-```{r echo=FALSE}
+```{r eval=FALSE}
 og_embed_dat <- function(go) {
   ## compute run length encoding
   g.rle <- rle(go)
@@ -568,11 +568,11 @@ sys.time(emb <- og_embed_dat(go))
   0.405   0.139   0.546 
 ```
 
-This is a little slower than `rowsum` for the simple group sum, but as we'll see
-later there are benefits to this approach.  The main drawback is the potential
-for the embedding matrix to become inefficiently large if a small number of
-groups are much larger than the rest.  It may be possible to mitigate this by
-breaking up the data into sub by groups[^colsums-breakup].
+This is a little slower than `rowsum` for the simple group sum, but there are
+benefits to this approach.  The main drawback is the potential for the embedding
+matrix to become inefficiently large if a small number of groups are much larger
+than the rest.  It may be possible to mitigate this by breaking up the data into
+sub by groups[^colsums-breakup].
 
 # Pedal To The Metal
 
@@ -595,12 +595,13 @@ Let's compare against all the different methods, including the [original
 `cumsum` based group sum][110] (`cumsum-1`), and the [precision corrected two
 pass version][170] (`cumsum-2`):
 
+<!-- See static/..._files/scripts/benchmark.Rmd -->
 ```{r sum-benchmarks, echo=FALSE, warning=FALSE}
 types <- rep(c('base',  'C', 'data.table'), c(5, 1, 1) * 3)
 funs <- c(
   'tapply', 'cumsum-1', 'cumsum-2', 'rowsum', 'colSums',
-  'simple',
-  'og_sum_C'
+  'og_sum_C',
+  'simple'
 )
 steps <- c(rep(c('order',  'rle*', 'sum'), 6), rep(NA, 3))
 times <- data.frame(
@@ -639,45 +640,35 @@ ggplot(times, aes(x=Function, y=time)) +
   ) +
   scale_y_continuous(expand=expand_scale(mult=c(0, .1))) +
   scale_x_discrete(drop=TRUE) +
-  scale_fill_manual(values=brewer3, na.value='grey50', drop=FALSE)
+  scale_fill_manual(values=brewer3, na.value='grey50', drop=FALSE) +
+  ggtitle("Group Sums, By Method")
 ```
-
-The plotted times are based on running all steps (i.e. order, rle, sum)
-together, and allocating the times across the three components on a best-efforts
-basis.  The timings may not tie out exactly to the sub-component timings I show
-in the body of the post.
-
 
 We're actually able to beat `data.table` with our custom C code, although that
 is only possible because `data.table` [contributed its fast radix sort to
 R][180], and `data.table` requires more complex code to be able to run a broader
 set of statistics.
 
+But the pattern to notice here is that for several of the methods the time spent
+doing the actual summing is small.  For example, for `colSums`, most of the time
+is spent ordering and computing the run length encoding / embedding indices
+(`rle*`).  This is important because those parts are a function of the grouping,
+so they only need to be calculated once per group.  It doesn't help for single
+variable group sums, but if we have more variables or more complex statistics it
+can make a big difference.
 
-
-
-
-
-
-
-ADD plot of all group sum timings, including the group slope ones.
-
-Things get interesting when we start building more complex statistics.  As the
-timings show a substantial portion of runtime is devoted to ordering and/or
-rle/embedding computations.  These computations are a function of the grouping,
-so in more complex statistics they can be re-used several times.
-
-We're going to re-use the calculation of the bivariate regression slope:
+Let's see how helpful re-using the group-based data is with the calculation of
+the slope of a bivariate regression:
 
 $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
 
 For illustrative purposes we'll show the implementation that uses the `colSums`
 based group sum (`og_sum_col`).  Don't worry too much about the
-implementation.  The key thing to note is that we use `og_sum_col` four times,
+details.  The key thing to note is that we use `og_sum_col` four times,
 but we only compute the embedding data once:
 
-```{r}
+```{r eval=FALSE}
 g_slope_col <- function(x, y, group) {
   ## order
   o <- order(group)
@@ -691,13 +682,13 @@ g_slope_col <- function(x, y, group) {
   ux <- og_sum_col(xo, emb)/lens
   uy <- og_sum_col(yo, emb)/lens
 
-  # recycle means to input vector length and compute
-  # (x - mean(x)) and (y - mean(y))
+  ## recycle means to input vector length and compute
+  ## (x - mean(x)) and (y - mean(y))
   gi <- rep(seq_along(ux), lens)
   x_ux <- xo - ux[gi]
   y_uy <- yo - uy[gi]
 
-  # Slope calculation
+  ## Slope calculation
   gs.cs <- og_sum_col(x_ux * y_uy, emb) / og_sum_col(x_ux ^ 2, emb)
   setNames(gs.cs, emb[['rle']][['vaues']])
 }
