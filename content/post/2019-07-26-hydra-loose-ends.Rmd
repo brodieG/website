@@ -220,11 +220,26 @@ Let's look at our 95 data before and after embedding, showing the indices in
 vector format for both our ordered vector and the target matrix:
 
 ```{r echo=FALSE}
+ # Required sets:
+ # 0: sortable/moveable colored squares
+ # 1: alphaed background for colored squares
+ # 2: group labels (for group count)
+ # 3: longest group
+ # 4: background for embedding matrix
+
 set.seed(1)
 gn <- 10
 g2 <- sample(seq_len(gn), 95, replace=TRUE)
  # Horrible horrible, but it works
 levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
+labels <- c(
+  'main',
+  'main-back',
+  'group-lab',
+  'group-long',
+  'group-long-end',
+  'embed'
+)
 
  # labels are:
  # 0: original colored squares
@@ -232,79 +247,150 @@ levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
  # 3: rest of reallocation
  # 4: background for colored squares
  # 5: original colored squares, but after the move
+ # 6: the "path" that traces the group
 
-dat0 <- data.frame(
-  step=1L, id=seq_along(g2), g2,
-  x=(seq_along(g2) - 1) %/% 10, y=-((seq_along(g2) - 1) %% 10),
-  alpha=1, label=0
+gx <- (seq_along(g2) - 1) %/% 10
+gy <- -((seq_along(g2) - 1) %% 10)
+faint <- 0.2
+
+ # Main elements
+dat0 <- data.table(
+  step=1L, id=seq_along(g2), g2, x=gx, y=gx, alpha=1, label='main',
+  glabel=NA_character_, type='tile'
 )
-dat10 <- rbind(transform(dat0, label=4, g2=NA), dat0)
-dat20 <- transform(dat10, step=2L)
+ # Combine with background cells
+
+dat10 <- rbind(
+  copy(dat0)[, `:=`(label='main-back', alpha=faint)], dat0
+)
+ # Order foreground
+
 dat20 <- rbind(
-  subset(dat20, label==4),
-  transform(
-    subset(dat20, label==0)[order(g2),],
-    x=(seq_along(g2) - 1) %/% 10, y=-((seq_along(g2) - 1) %% 10)
-  )
+  dat10[label == 'main-back'],
+  dat10[label == 'main'][order(g2)][, `:=`(x=gx, y=gy)]
 )
-g.rle <- with(subset(dat20, label==0), rle(g2))
+dat20[, step:=2L]
+g.rle <- rle(dat20[label == 'main'][['g2']])
+g.max <- max(g.rle[['lengths']])
+g.n <- length(g.rle[['lengths']])
 
-dat30 <- transform(
-  dat20, step=3L,
-  alpha=ifelse(
-    g2==g.rle[['values']][which.max(g.rle[['lengths']])], 1, .2
-  )
-)
-g.max <- nrow(subset(dat30, alpha==1))
+ # group labels
+
 dat30 <- rbind(
-  dat30,
-  transform(subset(dat30, alpha==1), g2=NA, label=1)
+  dat20,
+  dat20[label == 'main'][which(c(TRUE, diff(g2) != 0))][,
+    `:=`(glabel=paste0('g', g2 - 1), label='group-lab', type='label')
+  ]
 )
-dat30 <- rbind(
-  subset(dat30, label%in%c(0,4)),
-  transform(
-    subset(dat30, label==1), x=gn + 1, y=-(seq_along(y) - 1)
+dat30[, step:=3L]
+
+ # col-alloc
+
+g.off <- 11L
+x.off <- seq_len(g.n - 1L) + 11
+dat40 <- rbind(
+  dat30[label != 'group-lab'],
+  data.table(
+    step=NA_integer_, id=seq_len(length(g.rle[['lengths']]) * g.max),
+    g2=NA_integer_,
+    x=rep(x.off, g.max), y=0
+    alpha=1, label='embed', glabel=NA_character_
   )
+  dat30[label == 'group-lab', `:=`(x=x.off, y=0)]
 )
-dat30 <- do.call(
-  rbind,
-  c(
-    list(dat30),
-    replicate(
-      gn - 1L, transform(subset(dat30, label==1), label=3), simplify=FALSE)
-) )
-dat30[dat30[['label']] == 3, 'id'] <- seq_along(which(dat30[['label']] == 3))
-dat50 <- transform(
-  dat30,
-  step=4L,
-  alpha=1
+dat40[, step:=4L]
+
+ # longest-group
+
+group.longest <- data.table(
+  id=rep(1:4, each=2),
+  x=c(4, 5, 5, 5, 5, 6, 6, 6), y=-c(9, 9, 9, 0, 0, 0, 0, 2)
+  alpha=1, label='group-longest', type='path'
 )
-dat50[dat50[['label']] %in% c(1,3),] <- transform(
-  subset(dat50, label %in% c(1,3)),
-  x=rep((seq_len(gn)) + gn, each=g.max)
-)
-dat60 <- transform(
-  rbind(
-    subset(dat50, label %in% c(1,3,4)),
-    transform(
-      subset(dat50, label==0), x=gn + g2, y=-sequence(g.rle[['lengths']]) + 1
+group.longest.end <- data.table(
+  x=c(4, 6), y=-c(9, 2), label='group-longest-end', id=5:6, type='point'
+),
+
+dat50 <- rbind(fill=TRUE, dat40, group.longest, group.longest.end)
+dat50[, step:=5L]
+
+ # longest-group moved
+
+dat60 <- rbind(fill=TRUE,
+  dat40,
+  copy(group.longest)[,
+    `:=`(
+      x=x.off + which.max(g.rle[['lengths']]),
+      y=-c(13:12, 12:2, 2:0)
     )
-  ),
-  step=5L
+  ],
+  copy(group.longest.end)[,
+    `:=`(x=c(x.off + which.max(g.rle[['lengths']])), y=-c(13, 0))
+  ]
 )
-dat70 <- transform(
-  rbind(
-    subset(dat60, label %in% c(1, 3, 4)),
-    transform(subset(dat60, label == 0), y=0)
-  ),
-  step=6L
+dat60[, step:=6L]
+
+ # rows to fit longest group
+
+dat70 <- copy(dat60)
+dat70[, step:=7L]
+dat70[label=='embed', y:=-rep(rev(seq_len(g.max) - 1L), each=g.n)]
+
+ # compute padding
+
+pads <- data.table(
+  x=rep(x.off + (seq_len(g.n) - 1), 2),
+  y=-c(g.max, g.rle[['lengths']]) + 1L,
 )
+dat80 <- rbind(fill=TRUE,
+  copy(dat70),
+  copy(pads)[, `:=`(label='pad-line', type='path')],
+  copy(pads)[, `:=`(label='pad-point', type='point')],
+  copy(dat70)[
+    label == 'main', `:=`(
+      x=g.n + g2, y=-sequence(g.rle[['lengths']]) g2=10L, label='embed-main'
+    )
+  ]
+)
+dat80[, step:=8L]
+
+ # compute embedding indices
+
+pad <- g.max - g.rle[['lengths']]
+id0 <- rep(1L, length(g2))
+id0[cumsum(g.rle[['lengths']]) + 1L] <- pad + 1L
+id1 <- cumsum(
+
+dat90 <- rbind(fill=TRUE,
+  dat80[!label %in% c('pad-line', 'pad-point')] ,
+  dat80[
+    label == 'embed-main',
+    `:=`(type=='text', glabel=, label='embed-idx')
+
+
+
+ # copy into embedding
+
+dat80 <- dat70[!label %in% c('group-longest', 'group-longest-end')]
+dat80[
+  label == 'main', `:=`(
+    x=g.n + g2, y=-sequence(g.rle[['lengths']]), step=8L
+  )
+]
+ # colSums
+
+dat90 <- copy(dat80)
+dat90[label == 'main', y:=0]
+dat90[, step:=9L]
+
 steps <- c(
   "Start",
   "Order by Group",
+  "Count Groups",
+  "Allocate One Column Per Group",
   "Compute Length of Longest Group",
-  "Alloc Matrix w/ Enough Rows to Fit Longest Group in One Col",
-  "Copy Each Group Into a Col",
+  "Allocate Longest Group Length as Rows",
+  "Copy Each Group Into a Column",
   "Compute colSums"
 )
 dat <- transform(
@@ -324,17 +410,25 @@ xo <- x[o]',
 
 "g.rle <- rle(go)
 g.lens <- g.rle[['lengths']]
-g.max <- max(g.lens)",
+g.n <- length(g.n)",
 
 "res <- matrix(
-  0, ncol=length(g.lens), nrow=g.max
+  0, ncol=g.n, nrow=??
 )",
 
-"pad <- g.max - g.lens + 1L
-id0 <- rep(1L, length(xo))
+"g.max <- max(g.lens)",
+
+"res <- matrix(
+  0, ncol=g.n, nrow=g.max
+)",
+
+"pad <- max(g.lens) - g.lens + 1L",
+
+"id0 <- rep(1L, length(xo))
 id0[(cumsum(g.lens) + 1L)] <- pad
-id1 <- cumsum(head(id0, -1L))
-res[id1] <- xo",
+id1 <- cumsum(head(id0, -1L))",
+
+"res[id1] <- xo",
 
 "colSums(res)"
 )
@@ -348,12 +442,16 @@ library(ggplot2)
 library(gganimate)
 
 make_plot <- function(dat, dat.code) {
-  ggplot(dat) +
-    geom_tile(
-      aes(x, y, fill=g2, alpha=I(alpha), group=paste(label, id)),
-      color='#AAAAAA'
+  ggplot(aes(x, y, alpha=alpha, group=paste(label, id))) +
+    geom_tile(data=subset(dat, type=='tile'), aes(fill=g2), color='#AAAAAA') +
+    geom_point(data=subset(dat, type=='point')) +
+    geom_path(data=subset(dat, type=='path')) +
+    geom_label(data=subset(dat, type=='label'), aes(label=glabel)) +
+    # we save the last group color for an off-scale color
+    scale_fill_manual(
+      values=c(viridisLite::viridis(length(unique(dat[['g2']]) - 1L)), 'grey50')
+      guide=FALSE, na.value='#F3F3F3'
     ) +
-    scale_fill_viridis_c(guide=FALSE, na.value='#F3F3F3') +
     scale_alpha(guide=FALSE, rescaler=function(x, to, from, ...) x) +
     theme(
       panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
@@ -372,7 +470,7 @@ make_plot <- function(dat, dat.code) {
 p <- make_plot(dat, dat.code)
 
 # ## gganimate
-# 
+#
 # p + facet_wrap(~step)
 # anim_save(
 #   '~/Downloads/colsums-anim.gif',
@@ -380,16 +478,16 @@ p <- make_plot(dat, dat.code)
 #     labs(title = "{closest_state}"),
 #   width=800, height=557, end_pause=5, nframes=350, fps=25
 # )
-# 
+#
 # ## pngs for flipbook
-# 
+#
 # png.root <- '~/Downloads/colsums/img-%03d.png'
-# 
+#
 # for(i in 1:6) {
 #   png(sprintf(png.root, i), width=800, height=557)
 #   dat.sub <- subset(dat, step==steps[[i]])
 #   dat.code.sub <- subset(dat.code, step==steps[[i]])
-# 
+#
 #   p <- make_plot(dat.sub, dat.code.sub) +
 #     ggtitle(steps[[i]]) +
 #     coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
@@ -423,6 +521,32 @@ idx <- rbind(
 p + geom_text(data=idx, aes(x, y, label=label, colour=factor(g2))) +
   scale_colour_manual(
     guide=FALSE, values=rep(c('white', 'black'), c(2, 8)), na.value='black'
+  )
+
+p +
+  geom_path(
+    data=data.frame(
+      x=c(4, 5, 5, 5, 5, 6, 6, 6), y=-c(9, 9, 9, 0, 0, 0, 0, 2), label=6,
+      id=rep(1:4, each=2)
+    ),
+    aes(x, y, group=paste(label, id))
+  ) +
+  geom_point(
+    data=data.frame(x=c(4, 6), y=-c(9, 2), label=6, id=5:6),
+    aes(x, y)
+  )
+
+p +
+  geom_path(
+    data=data.frame(
+      x=rep(11, 8), y=-c(0, 1, 1, 10, 10, 11, 11, 13), label=6,
+      id=rep(1:4, each=2)
+    ),
+    aes(x, y, group=paste(label, id))
+  ) +
+  geom_point(
+    data=data.frame(x=11, y=-c(0, 13), label=6, id=5:6),
+    aes(x, y, group=paste(label, id))
   )
 ```
 
