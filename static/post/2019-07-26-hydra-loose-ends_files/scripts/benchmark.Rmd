@@ -1,4 +1,5 @@
-All the timings I used to generate the benchmark plots.
+All the timings I used to generate the benchmark plots.  Latest batch of timings
+was a little faster, possibly b/c I was plugged in?
 
 ```
 slope <- function(x, y) {

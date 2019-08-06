@@ -51,7 +51,7 @@ I did mention this one [in passing][120], but it bears re-examining:
 `base::rowsum` is a remarkable creature in the base R ecosystem.  As far as I
 know, it is the only R function that can compute group statistics on unequal
 group sizes in statically compiled C code.  Despite this it is relatively
-unknown, especially when compared with its popular cousin `base::rowSums`.  
+unknown, especially when compared with its popular cousin `base::rowSums`.
 
 It likely doesn't help that the names of the two functions are barely
 distinguishable, despite the difference in behavior.  `rowsum` collapses rows
@@ -81,7 +81,7 @@ sys.time({
 ```
 ```
    user  system elapsed 
-  0.714   0.007   0.729 
+  0.690   0.003   0.696 
 ```
 
 `tapply` first for reference:
@@ -91,7 +91,7 @@ sys.time(gsum.0 <- tapply(xo, go, sum))
 ```
 ```
    user  system elapsed 
-  2.482   0.129   2.624 
+  2.273   0.105   2.383 
 ```
 
 And now `rowsum`:
@@ -101,27 +101,18 @@ sys.time(gsum.1 <- rowsum(xo, go))
 ```
 ```
    user  system elapsed 
-  0.537   0.043   0.583 
+  0.507   0.038   0.546 
 ```
 
 ```{r eval=FALSE}
 all.equal(c(gsum.0), c(gsum.1), check.attributes=FALSE)
 ```
+```
+[1] TRUE
+```
 
 `rowsum` provides a noticeable speed-up over `tapply` for the same task, though
-`data.table` remains faster.
-
-```{r eval=FALSE}
-setDTthreads(1)   # single thread data.table
-sys.time(data.table(x, grp)[, sum(x), keyby=grp][, setNames(V1, grp)])
-```
-```
-   user  system elapsed 
-  0.997   0.021   1.023 
-```
-
-`rowsum` may be fast enough for some applications where `tapply` is not.  To
-summarize:
+`data.table` remains faster:
 
 ```{r echo=FALSE}
 step.levels <- c('order',  'rle*', 'sum')
@@ -131,7 +122,7 @@ times <- data.frame(
   Function=factor(funs, levels=unique(funs)),
   # Version=c('data.table', 'group_slope', 'data.table', 'group_slope'),
   Step=factor(steps, levels=step.levels[-2]),
-  time=c(.729, 2.624, .729, .583, 1.025)
+  time=c(.696, 2.383, .696, .546, 1.025)
 )
 brewer3 <- c('#66c2a5','#fc8d62','#8da0cb')
 ggplot(times, aes(x=Function, y=time)) +
@@ -154,7 +145,7 @@ ggplot(times, aes(x=Function, y=time)) +
   scale_fill_manual(values=brewer3[-2], na.value='grey50', drop=FALSE)
 ```
 
-The slow step for `data.table` is also the ordering too, but we don't have a
+The slow step for `data.table` is also the ordering, but we don't have a
 good way to break that out.
 
 # colSums
@@ -555,7 +546,7 @@ sys.time(og_sum_col(xo, og_embed_dat(go)))
 ```
 ```
    user  system elapsed 
-  0.544   0.214   0.763 
+  0.502   0.195   0.699 
 ```
 
 Most of the run time is actually the embedding index calculation:
@@ -565,7 +556,10 @@ sys.time(emb <- og_embed_dat(go))
 ```
 ```
    user  system elapsed 
-  0.405   0.139   0.546 
+  0.369   0.141   0.510 
+```
+```
+sys.time(emb1 <- og_embed_dat0(go))
 ```
 
 This is a little slower than `rowsum` for the simple group sum, but there are
@@ -587,9 +581,17 @@ reset the accumulators.  Once the data is sorted, this takes virtually no time:
 sys.time(og_sum_C(xo, go))
 ```
 ```
-   user  system elapsed 
-  0.039   0.001   0.041 
+   user  system elapsed
+  0.039   0.001   0.041
 ```
+<!--
+sys.time({
+  o <- order(grp)
+  og_sum_C(x[o], grp[o])
+})
+   user  system elapsed 
+  0.735   0.004   0.743 
+-->
 
 Let's compare against all the different methods, including the [original
 `cumsum` based group sum][110] (`cumsum-1`), and the [precision corrected two
@@ -609,13 +611,13 @@ times <- data.frame(
   Type=factor(types, levels=unique(types)),
   Step=factor(steps, levels=step.levels),
   time=c(
-    .729,    NA, 2.624, # tapply
-    .729, 0.514, 0.047, # cumsum-1
-    .729, 0.514, 0.231, # cumsum-2
-    .729,    NA, 0.583, # rowsum
-    .729, 0.546, 0.217, # colSums
-    .729,    NA, 0.131, # sum-only
-   #.729  # full
+    .696,    NA, 2.624, # tapply
+    .696, 0.514, 0.047, # cumsum-1
+    .696, 0.514, 0.231, # cumsum-2
+    .696,    NA, 0.583, # rowsum
+    .696, 0.510, 0.189, # colSums
+    .696,    NA, 0.044, # sum-only
+   #.696  # full
       NA,    NA, 1.023  # simple
    #  NA,    NA,        # group-join-group
    #  NA,    NA,        # reformulate
@@ -695,12 +697,12 @@ g_slope_col <- function(x, y, group) {
 sys.time(g_slope_col(x, y, grp))
 ```
 ```
-   user  system elapsed 
-  2.268   0.497   2.765 
+   user  system elapsed
+  2.268   0.497   2.765
 ```
 
 We can compare this to all the previous implementations of the group slope
-calculation, as well as variations on the above based on `rowsum`, 
+calculation, as well as variations on the above based on `rowsum`,
 [`og_sum_C`](#pedal-to-the-metal) (the C version of `rowsum` that operates
 explicitly on group ordered ordered data), and finally a full C
 version of the slope calculation to define the limit of how fast we can go:
