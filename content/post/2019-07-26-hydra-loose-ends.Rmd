@@ -575,18 +575,19 @@ dimnames(xx) <- list(c('group', 'orig', 'orig ∆', 'embed', 'embed ∆'), rep('
 xx
 ```
 ```{r echo=FALSE}
-writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3 
+writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3
 id0       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m 9 10 11 12 13 14 15 \033[48;2;62;64;136m16 17 18 19 20 21 22 \033[m
 id1       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m15 16 17 18 19 20 21 \033[48;2;62;64;136m29 30 31 32 33 34 35 \033[m')
 ```
 
 A helpful way to emphasize the relationship between these is to look at the
-element by element difference in each index vector, e.g. using `diff`:
+element by element difference in each index vector, e.g. using `diff`:<span
+id=diff-id1></span>
 
 ```{r echo=FALSE}
-writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3 
+writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3
 id0       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m 9 10 11 12 13 14 15 \033[48;2;62;64;136m16 17 18 19 20 21 22 \033[m
-diff(id0) NA  1  1  1  1  1  1  1 \033[32m 1 \033[m 1  1  1  1  1  1 \033[42m 1 \033[m 1  1  1  1  1  1 
+diff(id0) NA  1  1  1  1  1  1  1 \033[32m 1 \033[m 1  1  1  1  1  1 \033[42m 1 \033[m 1  1  1  1  1  1
 id1       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m15 16 17 18 19 20 21 \033[48;2;62;64;136m29 30 31 32 33 34 35 \033[m
 diff(id1) NA  1  1  1  1  1  1  1 \033[32m 7 \033[m 1  1  1  1  1  1 \033[42m 8 \033[m 1  1  1  1  1  1
 ')
@@ -633,8 +634,8 @@ id0[cumsum(g.rle[['lengths']]) + 1L] <- pad + 1L
 head(id0, 22)   # first three groups
 ```
 
-You'll notice this is essentially the same thing as `diff(id1)` from earlier.
-Thus, if we apply `cumsum` we reproduce `id1`:
+You'll notice this is essentially the same thing as `diff(id1)` [from
+earlier](#diff-id1).  Thus, if we apply `cumsum` we reproduce `id1`:
 
 ```{r}
 head(cumsum(id0), 22)
@@ -649,20 +650,28 @@ reasons that will become obvious later.  Assuming sorted inputs[^sorted-inputs]:
 og_embed_dat <- function(go) {
   ## compute run length encoding
   g.rle <- rle(go)
-  max.g <- max(g.rle[['lengths']])
+  g.lens <- g.rle[['lengths']]
+  max.g <- max(g.lens)
+
+  ## compute padding
+  g.lens <- g.lens[-length(g.lens)]
+  g.pad <- max.g - g.lens + 1L
 
   ## compute embedding indices
-  rle.len <- g.rle[['lengths']]
-  g.pad <- max.g - rle.len + 1L
   id0 <- rep(1L, length(go))
-  id0[(cumsum(rle.len) + 1L)] <- g.pad
-  id1 <- cumsum(id0[-length(id0)])
+  id0[(cumsum(g.lens) + 1L)] <- g.pad
+  id1 <- cumsum(id0)
 
   list(idx=id1, rle=g.rle)
 }
 og_sum_col <- function(xo, embed_dat, na.rm=FALSE) {
+  ## group sizes
   rle.len <- embed_dat[['rle']][['lengths']]
+
+  ## allocate embedding matrix
   res <- matrix(0, ncol=length(rle.len), nrow=max(rle.len))
+
+  ## copy data using embedding indices
   res[embed_dat[['idx']]] <- xo
   setNames(colSums(res, na.rm=na.rm), embed_dat[['rle']][['values']])
 }
@@ -775,13 +784,13 @@ is only possible because `data.table` [contributed its fast radix sort to
 R][180], and `data.table` requires more complex code to be able to run a broader
 set of statistics.
 
-But the pattern to notice here is that for several of the methods the time spent
+The pattern to notice here is that for several of the methods the time spent
 doing the actual summing is small.  For example, for `colSums`, most of the time
-is spent ordering and computing the run length encoding / embedding indices
-(`rle*`).  This is important because those parts are a function of the grouping,
-so they only need to be calculated once per group.  It doesn't help for single
-variable group sums, but if we have more variables or more complex statistics it
-can make a big difference.
+is ordering and computing the run length encoding / embedding indices (`rle*`).
+This is important because those parts are a function of the grouping, so they
+only need to be calculated once per group.  It doesn't help for single variable
+group sums, but if we have more variables or more complex statistics it can make
+a big difference.
 
 Let's see how helpful re-using the group-based data is with the calculation of
 the slope of a bivariate regression:
@@ -837,7 +846,7 @@ types <- rep(c('base',  'C', 'data.table'), c(5, 2, 3))
 funs <- c(
   'vapply', 'cumsum-1', 'cumsum-2', 'rowsum', 'colSums',
   'sum-only', 'full',
-  'simple', 'group\njoin\ngroup', 'reformulated'
+  'simple', 'optim', 'reformulated'
 )
 times <- data.frame(
   Function=factor(funs, levels=funs),
@@ -875,7 +884,22 @@ ggplot(times, aes(x=Function, y=time)) +
   ggtitle("Group Slopes, By Method")
 ```
 
+Even though `rowsum` was the fastest group sum implementation, it is the
+slowest of the base options outside of `split/vapply` because none of the
+computation components other than the re-ordering can be re-used.  `colSums`
+does pretty well and has the advantage of not suffering from the precision
+issues of `cumsum-1`[^cumsum-1].  `cumsum-2`[^cumsum-2] might be the
+best bet of the "base" solutions as it is only slightly slower than `colSums`
+method, but should be scale better if there are some groups that are much larger
+than most.
+
+At most we
+
 # Conclusions
+
+With some thought and care it is possible to get within 2-3x
+of "pure"[^driven-snow] C performance using only R code, for a task that at
+first blush is not well suited for R.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -892,7 +916,7 @@ ggplot(times, aes(x=Function, y=time)) +
 * viridisLite
 * Color Brewer for the palette. http://colorbrewer2.org/#type=qualitative&scheme=Set2&n=3
 
-   
+
 ## Data
 
 ```{r child='../../static/chunks/grp-dat.Rmd'}
@@ -1109,6 +1133,9 @@ g_slope_C <- function(x, y, group) {
   separately it is possible to side-step a garbage collection event.  The
   timings in the plot are from running things together, and subtracting out the
   sorting / rle times.
+[^driven-snow]: This is not strictly true as the ordering is done via a calls to
+  `order` and `[`, although for those almost all the computations are done via
+  statically compiled code.
 
 [100]: /tags/hydra/
 [110]: /2019/06/10/base-vs-data-table/#group-sums
