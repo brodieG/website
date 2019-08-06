@@ -80,8 +80,8 @@ sys.time({
 })
 ```
 ```
-   user  system elapsed 
-  0.690   0.003   0.696 
+   user  system elapsed
+  0.690   0.003   0.696
 ```
 
 `tapply` first for reference:
@@ -90,8 +90,8 @@ sys.time({
 sys.time(gsum.0 <- tapply(xo, go, sum))
 ```
 ```
-   user  system elapsed 
-  2.273   0.105   2.383 
+   user  system elapsed
+  2.273   0.105   2.383
 ```
 
 And now `rowsum`:
@@ -100,8 +100,8 @@ And now `rowsum`:
 sys.time(gsum.1 <- rowsum(xo, go))
 ```
 ```
-   user  system elapsed 
-  0.507   0.038   0.546 
+   user  system elapsed
+  0.507   0.038   0.546
 ```
 
 ```{r eval=FALSE}
@@ -220,13 +220,6 @@ Let's look at our 95 data before and after embedding, showing the indices in
 vector format for both our ordered vector and the target matrix:
 
 ```{r echo=FALSE}
- # Required sets:
- # 0: sortable/moveable colored squares
- # 1: alphaed background for colored squares
- # 2: group labels (for group count)
- # 3: longest group
- # 4: background for embedding matrix
-
 set.seed(1)
 gn <- 10
 g2 <- sample(seq_len(gn), 95, replace=TRUE)
@@ -238,7 +231,10 @@ labels <- c(
   'group-lab',
   'group-long',
   'group-long-end',
-  'embed'
+  'pad-line',
+  'pad-end',
+  'embed',
+  'embed-main'
 )
 
  # labels are:
@@ -291,11 +287,12 @@ x.off <- seq_len(g.n - 1L) + 11
 dat40 <- rbind(
   dat30[label != 'group-lab'],
   data.table(
-    step=NA_integer_, id=seq_len(length(g.rle[['lengths']]) * g.max),
+    step=NA_integer_,
+    id=seq_len(length(g.rle[['lengths']]) * g.max),
     g2=NA_integer_,
-    x=rep(x.off, g.max), y=0
+    x=rep(x.off, g.max), y=0,
     alpha=1, label='embed', glabel=NA_character_
-  )
+  ),
   dat30[label == 'group-lab', `:=`(x=x.off, y=0)]
 )
 dat40[, step:=4L]
@@ -345,7 +342,7 @@ pads <- data.table(
 dat80 <- rbind(fill=TRUE,
   copy(dat70),
   copy(pads)[, `:=`(label='pad-line', type='path')],
-  copy(pads)[, `:=`(label='pad-point', type='point')],
+  copy(pads)[, `:=`(label='pad-end', type='point')],
   copy(dat70)[
     label == 'main', `:=`(
       x=g.n + g2, y=-sequence(g.rle[['lengths']]) g2=10L, label='embed-main'
@@ -356,32 +353,32 @@ dat80[, step:=8L]
 
  # compute embedding indices
 
-pad <- g.max - g.rle[['lengths']]
+glen2 <- head(g.rle[['lengths']], -1L)
+pad <- g.max - glen2
 id0 <- rep(1L, length(g2))
-id0[cumsum(g.rle[['lengths']]) + 1L] <- pad + 1L
-id1 <- cumsum(
+id0[cumsum(glen2) + 1L] <- pad + 1L
+id1 <- cumsum(id0)
 
 dat90 <- rbind(fill=TRUE,
-  dat80[!label %in% c('pad-line', 'pad-point')] ,
+  dat80[!label %in% c('pad-line', 'pad-end')] ,
   dat80[
     label == 'embed-main',
-    `:=`(type=='text', glabel=, label='embed-idx')
-
-
+    `:=`(type=='text', glabel=id1, label='embed-idx')
+  ]
+)
+dat90[, step:=9L]
 
  # copy into embedding
 
-dat80 <- dat70[!label %in% c('group-longest', 'group-longest-end')]
-dat80[
+dat100 <- copy(dat90)
+dat100[
   label == 'main', `:=`(
-    x=g.n + g2, y=-sequence(g.rle[['lengths']]), step=8L
+    x=x.off + g2, y=-sequence(g.rle[['lengths']]) + 1L
   )
 ]
- # colSums
+dat100[, step:=10L]
 
-dat90 <- copy(dat80)
-dat90[label == 'main', y:=0]
-dat90[, step:=9L]
+ # colSums
 
 steps <- c(
   "Start",
@@ -390,12 +387,14 @@ steps <- c(
   "Allocate One Column Per Group",
   "Compute Length of Longest Group",
   "Allocate Longest Group Length as Rows",
+  "Compute Padding in Embedding Matrix",
+  "Compute Embedding indices",
   "Copy Each Group Into a Column",
   "Compute colSums"
 )
-dat <- transform(
-  rbind(dat10, dat20, dat30, dat50, dat60, dat70),
-  step=factor(steps[step], levels=steps)
+dat <- rbind(
+  dat10, dat20, dat30, dat40, dat50,
+  dat60, dat70, dat80, dat90, dat100
 )
  # Code to line up with the steps
 
@@ -424,16 +423,16 @@ g.n <- length(g.n)",
 
 "pad <- max(g.lens) - g.lens + 1L",
 
-"id0 <- rep(1L, length(xo))
-id0[(cumsum(g.lens) + 1L)] <- pad
-id1 <- cumsum(head(id0, -1L))",
+"g.lens.hd <- head(g.lens, -1L)
+id0 <- rep(1L, length(xo))
+id0[(cumsum(g.lens.hd) + 1L)] <- pad
+id1 <- cumsum(id0)",
 
 "res[id1] <- xo",
 
 "colSums(res)"
 )
 dat.code <- data.frame(text=code, step=factor(steps))
-dat <- dat[with(dat, order(step, -label)),]
 
  # dat <- subset(dat, step==steps[[5]])
  # dat.code <- subset(dat.code, step==steps[[5]])
@@ -479,21 +478,21 @@ p <- make_plot(dat, dat.code)
 #   width=800, height=557, end_pause=5, nframes=350, fps=25
 # )
 #
-# ## pngs for flipbook
-#
-# png.root <- '~/Downloads/colsums/img-%03d.png'
-#
-# for(i in 1:6) {
-#   png(sprintf(png.root, i), width=800, height=557)
-#   dat.sub <- subset(dat, step==steps[[i]])
-#   dat.code.sub <- subset(dat.code, step==steps[[i]])
-#
-#   p <- make_plot(dat.sub, dat.code.sub) +
-#     ggtitle(steps[[i]]) +
-#     coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
-#   print(p)
-#   dev.off()
-# }
+## pngs for flipbook
+
+png.root <- '~/Downloads/colsums/img-%03d.png'
+
+for(i in seq_along(steps)) {
+  png(sprintf(png.root, i), width=800, height=557)
+  dat.sub <- subset(dat, step==steps[[i]])
+  dat.code.sub <- subset(dat.code, step==steps[[i]])
+
+  p <- make_plot(dat.sub, dat.code.sub) +
+    ggtitle(steps[[i]]) +
+    coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
+  print(p)
+  dev.off()
+}
 
 ## Additional frames
 
@@ -678,8 +677,8 @@ og_sum_col <- function(xo, embed_dat, na.rm=FALSE) {
 sys.time(og_sum_col(xo, og_embed_dat(go)))
 ```
 ```
-   user  system elapsed 
-  0.502   0.195   0.699 
+   user  system elapsed
+  0.502   0.195   0.699
 ```
 
 Most of the run time is actually the embedding index calculation:
@@ -688,8 +687,8 @@ Most of the run time is actually the embedding index calculation:
 sys.time(emb <- og_embed_dat(go))
 ```
 ```
-   user  system elapsed 
-  0.369   0.141   0.510 
+   user  system elapsed
+  0.369   0.141   0.510
 ```
 ```
 sys.time(emb1 <- og_embed_dat0(go))
@@ -722,8 +721,8 @@ sys.time({
   o <- order(grp)
   og_sum_C(x[o], grp[o])
 })
-   user  system elapsed 
-  0.735   0.004   0.743 
+   user  system elapsed
+  0.735   0.004   0.743
 -->
 
 Let's compare against all the different methods, including the [original
