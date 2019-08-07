@@ -291,10 +291,17 @@ group.longest.end <- data.table(
   x=c(4, 6), y=-c(9, 2), label='group-longest-end', id=5:6, type='point'
 )
 
-dat40 <- rbind(fill=TRUE, group.longest, group.longest.end, dat30)
+dat40 <- rbind(
+  fill=TRUE, group.longest, group.longest.end, dat30,
+  data.table(
+    id=seq_len(length(g.rle[['lengths']]) * g.max),
+    x=rep(g.off, g.max * g.n), y=0,
+    alpha=0, label='embed', type='tile'
+  )
+)
 dat40[, step:=4L]
 
- # move group labels and longest group
+ # alloc matrix (move group labels and longest group)
 
 g.off <- 11L
 x.off <- seq_len(g.n) + g.off - 1
@@ -312,27 +319,14 @@ dat50[
   `:=`(x=c(g.long.x), y=-c(g.max, 1) + 1)
 ]
 dat50[label == 'group-lab', `:=`(x=x.off, y=0)]
-dat50 <- rbind(fill=TRUE,
-  data.table(
-    id=seq_len(length(g.rle[['lengths']]) * g.max),
-    x=rep(g.off, g.max * g.n), y=0,
-    alpha=0, label='embed', type='tile'
-  ),
-  dat50
-)
-dat50[, step:=5L]
-
- # allocate matrix
-
-dat60 <- copy(dat50)
-dat60[label == 'embed', 
+dat50[label == 'embed', 
   `:=`(
     x=rep(x.off, g.max), 
     y=-rep(rev(seq_len(g.max)), each=g.n) + 1, alpha=1,
     tile.color='#AAAAAA'
   )
 ]
-dat60[, step:=6L]
+dat50[, step:=5L]
 
  # compute padding
 
@@ -345,10 +339,10 @@ pads.non.zero <- pads[, min(y), x][V1 > -g.max, x]
 pads <- pads[x %in% pads.non.zero]
 
 dat80 <- rbind(fill=TRUE,
-  dat60[!label %in% c('group-longest', 'group-longest-end', 'group-lab')],
+  dat50[!label %in% c('group-longest', 'group-longest-end', 'group-lab')],
   copy(pads)[, `:=`(label='pad-line', type='path')],
   copy(pads)[, `:=`(label='pad-end', type='point')]
-  # dat60[label == 'main'][, `:=`(
+  # dat50[label == 'main'][, `:=`(
   #     x=g.n + g2 + 0,
   #     y=-sequence(g.rle[['lengths']]) + 1, g2=g.n+1L,
   #     label='embed-main'
@@ -402,9 +396,7 @@ steps <- c(
   "Order by Group",
   "Count Groups",
   "Compute Length of Longest Group",
-  "We Need As Many Cols as Groups...",
-  "As Many  Rows as Elements in Longest Group...",
-  "And The Matrix to Hold Them",
+  "Allocate Matrix with as Many Cols as Groups, and Rows as Longest Group Length",
   "Compute Padding in Embedding Matrix",
   "Compute Embedding indices",
   "Copy Each Group Into a Column",
@@ -413,8 +405,7 @@ steps <- c(
 )
 dat <- rbind(
   dat10, dat20, dat30, dat40, dat50,
-  dat60, dat80, dat90, dat100, dat110,
-  dat120
+  dat80, dat90, dat100, dat110, dat120
 )
 dat[is.na(alpha), alpha:=1]
 dcast(dat[, .N, .(step, label)], label ~ step, fill=0)
@@ -444,10 +435,6 @@ g.lens <- g.rle[['lengths']]
 
 g.n <- length(g.n)   # group count
 g.max <- max(g.lens) # longest",
-
-"res <- matrix(
-  0, ncol=g.n, nrow=g.max
-)",
 
 "res <- matrix(
   0, ncol=g.n, nrow=g.max
