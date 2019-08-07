@@ -275,7 +275,7 @@ g.n <- length(g.rle[['lengths']])
 dat30 <- rbind(
   dat20,
   dat20[label == 'main'][which(c(TRUE, diff(g2) != 0))][,
-    `:=`(glabel=paste0('g', g2 - 1), label='group-lab', type='label')
+    `:=`(glabel=as.character(g2), label='group-lab', type='label')
   ]
 )
 dat30[, step:=3L]
