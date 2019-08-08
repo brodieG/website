@@ -468,7 +468,7 @@ make_plot <- function(dat, dat.code) {
       color=subset(dat, type=='tile')[['tile.color']]
     ) +
     geom_point(data=subset(dat, type=='point')) +
-    geom_path(data=subset(dat, type=='path')) +
+    # geom_polygon(data=subset(dat, type=='path')) +
     geom_label(data=subset(dat, type=='label'), aes(label=glabel)) +
     geom_text(data=subset(dat, type=='text'), aes(label=glabel)) +
     # we save the last group color for an off-scale color
@@ -501,17 +501,34 @@ make_plot <- function(dat, dat.code) {
     }
     p
 }
-# p <- make_plot(dat, dat.code)
 
 # ## gganimate
 #
+p <- make_plot(dat, dat.code)
+dat2 <- dat # dat[step %in% steps & type == 'tile']
+dat2[, tile.color:=NA_character_]
+p <- make_plot(dat2, NULL)
 # p + facet_wrap(~step)
-# anim_save(
-#   '~/Downloads/colsums-anim.gif',
-#   p +  transition_states(step, wrap=FALSE, state_length=4) +
-#     labs(title = "{closest_state}"),
-#   width=800, height=557, end_pause=5, nframes=350, fps=25
-# )
+anim_save(
+  '~/Downloads/colsums-anim.gif',
+  p +  transition_states(step, wrap=FALSE) +
+    labs(title = "{closest_state}"),
+  width=800, height=557, nframes=length(unique(dat2$step)) * 2, fps=2
+)
+# p + facet_wrap(~step)
+anim_save(
+  '~/Downloads/colsums-anim.gif',
+  p +  transition_states(step, wrap=FALSE) +
+    labs(title = "{closest_state}"),
+  width=800, height=557, nframes=length(unique(dat2$step)) * 2, fps=2
+)
+p + facet_wrap(~step)
+anim_save(
+  '~/Downloads/colsums-anim.gif',
+  p +  transition_states(step, wrap=FALSE, state_length=4) +
+    labs(title = "{closest_state}"),
+  width=800, height=557, end_pause=5, nframes=350, fps=25
+)
 #
 ## pngs for flipbook
 
