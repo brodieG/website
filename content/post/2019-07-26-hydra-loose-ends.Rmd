@@ -228,7 +228,9 @@ set.seed(1)
 gn <- 10
 g2 <- sample(seq_len(gn), 95, replace=TRUE)
 x <- runif(length(g2))
-xo <- x[order(g2)]
+o <- order(g2)
+go <- g2[o]
+xo <- x[o]
 
  # Horrible horrible, but it works
 levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
@@ -527,6 +529,7 @@ make_plot <- function(dat, dat.code) {
     }
     p
 }
+
 ```
 ```{r echo=FALSE, eval=FALSE}
 # ## gganimate
@@ -551,7 +554,17 @@ p <- make_plot(dat, dat.code)
 #
 ## pngs for flipbook
 
+i.off <- 1
 png.root <- '~/Downloads/colsums2/img-%03d.png'
+
+i <- 11
+png(sprintf(png.root, i + i.off), width=800, height=557)
+dat.sub <- subset(dat, Step==steps[[i]])
+dat.code.sub <- subset(dat.code, Step==steps[[i]])
+p <- make_plot(dat.sub, NULL) + ggtitle(steps[[i]]) +
+    coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
+print(p)
+dev.off()
 
 for(i in seq_along(steps)) {
   png(sprintf(png.root, i), width=800, height=557)
