@@ -101,21 +101,47 @@ elev.end <- make_elev(
 
 # shade <- shadow::ray_shade2(elev * , sunangle=315-90, anglebreaks=seq(30,60,1))
 
+shade_png <- function(png, root, elev, angles, deltas, delta.fac) {
+  png.orig <- png
+  for(i in seq_along(angles)) {
+    png <- png.orig
+    shade <- rayshader::ray_shade(
+      elev * 25, sunangle=-60, lambert=FALSE,
+      anglebreaks=angles[i] + (deltas * delta.fac[i]), maxsearch=300
+    ) * .7 + .3
+    png[,,1:3] <- png[,,1:3] * c(shade[,rev(seq_len(ncol(shade)))])
+    png::writePNG(png, sprintf(root, i))
+  }
+}
 angles <- seq(45, 90, by=5)
-deltas <- (-5):5
+deltas <- ((-5):5) / 10
 delta.fac <- seq(1, 0, length.out=length(deltas))
 
-elev <- elev.end
-png.root <- '~/Downloads/colsums2/rs-img-%03d.png'
-for(i in seq_along(angles)) {
-  shade <- rayshader::ray_shade(
-    elev * 50, sunangle=-40, lambert=FALSE,
-    anglebreaks=angles[i] + (deltas * delta.fac[i]), maxsearch=300
-  ) * .8 + .2
-  png.fin <- png/255
-  png.fin[,,1:3] <- png.fin[,,1:3] * c(shade[,rev(seq_len(ncol(shade)))])
-  png::writePNG(png.fin, sprintf(png.root, i))
+shade_png(
+  png::readPNG('~/Downloads/colsums2/img-012.png'),
+   '~/Downloads/colsums2/rs-img-%03d.png',
+  elev.end, rev(angles), rev(deltas), rev(delta.fac)
+)
+shade_png(
+  png::readPNG('~/Downloads/colsums2/img-002.png'),
+   '~/Downloads/colsums2/as-img-%03d.png',
+  elev.start, angles, deltas, delta.fac
+)
+
+# remove color profile form existing files
+
+start <- 2;
+end <- 12;
+
+png.root <- '~/Downloads/colsums2/img-%03d.png'
+for(i in seq(start, end, by=1)) {
+  png.tmp <- png::readPNG(sprintf(png.root, i))
+  png::writePNG(png.tmp, sprintf(png.root, i))
 }
+
+png.test <- png::readPNG()
+png::writePNG(png.test, '~/Downloads/colsums2/img-012a.png')
+png.test2 <- png::readPNG('~/Downloads/colsums2/img-012a.png')
 
 par(mai=numeric(4))
 
