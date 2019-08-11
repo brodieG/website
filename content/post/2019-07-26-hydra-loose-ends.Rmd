@@ -223,9 +223,13 @@ vector format for both our ordered vector and the target matrix:
 library(data.table)
 library(ggplot2)
 library(gganimate)
+RNGversion("3.5.2"); set.seed(42)
 set.seed(1)
 gn <- 10
 g2 <- sample(seq_len(gn), 95, replace=TRUE)
+x <- runif(length(g2))
+xo <- x[order(g2)]
+
  # Horrible horrible, but it works
 levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
 labels <- c(
@@ -255,9 +259,11 @@ gy <- -((seq_along(g2) - 1) %% 10)
 faint <- 0.2
 
  # Main elements
+
 dat10 <- data.table(
   step=1L, id=seq_along(g2), g2, x=gx, y=gy, alpha=1, label='main',
-  glabel=NA_character_, type='tile', tile.color=NA_character_
+  glabel=NA_character_, type='tile', tile.color=NA_character_,
+  point.shape=NA_character_
 )
  # Order foreground and add background cells
 
@@ -280,68 +286,67 @@ dat30 <- rbind(
 )
 dat30[, step:=3L]
 
- # longest-group
-
-group.longest <- data.table(
-  id=rep(1:4, each=2),
-  x=c(4, 5, 5, 5, 5, 6, 6, 6), y=-c(9, 9, 9, 0, 0, 0, 0, 2),
-  label='group-longest', type='path'
-)
-group.longest.end <- data.table(
-  x=c(4, 6), y=-c(9, 2), label='group-longest-end', id=5:6, type='point'
-)
-
-dat40 <- rbind(
-  fill=TRUE, group.longest, group.longest.end, dat30,
-  data.table(
-    id=seq_len(length(g.rle[['lengths']]) * g.max),
-    x=rep(g.off, g.max * g.n), y=0,
-    alpha=0, label='embed', type='tile'
-  )
-)
-dat40[, step:=4L]
-
- # alloc matrix (move group labels and longest group)
+ # move group labels
 
 g.off <- 11L
 x.off <- seq_len(g.n) + g.off - 1
 g.long.x <- g.off
 
-dat50 <- copy(dat40)
-dat50[
-  label == 'group-longest',
- `:=`(
-    x=g.long.x,
-    y=-c(13:12, c(12,3), c(3,2), c(2,0))
-) ]
-dat50[
-  label == 'group-longest-end',
-  `:=`(x=c(g.long.x), y=-c(g.max, 1) + 1)
-]
-dat50[label == 'group-lab', `:=`(x=x.off, y=0)]
-dat50[label == 'embed', 
+dat40 <- rbind(
+  dat30[label != 'group-lab'],
+  dat30[label == 'group-lab'][, `:=`(x=x.off, y=0)]
+)
+dat40[, step:=4L]
+
+
+ # longest-group
+
+dat50 <- rbind(fill=TRUE,
+  dat40[label == 'main' & g2 == which.max(g.rle[['lengths']])][,
+    `:=`(
+      label='group-longest', type='point', id=seq_len(g.max),
+      point.shape='a'
+    )
+  ],
+  dat40
+)
+dat50[, step:=5L]
+
+ # move longest group
+
+dat60 <- copy(dat50)
+dat60[label == 'group-longest',
   `:=`(
-    x=rep(x.off, g.max), 
-    y=-rep(rev(seq_len(g.max)), each=g.n) + 1, alpha=1,
-    tile.color='#AAAAAA'
+      x=g.off,
+      y=-c(0, 10:1, 11:13)
   )
 ]
-dat50[, step:=5L]
+dat60[, step:=6L]
+
+ # alloc matrix
+
+dat70 <- rbind(fill=TRUE,
+  data.table(
+    id=seq_len(length(g.rle[['lengths']])),
+    x=rep(x.off, g.max), y=-rev(rep(seq_len(g.max), each=g.n)) + 1L,
+    label='embed', type='tile'
+  ),
+  dat60
+)
+dat70[, step:=7L]
 
  # compute padding
 
 pads <- data.table(
-  x=rep(g.off + (seq_len(g.n) - 1), 2),
-  y=-c(rep(g.max, g.n), g.rle[['lengths']] + 1L) + 1L,
-  id=rep(seq_len(g.n), 2)
+  x=rep(g.off + (seq_len(g.n) - 1)),
+  g.len=g.rle[['lengths']],
+  id=rep(seq_len(g.n))
 )
-pads.non.zero <- pads[, min(y), x][V1 > -g.max, x]
-pads <- pads[x %in% pads.non.zero]
+pads <- pads[,.(y=-head(seq(from=g.len, g.max, by=+1), -1L)), by=.(x)]
 
 dat80 <- rbind(fill=TRUE,
-  dat50[!label %in% c('group-longest', 'group-longest-end', 'group-lab')],
-  copy(pads)[, `:=`(label='pad-line', type='path')],
-  copy(pads)[, `:=`(label='pad-end', type='point')]
+  dat70[!label %in% c('group-longest', 'group-lab')],
+  copy(pads)[, `:=`(label='pad', type='point', point.shape='b')]
   # dat50[label == 'main'][, `:=`(
   #     x=g.n + g2 + 0,
   #     y=-sequence(g.rle[['lengths']]) + 1, g2=g.n+1L,
@@ -360,7 +365,7 @@ id0[cumsum(glen2) + 1L] <- pad + 1L
 id1 <- cumsum(id0)
 
 dat90 <- rbind(fill=TRUE,
-  dat80,
+  copy(dat80),
   dat80[label == 'main'][, `:=`(
       x=g.n + g2 + 0,
       y=-sequence(g.rle[['lengths']]) + 1, g2=g.n+1L,
@@ -372,7 +377,7 @@ dat90[, step:=9L]
  # copy into embedding
 
 dat100 <- rbind(
-  dat90[!label %in% c('main', 'pad-line', 'pad-end', 'embed-idx')],
+  dat90[!label %in% c('main', 'pad', 'embed-idx')],
   dat90[label == 'main'][, `:=`(
     x=g.off + g2 + -1, y=-sequence(g.rle[['lengths']]) + 1
 ) ] )
@@ -395,22 +400,25 @@ steps <- c(
   "Start",
   "Order by Group",
   "Count Groups",
-  "Compute Length of Longest Group",
-  "Allocate Matrix with as Many Cols as Groups, and Rows as Longest Group Length",
+  "One Column Per Group",
+  "Length of Longest Group",
+  "One Row Per Element In Longest Group",
+  "Allocate Embedding Marix",
   "Compute Padding in Embedding Matrix",
   "Compute Embedding indices",
-  "Copy Each Group Into a Column",
+  "Copy Each Group Into Its Column",
   "Compute colSums",
-  "End"
+  # "End",
+  NULL
 )
 dat <- rbind(
-  dat10, dat20, dat30, dat40, dat50,
-  dat80, dat90, dat100, dat110, dat120
+  dat10, dat20, dat30, dat40, dat50, dat60,
+  dat70, dat80, dat90, dat100, dat110
 )
 dat[is.na(alpha), alpha:=1]
-dcast(dat[, .N, .(step, label)], label ~ step, fill=0)
+# dcast(dat[, .N, .(step, label)], label ~ step, fill=0)
 stopifnot(all(dat[, type] %in% c('tile', 'label', 'path', 'point', 'text')))
-dat[, step:=factor(steps[match(step, unique(sort(step)))], levels=steps)]
+dat[, Step:=factor(steps[match(step, unique(sort(step)))], levels=steps)]
 dat[, g2f:=factor(g2, levels=as.character(sort(unique(g2))))]
 
  # Code to line up with the steps
@@ -427,14 +435,26 @@ xo <- x[o]',
 "g.rle <- rle(go)
 g.lens <- g.rle[['lengths']]
 
-g.n <- length(g.n)  # group count",
-
+# group count
+g.n <- length(g.n)",
 
 "g.rle <- rle(go)
 g.lens <- g.rle[['lengths']]
 
-g.n <- length(g.n)   # group count
-g.max <- max(g.lens) # longest",
+# group count
+g.n <- length(g.n)",
+
+"g.rle <- rle(go)
+g.lens <- g.rle[['lengths']]
+
+# longest group
+g.max <- max(g.lens)",
+
+"g.rle <- rle(go)
+g.lens <- g.rle[['lengths']]
+
+# longest group
+g.max <- max(g.lens)",
 
 "res <- matrix(
   0, ncol=g.n, nrow=g.max
@@ -451,9 +471,11 @@ id1 <- cumsum(id0)",
 
 "colSums(res)",
 
-""
+# "",
+
+NULL
 )
-dat.code <- data.frame(text=code, step=factor(steps))
+dat.code <- data.frame(text=code, Step=factor(steps))
 
  # dat <- subset(dat, step==steps[[5]])
  # dat.code <- subset(dat.code, step==steps[[5]])
@@ -464,10 +486,13 @@ library(gganimate)
 make_plot <- function(dat, dat.code) {
   p <- ggplot(mapping=aes(x, y, alpha=alpha, group=paste(label, id))) +
     geom_tile(
-      data=subset(dat, type=='tile'), aes(fill=g2f), 
-      color=subset(dat, type=='tile')[['tile.color']]
+      data=subset(dat, type=='tile'), aes(fill=g2f),
+      color='#AAAAAA'
     ) +
-    geom_point(data=subset(dat, type=='point')) +
+    geom_point(
+      data=subset(dat, type=='point'), size=3,
+      aes(shape=point.shape)
+    ) +
     # geom_polygon(data=subset(dat, type=='path')) +
     geom_label(data=subset(dat, type=='label'), aes(label=glabel)) +
     geom_text(data=subset(dat, type=='text'), aes(label=glabel)) +
@@ -482,6 +507,7 @@ make_plot <- function(dat, dat.code) {
     scale_alpha(
       guide=FALSE, rescaler=function(x, to, from, ...) x, range=c(0,1)
     ) +
+    scale_shape_manual(values=c(a=16, b=1), guide=FALSE) +
     theme(
       panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
       axis.title.x=element_blank(), axis.text.x=element_blank(),
@@ -501,34 +527,27 @@ make_plot <- function(dat, dat.code) {
     }
     p
 }
-
+```
+```{r echo=FALSE, eval=FALSE}
 # ## gganimate
 #
 p <- make_plot(dat, dat.code)
-dat2 <- dat # dat[step %in% steps & type == 'tile']
-dat2[, tile.color:=NA_character_]
-p <- make_plot(dat2, NULL)
+# dat2 <- dat # dat[step %in% steps & type == 'tile']
+# dat2[, tile.color:=NA_character_]
+# p <- make_plot(dat2, NULL)
 # p + facet_wrap(~step)
-anim_save(
-  '~/Downloads/colsums-anim.gif',
-  p +  transition_states(step, wrap=FALSE) +
-    labs(title = "{closest_state}"),
-  width=800, height=557, nframes=length(unique(dat2$step)) * 2, fps=2
-)
-# p + facet_wrap(~step)
-anim_save(
-  '~/Downloads/colsums-anim.gif',
-  p +  transition_states(step, wrap=FALSE) +
-    labs(title = "{closest_state}"),
-  width=800, height=557, nframes=length(unique(dat2$step)) * 2, fps=2
-)
-p + facet_wrap(~step)
-anim_save(
-  '~/Downloads/colsums-anim.gif',
-  p +  transition_states(step, wrap=FALSE, state_length=4) +
-    labs(title = "{closest_state}"),
-  width=800, height=557, end_pause=5, nframes=350, fps=25
-)
+# anim_save(
+#   '~/Downloads/colsums-anim.gif',
+#   p +  transition_states(Step, wrap=FALSE, state_length=2) +
+#     labs(title = "{closest_state}"),
+#   width=800, height=557, end_pause=5, nframes=50, fps=5
+# )
+# anim_save(
+#   '~/Downloads/colsums-anim.gif',
+#   p +  transition_states(Step, wrap=FALSE, state_length=1) +
+#     labs(title = "{closest_state}"),
+#   width=800, height=557, end_pause=2, nframes=350, fps=25
+# )
 #
 ## pngs for flipbook
 
@@ -536,8 +555,8 @@ png.root <- '~/Downloads/colsums2/img-%03d.png'
 
 for(i in seq_along(steps)) {
   png(sprintf(png.root, i), width=800, height=557)
-  dat.sub <- subset(dat, step==steps[[i]])
-  dat.code.sub <- subset(dat.code, step==steps[[i]])
+  dat.sub <- subset(dat, Step==steps[[i]])
+  dat.code.sub <- subset(dat.code, Step==steps[[i]])
 
   p <- make_plot(dat.sub, dat.code.sub) +
     ggtitle(steps[[i]]) +
@@ -548,14 +567,14 @@ for(i in seq_along(steps)) {
 
 ## Additional frames
 
-dat.sub <- rbind(
-  subset(dat, step==steps[[5]] & label!=0),
-  transform(subset(dat, step==steps[[5]] & label==0), alpha=0.3),
-  transform(
-    subset(dat, step==steps[[4]] & label==0), step=steps[[5]], label=5
-  )
-)
-dat.code.sub <- subset(dat.code, step==steps[[5]])
+# dat.sub <- rbind(
+#   subset(dat, Step==steps[[5]] & label!=0),
+#   transform(subset(dat, Step==steps[[5]] & label==0), alpha=0.3),
+#   transform(
+#     subset(dat, Step==steps[[4]] & label==0), Step=steps[[5]], label=5
+#   )
+# )
+# dat.code.sub <- subset(dat.code, step==steps[[5]])
 
 p <- make_plot(dat.sub, NULL)
 

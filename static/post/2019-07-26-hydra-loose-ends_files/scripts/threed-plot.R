@@ -36,12 +36,12 @@ stopifnot(nrow(pnl.pix.w) == gray.vals[which.max(gray.vals)])
 # We know roughly that 1/8th of the pixels in we're dealing with the map
 # portion
 
-pnl.rle.100 <- rle(pnl.pix[, ncol(pnl.pix)/8])
-map.pix.y <- cumsum(pnl.rle.100[['lengths']][1:3])[c(2,3)]
+pnl.rle.y <- rle(pnl.pix[, ncol(pnl.pix)/4])
+map.pix.y <- cumsum(pnl.rle.y[['lengths']][1:3])[c(2,3)]
 map.pix.y # yup, seems reasonabl
 
-pnl.rle.100 <- rle(pnl.pix[nrow(pnl.pix)/8, ])
-map.pix.x <- cumsum(pnl.rle.100[['lengths']][1:3])[c(2,3)]
+pnl.rle.x <- rle(pnl.pix[nrow(pnl.pix)/4, ])
+map.pix.x <- cumsum(pnl.rle.x[['lengths']][1:3])[c(2,3)]
 map.pix.x # yup, seems reasonabl
 
 # Generate the coordinates for the tiles, the last coordinate is
@@ -77,17 +77,51 @@ for(i in seq_len(nrow(tiles))) {
 #
 # Use the elevation map to compute shade
 
-shade <- shadow::ray_shade2(elev * 100, sunangle=315-90, anglebreaks=seq(30,60,1))
-shade <- rayshader::ray_shade(
-  elev * 100, sunangle=-40, anglebreaks=seq(30,60,1)
-)
-png.fin <- png/255
-png.fin[,,1:3] <- png.fin[,,1:3] * c(shade[,rev(seq_len(ncol(shade)))])
+# shade <- shadow::ray_shade2(elev * , sunangle=315-90, anglebreaks=seq(30,60,1))
+
+angles <- seq(45, 90, by=5)
+deltas <- (-5):5
+delta.fac <- seq(1, 0, length.out=length(deltas))
+
+png.root <- '~/Downloads/colsums2/rs-img-%03d.png'
+for(i in seq_along(angles)) {
+  shade <- rayshader::ray_shade(
+    elev * dim(png)[1] * .1, sunangle=-40, lambert=FALSE,
+    anglebreaks=angles[i] + (deltas * delta.fac[i])
+  ) * .8 + .2
+  png.fin <- png/255
+  png.fin[,,1:3] <- png.fin[,,1:3] * c(shade[,rev(seq_len(ncol(shade)))])
+  png::writePNG(png.fin, sprintf(png.root, i))
+}
+
+par(mai=numeric(4))
+
+
 plot(as.raster(png.fin))
+
+dev.new()
+par(mai=numeric(4))
+plot(as.raster(elev))
+
+png.fin.u <- rowMeans(png.fin[,,1:3], dims=2)
+
+xx <- shadow::render_elevation(elev, png.fin.u, c(20,20,20))
+
+mesh.tri <- mesh
+lim <- 120000
+off <- 0
+idx <- seq(lim * 4) + off * 4
+x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))
+y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))
+texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col=texture, border=texture)
+
 
 # png.fin <- array(0, dim(png))
 png.fin[,,4] <- elev
 png::writePNG(png.fin, "~/Downloads/elev.png")
+
 
 
 ggplot(tiles) + geom_rect(aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax))
