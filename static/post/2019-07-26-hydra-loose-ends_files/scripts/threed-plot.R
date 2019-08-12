@@ -11,8 +11,10 @@ RNGversion("3.5.2"); set.seed(42)
 set.seed(1)
 gn <- 10
 g2 <- sample(seq_len(gn), 95, replace=TRUE)
+o <- order(g2)
+go <- g2[o]
 x <- runif(length(g2))
-xo <- x[order(g2)]
+xo <- x[o]
 
 # First find out what cells have gray colors
 
@@ -93,6 +95,7 @@ elev.end <- make_elev(
   map.pix.x2, map.pix.y2, 1, 10, elev.end, c(rowsum(xo, go))
 )
 
+
 # With the tiles we can create an elevation map using the original values, there
 # are only 95 tiles so we're going to be lazy and do them in a for loop
 
@@ -145,16 +148,134 @@ png.test2 <- png::readPNG('~/Downloads/colsums2/img-012a.png')
 
 par(mai=numeric(4))
 
+# downsample
 
-plot(as.raster(png.fin))
+esmall <- elev.start[1:400,1:400]
+png.start <-  png::readPNG('~/Downloads/colsums2/img-002.png')
+psmall <- png.start[1:400, 1:400,]
+psmallbw <- rowMeans(psmall[,,1:3], dims=2)
 
-dev.new()
+downsample <- function(mx) {
+  mx.tmp <- (mx[, rep(c(T,F), ncol(mx)/2)] + mx[, rep(c(F,T), ncol(mx)/2)]) / 2
+  (
+    mx.tmp[rep(c(T,F), nrow(mx.tmp)/2),] + 
+    mx.tmp[rep(c(F,T), nrow(mx.tmp)/2),]
+  ) / 2
+}
+exs <- downsample(esmall)
+ps <- downsample(psmallbw)
+
+plot(as.raster(ps))
+
+# check xs: 473 + 24, ys: 576 + 25
+#
+
+pin <- p.cand$x >= 473 & p.cand$x <= 473+24 &
+       p.cand$y >= 576 & p.cand$y <= 576+25
+
+lapply(p.cand, '[', pin)
+which(p.cand$id == 315724)
+zz <- which(p.raster == 1, arr.ind=TRUE)
+zz[zz[,1]>= 473 & zz[,1] <= (473+24) & zz[,2] >= 576 & zz[,2] <= (576 + 25),]
+pin <- which(p.cand$x == 473 & p.cand$y == 581)
+
+mesh.in <- lapply(p.cand, '[', pin)$id
+mesh.sub <- lapply(mesh.in, function(x) {
+  mesh.sub <- lapply(mesh, '[', x)
+  attributes(mesh.sub) <- attributes(mesh)
+  mesh.sub
+})
+tris <- do.call(
+  rbind,
+  lapply(
+    seq_along(mesh.sub),
+    function(x) cbind(matrix(unlist(mesh.sub[[x]][,1:2]), ncol=2), rep(x, 3))
+) )
+
+mesh.row.ids <- which(p.cand$id %in% mesh.in)
+
+lapply(mesh.sub, '[', 1)
+attributes(mesh.sub.1) <- attributes(mesh)
+mesh.sub.1
+
+
+pin.mx <- cbind(p.cand$x[pin], p.cand$y[pin])
+pin.mx.in <- cbind(p.cand$x[pin&inbounds], p.cand$y[pin&inbounds])
+nrow(pin.mx[!duplicated(pin.mx),])
+nrow(pin.mx.in[!duplicated(pin.mx.in),])
+
+zz <- p.raster[seq(473,length.out=24, by=1), seq(576,length.out=25, by=1)]
+
+pngbw <- rowMeans(png.start[,,1:3], dims=2)
+xx <- shadow::render_elevation_rel(
+  elev.start, pngbw,
+  rot_x(0), zord='pixel', d=10, empty=1
+)
 par(mai=numeric(4))
-plot(as.raster(elev))
+plot(as.raster(round(xx*255)/255))
 
-png.fin.u <- rowMeans(png.fin[,,1:3], dims=2)
+el <- matrix(0, 100, 100)
+tx <- matrix(.8, 100, 100)
 
-xx <- shadow::render_elevation(elev, png.fin.u, c(20,20,20))
+xx <- shadow::render_elevation_rel(
+  el, tx, rot_x(0), zord='pixel', d=10, empty=0
+)
+
+
+png('~/Downloads/tmp.png', width=dim(pngbw)[2], height=dim(pngbw)[1])
+par(mai=numeric(4))
+plot(as.raster(xx))
+dev.off()
+
+flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
+par(mai=numeric(4))
+plot(as.raster(xx))
+
+elevation <- exs * 50
+texture <- ps
+rotation <- rot_x(45) %*% rot_y(-45)
+rotation <- rot_y(-10)
+zord <- 'mesh'
+
+rl <- shadow:::rotate(
+  elevation = elevation, texture = texture, rotation = rotation
+)
+rlp <- persp_rel(rl, 1)
+resolution <- 400L
+rlps <- shadow:::scale_rel(rlp, resolution)
+mesh <- shadow:::mesh_tri(rlps, dim(elevation), order = FALSE)
+
+# ## Rescale data to a range from 0 to `range` where `range` in (0,1]
+# rescale <- function(x, range=1, center=0.5)
+#   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
+#    (1 - range) * center
+# 
+# ## Prepare a plot with a particular aspect ratio
+# plot_new <- function(
+#   x, y, xlim=c(0,1), ylim=c(0,1),
+#   par.args=list(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
+# ) {
+#   if(length(par.args)) do.call(par, par.args)
+#   plot.new()
+#   plot.window(
+#     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
+# ) }
+# 
+# mesh.tri <- mesh
+# x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))
+# y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))
+# col <- rep(c('#CCCCFF','#CCFFCC'), each=ncol(x)/2)
+# plot_new(x, y)
+# polygon(rescale(x), rescale(y), col=col)
+# plot_new(rlp$x,rlp$y)
+# points(rescale(rlp$x), rescale(rlp$y), col=gray(rlp$t), pch=16)
+
+res <- shadow:::rasterize(mesh, attr(rlps, "resolution"), 'pixel', 0)
+plot(as.raster(res))
+
+par(mai=numeric(4))
+plot(as.raster(res))
+
 
 mesh.tri <- mesh
 lim <- 120000
@@ -166,10 +287,6 @@ texture <- gray((Reduce('+', mesh.tri[,'t'])/nrow(mesh.tri)))
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=texture, border=texture)
 
-
-# png.fin <- array(0, dim(png))
-png.fin[,,4] <- elev
-png::writePNG(png.fin, "~/Downloads/elev.png")
 
 
 
