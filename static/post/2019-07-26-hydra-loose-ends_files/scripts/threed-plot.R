@@ -165,49 +165,87 @@ downsample <- function(mx) {
   ) / 2
 }
 
-pin <- p.cand$x >= 473 & p.cand$x <= 473+24 &
-       p.cand$y >= 576 & p.cand$y <= 576+25
+library(shadow)
+png.start <-  png::readPNG('~/Downloads/colsums2/img-002.png')
+png.end <-  png::readPNG('~/Downloads/colsums2/img-012.png')
+png.start.bw <- rowMeans(png.start[,,1:3], dims=2)
+png.end.bw <- rowMeans(png.end[,,1:3], dims=2)
+render_frame <- function(
+  png, elev, r=diag(3), mult=20, d=Inf, anglebreaks=45, max.el=max(elev)
+) {
+  if(length(dim(png)) == 2) dim(png) <- c(dim(png), 1L)
+  shade <- rayshader::ray_shade(
+    elev * mult, sunangle=-60, lambert=FALSE,
+    anglebreaks=anglebreaks, maxsearch=300
+  ) * .6 + .4
+  # shift shade up one pixel, this is a horrible hack to try to get the
+  # tall bars to be shaded on their side.  Should really be one pixel towards
+  # sun direction, but we're being lazy.
 
-lapply(p.cand, '[', pin)
-which(p.cand$id == 315724)
-zz <- which(p.raster == 1, arr.ind=TRUE)
-zz[zz[,1]>= 473 & zz[,1] <= (473+24) & zz[,2] >= 576 & zz[,2] <= (576 + 25),]
-pin <- which(p.cand$x == 473 & p.cand$y == 581)
-
-mesh.in <- lapply(p.cand, '[', pin)$id
-mesh.sub <- lapply(mesh.in, function(x) {
-  mesh.sub <- lapply(mesh, '[', x)
-  attributes(mesh.sub) <- attributes(mesh)
-  mesh.sub
-})
-tris <- do.call(
-  rbind,
+  shade <- rbind(shade[-1,], shade[1,])
+  shade <- shade[,rev(seq_len(ncol(shade)))]
+  res <- vapply(seq_len(dim(png)[3]),
+    function(x) {
+      elev[1L, dim(elev)[2]] <- max.el  # top right hand corner lifted
+      png[1L,dim(elev)[2],x] <- 0
+      message("Rendering layer ", x)
+      shadow::render_elevation_rel(
+        elev * mult, png[,,x] * shade, r, zord='pixel', d=d, empty=1
+      )
+    },
+    png.start[,,1]
+  )
+  if(dim(res)[3] == 1L) dim(res) <- dim(res)[1:2]
+  res
+}
+render_frames <- function(
+  png, elev, rs, ds, angles, breaks, breaks.mult, max.el=max(elev)
+) {
+  stopifnot(
+    length(rs) == length(ds),
+    length(rs) == length(angles),
+    length(rs) == length(breaks.mult)
+  )
   lapply(
-    seq_along(mesh.sub),
-    function(x) cbind(matrix(unlist(mesh.sub[[x]][,1:2]), ncol=2), rep(x, 3))
-) )
+    seq_along(rs),
+    function(x)
+      render_frame(
+        png, elev, r=rs[[x]], d=ds[[x]],
+        anglebreaks=breaks * breaks.mult[[x]] + angles[[x]],
+        max.el=max.el
+      )
+  )
+}
+frame.n <- 10
+d.start <- 1e4
+d.end <- 1e3
+ds <- c(Inf, seq(sqrt(d.start), 0, length.out=frame.n - 1)^2 + d.end)
+frames.3d <- render_frames(
+  png.end[,,1:3], elev=elev.end,
+  rs=lapply(seq(0,-20,length.out=frame.n), rot_y),
+  ds=ds,
+  angles=seq(90, 45, length.out=frame.n),
+  breaks=seq((-2):2), breaks.mult=seq(0, 1, length.out=frame.n)
+)
+png.root <- '~/Downloads/colsums2/3d-img-%03d.png'
+for(i in seq_along(frames.3d)) {
+  frame <- frames.3d[[i]]
+  png::writePNG(frame, sprintf(png.root, i))
+}
+frames.3d2 <- render_frames(
+  png.start[,,1:3], elev=elev.start,
+  rs=lapply(seq(0,-20,length.out=frame.n), rot_y),
+  ds=ds,
+  angles=seq(90, 45, length.out=frame.n),
+  breaks=seq((-2):2), breaks.mult=seq(0, 1, length.out=frame.n),
+  max.el=max(elev.end)
+)
 
-mesh.row.ids <- which(p.cand$id %in% mesh.in)
-
-lapply(mesh.sub, '[', 1)
-attributes(mesh.sub.1) <- attributes(mesh)
-mesh.sub.1
-
-
-pin.mx <- cbind(p.cand$x[pin], p.cand$y[pin])
-pin.mx.in <- cbind(p.cand$x[pin&inbounds], p.cand$y[pin&inbounds])
-nrow(pin.mx[!duplicated(pin.mx),])
-nrow(pin.mx.in[!duplicated(pin.mx.in),])
-
-zz <- p.raster[seq(473,length.out=24, by=1), seq(576,length.out=25, by=1)]
-
-pngbw <- rowMeans(png.start[,,1:3], dims=2)
-xx <- shadow::render_elevation_rel(
-  elev.start, pngbw,
-  rot_x(0), zord='pixel', d=10, empty=1
+png3d <- render_frames(
+  png.end[,,1:3], elev.end, r=rot_y(-10), d=1000
 )
 par(mai=numeric(4))
-plot(as.raster(round(xx*255)/255))
+plot(as.raster(round(png3d*255)/255))
 
 el <- matrix(0, 100, 100)
 tx <- matrix(.8, 100, 100)
