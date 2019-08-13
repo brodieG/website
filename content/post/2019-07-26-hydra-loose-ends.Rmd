@@ -270,7 +270,7 @@ dat10 <- data.table(
  # Order foreground and add background cells
 
 dat20 <- rbind(
-  dat10[order(g2)][, `:=`(label='main-back', alpha=faint, x=gx, y=gy)],
+  dat10[order(g2)][, `:=`(label='main-back', x=gx, y=gy)],
   dat10[order(g2)][, `:=`(x=gx, y=gy)]
 )
 dat20[, step:=2L]
@@ -290,7 +290,7 @@ dat30[, step:=3L]
 
  # move group labels
 
-g.off <- 11L
+g.off <- 12L
 x.off <- seq_len(g.n) + g.off - 1
 g.long.x <- g.off
 
@@ -369,7 +369,7 @@ id1 <- cumsum(id0)
 dat90 <- rbind(fill=TRUE,
   copy(dat80),
   dat80[label == 'main'][, `:=`(
-      x=g.n + g2 + 0,
+      x=g.off + g2 - 1,
       y=-sequence(g.rle[['lengths']]) + 1, g2=g.n+1L,
       label='embed-idx',
       type='text', glabel=as.character(id1)
@@ -485,19 +485,19 @@ dat.code <- data.frame(text=code, Step=factor(steps))
 library(ggplot2)
 library(gganimate)
 
-make_plot <- function(dat, dat.code) {
+make_plot <- function(dat, dat.code, text.size=16) {
   p <- ggplot(mapping=aes(x, y, alpha=alpha, group=paste(label, id))) +
     geom_tile(
       data=subset(dat, type=='tile'), aes(fill=g2f),
       color='#AAAAAA'
     ) +
     geom_point(
-      data=subset(dat, type=='point'), size=3,
+      data=subset(dat, type=='point'), size=4,
       aes(shape=point.shape)
     ) +
     # geom_polygon(data=subset(dat, type=='path')) +
-    geom_label(data=subset(dat, type=='label'), aes(label=glabel)) +
-    geom_text(data=subset(dat, type=='text'), aes(label=glabel)) +
+    geom_label(data=subset(dat, type=='label'), aes(label=glabel), size=5) +
+    geom_text(data=subset(dat, type=='text'), aes(label=glabel), size=5) +
     # we save the last group color for an off-scale color
     scale_fill_manual(
       guide=FALSE, na.value='#F3F3F3',
@@ -516,7 +516,7 @@ make_plot <- function(dat, dat.code) {
       axis.ticks.x=element_blank(),
       axis.title.y=element_blank(), axis.text.y=element_blank(),
       axis.ticks.y=element_blank(),
-      plot.title=element_text(size=16)
+      plot.title=element_text(size=text.size)
     ) +
     NULL
     if(!is.null(dat.code)) {
@@ -524,7 +524,7 @@ make_plot <- function(dat, dat.code) {
         data=dat.code,
         aes(label=text, group=NULL, alpha=NULL, x=NULL, y=NULL),
         x=-0.5, y=-10,
-        hjust=0, vjust=1, size=6, family='mono'
+        hjust=0, vjust=1, size=9, family='mono'
       )
     }
     p
@@ -534,17 +534,17 @@ make_plot <- function(dat, dat.code) {
 ```{r echo=FALSE, eval=FALSE}
 # ## gganimate
 #
-p <- make_plot(dat, dat.code)
+p <- make_plot(dat, dat.code, text.size=24)
 # dat2 <- dat # dat[step %in% steps & type == 'tile']
 # dat2[, tile.color:=NA_character_]
 # p <- make_plot(dat2, NULL)
 # p + facet_wrap(~step)
-# anim_save(
-#   '~/Downloads/colsums-anim.gif',
-#   p +  transition_states(Step, wrap=FALSE, state_length=2) +
-#     labs(title = "{closest_state}"),
-#   width=800, height=557, end_pause=5, nframes=50, fps=5
-# )
+anim_save(
+  '~/Downloads/colsums-anim-2.gif',
+  p +  transition_states(Step, wrap=FALSE) +
+    labs(title = "{closest_state}"),
+  width=1280, height=800, nframes=40, fps=5
+)
 # anim_save(
 #   '~/Downloads/colsums-anim.gif',
 #   p +  transition_states(Step, wrap=FALSE, state_length=1) +
@@ -554,28 +554,47 @@ p <- make_plot(dat, dat.code)
 #
 ## pngs for flipbook
 
+animate(
+  p +  
+    coord_fixed(xlim=c(-0.5,21.5), ylim=c(0,-13)) +
+    transition_states(Step, wrap=FALSE) +
+    labs(title = "{closest_state}") +
+    ease_aes('cubic-in-out')
+    ,
+  nframes = 250, fps=25, device = "png",
+  renderer = file_renderer(
+    "~/Downloads/colsums-anim/", prefix = "gganim-img", overwrite = TRUE
+  ),
+  width=1280, height=800
+)
+
 i.off <- 1
 png.root <- '~/Downloads/colsums2/img-%03d.png'
 
 i <- 11
-png(sprintf(png.root, i + i.off), width=800, height=557)
+# png(sprintf(png.root, i + i.off), width=800, height=557)
+png(sprintf(png.root, i + i.off), width=800, height=499, bg='black')
 dat.sub <- subset(dat, Step==steps[[i]])
 dat.code.sub <- subset(dat.code, Step==steps[[i]])
 p <- make_plot(dat.sub, NULL) + ggtitle(steps[[i]]) +
-    coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
+    coord_fixed(xlim=c(-0.5,21.5), ylim=c(0,-13))
 print(p)
 dev.off()
 
 for(i in seq_along(steps)) {
-  png(sprintf(png.root, i), width=800, height=557)
+  file <- sprintf(png.root, i + i.off)
+  png(file, width=1280, height=800)
   dat.sub <- subset(dat, Step==steps[[i]])
   dat.code.sub <- subset(dat.code, Step==steps[[i]])
 
-  p <- make_plot(dat.sub, dat.code.sub) +
+  p <- make_plot(dat.sub, dat.code.sub, text.size=24) +
     ggtitle(steps[[i]]) +
-    coord_cartesian(xlim=c(0,20), ylim=c(0,-13))
+    coord_fixed(xlim=c(-0.5,21.5), ylim=c(0,-13))
   print(p)
   dev.off()
+  # remove color profile
+  tmp <- png::readPNG(file)
+  png::writePNG(tmp, file)
 }
 
 ## Additional frames
