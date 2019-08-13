@@ -38,22 +38,24 @@ stopifnot(nrow(pnl.pix.w) == gray.vals[which.max(gray.vals)])
 # We know roughly that 1/8th of the pixels in we're dealing with the map
 # portion KEEP IN MIND Y/X flipped to image, below we use the matrix X/Y
 
+tol <- c(1, -1) # pixels to trim down on the ranges
+
 pnl.rle.y <- rle(pnl.pix[nrow(pnl.pix)/4, ])
-map.pix.y <- cumsum(pnl.rle.y[['lengths']][1:3])[c(2,3)]
+map.pix.y <- cumsum(pnl.rle.y[['lengths']][1:3])[c(2,3)] + tol
 map.pix.y # yup, seems reasonabl
 
 pnl.rle.x <- rle(pnl.pix[, map.pix.y[1] + 2])
-map.pix.x <- cumsum(pnl.rle.x[['lengths']][1:3])[c(2,3)]
+map.pix.x <- cumsum(pnl.rle.x[['lengths']][1:3])[c(2,3)] + tol
 map.pix.x # yup, seems reasonabl
 
 # figure out the group sum location based on the first locations
 
 pnl.rle.y2 <- rle(pnl.pix[map.pix.x[1] + 2, ])
-map.pix.y2 <- cumsum(pnl.rle.y2[['lengths']][1:5])[c(4,5)]
+map.pix.y2 <- cumsum(pnl.rle.y2[['lengths']][1:5])[c(4,5)] + tol
 map.pix.y2
 
 pnl.rle.x2 <- rle(pnl.pix[, mean(map.pix.y2)])
-map.pix.x2 <- cumsum(pnl.rle.x2[['lengths']][1:3])[c(2,3)]
+map.pix.x2 <- cumsum(pnl.rle.x2[['lengths']][1:3])[c(2,3)] + tol
 map.pix.x2 # yup, seems reasonabl
 
 # Generate the coordinates for the tiles, the last coordinate is
@@ -162,13 +164,6 @@ downsample <- function(mx) {
     mx.tmp[rep(c(F,T), nrow(mx.tmp)/2),]
   ) / 2
 }
-exs <- downsample(esmall)
-ps <- downsample(psmallbw)
-
-plot(as.raster(ps))
-
-# check xs: 473 + 24, ys: 576 + 25
-#
 
 pin <- p.cand$x >= 473 & p.cand$x <= 473+24 &
        p.cand$y >= 576 & p.cand$y <= 576+25
