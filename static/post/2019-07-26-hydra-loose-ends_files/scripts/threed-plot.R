@@ -133,9 +133,13 @@ render_frame <- function(
   shade <- shade[,rev(seq_len(ncol(shade)))]
   res <- vapply(seq_len(dim(png)[3]),
     function(x) {
-      # lift a corner so that on rotation resizing consistent
-      elev[1L, dim(elev)[2]] <- max.el         # top right hand corner lifted
-      png[1:2,dim(elev)[2]-(0:1),x] <- empty   # change this to see corner
+      # lift a few pixel  corner so that on rotation resizing consistent, this
+      # is customized specifically for y rotation; we'll need a better solution
+      # more generally.  This is bad.
+
+      y.middle <- as.integer(dim(elev)[2]/2)
+      elev[1L, y.middle] <- max.el             # lift pixel
+      png[1:2, y.middle+(-1:1),x] <- empty   # blend pixel color with bg
       message("Rendering layer ", x)
       shadow::render_elevation_rel(
         elev * mult, png[,,x] * shade, r, zord='pixel', d=d, empty=empty
@@ -165,7 +169,7 @@ render_frames <- function(
       )
   )
 }
-el.mult <- 20
+el.mult <- 40
 el.max.val <- el.mult * max(elev.end)
 frame.n <- 50
 
@@ -218,6 +222,46 @@ zz <- render_frame(
   png.end[,,1:3], elev.end, r=rot_y(0), anglebreaks=90, d=Inf, empty=0
 )
 plot(as.raster(round(zz*255)/255))
+
+frame.n <- 50
+d.inv.start <- el.max.val / (1e3 - el.max.val)
+d.inv.end <- el.max.val / (1e5 - el.max.val)
+# ds <- rev(el.max.val / make_path(d.inv.end, d.inv.start) + el.max.val)
+ds <- rev(el.max.val / seq(d.inv.end, d.inv.start, length.out=frame.n) + el.max.val)
+rs <- lapply(seq(-20, 0, length.out=frame.n), rot_y)
+angles <- seq(45, 90, length.out=frame.n)
+breaks <- (-5):5
+breaks.mult <- seq(1, .25, length.out=frame.n)
+# png.root <- '~/Downloads/colsums2/z3d-img-%03d.png'
+png.root <- '~/Downloads/colsums-tests3/z3d-img-%03d0.png'
+png.root.3 <- '~/Downloads/colsums-tests3/z3d-img-%04d.png'
+
+frames.3d <- render_frames(
+  rowMeans(png.end[,,1:3], dims=2),
+  elev=elev.end, rs=rev(rs), ds=rev(ds), angles=rev(angles),
+  breaks=breaks, breaks.mult=rev(breaks.mult), empty=0, mult=el.mult
+)
+for(i in seq_along(frames.3d)) {
+  frame <- frames.3d[[i]]
+  png::writePNG(frame, sprintf(png.root, i))
+}
+frames.3d2 <- render_frames(
+  png.start[,,1:3], elev=elev.start, rs=rs, ds=ds, angles=angles,
+  breaks=breaks, breaks.mult=breaks.mult, max.el=max(elev.end), empty=0
+)
+
+old.names <- list.files(
+  '~/Downloads/colsums-tests3', full.names=TRUE, pattern='png$'
+)
+png.root.2 <- '~/Downloads/colsums-tests3/a3d-img-%03d0.png'
+png.root.2a <- '~/Downloads/colsums-tests3/a3d-img-%04d.png'
+new.names <- sprintf(png.root.2, seq_along(old.names))
+file.copy(old.names, rev(new.names))
+old.names <- list.files('~/Downloads/colsums-tests3/', full.names=TRUE)
+file.copy(
+  rep(old.names[1], 10),
+  sprintf(png.root.2a, seq_len(10))
+)
 
 
 #ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4
