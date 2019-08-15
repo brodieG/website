@@ -20,9 +20,9 @@ Super hacky:
 
 In order to use set the following global variables:
 
-var playing = true;
 var fps_def = 3;
-var img_n = 6;    // one indexed
+var img_n = 6;     // one indexed
+var end_delay = 1; // frames to repeat at end
 var img_dir = '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook';
 
 Images must reside in that directory and be named in format
@@ -88,6 +88,7 @@ harder...
 <script type='text/javascript'>
 // - Globals -------------------------------------------------------------------
 
+var playing = false;
 var pad = "000";
 var img_active = 1;
 var fps_last = fps_def;
@@ -163,10 +164,16 @@ function step_click(e) {
 }
 function step() {
   if(img_active == img_n) {
-    // delay at end for four frames
-    step_img(1);
+    // delay at end
     pause_flip();
-    setTimeout(play_all, 6 * interval);
+    setTimeout(
+      function() {
+        step_img(1);
+        pause_flip();
+        play_all();
+      },
+      end_delay * interval
+    );
   } else {
     step_img(1);
   }

@@ -201,7 +201,7 @@ generate the flipbook and animation.
 var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
 var fps_def = 1;
 var img_n = 17;
-var playing = true;
+var end_delay = 1;
 </script>
 ```{r child='../../static/chunks/flipbook.Rmd'}
 ```
