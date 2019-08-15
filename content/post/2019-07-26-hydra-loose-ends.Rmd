@@ -5,8 +5,10 @@ date: '2019-07-26'
 slug: hydra-loose-ends
 categories: [r]
 tags: [group-stats,optim,hydra]
-image: /front-img/default.png
-imagerect: ~
+image:
+  /post/2019-07-26-hydra-loose-ends_files/user-imgs/loose-ends-square.png
+imagerect:
+  /post/2019-07-26-hydra-loose-ends_files/user-imgs/loose-ends-rect.png
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
@@ -31,7 +33,8 @@ options(fansi.term.cap=c('bright', '256', 'truecolor'))
 
 <!-- this needs to become a shortcode -->
 <img
-  id='front-img' src='/front-img/default.png'
+  id='front-img' 
+  src='/post/2019-07-26-hydra-loose-ends_files/user-imgs/loose-ends-square.png'
   class='post-inset-image'
 />
 
