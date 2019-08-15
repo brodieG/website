@@ -32,8 +32,7 @@ img-001.png
 First file is 001, and its naturalWidth and naturalHeight will set the size of
 the HTML canvas element the images are drawn in.
 
-You must also specify how many images there are under the 'bg-flipbook-frame-n'
-form element.
+You must also specify how many images there are using the img_n global variable.
 
 At some point we'll have to package this up in a more namespaced manner to avoid
 potential JS conflicts, but since our website doesn't have much JS we sweep this

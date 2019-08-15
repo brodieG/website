@@ -199,8 +199,8 @@ generate the flipbook and animation.
 
 <script type='text/javascript'>
 var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
-var fps_def = 0.5;
-var img_n = 6;
+var fps_def = 1;
+var img_n = 17;
 var playing = true;
 </script>
 ```{r child='../../static/chunks/flipbook.Rmd'}
@@ -236,7 +236,6 @@ go <- g2[o]
 xo <- x[o]
 
  # Horrible horrible, but it works
-levels <- c('start', 'order', 'longest', 'allocate', 'embed', 'colSums')
 labels <- c(
   'main',                  # original colored squares
   'main-back',             # background for original
@@ -270,11 +269,13 @@ dat10 <- data.table(
   glabel=NA_character_, type='tile', tile.color=NA_character_,
   point.shape=NA_character_
 )
+dat10 <- rbind(copy(dat10)[, label:='main-back'], dat10)
+
  # Order foreground and add background cells
 
 dat20 <- rbind(
-  dat10[order(g2)][, `:=`(label='main-back', x=gx, y=gy)],
-  dat10[order(g2)][, `:=`(x=gx, y=gy)]
+  dat10[label == 'main-back'][order(g2)][, `:=`(x=gx, y=gy)],
+  dat10[label == 'main'][order(g2)][, `:=`(x=gx, y=gy)]
 )
 dat20[, step:=2L]
 g.rle <- rle(dat20[label == 'main'][['g2']])
@@ -375,7 +376,7 @@ dat90 <- rbind(fill=TRUE,
       x=g.off + g2 - 1,
       y=-sequence(g.rle[['lengths']]) + 1, g2=g.n+1L,
       label='embed-idx',
-      type='text', glabel=as.character(id1)
+      type='label', glabel=as.character(id1)
 ) ] )
 dat90[, step:=9L]
 
@@ -402,23 +403,26 @@ dat120 <- dat110[label %in% c('main', 'main-back')][, `:=`(alpha=0)]
 dat120[, step:=12L]
 
 steps <- c(
-  "Start",
+  "An Algorithm to Compute Group Sums with colSums",
+  "Start With Data in Random Groups",
   "Order by Group",
   "Count Groups",
   "One Column Per Group",
   "Length of Longest Group",
   "One Row Per Element In Longest Group",
-  "Allocate Embedding Marix",
+  "Allocate Embedding Matrix",
   "Compute Padding in Embedding Matrix",
-  "Compute Embedding indices",
-  "Copy Each Group Into Its Column",
-  "Compute colSums",
-  # "End",
+  "Compute Embedding Indices ...",
+  "... And Use Them to Copy Each Group Into Its Column",
+  "Compute colSums...",
+  "... And Admire Them in 3D",
   NULL
 )
+dat05 <- copy(dat10)[, step:=0]
+dat120 <- copy(dat110)[, step:=max(step) + 1]
 dat <- rbind(
-  dat10, dat20, dat30, dat40, dat50, dat60,
-  dat70, dat80, dat90, dat100, dat110
+  dat05, dat10, dat20, dat30, dat40, dat50, dat60,
+  dat70, dat80, dat90, dat100, dat110, dat120
 )
 dat[is.na(alpha), alpha:=1]
 # dcast(dat[, .N, .(step, label)], label ~ step, fill=0)
@@ -430,8 +434,14 @@ dat[, g2f:=factor(g2, levels=as.character(sort(unique(g2))))]
 
 code <- c(
 'set.seed(1)
-g <- sample(10, 95, r=TRUE) # groups
-x <- runif(95)              # values',
+
+g <- sample(10, 95, r=TRUE)   # Group is shown as color
+x <- runif(95)                # Value is 3D tile height',
+
+'set.seed(1)
+
+g <- sample(10, 95, r=TRUE)
+x <- runif(95)',
 
 'o <- order(g)
 go <- g[o]
@@ -441,13 +451,13 @@ xo <- x[o]',
 g.lens <- g.rle[['lengths']]
 
 # group count
-g.n <- length(g.n)",
+g.n <- length(g.lens)",
 
 "g.rle <- rle(go)
 g.lens <- g.rle[['lengths']]
 
 # group count
-g.n <- length(g.n)",
+g.n <- length(g.lens)",
 
 "g.rle <- rle(go)
 g.lens <- g.rle[['lengths']]
@@ -470,17 +480,23 @@ g.max <- max(g.lens)",
 "g.lens.hd <- head(g.lens, -1L)
 id0 <- rep(1L, length(xo))
 id0[(cumsum(g.lens.hd) + 1L)] <- pad
-id1 <- cumsum(id0)",
 
-"res[id1] <- xo",
+id.embed <- cumsum(id0)",
+
+"res[id.embed] <- xo",
 
 "colSums(res)",
+
+"# Group is shown as tile color
+# Value is 3D tile height
+
+colSums(res)",
 
 # "",
 
 NULL
 )
-dat.code <- data.frame(text=code, Step=factor(steps))
+dat.code <- data.table(text=code, Step=factor(steps))
 
  # dat <- subset(dat, step==steps[[5]])
  # dat.code <- subset(dat.code, step==steps[[5]])
@@ -500,7 +516,7 @@ make_plot <- function(dat, dat.code, text.size=16) {
     ) +
     # geom_polygon(data=subset(dat, type=='path')) +
     geom_label(data=subset(dat, type=='label'), aes(label=glabel), size=5) +
-    geom_text(data=subset(dat, type=='text'), aes(label=glabel), size=5) +
+    # geom_text(data=subset(dat, type=='text'), aes(label=glabel), size=5) +
     # we save the last group color for an off-scale color
     scale_fill_manual(
       guide=FALSE, na.value='#F3F3F3',
@@ -536,53 +552,39 @@ make_plot <- function(dat, dat.code, text.size=16) {
 ```
 ```{r echo=FALSE, eval=FALSE}
 # ## gganimate
-#
-p <- make_plot(dat, dat.code, text.size=24)
-# dat2 <- dat # dat[step %in% steps & type == 'tile']
-# dat2[, tile.color:=NA_character_]
-# p <- make_plot(dat2, NULL)
-# p + facet_wrap(~step)
-anim_save(
-  '~/Downloads/colsums-anim-2.gif',
-  p +  transition_states(Step, wrap=FALSE) +
-    labs(title = "{closest_state}"),
-  width=1280, height=800, nframes=40, fps=5
-)
-# anim_save(
-#   '~/Downloads/colsums-anim.gif',
-#   p +  transition_states(Step, wrap=FALSE, state_length=1) +
-#     labs(title = "{closest_state}"),
-#   width=800, height=557, end_pause=2, nframes=350, fps=25
-# )
-#
-## pngs for flipbook
 
-animate(
-  p +  
+steps.core <- tail(head(seq_len(nrow(dat.code)), -1L), -1L)
+steps.new <- steps[steps.core]
+dat.sub <- dat[!step %in% range(step)]
+dat.sub[, Step:=droplevels(Step)]
+dat.code.sub <- dat.code[steps.core]
+dat.code.sub[, Step:=droplevels(Step)]
+
+p <- make_plot(dat.sub, dat.code.sub, text.size=24)
+p.anim <- p +
     coord_fixed(xlim=c(-0.5,21.5), ylim=c(0,-13)) +
     transition_states(Step, wrap=FALSE) +
-    labs(title = "{closest_state}") +
-    ease_aes('cubic-in-out')
-    ,
-  nframes = 250, fps=25, device = "png",
+    labs(title = "{next_state}") +
+    # ease_aes('cubic-in-out') +
+    enter_grow() +
+    exit_shrink() +
+    NULL
+
+# anim_save(
+#   '~/Downloads/colsums-anim-2.gif',
+#   p.anim, width=1280, height=800, nframes=40, fps=5
+# )
+animate(
+  p.anim,
+  nframes = 400, fps=25, device = "png",
   renderer = file_renderer(
     "~/Downloads/colsums-anim/", prefix = "gganim-img", overwrite = TRUE
   ),
   width=1280, height=800
 )
 
-i.off <- 1
+i.off <- -1
 png.root <- '~/Downloads/colsums2/img-%03d.png'
-
-i <- 11
-# png(sprintf(png.root, i + i.off), width=800, height=557)
-png(sprintf(png.root, i + i.off), width=800, height=499, bg='black')
-dat.sub <- subset(dat, Step==steps[[i]])
-dat.code.sub <- subset(dat.code, Step==steps[[i]])
-p <- make_plot(dat.sub, NULL) + ggtitle(steps[[i]]) +
-    coord_fixed(xlim=c(-0.5,21.5), ylim=c(0,-13))
-print(p)
-dev.off()
 
 for(i in seq_along(steps)) {
   file <- sprintf(png.root, i + i.off)
@@ -600,16 +602,16 @@ for(i in seq_along(steps)) {
   png::writePNG(tmp, file)
 }
 
-## Additional frames
-
-# dat.sub <- rbind(
-#   subset(dat, Step==steps[[5]] & label!=0),
-#   transform(subset(dat, Step==steps[[5]] & label==0), alpha=0.3),
-#   transform(
-#     subset(dat, Step==steps[[4]] & label==0), Step=steps[[5]], label=5
-#   )
-# )
-# dat.code.sub <- subset(dat.code, step==steps[[5]])
+ ## Additional frames
+ 
+ # dat.sub <- rbind(
+ #   subset(dat, Step==steps[[5]] & label!=0),
+ #   transform(subset(dat, Step==steps[[5]] & label==0), alpha=0.3),
+ #   transform(
+ #     subset(dat, Step==steps[[4]] & label==0), Step=steps[[5]], label=5
+ #   )
+ # )
+ # dat.code.sub <- subset(dat.code, step==steps[[5]])
 
 p <- make_plot(dat.sub, NULL)
 
