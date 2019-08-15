@@ -96,26 +96,10 @@ elev.end <- make_elev(
   map.pix.x2, map.pix.y2, 1, 10, elev.end, c(rowsum(xo, go))
 )
 
-# # downsample
-# 
-# esmall <- elev.start[1:400,1:400]
-# png.start <-  png::readPNG('~/Downloads/colsums2/img-002.png')
-# psmall <- png.start[1:400, 1:400,]
-# psmallbw <- rowMeans(psmall[,,1:3], dims=2)
-# 
-# downsample <- function(mx) {
-#   mx.tmp <- (mx[, rep(c(T,F), ncol(mx)/2)] + mx[, rep(c(F,T), ncol(mx)/2)]) / 2
-#   (
-#     mx.tmp[rep(c(T,F), nrow(mx.tmp)/2),] + 
-#     mx.tmp[rep(c(F,T), nrow(mx.tmp)/2),]
-#   ) / 2
-# }
-
 library(shadow)
-png.start <-  png::readPNG('~/Downloads/colsums2/img-002.png')
+png.start <-  png::readPNG('~/Downloads/colsums2/img-000.png')
 png.end <-  png::readPNG('~/Downloads/colsums2/img-012.png')
-png.start.bw <- rowMeans(png.start[,,1:3], dims=2)
-png.end.bw <- rowMeans(png.end[,,1:3], dims=2)
+
 render_frame <- function(
   png, elev, r=diag(3), mult=20, d=Inf,
   anglebreaks=45, max.el=max(elev), empty=1
@@ -140,12 +124,11 @@ render_frame <- function(
       y.middle <- as.integer(dim(elev)[2]/2)
       elev[1L, y.middle] <- max.el             # lift pixel
       png[1:2, y.middle+(-1:1),x] <- empty   # blend pixel color with bg
-      message("Rendering layer ", x)
       shadow::render_elevation_rel(
         elev * mult, png[,,x] * shade, r, zord='pixel', d=d, empty=empty
       )
     },
-    png.start[,,1]
+    png[,,1]
   )
   if(dim(res)[3] == 1L) dim(res) <- dim(res)[1:2]
   res
@@ -161,110 +144,241 @@ render_frames <- function(
   )
   lapply(
     seq_along(rs),
-    function(x)
+    function(x) {
+      message("Frame ", x)
       render_frame(
         png, elev, r=rs[[x]], d=ds[[x]],
         anglebreaks=breaks * breaks.mult[[x]] + angles[[x]],
         max.el=max.el, empty=empty, mult=mult
-      )
-  )
+) } ) }
+## Single frame for the square cover pic
+
+elev.idx <- which(elev.start > 0, arr.ind=TRUE)
+margin <- 25
+x.rng <- diff(range(elev.idx[,1])) + 1
+y.rng <- diff(range(elev.idx[,2])) + 1
+elev.idx.2 <- t(t(elev.idx) - c(min(elev.idx[,1]), min(elev.idx[,2])) + margin)
+elev.idx.3 <- do.call(
+  rbind,
+  lapply(seq_len(dim(png.start)[3]), function(x) cbind(elev.idx.2, x))
+)
+elev.idx.3a <- do.call(
+  rbind,
+  lapply(seq_len(dim(png.start)[3]), function(x) cbind(elev.idx, x))
+)
+png.square <- array(1, c(x.rng + margin * 2, y.rng + margin * 2, 4))
+png.square[elev.idx.3] <- png.start[elev.idx.3a]
+elev.square <- array(0, c(x.rng + margin * 2, y.rng + margin * 2))
+elev.square[elev.idx.2] <- elev.start[elev.idx]
+
+# upscale the resolution by 2
+
+upscale <- function(mx) {
+  res <- matrix(NA, nrow=nrow(mx) * 2, ncol=ncol(mx) * 2)
+  idx <- cbind(c(row(mx)), c(col(mx))) * 2
+  res[idx] <- mx
+  res[idx - rep(c(1,0), each=nrow(idx))] <- mx
+  res[idx - rep(c(0,1), each=nrow(idx))] <- mx
+  res[idx - rep(c(1,1), each=nrow(idx))] <- mx
+  res
 }
+e.sq.up <- upscale(elev.square)
+png.sq.up <- array(NA, dim(png.square) * c(2,2,1))
+for(i in seq_len(dim(png.square)[3]))
+  png.sq.up[,,i] <- upscale(png.square[,,i])
+
 el.mult <- 40
+breaks <- (-3):3
+breaks.mult <- seq(1, .25, length.out=frame.n)
+
+square.3d <- render_frame(
+  png.sq.up[,,1:3],
+  elev=e.sq.up,
+  r=rot_y(0), #rs[[1]],
+  d=200,
+  anglebreaks=25 + breaks * breaks.mult[1],
+  empty=1, mult=el.mult,
+  max.el=0
+)
+par(mai=numeric(4))
+plot(as.raster(round(square.3d*255)/255))
+png::writePNG(square.3d, '~/Downloads/colsums-front-square.png')
+
+## Rest
+
+frame.n <- 25
 el.max.val <- el.mult * max(elev.end)
-frame.n <- 50
-
-seq.base <- 5
-seq.vals.3 <- seq(from=-(seq.base^3), to=seq.base^3, length.out=frame.n)
-sign <- sign(seq.vals.3)
-seq.vals <- round((sign * abs(seq.vals.3) ^ (1/3) + seq.base)/ (2*seq.base), 7)
-
-make_path <- function(min, max) {
-  rng <- c(min, max)
-  diff(rng) * seq.vals + min(rng)
-}
-# we want our base line distance from base of model to top of model to distance
-# to be more or less linear (not entirely correct as it doesn't account for
-# rotation)
-
 d.inv.start <- el.max.val / (1e3 - el.max.val)
 d.inv.end <- el.max.val / (1e5 - el.max.val)
-ds <- rev(el.max.val / make_path(d.inv.end, d.inv.start) + el.max.val)
-rs <- lapply(make_path(-20, 0), rot_y)
-angles <- make_path(45, 90)
-breaks <- seq((-2):2)
-breaks.mult <- make_path(1, 0)
-# png.root <- '~/Downloads/colsums2/z3d-img-%03d.png'
-png.root <- '~/Downloads/colsums-tests/z3d-img-%03d.png'
-
-frames.3d <- render_frames(
-  png.end[,,1:3], elev=elev.end, rs=rev(rs), ds=rev(ds), angles=rev(angles),
-  breaks=breaks, breaks.mult=rev(breaks.mult), empty=0, mult=el.mult
+ds <- rev(
+  el.max.val / seq(d.inv.end, d.inv.start, length.out=frame.n) + el.max.val
 )
-for(i in seq_along(frames.3d)) {
-  frame <- frames.3d[[i]]
-  png::writePNG(frame, sprintf(png.root, i))
-}
-frames.3d2 <- render_frames(
-  png.start[,,1:3], elev=elev.start, rs=rs, ds=ds, angles=angles,
-  breaks=breaks, breaks.mult=breaks.mult, max.el=max(elev.end), empty=0
-)
-png.root <- '~/Downloads/colsums-tests/3d-start-img-%03d.png'
-for(i in seq_along(frames.3d2)) {
-  frame <- frames.3d2[[i]]
-  png::writePNG(frame, sprintf(png.root, i))
-}
-
-zz <- render_frame(
-  png.end[,,1:3], elev.end, r=rot_y(-20), anglebreaks=45, d=1e3, empty=0
-)
-plot(as.raster(zz))
-zz <- render_frame(
-  png.end[,,1:3], elev.end, r=rot_y(0), anglebreaks=90, d=Inf, empty=0
-)
-plot(as.raster(round(zz*255)/255))
-
-frame.n <- 50
-d.inv.start <- el.max.val / (1e3 - el.max.val)
-d.inv.end <- el.max.val / (1e5 - el.max.val)
-# ds <- rev(el.max.val / make_path(d.inv.end, d.inv.start) + el.max.val)
-ds <- rev(el.max.val / seq(d.inv.end, d.inv.start, length.out=frame.n) + el.max.val)
+ds[length(ds)] <- Inf
 rs <- lapply(seq(-20, 0, length.out=frame.n), rot_y)
 angles <- seq(45, 90, length.out=frame.n)
-breaks <- (-5):5
-breaks.mult <- seq(1, .25, length.out=frame.n)
-# png.root <- '~/Downloads/colsums2/z3d-img-%03d.png'
-png.root <- '~/Downloads/colsums-tests3/z3d-img-%03d0.png'
-png.root.3 <- '~/Downloads/colsums-tests3/z3d-img-%04d.png'
 
-frames.3d <- render_frames(
-  rowMeans(png.end[,,1:3], dims=2),
+
+png.root.end <- '~/Downloads/colsums-3d-end'
+png.root.start <- '~/Downloads/colsums-3d-start'
+png.flipbook <- '~/Downloads/colsums-flipbook'
+
+del_png <- function(root) {
+  dir <- dirname(root)
+  pngs <- list.files(dir, full.names=TRUE, pattern="\\.png$")
+  unlink(pngs)
+}
+write_frames <- function(
+  frames, root.anim, root.flipbook=png.flipbook, first=TRUE, rep=25
+) {
+  len <- length(frames)
+  idx.extra <- if(first) 1L else length(frames)
+  frames.fin <- c(
+    if(first) frames[rep(idx.extra, rep)],
+    frames,
+    if(!first) frames[rep(idx.extra, rep)]
+  )
+  root <- sprintf("%s/%s3d-img-%%04d.png", root.anim, if(first) "a" else "z")
+  for(i in seq_along(frames.fin)) {
+    frame <- frames.fin[[i]]
+    png::writePNG(frame, sprintf(root, i))
+  }
+  frame <- frames.fin[[idx.extra]]
+  png::writePNG(
+    frame, sprintf("%s/%s3d-img.png", root.flipbook, if(first) "a" else "z")
+  )
+}
+# del_png(png.root.start)
+frames.3d.start <- render_frames(
+  png.start[,,1:3],
+  elev=elev.start, rs=(rs), ds=(ds), angles=(angles),
+  breaks=breaks, breaks.mult=(breaks.mult), empty=0, mult=el.mult,
+  max.el=max(elev.end)
+)
+write_frames(frames.3d.start, png.root.start)
+
+frames.3d.end <- render_frames(
+  png.end[,,1:3],
   elev=elev.end, rs=rev(rs), ds=rev(ds), angles=rev(angles),
   breaks=breaks, breaks.mult=rev(breaks.mult), empty=0, mult=el.mult
 )
-for(i in seq_along(frames.3d)) {
-  frame <- frames.3d[[i]]
-  png::writePNG(frame, sprintf(png.root, i))
-}
-frames.3d2 <- render_frames(
-  png.start[,,1:3], elev=elev.start, rs=rs, ds=ds, angles=angles,
-  breaks=breaks, breaks.mult=breaks.mult, max.el=max(elev.end), empty=0
-)
+write_frames(frames.3d.end, png.root.end, first=FALSE, rep=50)
 
-old.names <- list.files(
-  '~/Downloads/colsums-tests3', full.names=TRUE, pattern='png$'
-)
-png.root.2 <- '~/Downloads/colsums-tests3/a3d-img-%03d0.png'
-png.root.2a <- '~/Downloads/colsums-tests3/a3d-img-%04d.png'
-new.names <- sprintf(png.root.2, seq_along(old.names))
-file.copy(old.names, rev(new.names))
-old.names <- list.files('~/Downloads/colsums-tests3/', full.names=TRUE)
-file.copy(
-  rep(old.names[1], 10),
-  sprintf(png.root.2a, seq_len(10))
-)
+
+
+# copy first frame over
+
+
+for(i in seq_along(frames.3d.start)) {
+  frame <- frames.3d.start[[i]]
+  png::writePNG(frame, sprintf(png.root.start, i))
+}
+
+
+# seq.base <- 5
+# seq.vals.3 <- seq(from=-(seq.base^3), to=seq.base^3, length.out=frame.n)
+# sign <- sign(seq.vals.3)
+# seq.vals <- round((sign * abs(seq.vals.3) ^ (1/3) + seq.base)/ (2*seq.base), 7)
+#
+# make_path <- function(min, max) {
+#   rng <- c(min, max)
+#   diff(rng) * seq.vals + min(rng)
+# }
+# # we want our base line distance from base of model to top of model to distance
+# # to be more or less linear (not entirely correct as it doesn't account for
+# # rotation)
+#
+# d.inv.start <- el.max.val / (1e3 - el.max.val)
+# d.inv.end <- el.max.val / (1e5 - el.max.val)
+# ds <- rev(el.max.val / make_path(d.inv.end, d.inv.start) + el.max.val)
+# rs <- lapply(make_path(-20, 0), rot_y)
+# angles <- make_path(45, 90)
+# breaks <- seq((-2):2)
+# breaks.mult <- make_path(1, 0)
+# # png.root <- '~/Downloads/colsums2/z3d-img-%03d.png'
+# png.root <- '~/Downloads/colsums-tests/z3d-img-%03d.png'
+#
+# frames.3d <- render_frames(
+#   png.end[,,1:3], elev=elev.end, rs=rev(rs), ds=rev(ds), angles=rev(angles),
+#   breaks=breaks, breaks.mult=rev(breaks.mult), empty=0, mult=el.mult
+# )
+# for(i in seq_along(frames.3d)) {
+#   frame <- frames.3d[[i]]
+#   png::writePNG(frame, sprintf(png.root, i))
+# }
+# frames.3d2 <- render_frames(
+#   png.start[,,1:3], elev=elev.start, rs=rs, ds=ds, angles=angles,
+#   breaks=breaks, breaks.mult=breaks.mult, max.el=max(elev.end), empty=0
+# )
+# png.root <- '~/Downloads/colsums-tests/3d-start-img-%03d.png'
+# for(i in seq_along(frames.3d2)) {
+#   frame <- frames.3d2[[i]]
+#   png::writePNG(frame, sprintf(png.root, i))
+# }
+#
+# zz <- render_frame(
+#   png.end[,,1:3], elev.end, r=rot_y(-20), anglebreaks=45, d=1e3, empty=0
+# )
+# plot(as.raster(zz))
+# zz <- render_frame(
+#   png.end[,,1:3], elev.end, r=rot_y(0), anglebreaks=90, d=Inf, empty=0
+# )
+# plot(as.raster(round(zz*255)/255))
+#
+#
+# old.names <- list.files(
+#   '~/Downloads/colsums-tests3', full.names=TRUE, pattern='png$'
+# )
+# png.root.2 <- '~/Downloads/colsums-tests3/a3d-img-%03d0.png'
+# png.root.2a <- '~/Downloads/colsums-tests3/a3d-img-%04d.png'
+# new.names <- sprintf(png.root.2, seq_along(old.names))
+# file.copy(old.names, rev(new.names))
+# old.names <- list.files('~/Downloads/colsums-tests3/', full.names=TRUE)
+# file.copy(
+#   rep(old.names[1], 10),
+#   sprintf(png.root.2a, seq_len(10))
+# )
 
 
 #ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4
 #ffmpeg -pattern_type glob -i '*.png' -vf "fps=5,format=yuv420p" out.mp4
 #ffmpeg -r 1/5 -i img%03d.png -c:v libx264 -vf "fps=25,format=yuv420p" out.mp4
 "
+rm ~/Downloads/colsums-out/*.png &&
+  cp ~/Downloads/colsums-anim/*.png  ~/Downloads/colsums-out/ &&
+  cp ~/Downloads/colsums-3d-start/*.png  ~/Downloads/colsums-out/ &&
+  cp ~/Downloads/colsums-3d-end/*.png  ~/Downloads/colsums-out/ &&
+  cd ~/Downloads/colsums-out/ &&
+  ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
+  open out.mp4
+
+cd /Volumes/PERSONAL/repos/website &&
+  mkdir ~/Downloads/colsums-flip-stage &&
+  rm static/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/*.png &&
+  rm public/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/*.png &&
+  cp ~/Downloads/colsums2/*.png ~/Downloads/colsums-flip-stage &&
+  cp ~/Downloads/colsums-3d-start/a3d-img-00{26,34,42}.png \
+    ~/Downloads/colsums-flip-stage &&
+  cp ~/Downloads/colsums-3d-end/z3d-img-00{08,16,25}.png \
+    ~/Downloads/colsums-flip-stage
+"
+flip.tmp <- '~/Downloads/colsums-flip-stage'
+old.files <- list.files(flip.tmp, full.names=TRUE)
+# drop first and list of the img files as those are replaced by the 3d versions
+center <- grep("/img-", old.files)
+center.drop <- center[c(1L, length(center))]
+file.remove(old.files[center.drop])
+old.files <- old.files[-center.drop]
+new.names <- sprintf('%s/tmp-img-%03d.png', flip.tmp, seq_along(old.files))
+
+file.rename(old.files[order(basename(old.files))], new.names)
+file.rename(new.names, sub("tmp-", "", new.names))
+
+"
+  cp ~/Downloads/colsums-flip-stage/*.png \
+      static/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/ &&
+    rm ~/Downloads/colsums-flip-stage/*.png &&
+    rmdir ~/Downloads/colsums-flip-stage/
+"
+
+
+
