@@ -33,7 +33,7 @@ options(fansi.term.cap=c('bright', '256', 'truecolor'))
 
 <!-- this needs to become a shortcode -->
 <img
-  id='front-img' 
+  id='front-img'
   src='/post/2019-07-26-hydra-loose-ends_files/user-imgs/loose-ends-square.png'
   class='post-inset-image'
 />
@@ -45,8 +45,9 @@ that ended up on the cutting floor in the earlier posts.
 
 One of our early "discoveries" about group statistics is that if we can compute
 the group sum, we can build on that to compute many other group statistics.
-We'll go over here a few of the other strategies I tested out before I settled
-on the [`cumsum` based approach][110] we used to "beat" `data.table`.
+In this post we'll go over a few of the other group sum strategies I tested out
+before I settled on the [`cumsum` based approach][110] we used to "beat"
+`data.table`.
 
 # rowsum
 
@@ -190,7 +191,7 @@ workaround.  The idea is to use clever indexing to embed the values associated
 with each group into columns of a matrix.  We illustrate this process with a
 vector with 95 elements in ten groups.  For display purposes we wrap the vector
 column-wise every ten elements, and designate the groups by a color.  The values
-of the vector are not shown explicitly.
+of the vector are represented by the tile heights:
 
 <!--
 See static/post/2019-07-26-hydra-loose-ends_files/scripts/ for the code used to
@@ -214,13 +215,14 @@ will index into our matrices as if they were vectors, e.g.:
 
 ```{r}
 (b <- 1:4)
-(b.mx <- matrix(b, 2))
+(b.mx <- matrix(b, nrow=2))
 b[3]
-b.mx[3]  # index vector underlying matrix directly
+b.mx[1, 2]   # matrix indexing
+b.mx[3]      # vector indexing on matrix
 ```
 
 Let's look at our 95 data before and after embedding, showing the indices in
-vector format for both our ordered vector and the target matrix:
+vector format for both our ordered vector (left) and the target matrix (right):
 
 ```{r echo=FALSE}
 library(data.table)
@@ -242,7 +244,7 @@ labels <- c(
   'group-lab',             # labels for first el in group
   'group-long',            # the path tracing longest group
   'group-long-end',        # the points at the end
-  'pad-line',              # the lines showing the padding 
+  'pad-line',              # the lines showing the padding
   'pad-end',               # end of padding lines
   'embed',                 # matrix to embed in
   'embed-idx',             # embedding indices
@@ -503,8 +505,21 @@ dat.code <- data.table(text=code, Step=factor(steps))
 
 library(ggplot2)
 library(gganimate)
-
-make_plot <- function(dat, dat.code, text.size=16) {
+scale.fill <- scale_fill_manual(
+  guide=FALSE, na.value='#F3F3F3',
+  values=setNames(
+    c(viridisLite::viridis(g.n), 'grey50'),
+    as.character(seq_len(g.n + 1L))
+  )
+)
+make.plot.theme <- theme(
+  panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+  axis.title.x=element_blank(), axis.text.x=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.title.y=element_blank(), axis.text.y=element_blank(),
+  axis.ticks.y=element_blank()
+)
+make_plot <- function(dat, dat.code, text.size=16, lab.size=5) {
   p <- ggplot(mapping=aes(x, y, alpha=alpha, group=paste(label, id))) +
     geom_tile(
       data=subset(dat, type=='tile'), aes(fill=g2f),
@@ -515,28 +530,18 @@ make_plot <- function(dat, dat.code, text.size=16) {
       aes(shape=point.shape)
     ) +
     # geom_polygon(data=subset(dat, type=='path')) +
-    geom_label(data=subset(dat, type=='label'), aes(label=glabel), size=5) +
+    geom_label(
+      data=subset(dat, type=='label'), aes(label=glabel), size=lab.size
+    ) +
     # geom_text(data=subset(dat, type=='text'), aes(label=glabel), size=5) +
     # we save the last group color for an off-scale color
-    scale_fill_manual(
-      guide=FALSE, na.value='#F3F3F3',
-      values=setNames(
-        c(viridisLite::viridis(g.n), 'grey50'),
-        as.character(seq_len(g.n + 1L))
-      )
-    ) +
+    scale.fill +
     scale_alpha(
       guide=FALSE, rescaler=function(x, to, from, ...) x, range=c(0,1)
     ) +
     scale_shape_manual(values=c(a=16, b=1), guide=FALSE) +
-    theme(
-      panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
-      axis.title.x=element_blank(), axis.text.x=element_blank(),
-      axis.ticks.x=element_blank(),
-      axis.title.y=element_blank(), axis.text.y=element_blank(),
-      axis.ticks.y=element_blank(),
-      plot.title=element_text(size=text.size)
-    ) +
+    make.plot.theme +
+    theme(plot.title=element_text(size=text.size)) +
     NULL
     if(!is.null(dat.code)) {
       p <- p + geom_text(
@@ -548,10 +553,9 @@ make_plot <- function(dat, dat.code, text.size=16) {
     }
     p
 }
-
 ```
 ```{r echo=FALSE, eval=FALSE}
-# ## gganimate
+ ## gganimate
 
 steps.core <- tail(head(seq_len(nrow(dat.code)), -1L), -1L)
 steps.new <- steps[steps.core]
@@ -601,9 +605,10 @@ for(i in seq_along(steps)) {
   tmp <- png::readPNG(file)
   png::writePNG(tmp, file)
 }
-
+```
+```{r index-compare, echo=FALSE, fig.width=8.89, fig.height=5.56, dpi=144}
  ## Additional frames
- 
+
  # dat.sub <- rbind(
  #   subset(dat, Step==steps[[5]] & label!=0),
  #   transform(subset(dat, Step==steps[[5]] & label==0), alpha=0.3),
@@ -611,58 +616,99 @@ for(i in seq_along(steps)) {
  #     subset(dat, Step==steps[[4]] & label==0), Step=steps[[5]], label=5
  #   )
  # )
- # dat.code.sub <- subset(dat.code, step==steps[[5]])
 
-p <- make_plot(dat.sub, NULL)
+#dat.code.sub <- subset(dat.code, step==11)
 
-idx1 <- subset(dat.sub, label==5, select=c(x, y, g2))
-idx2 <- subset(dat.sub, label%in%c(0,1,3), select=c(x, y, g2))
-idx2 <- idx2[with(idx2, order(x, -y, g2)),]
-idx2.dup <- duplicated(idx2[1:2])
-idx2 <- idx2[!idx2.dup,]
-
-idx <- rbind(
-  transform(idx1[with(idx1, order(x, -y)),], label=seq_along(x)),
-  transform(idx2[with(idx2, order(x, -y)),], label=seq_along(x))
+dat.sub <- dat[Step == steps[11]]
+dat.sub.ann <- rbind(
+  dat.sub,
+  dat.sub[label == 'main-back'][, `:=`(
+    glabel=abs(y) + 1 + x * g.n, label='main-id', type='label'
+  ) ],
+  dat.sub[label == 'main'][, `:=`(
+    glabel=abs(y) + 1 + (x - g.off) * g.max, label='main-back-id', type='label'
+  ) ]
 )
-p + geom_text(data=idx, aes(x, y, label=label, colour=factor(g2))) +
-  scale_colour_manual(
-    guide=FALSE, values=rep(c('white', 'black'), c(2, 8)), na.value='black'
-  )
+dat.text <- dat[Step == steps[10] & label == 'pad'][, `:=`(
+  label='pad-id', type='text',
+  glabel=abs(y) + 1 + (x - g.off) * g.max
+)]
 
-p +
-  geom_path(
-    data=data.frame(
-      x=c(4, 5, 5, 5, 5, 6, 6, 6), y=-c(9, 9, 9, 0, 0, 0, 0, 2), label=6,
-      id=rep(1:4, each=2)
-    ),
-    aes(x, y, group=paste(label, id))
-  ) +
-  geom_point(
-    data=data.frame(x=c(4, 6), y=-c(9, 2), label=6, id=5:6),
-    aes(x, y)
-  )
+p <- make_plot(dat.sub.ann, NULL, lab.size=3) +
+  geom_text(data=dat.text, aes(label=glabel), size=3, color='grey50')
+p
 
-p +
-  geom_path(
-    data=data.frame(
-      x=rep(11, 8), y=-c(0, 1, 1, 10, 10, 11, 11, 13), label=6,
-      id=rep(1:4, each=2)
-    ),
-    aes(x, y, group=paste(label, id))
-  ) +
-  geom_point(
-    data=data.frame(x=11, y=-c(0, 13), label=6, id=5:6),
-    aes(x, y, group=paste(label, id))
-  )
+ # idx1 <- subset(dat.sub, label==5, select=c(x, y, g2))
+ # idx2 <- subset(dat.sub, label%in%c(0,1,3), select=c(x, y, g2))
+ # idx2 <- idx2[with(idx2, order(x, -y, g2)),]
+ # idx2.dup <- duplicated(idx2[1:2])
+ # idx2 <- idx2[!idx2.dup,]
+ #
+ # idx <- rbind(
+ #   transform(idx1[with(idx1, order(x, -y)),], label=seq_along(x)),
+ #   transform(idx2[with(idx2, order(x, -y)),], label=seq_along(x))
+ # )
+ # p + geom_text(data=idx, aes(x, y, label=label, colour=factor(g2))) +
+ #   scale_colour_manual(
+ #     guide=FALSE, values=rep(c('white', 'black'), c(2, 8)), na.value='black'
+ #   )
 ```
 
 The indices corresponding to each group diverge after the first group due
-to the unused elements of the embedding matrix.  What we're looking for is a
-fast way to generate the indices in the colored cells in the matrix on the
-right.  In other words, we want to generate the `id1` vector below (we show
-the first three groups worth of it here):
+to the unused elements of the embedding matrix, shown in grey above. What we're
+looking for is a fast way to generate the indices in the colored cells in the
+matrix on the right.  In other words, we want to generate the `id1` (`id.embed`
+in the animation) vector below.  For clarity we only show it for the first three
+groups:
 
+```{r pad-index, echo=FALSE, fig.height=1.25}
+g13 <- sum(g.rle[['lengths']][1:3])
+g13id <- seq_len(g13)
+id.dat <- data.table(
+  x=rep(g13id, 2),
+  y=rep(c(1, 0), each=g13),
+  glabel=c(seq_along(g13id), id1[g13id]),
+  g2=go[g13id]
+)
+grp.lab <- data.frame(
+  x=cumsum(c(1, g.rle[['lengths']][1:2])) - .5,
+  y=2,
+  lab=paste('Group ', 1:3)
+)
+el.lab <- data.frame(x=-1, y=c(1, 0), lab=paste0('id', 0:1))
+
+ggplot(id.dat, aes(x, y)) +
+  geom_tile(aes(fill=as.factor(g2)), color='#AAAAAA') +
+  geom_text(data=grp.lab, aes(label=lab), hjust=0, vjust=.75) +
+  geom_text(data=el.lab, aes(label=lab), hjust=0, family='mono') +
+  geom_label(aes(label=glabel), size=2) +
+  coord_fixed(xlim=c(-3,22), ylim=c(-1,2.5)) +
+  scale.fill + make.plot.theme
+```
+We can emphasize the relationship between these by looking at the element by
+element difference in each index vector, e.g. using `diff`:<span
+id=diff-id1></span>
+
+```{r pad-index-diff, echo=FALSE, fig.height=1.75}
+id.dat.2 <- copy(id.dat)[y == 0, y:=-1]
+diff.dat <- data.table(
+  x=rep(tail(g13id, -1L), 2),
+  y=rep(c(0,-2), each=g13-1),
+  lab=c(diff(seq_along(g13id)), diff(id1[g13id]))
+)
+el.lab.2 <- data.frame(
+  x=0, y=1:(-2), lab=c('id0', 'diff(id0)', 'id1', 'diff(id1)')
+)
+ggplot(id.dat.2, aes(x, y)) +
+  geom_tile(aes(fill=as.factor(g2)), height=1, color='#AAAAAA') +
+  geom_label(data=diff.dat, aes(label=lab, color=lab>1), size=2) +
+  geom_text(data=grp.lab, aes(label=lab), hjust=0, vjust=.75) +
+  geom_text(data=el.lab.2, aes(label=lab), hjust=1, family='mono') +
+  geom_label(aes(label=glabel), size=2) +
+  coord_fixed(xlim=c(-3,22), ylim=c(-3,2.5)) +
+  scale.fill + make.plot.theme +
+  scale_color_manual(values=c('black','red'), guide=FALSE)
+```
 ```{r echo=FALSE, eval=FALSE}
 g2.rle <- rle(sort(g2))
 
@@ -681,31 +727,13 @@ xx <- rbind(gs, seq_along(idx), c(NA, diff(seq_along(idx))), idx, c(NA, diff(idx
 dimnames(xx) <- list(c('group', 'orig', 'orig ∆', 'embed', 'embed ∆'), rep('  ', ncol(xx)))
 xx
 ```
-```{r echo=FALSE}
-writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3
-id0       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m 9 10 11 12 13 14 15 \033[48;2;62;64;136m16 17 18 19 20 21 22 \033[m
-id1       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m15 16 17 18 19 20 21 \033[48;2;62;64;136m29 30 31 32 33 34 35 \033[m')
-```
 
-A helpful way to emphasize the relationship between these is to look at the
-element by element difference in each index vector, e.g. using `diff`:<span
-id=diff-id1></span>
-
-```{r echo=FALSE}
-writeLines('group      1  1  1  1  1  1  1  1  2  2  2  2  2  2  2  3  3  3  3  3  3  3
-id0       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m 9 10 11 12 13 14 15 \033[48;2;62;64;136m16 17 18 19 20 21 22 \033[m
-diff(id0) NA  1  1  1  1  1  1  1 \033[32m 1 \033[m 1  1  1  1  1  1 \033[42m 1 \033[m 1  1  1  1  1  1
-id1       \033[37;48;2;67;01;83m 1  2  3  4  5  6  7  8 \033[48;2;71;39;119m15 16 17 18 19 20 21 \033[48;2;62;64;136m29 30 31 32 33 34 35 \033[m
-diff(id1) NA  1  1  1  1  1  1  1 \033[32m 7 \033[m 1  1  1  1  1  1 \033[42m 8 \033[m 1  1  1  1  1  1
-')
-```
-
-The indices always increment by one, except for the embedded vector, where they
-increment by `$1 + pad$`, where `$pad$` is how much empty space there is between
-the end of the group and the end of the column it is embedded in.  Flipping this
-around, this means all we need to be able to compute the embedding indices is
-figure out the size of the column padding, which will be a function of the group
-size and the largest group size.  Thankfully the `rle` computes the lengths of
+The indices always increment by one, except for the embedding vector, where they
+increment by `$1 + pad$` at each group transition, shown in red.  `$pad$` is how
+much empty space there is between the end of the group and the end of the column
+it is embedded in.  Conversely we can compute the embedding indices if we figure
+out the size of the column padding, which will be a function of the group size
+and the largest group size.  Thankfully the `rle` computes the lengths of
 repeated sequences, which in the case of our ordered group vector corresponds
 exactly to group sizes:
 
@@ -721,8 +749,8 @@ Padding is the difference between each group's size and that of the largest
 group:
 
 ```{r}
-g.max <- max(g.rle[['lengths']])  # largest group
-pad <- g.max - g.rle[['lengths']]
+g.max <- max(g.rle[['lengths']])      # largest group
+(pad <- g.max - g.rle[['lengths']])
 ```
 
 To compute the embedding vector we start by a vector of the differences which
@@ -742,7 +770,7 @@ head(id0, 22)   # first three groups
 ```
 
 You'll notice this is essentially the same thing as `diff(id1)` [from
-earlier](#diff-id1).  Thus, if we apply `cumsum` we reproduce `id1`:
+earlier](#diff-id1).  We reproduce `id1` by applying `cumsum`:
 
 ```{r}
 head(cumsum(id0), 22)
@@ -750,39 +778,15 @@ head(cumsum(id0), 22)
 A distinguishing feature of these manipulations other than possibly inducing
 death-by-boredom is that they are all in fast vectorized code.  This gives us
 another reasonably fast group sum function.  We split it up into a function that
-calculates the embedding index and one that does the embedding and sum, for
-reasons that will become obvious later.  Assuming sorted inputs[^sorted-inputs]:
+[calculates the embedding indices](#embed-fun) and one that does the [embedding
+and sum](#col-sum-fun), for reasons that will become obvious later.  Assuming
+sorted inputs[^sorted-inputs]:
 
 ```{r eval=FALSE}
-og_embed_dat <- function(go) {
-  ## compute run length encoding
-  g.rle <- rle(go)
-  g.lens <- g.rle[['lengths']]
-  max.g <- max(g.lens)
-
-  ## compute padding
-  g.lens <- g.lens[-length(g.lens)]
-  g.pad <- max.g - g.lens + 1L
-
-  ## compute embedding indices
-  id0 <- rep(1L, length(go))
-  id0[(cumsum(g.lens) + 1L)] <- g.pad
-  id1 <- cumsum(id0)
-
-  list(idx=id1, rle=g.rle)
-}
-og_sum_col <- function(xo, embed_dat, na.rm=FALSE) {
-  ## group sizes
-  rle.len <- embed_dat[['rle']][['lengths']]
-
-  ## allocate embedding matrix
-  res <- matrix(0, ncol=length(rle.len), nrow=max(rle.len))
-
-  ## copy data using embedding indices
-  res[embed_dat[['idx']]] <- xo
-  setNames(colSums(res, na.rm=na.rm), embed_dat[['rle']][['values']])
-}
-sys.time(og_sum_col(xo, og_embed_dat(go)))
+sys.time({
+  emb <- og_embed_dat(go)   # compute embedding indices
+  og_sum_col(xo, emb)       # use them to compute colSums
+})
 ```
 ```
    user  system elapsed
@@ -798,26 +802,25 @@ sys.time(emb <- og_embed_dat(go))
    user  system elapsed
   0.369   0.141   0.510
 ```
-```
-sys.time(emb1 <- og_embed_dat0(go))
-```
 
-This is a little slower than `rowsum` for the simple group sum, but there are
-benefits to this approach.  The main drawback is the potential for the embedding
-matrix to become inefficiently large if a small number of groups are much larger
-than the rest.  It may be possible to mitigate this by breaking up the data into
-sub by groups[^colsums-breakup].
+One drawback is the obvious wasted memory taken up by the padding in the
+embedding matrix.  This could become problematically large if a small number of
+groups are much larger than the rest.  It may be possible to mitigate this by
+breaking up the data into sub by groups[^colsums-breakup].
+
+Overall this is a little slower than `rowsum` for the simple group sum, but
+as we'll see shortly there are benefits to this approach.
 
 # Pedal To The Metal
 
-Out of curiosity I wrote a [C version of `rowsum`,
-`og_sum_C`](#og_sum_C) that takes advantage of group ordered
-data to compute the group sums and counts, similar to our [re-implementation of
-`unique` for sorted data][160].  We can detect group transitions any time the
-group vector changes, and use that to store group values/counts and
-reset the accumulators.  Once the data is sorted, this takes virtually no time:
+For the sake of an absolute benchmark I wrote a [C version of `rowsum`,
+`og_sum_C`](#og_sum_C) that takes advantage of group ordered data to compute the
+group sums and counts, similar to our [re-implementation of `unique` for sorted
+data][160].  We can detect group transitions any time the group vector changes,
+and use that to store group values/counts and reset the accumulators.  Once the
+data is sorted, this takes virtually no time:
 
-```{r}
+```{r eval=FALSE}
 sys.time(og_sum_C(xo, go))
 ```
 ```
@@ -832,6 +835,10 @@ sys.time({
    user  system elapsed
   0.735   0.004   0.743
 -->
+
+The only way to make this substantially faster is to make the sorting faster, or
+come up with an algorithm that can do the group sums without sorting and somehow
+do it faster than what we have here.  Both of these are beyond my reach.
 
 Let's compare against all the different methods, including the [original
 `cumsum` based group sum][110] (`cumsum-1`), and the [precision corrected two
@@ -919,19 +926,21 @@ g_slope_col <- function(x, y, group) {
   yo <- y[o]
 
   ## compute group means for x/y
-  emb <- og_embed_dat(go)
+  emb <- og_embed_dat(go)                    # << Embedding
   lens <- emb[['rle']][['lengths']]
-  ux <- og_sum_col(xo, emb)/lens
-  uy <- og_sum_col(yo, emb)/lens
+  ux <- og_sum_col(xo, emb)/lens             # << Group Sum #1
+  uy <- og_sum_col(yo, emb)/lens             # << Group Sum #2
 
-  ## recycle means to input vector length and compute
-  ## (x - mean(x)) and (y - mean(y))
+  ## recycle means to input vector length and
+  ##  compute (x - mean(x)) and (y - mean(y))
   gi <- rep(seq_along(ux), lens)
   x_ux <- xo - ux[gi]
   y_uy <- yo - uy[gi]
 
   ## Slope calculation
-  gs.cs <- og_sum_col(x_ux * y_uy, emb) / og_sum_col(x_ux ^ 2, emb)
+  gs.cs <-
+    og_sum_col(x_ux * y_uy, emb) /           # << Group Sum #3
+    og_sum_col(x_ux ^ 2, emb)                # << Group Sum #4
   setNames(gs.cs, emb[['rle']][['vaues']])
 }
 sys.time(g_slope_col(x, y, grp))
@@ -997,20 +1006,34 @@ computation components other than the re-ordering can be re-used.  `colSums`
 does pretty well and has the advantage of not suffering from the precision
 issues of `cumsum-1`[^cumsum-1].  `cumsum-2`[^cumsum-2] might be the
 best bet of the "base" solutions as it is only slightly slower than `colSums`
-method, but should be scale better if there are some groups that are much larger
+method, but should scale better if there are some groups that are much larger
 than most.
 
-At most we
+`data.table` gets pretty close to the C implementation, but only in the
+reformulated form which comes with challenging precision issues.
 
-# Conclusions
+# That's All Folks
 
-With some thought and care it is possible to get within 2-3x
-of "pure"[^driven-snow] C performance using only R code, for a task that at
-first blush is not well suited for R.
+<!-- this needs to become a shortcode -->
+<a href='#image-credits' title='Click for image credits.' class=image-credit>
+<img
+  id='front-img'
+  src= "/post/2019-05-17-pixie-dust_files/user-imgs/hydra-white.png"
+  class='post-inset-image'
+/>
+</a>
+
+If there is one thing I'd want the casual reader to take away from this post
+series is that R does something remarkable: it allows for 
+near-statically-compiled performance in an interpreted language right out of the
+box.  It's not always easy to achieve this, but in many cases common in data
+science it is possible with a little thought and care.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
 <div id='feedback-cont'></div>
+
+This post is the last post of the [Hydra Chronicles][100] post series.
 
 # Appendix
 
@@ -1023,6 +1046,10 @@ first blush is not well suited for R.
 * viridisLite
 * Color Brewer for the palette. http://colorbrewer2.org/#type=qualitative&scheme=Set2&n=3
 
+## Image Credits
+
+* [Hydra With Fedora(s)][52], by [Larry Wentzel][190], under CC BY-NC 2.0,
+  haberdashery and haberdasher removed.
 
 ## Data
 
@@ -1032,6 +1059,50 @@ first blush is not well suited for R.
 ## Functions
 
 ### sys.time
+
+```{r child='../../static/chunks/sys-time.Rmd'}
+```
+
+### og_sum_col
+
+Compute indices to embed group ordered data into a regular matrix:<span
+id='embed-fun'></span>
+
+```{r eval=FALSE}
+og_embed_dat <- function(go) {
+  ## compute run length encoding
+  g.rle <- rle(go)
+  g.lens <- g.rle[['lengths']]
+  max.g <- max(g.lens)
+
+  ## compute padding
+  g.lens <- g.lens[-length(g.lens)]
+  g.pad <- max.g - g.lens + 1L
+
+  ## compute embedding indices
+  id0 <- rep(1L, length(go))
+  id0[(cumsum(g.lens) + 1L)] <- g.pad
+  id1 <- cumsum(id0)
+
+  list(idx=id1, rle=g.rle)
+}
+```
+
+And use `colSums` to compute the group sums:<span id='col-sum-fun'></span>
+
+```{r eval=FALSE}
+og_sum_col <- function(xo, embed_dat, na.rm=FALSE) {
+  ## group sizes
+  rle.len <- embed_dat[['rle']][['lengths']]
+
+  ## allocate embedding matrix
+  res <- matrix(0, ncol=length(rle.len), nrow=max(rle.len))
+
+  ## copy data using embedding indices
+  res[embed_dat[['idx']]] <- xo
+  setNames(colSums(res, na.rm=na.rm), embed_dat[['rle']][['values']])
+}
+```
 
 ### og_sum_C
 
@@ -1253,4 +1324,12 @@ g_slope_C <- function(x, y, group) {
 [160]: /2019/06/10/base-vs-data-table/#interlude-better-living-through-sorted-data
 [170]: /2019/06/18/hydra-precision/#a-new-hope
 [180]: https://twitter.com/BrodieGaslam/status/1106231241488154626
+
+<!-- Original Hydra Link
+Larry Wentzel
+https://www.flickr.com/photos/wentzelepsy/
+Attribution-NonCommercial 2.0 Generic (CC BY-NC 2.0)
+-->
+[52]: https://www.flickr.com/photos/wentzelepsy/15431618539/in/photolist-pvD5yB-orMGkS-oD9tMr-6Hy4vZ-dHArXF-4MkiSq-fmXesZ-fnKybA-7PdCYt-nKGMUu-9DwyBF-4RGwKf-95vYq-4YHwip-69ckvt-FwgCQm-95vLz-6w9W6f-bVZLqM-95vWc-4YHsJc-4YJhhV-fnvhfn-9DzB8h-4YHxAB-9db7nP-fnvrrP-Ww91p9-8Yhwn3-4tLnpy-bsHuHt-4RGJSU-8nLdkA-4MkjF5-4tLnzC-5Zr3e9-fnKFf7-69gAij-5sR6jQ-9DwEzx-gfesaD-fnf39A-6w5JmX-69gz5o-5xYUVS-6MLZD9-5N2EcN-X463Df-G23wk-fmXqjH
+[190]: https://www.flickr.com/photos/wentzelepsy/
 

@@ -136,62 +136,71 @@ var intervalID = 0;
 
 function draw() {
   frame.value = img_active;
-  console.log(imgs.children[0].width);
-  console.log(imgs.children[0].naturalWidth);
   if(!flipbook_init) {
     flipbook.width = imgs.children[0].naturalWidth;
     flipbook.height = imgs.children[0].naturalHeight;
   }
-  console.log(imgs.children[0].src);
-  console.log(flipbook.width + " " + flipbook.height);
   ctx.drawImage(
     imgs.children[img_active - 1], 0, 0, flipbook.width, flipbook.height
   );
 }
 function pause_flip() {
   playing = false;
+  console.log('pause clear interval');
   clearInterval(intervalID);
-}
-function step_img(val) {
-  img_active = img_active + val;
-  if(img_active > img_n) {img_active = 1;}
-  if(img_active < 1) {img_active = img_n;}
-  draw();
 }
 function step_click(e) {
   pause_flip();
-  if(e.shiftKey) {step_img(-1);} else {step_img(1);}
+  if(e.shiftKey) {step_b();} else {step_f();}
 }
+// automated stepping, pauses at end
 function step() {
+  console.log('stepping ', img_active);
   if(img_active == img_n) {
     // delay at end
     pause_flip();
     setTimeout(
       function() {
-        step_img(1);
+        console.log('end image');
+        step_f();
         pause_flip();
-        play_all();
+        resume_all();
       },
       end_delay * interval
     );
   } else {
-    step_img(1);
+    step_f_int();
   }
 }
+/*
+Intended to be triggered by the play button
+*/
 function play_all() {
   if(playing) {
     pause_flip();
     return null;
   }
   clearInterval(intervalID);
+  step_f();  // always immediately advance
+  intervalID = setInterval(step, interval);
+  playing = true;
+}
+/*
+Restart when looping
+*/
+function resume_all() {
+  clearInterval(intervalID);
   intervalID = setInterval(step, interval);
   playing = true;
 }
 function step_f() {
   pause_flip();
+  step_f_int();
+};
+function step_f_int() {
   if(img_active == img_n) {img_active = 1} else {img_active += 1;}
   draw();
-};
+}
 function step_b() {
   pause_flip();
   if(img_active == 1) {img_active = img_n} else {img_active -= 1;}
