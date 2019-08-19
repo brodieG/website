@@ -119,20 +119,22 @@ text.tapply <- data.table(
 )
 
 tsize <- 6
-lsize <- 1.5
+lsize <- 4
 lpad <- unit(0.25/2, "lines")
+scale.fill.2 <- scale_fill_manual(
+  values=c("#440154FF", "#21908CFF", "#CCC604FF"),
+  guide=FALSE, na.value='grey35'
+)
 ggplot(mapping=aes(x, y)) +
   geom_tile(data=dat.rowsum, color='#AAAAAA') +
   geom_tile(data=dat.grp, aes(fill=as.factor(group)), color='#AAAAAA') +
   geom_tile(data=dat.rowsum.res, aes(fill=as.factor(group)), color='#AAAAAA') +
   geom_tile(data=dat.rowSums, color='#AAAAAA') +
   geom_tile(data=dat.rowSums.res, color='#AAAAAA') +
-  geom_label(data=dat.rowsum, aes(label=val), size=lsize, label.padding=lpad) +
-  geom_label(data=dat.rowsum.res, aes(label=val), size=lsize, label.padding=lpad) +
-  geom_label(data=dat.rowSums, aes(label=val), size=lsize, label.padding=lpad) +
-  geom_label(
-    data=dat.rowSums.res, aes(label=val), size=lsize, label.padding=lpad
-  ) +
+  geom_text(data=dat.rowsum, aes(label=val), size=lsize) +
+  geom_text(data=dat.rowsum.res, aes(label=val), size=lsize) +
+  geom_text(data=dat.rowSums, aes(label=val), size=lsize) +
+  geom_text(data=dat.rowSums.res, aes(label=val), size=lsize) +
   geom_text(
     data=text.rowsum, aes(label=label, hjust=hjust),
     size=tsize, family='mono'
@@ -148,7 +150,7 @@ ggplot(mapping=aes(x, y)) +
   facet_wrap(~facet) +
   coord_fixed(xlim=c(-5, 10)) +
   # coord_fixed(xlim=c(-3.5, 21)) +
-  scale_fill_manual(values=viridisLite::viridis(3), guide=FALSE) +
+  scale.fill.2 +
   make.plot.theme +
   NULL
 ```
@@ -157,21 +159,122 @@ In the single column/vector case, `rowsum(x, grp)` is essentially equivalent to
 `tapply(x, grp, sum)` (or `vapply(split(x, grp), sum, 0)`).
 
 ```{r rowsum-vs-tapply, echo=FALSE}
-group <- c(1,1,2,3,3)
-dat.rowsum <- data.table(
-  x=rep(1:2, each=5),
-  y=5:1,
-  val=vals,
-  group=group,
-  facet='rowsum'
-)
+tsize <- 5
+dat.rowsum <- dat.rowsum[1:5]
+dat.grp <- dat.rowsum[x == 1][, `:=`(x=x+2, facet='rowsum')]
 dat.rowsum.res <- data.table(
-  x=rep(1:2, each=3) + 7,
-  y=rep(4:2, 2),
-  val=c(rowsum(matrix(vals, ncol=2), group)),
+  x=rep(1, each=3) + 20,
+  y=rep(4:2, 1),
+  val=c(rowsum(matrix(vals[1:5], ncol=1), group)),
   group=unique(group),
   facet='rowsum'
 )
+end0 <- 3.5
+mid <- 10
+end1 <- 20.5
+end2 <- 21.5
+
+dat.tapply <- copy(dat.rowsum)[, facet:='tapply']
+dat.tapply.grp <- copy(dat.grp)[, `:=`(facet='tapply')]
+text.rowsum <- data.table(
+  x=c(.5, 2, end0),
+  y=3,
+  hjust=c(1, .5, 0),
+  label=c("rowsum(", ",", ")"),
+  facet='rowsum'
+)
+text.tapply <- data.table(
+  x=c(.5, 2, end0),
+  y=3,
+  hjust=c(1, .5, 0),
+  label=c('tapply(', ',', ', sum)'),
+  facet='tapply'
+)
+tall.bracket <- 'bgroup("%s",
+  atop(
+    atop(
+        atop(phantom(0), phantom(0)),
+        atop(phantom(0), phantom(0))
+      ),
+      atop(
+        atop(phantom(0), phantom(0)),
+        atop(phantom(0), phantom(0))
+      )
+  ),
+  "%s"
+)'
+text.tapply.a <- data.table(
+  x=c(end1, end2),
+  y=3,
+  hjust=c(1, 0),
+  label=c(
+    sprintf('paste("sapply(list", %s)', sprintf(tall.bracket, "(", "")),
+    sprintf('paste(%s, ", sum)")', sprintf(tall.bracket, "", ")"))
+  ),
+  facet='tapply'
+)
+text.tapply2 <- data.table(
+  x=c(
+         end1, end2,
+         end1, end2,
+         end1, end2
+  ),
+  y=c(rep(-2, 2),
+      rep(-4, 2),
+      rep(-6, 2)
+  ),
+  hjust=c(
+        1, 0,
+        1, 0,
+        1, 0
+  ),
+  label=c(
+            'paste("sum", "(", )', 'paste("),")',
+          sprintf('paste("c",%s, "sum(")', sprintf(tall.bracket, "(", "")), 
+          sprintf('paste("),", %s)', sprintf(tall.bracket, "", ")")),
+            'paste("sum", "(", )', 'paste(")")'
+  ),
+  facet='tapply'
+)
+text.arrows <- data.table(
+  x=mid, y=c(3,3,-4, -9.5), hjust=0.5, label='phantom() %->% phantom()',
+  facet=c('rowsum', rep('tapply', 3))
+)
+
+dat.lapply <- copy(dat.tapply.grp)[, `:=`(x=21, y=y+c(.5,.5,0,-.5, -.5))]
+dat.lapply.2 <- copy(dat.lapply)[, `:=`(y=y-7)]
+dat.lapply.2.res <- copy(dat.rowsum.res)[, `:=`(y=y-12.5, facet='tapply')]
+
+dat <- rbind(
+  dat.rowsum, dat.grp, dat.rowsum.res, dat.tapply, dat.tapply.grp,
+  dat.lapply, dat.lapply.2, dat.lapply.2.res
+)
+dat[x==1, group:=NA]
+dat[x==3, val:=NA]
+dat[, label:=ifelse(is.na(val), "", as.character(val))]
+dat.text <- rbind(text.rowsum, text.tapply)
+dat.text.parse <- rbind(text.arrows, text.tapply2, text.tapply.a)
+
+ggplot(dat, aes(x, y)) +
+  geom_tile(
+    aes(fill=as.factor(group)), color='#AAAAAA',
+    width=1, height=1
+  ) +
+  geom_text(aes(label=label), color='white', size=3) +
+  geom_text(
+    data=dat.text, aes(label=label, hjust=hjust),
+    size=tsize, family='mono'
+  ) +
+  geom_text(
+    data=dat.text.parse, aes(label=label, hjust=hjust),
+    size=tsize, family='mono', parse=TRUE
+  ) +
+  facet_grid(facet~., scales='free_y', space='free_y') +
+  coord_cartesian(xlim=c(-5, 26)) +
+  # coord_fixed(xlim=c(-3.5, 21)) +
+  scale.fill.2 +
+  make.plot.theme +
+  NULL
 
 ```
 
@@ -1121,7 +1224,7 @@ reformulated form which comes with challenging precision issues.
 </a>
 
 If there is one thing I'd want the casual reader to take away from this post
-series is that R does something remarkable: it allows for 
+series is that R does something remarkable: it allows for
 near-statically-compiled performance in an interpreted language right out of the
 box.  It's not always easy to achieve this, but in many cases common in data
 science it is possible with a little thought and care.
