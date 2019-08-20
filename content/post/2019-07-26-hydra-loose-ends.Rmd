@@ -71,7 +71,7 @@ distinguishable, despite the difference in behavior.  `rowsum` collapses rows
 together by group, leaving column count unchanged, whereas `rowSums` collapses
 all columns in each row into a single scalar value:
 
-```{r rowsum-vs-rowsum, echo=FALSE, fig.width=7, fig.height=2}
+```{r rowsum-vs-rowsum, echo=FALSE, fig.width=7, fig.height=2, warning=FALSE}
 set.seed(1)
 vals <- sample(1:10)
 group <- c(1,1,2,3,3)
@@ -79,7 +79,7 @@ dat.rowsum <- data.table(
   x=rep(1:2, each=5),
   y=5:1,
   val=vals,
-  group=group,
+  group=NA,
   facet='rowsum'
 )
 dat.rowsum.res <- data.table(
@@ -89,35 +89,34 @@ dat.rowsum.res <- data.table(
   group=unique(group),
   facet='rowsum'
 )
-dat.rowSums <- copy(dat.rowsum)[, `:=`(facet='rowSums', x=x+2)]
+dat.rowSums <- copy(dat.rowsum)[, `:=`(facet='rowSums', x=x+2, group=NA)]
 dat.rowSums.res <- data.table(
   x=8,
   y=5:1,
   val=rowSums(matrix(vals, ncol=2)),
+  group=NA,
   facet='rowSums'
 )
-dat.grp <- dat.rowsum[x == 1][, x:=x+3]
+dat.grp <- dat.rowsum[x == 1][, `:=`(x=x+3, group=NULL, val=NA)]
+dat.grp[, group:=group]
 text.rowsum <- data.table(
-  x=c(.5, 3, 4.5, 6),
+  x=c(.5, 3, 4.5),
   y=3,
-  hjust=c(1, .5, 0, .5),
-  label=c("rowsum(", ",", ")", "->"),
+  hjust=c(1, .5, 0),
+  label=c("rowsum(", ",", ")"),
   facet='rowsum'
 )
 text.rowSums <- data.table(
-  x=c(1.5, 3.5, 5) + 1,
+  x=c(1.5, 3.5) + 1,
   y=3,
-  hjust=c(1, 0, .5),
-  label=c("rowSums(", ")", "->"),
+  hjust=c(1, 0),
+  label=c("rowSums(", ")"),
   facet='rowSums'
 )
-text.tapply <- data.table(
-  x=c(.5, 3, 4.5, 9, 17, 18),
-  y=-8,
-  hjust=c(1, .5, 0, .5, 1, 0),
-  label=c('tapply(', ',', ', sum)', '->', 'lapply(list(', '), sum)')
+text.arrows <- data.table(
+  x=6, y=3, facet=c('rowsum', 'rowSums'), hjust=0.5,
+  label="phantom()%->%phantom()"
 )
-
 tsize <- 6
 lsize <- 4
 lpad <- unit(0.25/2, "lines")
@@ -125,16 +124,13 @@ scale.fill.2 <- scale_fill_manual(
   values=c("#440154FF", "#21908CFF", "#CCC604FF"),
   guide=FALSE, na.value='grey35'
 )
-ggplot(mapping=aes(x, y)) +
-  geom_tile(data=dat.rowsum, color='#AAAAAA') +
-  geom_tile(data=dat.grp, aes(fill=as.factor(group)), color='#AAAAAA') +
-  geom_tile(data=dat.rowsum.res, aes(fill=as.factor(group)), color='#AAAAAA') +
-  geom_tile(data=dat.rowSums, color='#AAAAAA') +
-  geom_tile(data=dat.rowSums.res, color='#AAAAAA') +
-  geom_text(data=dat.rowsum, aes(label=val), size=lsize) +
-  geom_text(data=dat.rowsum.res, aes(label=val), size=lsize) +
-  geom_text(data=dat.rowSums, aes(label=val), size=lsize) +
-  geom_text(data=dat.rowSums.res, aes(label=val), size=lsize) +
+dat <- rbind(
+  dat.rowsum, dat.rowsum.res, dat.rowSums, dat.rowSums.res, dat.grp
+)
+ggplot(dat, aes(x, y)) +
+  geom_tile(aes(fill=as.factor(group)), color='#AAAAAA') +
+  geom_text(aes(label=val), size=lsize, color='white') +
+  geom_text(data=text.arrows, aes(label=label), size=tsize, parse=TRUE) +
   geom_text(
     data=text.rowsum, aes(label=label, hjust=hjust),
     size=tsize, family='mono'
@@ -143,10 +139,6 @@ ggplot(mapping=aes(x, y)) +
     data=text.rowSums, aes(label=label, hjust=hjust),
     size=tsize, family='mono'
   ) +
-  # geom_text(
-  #   data=text.tapply, aes(label=label, hjust=hjust),
-  #   size=tsize, family='mono'
-  # ) +
   facet_wrap(~facet) +
   coord_fixed(xlim=c(-5, 10)) +
   # coord_fixed(xlim=c(-3.5, 21)) +
@@ -158,21 +150,23 @@ ggplot(mapping=aes(x, y)) +
 In the single column/vector case, `rowsum(x, grp)` is essentially equivalent to
 `tapply(x, grp, sum)` (or `vapply(split(x, grp), sum, 0)`).
 
-```{r rowsum-vs-tapply, echo=FALSE}
+```{r rowsum-vs-tapply, echo=FALSE, fig.height=6}
 tsize <- 5
-dat.rowsum <- dat.rowsum[1:5]
-dat.grp <- dat.rowsum[x == 1][, `:=`(x=x+2, facet='rowsum')]
+x.res <- 16
+end0 <- 3.5
+mid <- 8
+end1 <- x.res - .5
+end2 <- x.res + .5
+
+dat.rowsum <- dat.rowsum[1:5][, group:=NULL][, group:=group]
+dat.grp <- dat.rowsum[x == 1][, `:=`(x=x+2, facet='rowsum', group=group)]
 dat.rowsum.res <- data.table(
-  x=rep(1, each=3) + 20,
+  x=rep(x.res, each=3),
   y=rep(4:2, 1),
   val=c(rowsum(matrix(vals[1:5], ncol=1), group)),
   group=unique(group),
   facet='rowsum'
 )
-end0 <- 3.5
-mid <- 10
-end1 <- 20.5
-end2 <- 21.5
 
 dat.tapply <- copy(dat.rowsum)[, facet:='tapply']
 dat.tapply.grp <- copy(dat.grp)[, `:=`(facet='tapply')]
@@ -193,13 +187,17 @@ text.tapply <- data.table(
 tall.bracket <- 'bgroup("%s",
   atop(
     atop(
-        atop(phantom(0), phantom(0)),
-        atop(phantom(0), phantom(0))
-      ),
+      phantom(0),
       atop(
-        atop(phantom(0), phantom(0)),
-        atop(phantom(0), phantom(0))
-      )
+          atop(phantom(0), phantom(0)),
+          atop(phantom(0), phantom(0))
+    ) ),
+    atop(
+      phantom(0),
+      atop(
+          atop(phantom(0), phantom(0)),
+          atop(phantom(0), phantom(0))
+    ) )
   ),
   "%s"
 )'
@@ -230,7 +228,7 @@ text.tapply2 <- data.table(
   ),
   label=c(
             'paste("sum", "(", )', 'paste("),")',
-          sprintf('paste("c",%s, "sum(")', sprintf(tall.bracket, "(", "")), 
+          sprintf('paste("c",%s, "sum(")', sprintf(tall.bracket, "(", "")),
           sprintf('paste("),", %s)', sprintf(tall.bracket, "", ")")),
             'paste("sum", "(", )', 'paste(")")'
   ),
@@ -241,7 +239,7 @@ text.arrows <- data.table(
   facet=c('rowsum', rep('tapply', 3))
 )
 
-dat.lapply <- copy(dat.tapply.grp)[, `:=`(x=21, y=y+c(.5,.5,0,-.5, -.5))]
+dat.lapply <- copy(dat.tapply.grp)[, `:=`(x=x.res, y=y+c(.5,.5,0,-.5, -.5))]
 dat.lapply.2 <- copy(dat.lapply)[, `:=`(y=y-7)]
 dat.lapply.2.res <- copy(dat.rowsum.res)[, `:=`(y=y-12.5, facet='tapply')]
 
@@ -270,8 +268,8 @@ ggplot(dat, aes(x, y)) +
     size=tsize, family='mono', parse=TRUE
   ) +
   facet_grid(facet~., scales='free_y', space='free_y') +
-  coord_cartesian(xlim=c(-5, 26)) +
-  # coord_fixed(xlim=c(-3.5, 21)) +
+  # coord_cartesian(xlim=c(-5, 26)) +
+  coord_cartesian(xlim=c(-3.5, 21)) +
   scale.fill.2 +
   make.plot.theme +
   NULL
