@@ -398,15 +398,10 @@ vector with 95 elements in ten groups.  For display purposes we wrap the vector
 column-wise every ten elements, and designate the groups by a color.  The values
 of the vector are represented by the tile heights:
 
-<!--
-See static/post/2019-07-26-hydra-loose-ends_files/scripts/ for the code used to
-generate the flipbook and animation.
--->
-
 <script type='text/javascript'>
 var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
 var fps_def = 1;
-var img_n = 17;
+var img_n = 15;
 var end_delay = 1;
 </script>
 ```{r child='../../static/chunks/flipbook.Rmd'}
