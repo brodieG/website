@@ -13,7 +13,8 @@ imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: "A few more tricks for fast group statistics in base R, and
+benchmarks against C implementations."
 ---
 
 ```{r echo=FALSE}
@@ -49,27 +50,27 @@ make.plot.theme <- theme(
 
 Fingers crossed this will be the last post of the [Hydra Chronicles][100], a.k.a.
 "Everything You Didn't Want To Know About Group Statistics But Let Me Tell You
-Anyway".  Well, it's more of an end note rather than a real post: a few tidbits
-that ended up on the cutting floor in the earlier posts.
+Anyway".  Well, it's more of a salvage job of tidbits from earlier posts that
+ended up on the cutting room floor that I couldn't quite bring myself to trash.
 
 One of our early "discoveries" about group statistics is that if we can compute
-the group sum, we can build on that to compute many other group statistics.
-In this post we'll go over a few of the other group sum strategies I tested out
-before I settled on the [`cumsum` based approach][110] we used to "beat"
-`data.table`.
+the group sum quickly, we use it to compute many other group statistics quickly
+as well.  In this post we'll go over a few of the other group sum strategies I
+tested out before I settled on the [`cumsum` based approach][110] we used to
+"beat" `data.table`.
 
 # rowsum
 
 I did mention this one [in passing][120], but it bears re-examining:
-`base::rowsum` is a remarkable creature in the base R ecosystem.  As far as I
-know, it is the only R function that can compute group statistics on unequal
-group sizes in statically compiled C code.  Despite this it is relatively
-unknown, especially when compared with its popular cousin `base::rowSums`.
+`base::rowsum` is a remarkable creature in the R.  As far as I know, it is the
+only base R function that computes group statistics on unequal group sizes in
+statically compiled code.  Despite this it is arcane, especially when compared
+with its popular cousin `base::rowSums`.
 
-It likely doesn't help that the names of the two functions are barely
-distinguishable, despite the difference in behavior.  `rowsum` collapses rows
-together by group, leaving column count unchanged, whereas `rowSums` collapses
-all columns in each row into a single scalar value:
+Despite `rowsum` and `rowSums` being near indistinguishable on name alone, they
+do quite different things.  `rowsum` collapses rows together by group, leaving
+column count unchanged, whereas `rowSums` collapses all columns in each row into
+a single scalar value:
 
 ```{r rowsum-vs-rowsum, echo=FALSE, fig.width=7, fig.height=2, warning=FALSE}
 set.seed(1)
@@ -147,8 +148,9 @@ ggplot(dat, aes(x, y)) +
   NULL
 ```
 
-In the single column/vector case, `rowsum(x, grp)` is essentially equivalent to
-`tapply(x, grp, sum)` (or `vapply(split(x, grp), sum, 0)`).
+In the single column/vector case, `rowsum(x, grp)` computes the sum of `x` by
+the groups in `grp`.  Typically this operation is done with `tapply(x, grp,
+sum)` (or `vapply(split(x, grp), sum, 0)`):
 
 ```{r rowsum-vs-tapply, echo=FALSE, fig.height=6}
 tsize <- 5
@@ -276,6 +278,12 @@ ggplot(dat, aes(x, y)) +
 
 ```
 
+As illustrated above `tapply` must split the vector by group, explicitly call
+the  R-level `sum` on each group, and simplify the result to a
+vector[^liberties].  `rowsum` can just compute the group sums directly in
+statically compiled code.  This makes it substantially faster, although
+obviously limits it to computing sums.
+
 Let's look at some examples and timings with our beaten-to-death 10MM row, ~1MM
 group [data set](#data), and our timing function [`sys.time`](#sys-time).  We'll
 order the data first as [that is fastest][140] even when including the time to
@@ -293,7 +301,7 @@ sys.time({
   0.690   0.003   0.696
 ```
 
-`tapply` first for reference:
+`tapply` for reference:
 
 ```{r eval=FALSE}
 sys.time(gsum.0 <- tapply(xo, go, sum))
@@ -320,8 +328,10 @@ all.equal(c(gsum.0), c(gsum.1), check.attributes=FALSE)
 [1] TRUE
 ```
 
-`rowsum` provides a noticeable speed-up over `tapply` for the same task, though
-`data.table` remains faster:
+This is a ~4-5x speedup for the summing step, or a ~3x speedup if we include the
+time to order.  `data.table` is faster for this task.
+
+> All `data.table` timings are single threaded (`setDTthreads(1)`)[^dt-single].
 
 ```{r echo=FALSE}
 step.levels <- c('order',  'rle*', 'sum')
@@ -385,7 +395,7 @@ why we use `colSums` instead of `rowSums`):
 colSums(a.mx)
 ```
 
-This is equivalent to:
+This is equivalent to[^rowsum-matrix]:
 
 ```{r}
 c(rowsum(a, G))
@@ -398,6 +408,11 @@ vector with 95 elements in ten groups.  For display purposes we wrap the vector
 column-wise every ten elements, and designate the groups by a color.  The values
 of the vector are represented by the tile heights:
 
+<!--
+For how we built the 3D animation see:
+
+static/post/2019-07-26-hydra-loose-ends_files/scripts/threed-plot.R
+-->
 <script type='text/javascript'>
 var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
 var fps_def = 1;
@@ -408,7 +423,7 @@ var end_delay = 1;
 ```
 
 The embedding step warrants additional explanation.  The trick is to generate a
-vector that maps the positions in our irregular input vector into the regular
+vector that maps the positions from our irregular vector into the regular
 matrix.  There are several ways we can do this, but the one that we'll use today
 takes advantage of the underlying vector nature of matrices.  In particular, we
 will index into our matrices as if they were vectors, e.g.:
@@ -767,9 +782,9 @@ p.anim <- p +
     exit_shrink() +
     NULL
 
-# anim_save(
-#   '~/Downloads/colsums-anim-2.gif',
-#   p.anim, width=1280, height=800, nframes=40, fps=5
+ # anim_save(
+ #   '~/Downloads/colsums-anim-2.gif',
+ #   p.anim, width=1280, height=800, nframes=40, fps=5
 # )
 animate(
   p.anim,
@@ -828,7 +843,7 @@ dat.text <- dat[Step == steps[10] & label == 'pad'][, `:=`(
 )]
 
 p <- make_plot(dat.sub.ann, NULL, lab.size=3) +
-  geom_text(data=dat.text, aes(label=glabel), size=3, color='grey50')
+  geom_label(data=dat.text, aes(label=glabel), size=3, color='grey65')
 p
 
  # idx1 <- subset(dat.sub, label==5, select=c(x, y, g2))
@@ -869,13 +884,15 @@ grp.lab <- data.frame(
   lab=paste('Group ', 1:3)
 )
 el.lab <- data.frame(x=-1, y=c(1, 0), lab=paste0('id', 0:1))
+el.ellipse <- data.frame(x=23.5, y=0:2, lab="...")
 
 ggplot(id.dat, aes(x, y)) +
   geom_tile(aes(fill=as.factor(g2)), color='#AAAAAA') +
   geom_text(data=grp.lab, aes(label=lab), hjust=0, vjust=.75) +
   geom_text(data=el.lab, aes(label=lab), hjust=0, family='mono') +
+  geom_text(data=el.ellipse, aes(label=lab), family='mono', vjust=0.5) +
   geom_label(aes(label=glabel), size=2) +
-  coord_fixed(xlim=c(-3,22), ylim=c(-1,2.5)) +
+  coord_fixed(xlim=c(-3,24), ylim=c(-1,2.5)) +
   scale.fill + make.plot.theme
 ```
 We can emphasize the relationship between these by looking at the element by
@@ -884,6 +901,7 @@ id=diff-id1></span>
 
 ```{r pad-index-diff, echo=FALSE, fig.height=1.75}
 id.dat.2 <- copy(id.dat)[y == 0, y:=-1]
+el.ellipse <- data.frame(x=23.5, y=-2:2, lab="...")
 diff.dat <- data.table(
   x=rep(tail(g13id, -1L), 2),
   y=rep(c(0,-2), each=g13-1),
@@ -894,13 +912,14 @@ el.lab.2 <- data.frame(
 )
 ggplot(id.dat.2, aes(x, y)) +
   geom_tile(aes(fill=as.factor(g2)), height=1, color='#AAAAAA') +
-  geom_label(data=diff.dat, aes(label=lab, color=lab>1), size=2) +
+  geom_text(data=diff.dat, aes(label=lab, color=lab>1), size=3) +
   geom_text(data=grp.lab, aes(label=lab), hjust=0, vjust=.75) +
   geom_text(data=el.lab.2, aes(label=lab), hjust=1, family='mono') +
   geom_label(aes(label=glabel), size=2) +
-  coord_fixed(xlim=c(-3,22), ylim=c(-3,2.5)) +
+  geom_text(data=el.ellipse, aes(label=lab), family='mono', vjust=0.5) +
+  coord_fixed(xlim=c(-3,24), ylim=c(-3,2.5)) +
   scale.fill + make.plot.theme +
-  scale_color_manual(values=c('black','red'), guide=FALSE)
+  scale_color_manual(values=c('black','green'), guide=FALSE)
 ```
 ```{r echo=FALSE, eval=FALSE}
 g2.rle <- rle(sort(g2))
@@ -921,14 +940,11 @@ dimnames(xx) <- list(c('group', 'orig', 'orig ∆', 'embed', 'embed ∆'), rep('
 xx
 ```
 
-The indices always increment by one, except for the embedding vector, where they
-increment by `$1 + pad$` at each group transition, shown in red.  `$pad$` is how
-much empty space there is between the end of the group and the end of the column
-it is embedded in.  Conversely we can compute the embedding indices if we figure
-out the size of the column padding, which will be a function of the group size
-and the largest group size.  Thankfully the `rle` computes the lengths of
-repeated sequences, which in the case of our ordered group vector corresponds
-exactly to group sizes:
+The indices always increment by one, except at group transitions for the
+embedding indices as shown in green above.  There they increment by `$1 + pad$`.
+"`$pad$`" is how much empty space there is between the end of the group and the
+end of the column it is embedded in.  The name of the game is to compute
+"`$pad$`", which thankfully we can easily do by using the output of `rle`:
 
 ```{r echo=FALSE}
 g <- sort(g2)
@@ -938,8 +954,9 @@ g.rle <- rle(sort(g))
 g.rle
 ```
 
-Padding is the difference between each group's size and that of the largest
-group:
+`rle` gives us the length of runs of repeated values, which in our sorted group
+vector gives us the size of each group.  Padding is then the difference between
+each group's size and that of the largest group:
 
 ```{r}
 g.max <- max(g.rle[['lengths']])      # largest group
@@ -999,7 +1016,7 @@ sys.time(emb <- og_embed_dat(go))
 One drawback is the obvious wasted memory taken up by the padding in the
 embedding matrix.  This could become problematically large if a small number of
 groups are much larger than the rest.  It may be possible to mitigate this by
-breaking up the data into sub by groups[^colsums-breakup].
+breaking up the data into by group size[^colsums-breakup].
 
 Overall this is a little slower than `rowsum` for the simple group sum, but
 as we'll see shortly there are benefits to this approach.
@@ -1007,11 +1024,9 @@ as we'll see shortly there are benefits to this approach.
 # Pedal To The Metal
 
 For the sake of an absolute benchmark I wrote a [C version of `rowsum`,
-`og_sum_C`](#og_sum_C) that takes advantage of group ordered data to compute the
-group sums and counts, similar to our [re-implementation of `unique` for sorted
-data][160].  We can detect group transitions any time the group vector changes,
-and use that to store group values/counts and reset the accumulators.  Once the
-data is sorted, this takes virtually no time:
+`og_sum_C`](#og_sum_C) that takes advantage of group-ordered data to compute the
+group sums and counts[^group-order].  Once the data is sorted, this takes
+virtually no time:
 
 ```{r eval=FALSE}
 sys.time(og_sum_C(xo, go))
@@ -1091,13 +1106,13 @@ is only possible because `data.table` [contributed its fast radix sort to
 R][180], and `data.table` requires more complex code to be able to run a broader
 set of statistics.
 
-The pattern to notice here is that for several of the methods the time spent
-doing the actual summing is small.  For example, for `colSums`, most of the time
-is ordering and computing the run length encoding / embedding indices (`rle*`).
-This is important because those parts are a function of the grouping, so they
-only need to be calculated once per group.  It doesn't help for single variable
-group sums, but if we have more variables or more complex statistics it can make
-a big difference.
+The pattern to notice is that for several of the methods the time spent
+doing the actual summing is small[^sum-contains].  For example, for `colSums`
+most of the time is ordering and computing the run length encoding / embedding
+indices (`rle*`).  This is important because those parts can be re-used if the
+grouping is the same across several calculations.  It doesn't help for single
+variable group sums, but if we have more variables or more complex statistics it
+becomes a factor.
 
 Let's see how helpful re-using the group-based data is with the calculation of
 the slope of a bivariate regression:
@@ -1105,49 +1120,16 @@ the slope of a bivariate regression:
 $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
 
-For illustrative purposes we'll show the implementation that uses the `colSums`
-based group sum (`og_sum_col`).  Don't worry too much about the
-details.  The key thing to note is that we use `og_sum_col` four times,
-but we only compute the embedding data once:
+The calculation requires four group sums, two to compute `$\bar{x}$`  and
+`$bar{y}$`, and another two shown explicitly with the `$\sum$` symbol.  At the
+same time we only need to compute the ordering and the `rle` / embedding once
+because the grouping is the same across all calculations.  This is particularly
+obvious in the [`colSums` based group slope calculation in the
+appendix](#g_sum_col).
 
-```{r eval=FALSE}
-g_slope_col <- function(x, y, group) {
-  ## order
-  o <- order(group)
-  go <- group[o]
-  xo <- x[o]
-  yo <- y[o]
-
-  ## compute group means for x/y
-  emb <- og_embed_dat(go)                    # << Embedding
-  lens <- emb[['rle']][['lengths']]
-  ux <- og_sum_col(xo, emb)/lens             # << Group Sum #1
-  uy <- og_sum_col(yo, emb)/lens             # << Group Sum #2
-
-  ## recycle means to input vector length and
-  ##  compute (x - mean(x)) and (y - mean(y))
-  gi <- rep(seq_along(ux), lens)
-  x_ux <- xo - ux[gi]
-  y_uy <- yo - uy[gi]
-
-  ## Slope calculation
-  gs.cs <-
-    og_sum_col(x_ux * y_uy, emb) /           # << Group Sum #3
-    og_sum_col(x_ux ^ 2, emb)                # << Group Sum #4
-  setNames(gs.cs, emb[['rle']][['vaues']])
-}
-sys.time(g_slope_col(x, y, grp))
-```
-```
-   user  system elapsed
-  2.268   0.497   2.765
-```
-
-We can compare this to all the previous implementations of the group slope
-calculation, as well as variations on the above based on `rowsum`,
-[`og_sum_C`](#pedal-to-the-metal) (the C version of `rowsum` that operates
-explicitly on group ordered ordered data), and finally a full C
-version of the slope calculation to define the limit of how fast we can go:
+When we compare all the previous implementations of the group slope
+calculation, against the new `rowsum` and `colSums` implementations the
+advantage of re-using the group information becomes apparent:
 
 <!-- See static/..._files/scripts/benchmark.Rmd -->
 ```{r slope-benchmarks, echo=FALSE, warning=FALSE}
@@ -1203,7 +1185,7 @@ method, but should scale better if there are some groups that are much larger
 than most.
 
 `data.table` gets pretty close to the C implementation, but only in the
-reformulated form which comes with challenging precision issues.
+reformulated form which comes [with challenging precision issues][200].
 
 # That's All Folks
 
@@ -1216,11 +1198,13 @@ reformulated form which comes with challenging precision issues.
 />
 </a>
 
-If there is one thing I'd want the casual reader to take away from this post
-series is that R does something remarkable: it allows for
-near-statically-compiled performance in an interpreted language right out of the
-box.  It's not always easy to achieve this, but in many cases common in data
-science it is possible with a little thought and care.
+Phew, finally done.  I never imagined this whole thing would get so out of hand
+when I set off to do some silly benchmarks against `data.table`. I learned way
+more than I bargained for, and come away from the whole thing with a renewed
+admiration for what R does: it provides near-statically-compiled
+performance[^near-statically] in an interpreted language right out of the box.
+It's not always easy to achieve this, but in many cases common in data science
+it is possible with a little thought and care.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -1257,6 +1241,8 @@ This post is the last post of the [Hydra Chronicles][100] post series.
 ```
 
 ### og_sum_col
+
+The `og_` prefix stands for "Ordered Group".
 
 Compute indices to embed group ordered data into a regular matrix:<span
 id='embed-fun'></span>
@@ -1383,9 +1369,48 @@ og_sum_C <- function(x, group) {
 ")
 ```
 
+### g_slope_col
+
+Compute the slope using the [`colSums` based group sum](#og_sum_col).  Notice
+how we compute the embedding indices once, and re-use them for all four group
+sums.
+
+```{r eval=FALSE}
+g_slope_col <- function(x, y, group) {
+  ## order
+  o <- order(group)
+  go <- group[o]
+  xo <- x[o]
+  yo <- y[o]
+
+  ## compute group means for x/y
+  emb <- og_embed_dat(go)                    # << Embedding
+  lens <- emb[['rle']][['lengths']]
+  ux <- og_sum_col(xo, emb)/lens             # << Group Sum #1
+  uy <- og_sum_col(yo, emb)/lens             # << Group Sum #2
+
+  ## recycle means to input vector length and
+  ##  compute (x - mean(x)) and (y - mean(y))
+  gi <- rep(seq_along(ux), lens)
+  x_ux <- xo - ux[gi]
+  y_uy <- yo - uy[gi]
+
+  ## Slope calculation
+  gs.cs <-
+    og_sum_col(x_ux * y_uy, emb) /           # << Group Sum #3
+    og_sum_col(x_ux ^ 2, emb)                # << Group Sum #4
+  setNames(gs.cs, emb[['rle']][['vaues']])
+}
+sys.time(g_slope_col(x, y, grp))
+```
+```
+   user  system elapsed
+  2.268   0.497   2.765
+```
+
 ### g_slope_C
 
-This is lightly tested.
+This is a very lightly tested all C implementation of the group slope.
 
 ```{r group_slope, eval=FALSE}
 g_slope_C <- function(x, y, group) {
@@ -1494,6 +1519,13 @@ g_slope_C <- function(x, y, group) {
 ")
 ```
 
+[^rowsum-matrix]: `rowsum` returns a matrix even in the one column case so we
+  drop the dimensions with `c` to make the comparison to `colSums` more obvious.
+[^dt-single]: I use single threaded timings as those are more stable, and
+  it allows apples-to-apples comparisons.  While it is a definite advantage that
+  `data.table` comes with its own built-in parallelization, enabling its use
+  means the benchmarks are only relevant for R processes that are themselves not
+  parallelized.
 [^sorted-inputs]: We could have the function sort the inputs itself, but doing
   it this way allows us to compare to the other functions for which we pre-sort,
   and to re-use the ordering data when summarizing multiple variables.
@@ -1504,9 +1536,28 @@ g_slope_C <- function(x, y, group) {
   separately it is possible to side-step a garbage collection event.  The
   timings in the plot are from running things together, and subtracting out the
   sorting / rle times.
+[^near-static]: I consider ~3x close given that typically differences between
+  statically compiled and interpreted coder are more on the order of ~10-100x.
 [^driven-snow]: This is not strictly true as the ordering is done via a calls to
   `order` and `[`, although for those almost all the computations are done via
   statically compiled code.
+[^group-order]: With group-ordered data we can detect group transitions any time
+  the value of  the group vector changes.  We can use that as a trigger to
+  transfer the accumulator value to the result vector and reset it.
+  We did something  similar with our [re-implementation of `unique` for sorted
+  data][160].
+[^sum-contains]: `sum` time is essentially all time that is neither ordering,
+  `rle`, or embedding index calculation, so for some functions it includes steps
+  other than just summing.
+[^cumsum-1]: Original [single pass `cumsum`][110] based group sum.
+[^cumsum-2]: `cumsum` based group sum with [second precision correcting
+  pass][170].  In this case we use the second pass for every one of the four
+  group sums.
+[^liberties]: `tapply` calls `lapply` internally, not `sapply`, but the
+  semantics of the default `simplify=TRUE` case are equivalent.  Additionally,
+  the simplification isn't done with `c` as suggested by the diagram, but in
+  this case with scalar return values from `sum` it's also semantically
+  equivalent.
 
 [100]: /tags/hydra/
 [110]: /2019/06/10/base-vs-data-table/#group-sums
@@ -1525,4 +1576,4 @@ Attribution-NonCommercial 2.0 Generic (CC BY-NC 2.0)
 -->
 [52]: https://www.flickr.com/photos/wentzelepsy/15431618539/in/photolist-pvD5yB-orMGkS-oD9tMr-6Hy4vZ-dHArXF-4MkiSq-fmXesZ-fnKybA-7PdCYt-nKGMUu-9DwyBF-4RGwKf-95vYq-4YHwip-69ckvt-FwgCQm-95vLz-6w9W6f-bVZLqM-95vWc-4YHsJc-4YJhhV-fnvhfn-9DzB8h-4YHxAB-9db7nP-fnvrrP-Ww91p9-8Yhwn3-4tLnpy-bsHuHt-4RGJSU-8nLdkA-4MkjF5-4tLnzC-5Zr3e9-fnKFf7-69gAij-5sR6jQ-9DwEzx-gfesaD-fnf39A-6w5JmX-69gz5o-5xYUVS-6MLZD9-5N2EcN-X463Df-G23wk-fmXqjH
 [190]: https://www.flickr.com/photos/wentzelepsy/
-
+[200]: /2019/07/24/hydra-reformulate/#slow-down-cowboy
