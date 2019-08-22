@@ -221,7 +221,7 @@ pre {
   word-wrap: break-word;
   -ms-word-wrap: break-word;
   word-break: break-all;
-  white-space: pre-wrap;
+  /*white-space: pre-wrap;*/
   padding: 0;
   background: #f5f5f5;
 }
@@ -371,7 +371,11 @@ img {
 .singular-attachment img {
   max-width: 100%;
 }
-
+/* Fansi line heights */
+pre.fansi code span {
+  padding-top: .1em;
+  padding-bottom: .1em;
+}
 /*
 article img {
   max-height: 100%;
@@ -1936,12 +1940,12 @@ li.pingback:first-child {
 
 body pre, body code.hljs {
   background-color: #FAFAFA;
-  white-space: pre-wrap;    /* Wrap long lines */
   /*border-radius: 3px;*/
 }
 .main pre code {
   font-size: 90%;
   line-height: 1.2;
+  overflow: auto;
 }
 pre {
   border: 2px solid #EEE;

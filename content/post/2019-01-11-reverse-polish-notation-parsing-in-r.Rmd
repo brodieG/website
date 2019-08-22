@@ -234,55 +234,14 @@ writeLines(
 ) )
 ```
 
-<div id='bg-rpn-images' style='display: none'></div>
-<div style='margin: auto; display: block; width: 90%;'>
-<canvas
-  id='bg-rpn-flipbook' width='675' height='370'
-  style='width: 100%; display: block;'
-  title='Click to step forward, shift+click to step backwards.'
->
-</canvas>
-<p style='margin-top: 5px; margin-bottom: 25px;'>
-  <input
-    id='bg-rpn-play' type='button' value='&#x25b6;' style='font-size: 18px;'
-  />
-  <input
-    id='bg-rpn-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
-    title='Stop and Reset'
-  />
-  &nbsp;
-  <input
-    id='bg-rpn-step-b' type='button' value='&#10703;' style='font-size: 18px;'
-    title='Step Backwards'
-  />
-  <input
-    id='bg-rpn-step-f' type='button' value='&#10704;' style='font-size: 18px;'
-    title='Step Forwards'
-  />
-  &nbsp;
-  FPS:
-  <input
-    id='bg-rpn-fps' type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
-    line-height: 1; padding: 0;'
-    title='Set Playback Rate' value=3
-  />
-  &nbsp;
-  Frame:
-  <input
-    id='bg-rpn-frame'
-    type='text'
-    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
-    line-height: 1; padding: 0;'
-    value=0
-    title='Input frame #'
-  /> / <span id='bg-rpn-frame-n'>48</span>
-</p>
-</div>
-<script
-  type='text/javascript'
-  src='/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook.js'>
+<script type='text/javascript'>
+var img_dir = '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/';
+var fps_def = 3;
+var img_n = 48;
+var end_delay = 5;
 </script>
+```{r child='../../static/chunks/flipbook.Rmd'}
+```
 
 Part of the reason it is so easy to compute on the language in R is that since
 calls are lists, list manipulation facilities can be used on them.  For example,

@@ -4,7 +4,7 @@ author: ~
 date: '2019-02-24'
 slug: a-strategy-for-faster-group-statisitics
 categories: [r]
-tags: [optim, rdatatable, dplyr, group-stats]
+tags: [group-stats,optim,rdatatable,dplyr,hydra]
 image: /front-img/strategy-for-groups.png
 imagerect: /front-img/strategy-for-groups-wide-2.png
 imagemrgvt: 0%

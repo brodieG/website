@@ -4,7 +4,7 @@ author: ~
 date: '2019-06-18'
 slug: hydra-precision
 categories: [r]
-tags: [group-stats,optimization,floating-point]
+tags: [group-stats,optim,floats,hydra]
 image: /post/2019-06-11-hydra-precision_files/user-imgs/mtcars2.png
 imagerect: /post/2019-06-11-hydra-precision_files/user-imgs/iris.png
 imagemrgvt: 0%
