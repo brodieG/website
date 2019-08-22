@@ -1123,7 +1123,7 @@ $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 \bar{x})^{2}}$$
 
 The calculation requires four group sums, two to compute `$\bar{x}$`  and
-`$bar{y}$`, and another two shown explicitly with the `$\sum$` symbol.  At the
+`$\bar{y}$`, and another two shown explicitly with the `$\sum$` symbol.  At the
 same time we only need to compute the ordering and the `rle` / embedding once
 because the grouping is the same across all calculations.  You can see this
 clearly in the [`colSums` based group slope calculation in the

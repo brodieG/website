@@ -660,8 +660,8 @@ can).
   having the time and patience to remind me of the expected value forms and
   manipulations of variance and covariance.
 * [Dirk Eddelbuettel][206] for copy edit suggestions.
-* [Matt Dowle][201] and the other [`data.table` authors][204] for contributing the
-  radix sort to R.
+* [Matt Dowle][201] and the other [`data.table` authors][204] for contributing
+  the radix sort to R.
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with which
   I made the plots in this post.
 
@@ -1110,7 +1110,7 @@ is affected by ordering see the [pixie dust post][103].
 [201]: https://github.com/mattdowle
 [202]: https://github.com/hadley
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html
-[204]: https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
+[204]: https://cloud.r-project.org/web/packages/data.table/
 [205]: https://twitter.com/michael_chirico
 [206]: https://twitter.com/eddelbuettel
 [207]: https://en.wikipedia.org/wiki/Variance#Definition
