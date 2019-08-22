@@ -67,10 +67,10 @@ only base R function that computes group statistics on unequal group sizes in
 statically compiled code.  Despite this it is arcane, especially when compared
 with its popular cousin `base::rowSums`.
 
-Despite `rowsum` and `rowSums` being near indistinguishable on name alone, they
+`rowsum` and `rowSums` are near indistinguishable on name alone, but they
 do quite different things.  `rowsum` collapses rows together by group, leaving
-column count unchanged, whereas `rowSums` collapses all columns in each row into
-a single scalar value:
+column count unchanged, whereas `rowSums` collapses all columns leaving row
+count unchanged:
 
 ```{r rowsum-vs-rowsum, echo=FALSE, fig.width=7, fig.height=2, warning=FALSE}
 set.seed(1)
@@ -333,7 +333,7 @@ time to order.  `data.table` is faster for this task.
 
 > All `data.table` timings are single threaded (`setDTthreads(1)`)[^dt-single].
 
-```{r echo=FALSE}
+```{r group-sum-times, echo=FALSE}
 step.levels <- c('order',  'rle*', 'sum')
 funs <- c('tapply', 'tapply', 'rowsum', 'rowsum', 'data.table')
 steps <- c('order', 'sum', 'order', 'sum', NA)
@@ -1125,8 +1125,8 @@ $$\frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i -
 The calculation requires four group sums, two to compute `$\bar{x}$`  and
 `$bar{y}$`, and another two shown explicitly with the `$\sum$` symbol.  At the
 same time we only need to compute the ordering and the `rle` / embedding once
-because the grouping is the same across all calculations.  This is particularly
-obvious in the [`colSums` based group slope calculation in the
+because the grouping is the same across all calculations.  You can see this
+clearly in the [`colSums` based group slope calculation in the
 appendix](#g_sum_col).
 
 When we compare all the previous implementations of the group slope
@@ -1181,10 +1181,10 @@ Even though `rowsum` was the fastest group sum implementation, it is the
 slowest of the base options outside of `split/vapply` because none of the
 computation components other than the re-ordering can be re-used.  `colSums`
 does pretty well and has the advantage of not suffering from the precision
-issues of `cumsum-1`[^cumsum-1].  `cumsum-2`[^cumsum-2] might be the
-best bet of the "base" solutions as it is only slightly slower than `colSums`
-method, but should scale better if there are some groups that are much larger
-than most.
+issues of `cumsum-1`[^cumsum-1], and additionally of naturally handling NA and
+non-finite values.  `cumsum-2`[^cumsum-2] might be the best bet of the "base"
+solutions as it is only slightly slower than `colSums` method, but should scale
+better if there are some groups that are much larger than most[^na-inf].
 
 `data.table` gets pretty close to the C implementation, but only in the
 reformulated form which comes [with challenging precision issues][200].
@@ -1200,13 +1200,12 @@ reformulated form which comes [with challenging precision issues][200].
 />
 </a>
 
-Phew, finally done.  I never imagined this whole thing would get so out of hand
-when I set off to do some silly benchmarks against `data.table`. I learned way
-more than I bargained for, and come away from the whole thing with a renewed
-admiration for what R does: it provides near-statically-compiled
-performance[^near-statically] in an interpreted language right out of the box.
-It's not always easy to achieve this, but in many cases common in data science
-it is possible with a little thought and care.
+Phew, finally done.  I never imagined how out of hand some silly benchmarks
+against `data.table` would get. I learned way more than I bargained for, and
+come away from the whole thing with a renewed admiration for what R does: it
+can often provide near-statically-compiled performance in an interpreted
+language right out of the box[^near-statically].  It's not always easy to
+achieve this, but in many cases it is possible with a little thought and care.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -1225,8 +1224,11 @@ thanks to [generous people and organizations][270] that have made it possible.
   and [`rayshader`][290][^rayshader-mostly] respectively with which I made the
   `colSums` group sum animation frames, and the FFmpeg team for [FFmpeg][270]
   with which I stitched the frames into [the video][320].
+* [Matt Dowle][201] and the other [`data.table` authors][204] for contributing
+  the radix sort to R without which none of the fast group statistic methods
+  would be fast.
 * [Oleg Sklyar][123], [Dirk Eddelbuettel][122], [Romain François][121], etal. for
-  [`inline`][] for easy integration of C code into ad-hoc R functions.
+  [`inline`][410] for easy integration of C code into ad-hoc R functions.
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with
   which I made many the plots in this post.
 * [Simon Garnier][350] etal. for [`viridisLite`][370], and by extension the
@@ -1238,6 +1240,59 @@ thanks to [generous people and organizations][270] that have made it possible.
 
 * [Hydra With Fedora(s)][52], by [Larry Wentzel][190], under CC BY-NC 2.0,
   haberdashery and haberdasher removed.
+
+## Session Info
+
+```{r eval=FALSE}
+sessionInfo()
+```
+```
+R version 3.6.0 (2019-04-26)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] data.table_1.12.2 gganimate_1.0.3   ggplot2_3.2.0     rayshader_0.11.5 
+
+loaded via a namespace (and not attached):
+ [1] rgl_0.100.19            Rcpp_1.0.1              prettyunits_1.0.2      
+ [4] png_0.1-7               ps_1.3.0                assertthat_0.2.1       
+ [7] rprojroot_1.3-2         digest_0.6.19           foreach_1.4.4          
+[10] mime_0.7                R6_2.4.0                imager_0.41.2          
+[13] tiff_0.1-5              plyr_1.8.4              backports_1.1.4        
+[16] evaluate_0.14           blogdown_0.12           pillar_1.4.1           
+[19] rlang_0.4.0             progress_1.2.2          lazyeval_0.2.2         
+[22] miniUI_0.1.1.1          rstudioapi_0.10         callr_3.2.0            
+[25] bmp_0.3                 rmarkdown_1.12          desc_1.2.0             
+[28] devtools_2.0.2          webshot_0.5.1           servr_0.13             
+[31] stringr_1.4.0           htmlwidgets_1.3         igraph_1.2.4.1         
+[34] munsell_0.5.0           shiny_1.3.2             compiler_3.6.0         
+[37] httpuv_1.5.1            xfun_0.8                pkgconfig_2.0.2        
+[40] pkgbuild_1.0.3          htmltools_0.3.6         readbitmap_0.1.5       
+[43] tidyselect_0.2.5        tibble_2.1.3            bookdown_0.10          
+[46] codetools_0.2-16        crayon_1.3.4            dplyr_0.8.3            
+[49] withr_2.1.2             later_0.8.0             grid_3.6.0             
+[52] xtable_1.8-4            jsonlite_1.6            gtable_0.3.0           
+[55] magrittr_1.5            scales_1.0.0            cli_1.1.0              
+[58] stringi_1.4.3           farver_1.1.0            fs_1.3.1               
+[61] promises_1.0.1          remotes_2.0.4           doParallel_1.0.14      
+[64] testthat_2.1.1          iterators_1.0.10        tools_3.6.0            
+[67] manipulateWidget_0.10.0 glue_1.3.1              tweenr_1.0.1           
+[70] purrr_0.3.2             hms_0.4.2               crosstalk_1.0.0        
+[73] jpeg_0.1-8              processx_3.3.1          pkgload_1.0.2          
+[76] parallel_3.6.0          colorspace_1.4-1        sessioninfo_1.1.1      
+[79] memoise_1.1.0           knitr_1.23              usethis_1.5.0          
+```
 
 ## Data
 
@@ -1542,13 +1597,9 @@ g_slope_C <- function(x, y, group) {
   and to re-use the ordering data when summarizing multiple variables.
 [^colsums-breakup]: I implemented a test version to test feasibility and it had
   comparable performance
-[^c-times]: Timing ordering and running `og_sum_C` separately versus together
-  produces slightly different times, likely because by running the pieces
-  separately it is possible to side-step a garbage collection event.  The
-  timings in the plot are from running things together, and subtracting out the
-  sorting / rle times.
-[^near-static]: I consider ~3x close given that typically differences between
-  statically compiled and interpreted coder are more on the order of ~10-100x.
+[^near-statically]: I consider ~3x close given that typically differences
+  between statically compiled and interpreted coder are more on the order of
+  ~10-100x.
 [^driven-snow]: This is not strictly true as the ordering is done via a calls to
   `order` and `[`, although for those almost all the computations are done via
   statically compiled code.
@@ -1576,6 +1627,8 @@ g_slope_C <- function(x, y, group) {
   my own half-baked 3D implementation.  I've [recorded the code][340] for the
   curious, but be prepared to recoil in horror.  For an explanation of how the
   3D rendering works see the [Stereoscopic post][330].
+[^na-inf]: Note we'll really need to use the more complex and probably slightly
+  slower [version that handles NAs and non-finite values][420].
 
 [100]: /tags/hydra/
 [110]: /2019/06/10/base-vs-data-table/#group-sums
@@ -1617,3 +1670,8 @@ Attribution-NonCommercial 2.0 Generic (CC BY-NC 2.0)
 [380]: http://colorbrewer2.org/#type=qualitative&scheme=Set2&n=3
 [390]: http://www.personal.psu.edu/cab38/
 [400]: https://www.axismaps.com/
+[410]: https://github.com/eddelbuettel/inline
+
+[201]: https://github.com/mattdowle
+[204]: https://cloud.r-project.org/web/packages/data.table/
+[420]: /2019/06/10/base-vs-data-table/#cumulative-group-sum-with-na-and-inf
