@@ -356,9 +356,9 @@ cd /Volumes/PERSONAL/repos/website &&
   rm static/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/*.png &&
   rm public/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/*.png &&
   cp ~/Downloads/colsums2/*.png ~/Downloads/colsums-flip-stage &&
-  cp ~/Downloads/colsums-3d-start/a3d-img-00{26,34,42}.png \
+  cp ~/Downloads/colsums-3d-start/a3d-img-00{26,42}.png \
     ~/Downloads/colsums-flip-stage &&
-  cp ~/Downloads/colsums-3d-end/z3d-img-00{08,16,25}.png \
+  cp ~/Downloads/colsums-3d-end/z3d-img-00{08,25}.png \
     ~/Downloads/colsums-flip-stage
 "
 flip.tmp <- '~/Downloads/colsums-flip-stage'

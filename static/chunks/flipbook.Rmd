@@ -29,6 +29,9 @@ Images must be in `img_dir` and be named in this format:
 
 img-001.png
 
+Failure to set the folder or file names properly will result in errors like
+"NS_ERROR_NOT_AVAILABLE" (firefox).
+
 First file is 001, and its naturalWidth and naturalHeight will set the size of
 the HTML canvas element the images are drawn in.
 
