@@ -422,6 +422,8 @@ var end_delay = 1;
 ```{r child='../../static/chunks/flipbook.Rmd'}
 ```
 
+You can also view the flipbook [as a video][320] if you prefer.
+
 The embedding step warrants additional explanation.  The trick is to generate a
 vector that maps the positions from our irregular vector into the regular
 matrix.  There are several ways we can do this, but the one that we'll use today
