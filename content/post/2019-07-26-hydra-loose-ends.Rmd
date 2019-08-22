@@ -1,7 +1,7 @@
 ---
 title: "Hydra Chronicles Part V: Loose Ends"
 author: ~
-date: '2019-07-26'
+date: '2019-08-22'
 slug: hydra-loose-ends
 categories: [r]
 tags: [group-stats,optim,hydra]
@@ -1231,6 +1231,9 @@ thanks to [generous people and organizations][270] that have made it possible.
   [`inline`][410] for easy integration of C code into ad-hoc R functions.
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with
   which I made many the plots in this post.
+* Simon Urbanek for the [PNG
+  package](https://cran.r-project.org/web/packages/png/index.html) which I used
+  in the process of manipulating the animation frames.
 * [Simon Garnier][350] etal. for [`viridisLite`][370], and by extension the
   [`matplotlib`][360] team from which it was ported.
 * [Cynthia Brewer][390] for color brewer palettes, [one of which][380] I used in
