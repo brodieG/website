@@ -39,8 +39,6 @@ compute_layers <- function(map, thresh=diff(range(map)) / 50) {
     dim.x <- ((x - 1L) %/% mult) * mult + 1L
     dim.y <- ((y - 1L) %/% mult) * mult + 1L
 
-    writeLines(sprintf("%d %d %d", dim.x, dim.y, mult))
-
     if(!dim.x || !dim.y) stop("bad dims")
 
     diags[[i]] <- make_diags(
@@ -85,4 +83,42 @@ compute_layers <- function(map, thresh=diff(range(map)) / 50) {
   }
   diags
 }
-xx <- compute_layers(elmat1)
+xx <- compute_layers(elmat1, thresh=5)
+
+dev.close()
+dev.new()
+old.par <- par(mfrow=c(4,3), mar=numeric(4))
+# lapply(xx, function(x) {
+#   res <- x[['draw']]
+#   dim(res) <- dim(x[['id']])
+#   plot(as.raster(res))
+# })
+lapply(xx, function(x) {
+  plot_new(0, 1)
+  with(x,
+    rect(
+      (x1 - 1) / (nrow(elmat1) - 1),
+      (y2 - 1) / (ncol(elmat1) - 1),
+      (x2 - 1) / (nrow(elmat1) - 1),
+      (y1 - 1) / (ncol(elmat1) - 1),
+      col=ifelse(draw, 'black', 'white'),
+      border=ifelse(draw, 'black', 'white')
+    )
+  )
+})
+
+## Rescale data to a range from 0 to `range` where `range` in (0,1]
+rescale <- function(x, range=1, center=0.5)
+  ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
+   (1 - range) * center
+
+## Prepare a plot with a particular aspect ratio
+plot_new <- function(
+  x, y, xlim=c(0,1), ylim=c(0,1),
+  par.args=list(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
+) {
+  if(length(par.args)) do.call(par, par.args)
+  plot.new()
+  plot.window(
+    xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
+) }
