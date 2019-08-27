@@ -13,14 +13,16 @@ make_diags <- function(splits.x, splits.y, map, last.id=0, thresh=Inf) {
 
   within(
     list(), {
-      x1 <- splits.x[c(x.raw[-nrow(x.raw), -ncol(x.raw)])]
-      y1 <- splits.y[c(y.raw[-ncol(x.raw), -ncol(y.raw)])]
+      col <- y.raw[-ncol(x.raw), -ncol(y.raw)]
+      row <- x.raw[-nrow(x.raw), -ncol(x.raw)]
+      x1 <- splits.x[c(row)]
+      y1 <- splits.y[c(col)]
       x2 <- splits.x[c(x.raw[-1, -1])]
       y2 <- splits.y[c(y.raw[-1, -1])]
       z1 <- map[cbind(x1, y1)]
       z2 <- map[cbind(x2, y2)]
       zu <- (z1 + z2) / 2
-      zE <- zu - map[cbind(round((x1 + x2) / 2), round((y1 + y2) / 2))]
+      zE <- zu - map[cbind((x1 + x2) / 2, (y1 + y2) / 2)]
       id <- matrix(seq_along(x1), length(splits.x) - 1L, length(splits.y) - 1L)
       fail <- abs(zE) > thresh
       draw <- fail
@@ -34,58 +36,50 @@ compute_layers <- function(map, thresh=diff(range(map)) / 50) {
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^(i - 1))
-    dim.x.prev <- dim.x
-    dim.y.prev <- dim.y
-    dim.x <- ((x - 1L) %/% mult) * mult + 1L
-    dim.y <- ((y - 1L) %/% mult) * mult + 1L
+    dim.x <- ((x - 1L) %/% mult)
+    dim.y <- ((y - 1L) %/% mult)
 
     if(!dim.x || !dim.y) stop("bad dims")
 
     diags[[i]] <- make_diags(
-      seq(1L, to=dim.x, by=mult),
-      seq(1L, to=dim.y, by=mult),
+      seq(1L, length.out=dim.x + 1L, by=mult),
+      seq(1L, length.out=dim.y + 1L, by=mult),
       map=map, thresh=thresh
     )
     if(i == 1L) next  # no children when i == 1
 
-    # Map to previously computed child tiles.  Recall that there is one fewer
-    # tile than there are "points" in each dimension
+    # Only failures that don't overlap with child failures should be drawn,
+    # So, did any children fail?  We only ned to check on child per parent as by
+    # design will set all siblings to fail.
 
-    dim.x.child <- (dim.x - 1L)/(mult / 2L)
-    dim.y.child <- (dim.y - 1L)/(mult / 2L)
-    dim.child <- c(dim.x.child, dim.y.child)
-
-    # @antoine_fabri
-
-    par.ids <- diags[[i]][['id']]
-    par.child.ids <- par.ids[
-      rep(seq_len(nrow(par.ids)), each=2L),
-      rep(seq_len(ncol(par.ids)), each=2L)
+    child.id <- diags[[i - 1]][['id']][seq_len(dim.x - 1), seq_len(dim.y - 1)]
+    child.id.seq <- seq_along(child.id)
+    child.fail <- diags[[i - 1]][['fail']][
+      child.id[child.id.seq %% 2 & col(child.id) %% 2]
     ]
-    child.ids <- diags[[i - 1]][['id']][
-      seq(1L, to=(dim.x - 1L)/(mult / 2L), by=1L),
-      seq(1L, to=(dim.y - 1L)/(mult / 2L), by=1L)
-    ]
-    # Propagate error by marking every child but the one with the error as a
-    # drawable child.  Then parent level tiles that themselves exceed threhsold
-    # are marked as drawable.  If we marked every child as drawable including the
-    # one that spawned the error we would overdraw.
+    diags[[i]][['draw']][child.fail] <- FALSE
 
-    child.fail <- diags[[i - 1L]][['fail']][child.ids]
-    par.bad <- as.integer(
-      names(which(rowsum(child.fail+0L, par.child.ids) > 1L))
-    )
-    par.bad.children <- child.ids[par.child.ids %in% par.bad]
+    # If a cell is designated to be drawn, then it siblings should be drawn too;
+    # we need to figure out how to do this with an error propagation metric
+    # instead.
 
-    diags[[i - 1L]][['draw']][par.bad.children] <-
-      !diags[[i - 1L]][['fail']][par.bad.children]
-    diags[[i]][par.bad][['fail']] <- TRUE
+    diags[[i]][['draw']] <- with(diags[[i]], {
+      row.odd <- as.logical(row %% 2)
+      col.odd <- as.logical(col %% 2)
+      draw[id[(draw & row.odd)] + 1L] <- TRUE
+      draw[id[(draw & !row.odd)] - 1L] <- TRUE
+      draw[id[(draw & col.odd)] + nrow(id)] <- TRUE
+      draw[id[(draw & !col.odd)] - nrow(id)] <- TRUE
+      draw
+    })
   }
   diags
 }
-xx <- compute_layers(elmat1, thresh=5)
+# map <- elmat1
+map <- volcano
+xx <- compute_layers(map, thresh=2)
 
-dev.close()
+dev.off()
 dev.new()
 old.par <- par(mfrow=c(4,3), mar=numeric(4))
 # lapply(xx, function(x) {
@@ -97,10 +91,10 @@ lapply(xx, function(x) {
   plot_new(0, 1)
   with(x,
     rect(
-      (x1 - 1) / (nrow(elmat1) - 1),
-      (y2 - 1) / (ncol(elmat1) - 1),
-      (x2 - 1) / (nrow(elmat1) - 1),
-      (y1 - 1) / (ncol(elmat1) - 1),
+      (x1 - 1) / (nrow(map) - 1),
+      (y2 - 1) / (ncol(map) - 1),
+      (x2 - 1) / (nrow(map) - 1),
+      (y1 - 1) / (ncol(map) - 1),
       col=ifelse(draw, 'black', 'white'),
       border=ifelse(draw, 'black', 'white')
     )
