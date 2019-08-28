@@ -54,10 +54,10 @@ Anyway".  Well, it's more of a salvage job of tidbits from earlier posts that
 ended up on the cutting room floor that I couldn't quite bring myself to trash.
 
 One of our early "discoveries" about group statistics is that if we can compute
-the group sum quickly, we use it to compute many other group statistics quickly
-as well.  In this post we'll go over a few of the other group sum strategies I
-tested out before I settled on the [`cumsum` based approach][110] we used to
-"beat" `data.table`.
+the group sum quickly, we can use it to compute many other group statistics
+quickly as well.  In this post we'll go over a few of the other group sum
+strategies I tested out before I settled on the [`cumsum` based approach][110]
+we used to "beat" `data.table`.
 
 # rowsum
 

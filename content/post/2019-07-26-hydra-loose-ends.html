@@ -35,10 +35,10 @@ PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
 Anyway”. Well, it’s more of a salvage job of tidbits from earlier posts that
 ended up on the cutting room floor that I couldn’t quite bring myself to trash.</p>
 <p>One of our early “discoveries” about group statistics is that if we can compute
-the group sum quickly, we use it to compute many other group statistics quickly
-as well. In this post we’ll go over a few of the other group sum strategies I
-tested out before I settled on the <a href="/2019/06/10/base-vs-data-table/#group-sums"><code>cumsum</code> based approach</a> we used to
-“beat” <code>data.table</code>.</p>
+the group sum quickly, we can use it to compute many other group statistics
+quickly as well. In this post we’ll go over a few of the other group sum
+strategies I tested out before I settled on the <a href="/2019/06/10/base-vs-data-table/#group-sums"><code>cumsum</code> based approach</a>
+we used to “beat” <code>data.table</code>.</p>
 </div>
 <div id="rowsum" class="section level1">
 <h1>rowsum</h1>
