@@ -10,7 +10,6 @@ elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 make_diags <- function(splits.x, splits.y, map, last.id=0, thresh=Inf) {
   x.raw <- .row(c(length(splits.x), length(splits.y)))
   y.raw <- .col(c(length(splits.x), length(splits.y)))
-
   within(
     list(), {
       col <- y.raw[-ncol(x.raw), -ncol(y.raw)]
@@ -21,103 +20,113 @@ make_diags <- function(splits.x, splits.y, map, last.id=0, thresh=Inf) {
       y2 <- splits.y[c(y.raw[-1, -1])]
       z1 <- map[cbind(x1, y1)]
       z2 <- map[cbind(x2, y2)]
-      zu <- (z1 + z2) / 2
-      zE <- zu - map[cbind((x1 + x2) / 2, (y1 + y2) / 2)]
-      id <- matrix(seq_along(x1), length(splits.x) - 1L, length(splits.y) - 1L)
-      fail <- abs(zE) > thresh
+      mid.coord <- cbind((x1 + x2) / 2, (y1 + y2) / 2)
+      zE <- (z1 + z2) / 2 - map[mid.coord]
 } ) }
-compute_layers <- function(map, thresh=diff(range(map)) / 50) {
+compute_error <- function(map) {
   dim.x <- x <- nrow(map)
   dim.y <- y <- ncol(map)
 
   layers <- floor(min(log2(c(x, y))))
   diags <- vector("list", layers)
 
+  errors <- array(0, dim=dim(map))
+
   for(i in seq_len(layers)) {
-    mult <- as.integer(2^(i - 1))
+    mult <- as.integer(2^i)
     dim.x <- ((x - 1L) %/% mult)
     dim.y <- ((y - 1L) %/% mult)
     seq.x <- seq(1L, length.out=dim.x + 1L, by=mult)
     seq.y <- seq(1L, length.out=dim.y + 1L, by=mult)
 
-    diags[[i]] <- make_diags(seq.x, seq.y, map=map, thresh=thresh)
+    x.id <- .row(c(length(seq.x), length(seq.y)))
+    y.id <- .col(c(length(seq.x), length(seq.y)))
+    row <- x.id[-nrow(x.id), -ncol(x.id)]
+    col <- y.id[-ncol(y.id), -ncol(y.id)]
+    x1 <- seq.x[c(row)]
+    y1 <- seq.y[c(col)]
+    xu <- x1 + (mult / 2L)
+    x2 <- seq.x[c(x.id[-1, -1])]
+    y2 <- seq.y[c(y.id[-1, -1])]
+    yu <- y1 + (mult / 2L)
 
-    # Only failures that don't overlap with child failures should be drawn,
-    # So, did any children fail?  We only ned to check on child per parent as by
-    # design will set all siblings to fail.
+    top.id <- cbind(xu, y1)
+    top.zE <- (map[cbind(x1, y1)] + map[cbind(x2, y1)]) / 2L - map[top.id]
+    errors[top.id] <- top.zE
 
-    # Get ids of every child corresponding to a failed tile.
+    left.id <- cbind(x1, yu)
+    left.zE <- (map[cbind(x1, y1)] + map[cbind(x1, y2)]) / 2L - map[left.id]
+    errors[left.id] <- left.zE
 
-    child.ids <- diags[[i - 1]][['id']]
-    child.fail <- if(i > 1L) {
-      child.sample <- child.ids[seq_len(dim.x) * 2L, seq_len(dim.y) * 2L]
-      diags[[i - 1]][['fail']][child.id.sample]
-    } else {
-      logical(length(diags[[i]][['id']]))  # no children at first failure
-    }
-    # If a cell fails a test, then we must draw the children
-
-    diags[[i]][['fail']]
-
-    # is designated to be drawn, then it siblings should be drawn too;
-    # we need to figure out how to do this with an error propagation metric
-    # instead.
-
-    diags[[i]][['fail']] <- with(diags[[i]], {
-      row.base <- (row[fail] - 1L) * 2L
-      col.base <- (col[fail] - 1L) * 2L
-      child.coord <-
-        cbind(c(row.base + 1L, row.base + 2L), c(col.base + 1L, col.base + 2L))
-      diags[[i - 1L]][['draw']][child.coord] <-
-        diags[[i - 1L]][['draw']][child.coord]
-
-      row.odd <- row %% 2 & TRUE
-      col.odd <- col %% 2 & TRUE
-      fail[id[(fail & row.odd & row != nrow(row))] + 1L] <- TRUE
-      fail[id[(fail & !row.odd & row != 1L)] - 1L] <- TRUE
-      fail[id[(fail & col.odd & col != ncol(col))] + nrow(id)] <- TRUE
-      fail[id[(fail & !col.odd & col != 1L)] - nrow(id)] <- TRUE
-      fail
-    })
-    diags[[i]] <- within(diags[[i]], draw <- fail & !child.fail)
+    diag.id <- cbind(xu, yu)
+    diag.zE <- (map[cbind(x1, y1)] + map[cbind(x2, y2)]) / 2L - map[diag.id]
+    errors[diag.id] <- diag.zE
   }
-  diags
+  errors
 }
-map <- elmat1
-map <- volcano
-xx <- compute_layers(map, thresh=5)
+errors <- compute_error(map)
+err.ind <- which(errors > 20, arr.ind=TRUE)
 
+# For each error, we need to draw all the corresponding triangles.  This means
+# we need to figure out the size of the "diagonal", and whether we're dealing
+# with a diamond or square.
+
+
+# we need to compute even level odd level tiles.  For odd tiles (1 index), we
+# check the actual diagonal, i.e. tile is square.  For even tiles, we treat the
+# tile as a rhombus so the diagonal is actually parallel to the x axis (or y
+# axis depending on how you draw it)?
+
+
+
+# map <- elmat1
+map <- volcano
+system.time(xx <- compute_layers(map, thresh=1))
+plot_mesh(xx, facet=FALSE)
 # old.par <- par(mfrow=c(3,2), mar=numeric(4))
 # lapply(xx, function(x) {
 #   res <- x[['draw']]
 #   dim(res) <- dim(x[['id']])
 #   plot(as.raster(res))
 # })
-dev.off()
-dev.new()
-rows <- floor(sqrt(length(xx)))
-cols <- ceiling(length(xx) / rows)
-old.par <- par(mfrow=c(rows, cols), mar=numeric(4))
-#par(mai=numeric(4))
-invisible(
-  lapply(rev(xx), function(x) {
-  plot_new(0, 1)
-  rect(0, 0, 1, 1, col='green', border='green')
-    x.new <- lapply(x, '[', x[['draw']])
-    with(x.new,
-      rect(
-        (x1 - 1) / (nrow(map) - 1),
-        (y2 - 1) / (ncol(map) - 1),
-        (x2 - 1) / (nrow(map) - 1),
-        (y1 - 1) / (ncol(map) - 1),
-        # col = gray((zu - min(map))/diff(range(map))),
-        border='black'
-        # border = gray((zu - min(map))/diff(range(map)))
-        # col=ifelse(draw, gray((zu - min(map))/diff(range(map))), 'green'),
-        # border=ifelse(draw, gray((zu - min(map))/diff(range(map))), 'green')
+
+plot_mesh <- function(tiles, facet=FALSE) {
+  dev.off()
+  dev.new()
+  if(facet) {
+    rows <- floor(sqrt(length(xx)))
+    cols <- ceiling(length(xx) / rows)
+    old.par <- par(mfrow=c(rows, cols), mar=numeric(4))
+  } else {
+    par(mai=numeric(4))
+    plot_new(0, 1)
+    rect(0, 0, 1, 1, col='green', border='green')
+  }
+  lapply(
+    rev(tiles),
+    function(x) {
+      if(facet) {
+        plot_new(0, 1)
+        rect(0, 0, 1, 1, col='green', border='green')
+      }
+      x.new <- lapply(x, '[', x[['draw']])
+      with(x.new,
+        rect(
+          (x1 - 1) / (nrow(map) - 1),
+          (y2 - 1) / (ncol(map) - 1),
+          (x2 - 1) / (nrow(map) - 1),
+          (y1 - 1) / (ncol(map) - 1),
+          col = '#FFFFFF66',
+          # col = gray((zu - min(map))/diff(range(map))),
+          border='black'
+          # border = gray((zu - min(map))/diff(range(map)))
+          # col=ifelse(draw, gray((zu - min(map))/diff(range(map))), 'green'),
+          # border=ifelse(draw, gray((zu - min(map))/diff(range(map))), 'green')
+        )
       )
-    )
-}) )
+  })
+}
+
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
