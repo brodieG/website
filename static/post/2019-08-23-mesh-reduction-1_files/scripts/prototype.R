@@ -23,6 +23,27 @@ make_diags <- function(splits.x, splits.y, map, last.id=0, thresh=Inf) {
       mid.coord <- cbind((x1 + x2) / 2, (y1 + y2) / 2)
       zE <- (z1 + z2) / 2 - map[mid.coord]
 } ) }
+split_tile <- function(x1, x2, y1, y2, xu, yu) {
+  # Organize our data into vertices of the tile going in clockwise order
+
+  idx.base <- rep(1:4, each=2L)
+  idx <- rep(5L, 12L)
+  idx[-(seq_len(4) * 3L)] <- c(idx.base[-1L], idx.base[1L])
+  vert.dat <- array(
+    c(
+      list(x1, x2, x2, x1, xu)[idx],
+      list(y1, y1, y2, y2, yu)[idx]
+    ),
+    c(3, 4, 2)  # 3 verts/triangle, 4 triangles/tile, 2 coords/vert
+  )
+  # Append the triangles coords of each triangle to each other to
+  # simplify the data structure
+
+  array(
+    lapply(asplit(vert.dat, c(1,3)), unlist),
+    c(3, 2), dimnames=list(vertex=1:3, dim=c('x', 'y'))
+  )
+}
 compute_error <- function(map) {
   dim.x <- x <- nrow(map)
   dim.y <- y <- ncol(map)
@@ -45,10 +66,11 @@ compute_error <- function(map) {
     col <- y.id[-ncol(y.id), -ncol(y.id)]
     x1 <- seq.x[c(row)]
     y1 <- seq.y[c(col)]
-    xu <- x1 + (mult / 2L)
+
+    xu <- x1 + (mult %/% 2L)
     x2 <- seq.x[c(x.id[-1, -1])]
     y2 <- seq.y[c(y.id[-1, -1])]
-    yu <- y1 + (mult / 2L)
+    yu <- y1 + (mult %/% 2L)
 
     top.id <- cbind(xu, y1)
     top.zE <- (map[cbind(x1, y1)] + map[cbind(x2, y1)]) / 2L - map[top.id]
@@ -61,6 +83,9 @@ compute_error <- function(map) {
     diag.id <- cbind(xu, yu)
     diag.zE <- (map[cbind(x1, y1)] + map[cbind(x2, y2)]) / 2L - map[diag.id]
     errors[diag.id] <- diag.zE
+
+
+
   }
   errors
 }
@@ -77,6 +102,108 @@ err.ind <- which(errors > 20, arr.ind=TRUE)
 # tile as a rhombus so the diagonal is actually parallel to the x axis (or y
 # axis depending on how you draw it)?
 
+# Try a direct implementation
+
+compute_errors <- function(terrain) {
+  errors <- array(0, dim(terrain));
+  numSmallestTriangles = prod(dim(terrain));
+  numTriangles = numSmallestTriangles * 2 - 2;
+  lastLevelIndex = numTriangles - numSmallestTriangles;
+  gridSize = nrow(terrain)
+  tileSize = gridSize - 1L
+
+  # iterate over all possible triangles, starting from the smallest level
+  for (i in (numTriangles - 1):0) {
+
+    # get triangle coordinates from its index in an implicit binary tree
+    id = i + 2;
+    ax = ay = bx = by = cx = cy = 0;
+    if (id %% 2L) {
+      bx = by = cx = tileSize; # bottom-left triangle
+    } else {
+      ax = ay = cy = tileSize; # top-right triangle
+    }
+    while (((id <- id %/% 2L)) > 1) {
+      mx = (ax + bx) %/% 2L;
+      my = (ay + by) %/% 2L;
+
+      if (id %% 2L) { # left half
+        bx = ax; by = ay;
+        ax = cx; ay = cy;
+      } else {        # right half
+        ax = bx; ay = by;
+        bx = cx; by = cy;
+      }
+      cx = mx; cy = my;
+    }
+    # calculate error in the middle of the long edge of the triangle
+
+    interpolatedHeight = (
+      terrain[ay * gridSize + ax + 1L] + terrain[by * gridSize + bx + 1L]
+    ) / 2;
+    middleIndex = ((ay + by) %/% 2L) * gridSize + ((ax + bx) %/% 2L) + 1L;
+    middleError = abs(interpolatedHeight - terrain[middleIndex]);
+
+    if (i >= lastLevelIndex) { # smallest triangles
+      errors[middleIndex] = middleError;
+    } else { # bigger triangles; accumulate error with children
+      leftChildError = errors[
+        ((ay + cy) %/% 2L) * gridSize + ((ax + cx) %/% 2L) + 1L
+      ];
+      rightChildError = errors[
+        ((by + cy) %/% 2L) * gridSize + ((bx + cx) %/% 2L) + 1L
+      ];
+      errors[middleIndex] = max(
+        c(errors[middleIndex], middleError, leftChildError, rightChildError)
+      );
+    }
+  }
+  errors;
+}
+map <- elmat1[1:257,1:257]
+system.time(errors <- compute_errors(map))
+
+extract_geometry <- function(errors, maxError) {
+  i = 0;
+  indices = integer(prod(dim(errors) - 1L))  # overallocate to max num triangles
+  gridSize = nrow(errors)
+  tileSize = gridSize - 1L
+
+  processTriangle <- function(ax, ay, bx, by, cx, cy) {
+    # middle of the long edge
+    mx = (ax + bx) %/% 2L;
+    my = (ay + by) %/% 2L;
+
+    if (
+      abs(ax - cx) + abs(ay - cy) > 1 &&
+      errors[my * gridSize + mx + 1L] > maxError
+    ) {
+      # triangle doesn't approximate the surface well enough; split it into two 
+      processTriangle(cx, cy, ax, ay, mx, my);
+      processTriangle(bx, by, cx, cy, mx, my);
+
+    } else {
+      ## add a triangle to the final mesh (note this is +1 the original)
+      indices[(i <<- i + 1)] <<- ay * gridSize + ax;
+      indices[(i <<- i + 1)] <<- by * gridSize + bx;
+      indices[(i <<- i + 1)] <<- cy * gridSize + cx;
+    }
+  }
+  processTriangle(0, 0, tileSize, tileSize, tileSize, 0);
+  processTriangle(tileSize, tileSize, 0, 0, 0, tileSize);
+
+  indices[seq_len(i)];
+}
+system.time({
+  raw <- extract_geometry(errors, diff(range(map)) / 25)
+  xs <- matrix(raw %/% nrow(errors), 3)
+  ys <- matrix(raw %% nrow(errors), 3)
+})
+plot_new(xs, ys)
+polygon(
+  rescale(rbind(xs, NA)), rescale(rbind(ys, NA)), 
+  col='#DDDDDD', border='#444444'
+)
 
 
 # map <- elmat1
@@ -143,3 +270,4 @@ plot_new <- function(
   plot.window(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
+
