@@ -45,52 +45,122 @@ split_tile <- function(x1, x2, y1, y2, xu, yu) {
   )
 }
 compute_error <- function(map) {
-  dim.x <- x <- nrow(map)
-  dim.y <- y <- ncol(map)
+  x <- nrow(map)
+  y <- ncol(map)
 
   layers <- floor(min(log2(c(x, y))))
   diags <- vector("list", layers)
 
+  .get_err <- function(ids.mid) {
+    ids.start <- ids.mid - (mult %/% 2L)
+    ids.end <- ids.start + mult
+    z <- map[ids.mid]
+    z.mid <- (z[ids.start] + z[ids.end]) / 2L
+    abs(z.mid - map[ids.mid])
+  }
+  .get_child_err <- function(ids.mid, type) {
+    if(identical(type, 'square')) {
+      col.off <- c(-1L, 1L, 1L, -1L)
+      row.off <- c(-1L, -1L, 1L, 1L)
+    } else if (identical(type, 'diamond')) {
+      col.off <- c(0L, 1L, 0L, -1L)
+      row.off <- c(-1L, 0L, 1L, 0L)
+    } else stop("bad input")
+    row.off <- row.off * mult %/% 2L
+    col.off <- col.off * x * mult %/% 2L
+
+    child.ids <- lapply(
+      seq_along(row.off),
+      function(i) ids.mid + (row.off[i] + col.off[i])
+    )
+    if(identical(type, 'square')) {
+      # deal with oob children that may occur in square mode.  b/c of wrapping
+      # indices this is a bit of a PITA.  Would be easier with matrix index.
+      # Ids are expected to be in vertical then horizontal order.
+      cells <- (dim.x - 1L) * (dim.y)
+      col.1 <- seq_len(dim.x - 1L)
+      col.n <- seq(cells - dim.x, cells, by=1L)
+      row.1 <- seq(cells + 1L, 2 * cells - dim.x + 1L, by=dim.x)
+      row.n <- seq(cells + dim.x - 1L, 2 * cells, by=dim.x)
+      child.ids[[1]][c(row.1, col.1)] <- NA
+      child.ids[[2]][c(row.1, col.n)] <- NA
+      child.ids[[3]][c(row.n, col.n)] <- NA
+      child.ids[[4]][c(row.n, col.1)] <- NA
+    }
+    lapply(child.ids, function(ids) errors[ids])
+  }
   errors <- array(0, dim=dim(map))
+
+  # at each interval range, we want to:
+  # * compute the tiling in squares,
+  # * then in diamonds
+  # * compute errors at each of the midpoints of the size
+  # * retrieve the four errors surrounding each midpoint
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
-    dim.x <- ((x - 1L) %/% mult)
-    dim.y <- ((y - 1L) %/% mult)
-    seq.x <- seq(1L, length.out=dim.x + 1L, by=mult)
-    seq.y <- seq(1L, length.out=dim.y + 1L, by=mult)
+    dim.x <- ((x - 1L) %/% mult) + 1L
+    dim.y <- ((y - 1L) %/% mult) + 1L
 
-    x.id <- .row(c(length(seq.x), length(seq.y)))
-    y.id <- .col(c(length(seq.x), length(seq.y)))
-    row <- x.id[-nrow(x.id), -ncol(x.id)]
-    col <- y.id[-ncol(y.id), -ncol(y.id)]
-    x1 <- seq.x[c(row)]
-    y1 <- seq.y[c(col)]
+    # square - start with vertical errors with a vector of the linear indices
+    # into the error matrix.
+    #
+    # +-*-+   Stars are the points we want to compute the erors for, the long
+    # |\ /|   edges of the triangles.  Children will be on the diagonals.
+    # * X *
+    # |/ \|
+    # +-*-+
 
-    xu <- x1 + (mult %/% 2L)
-    x2 <- seq.x[c(x.id[-1, -1])]
-    y2 <- seq.y[c(y.id[-1, -1])]
-    yu <- y1 + (mult %/% 2L)
+    ids.raw <- rep(mult, (dim.x - 1L) * (dim.y))
+    ids.raw[1L] <- 1L
+    ids.raw[seq(dim.x, length.out=dim.y - 1L, by=dim.x - 1L)] <-
+      mult - 1L + (x - (dim.x - 1L) * mult + (x * mult %/% 2L))
 
-    top.id <- cbind(xu, y1)
-    top.zE <- (map[cbind(x1, y1)] + map[cbind(x2, y1)]) / 2L - map[top.id]
-    errors[top.id] <- top.zE
+    ids.v.start <- cumsum(ids.raw)
+    ids.v.mid <- ids.v.start + mult %/% 2L
+    ids.v.end <- ids.v.start + mult
+    err.v <- abs(map[ids.v.mid] - (map[ids.v.start] + map[ids.v.end]) / 2)
 
-    left.id <- cbind(x1, yu)
-    left.zE <- (map[cbind(x1, y1)] + map[cbind(x1, y2)]) / 2L - map[left.id]
-    errors[left.id] <- left.zE
+    ids.h.start <- c(matrix(ids.v.start, ncol=dim.x - 1L, byrow=TRUE))
+    ids.h.mid <- ids.h.start + (x * mult %/% 2L)
+    ids.h.end <- ids.h.start + (x * mult)
+    err.h <- abs(map[ids.h.mid] - (map[ids.h.start] + map[ids.h.end]) / 2)
 
-    diag.id <- cbind(xu, yu)
-    diag.zE <- (map[cbind(x1, y1)] + map[cbind(x2, y2)]) / 2L - map[diag.id]
-    errors[diag.id] <- diag.zE
+    ids.mid <- c(ids.v.mid, ids.h.mid)
+    z.err <- c(err.v, err.h)
 
+    errors.child <- .get_child_err(ids.mid, 'square')
+    errors[ids.mid] <- do.call(pmax, c(list(z.err), errors.child))
 
+    # Diamonds - sides are diagonals: imagine rotating the previous pictogram 45
+    # degrees.  One big thing though, we don't actually do the diamonds, we
+    # decompose them into the diagonals in the grid, which are their sides.
 
+    ids.tl <- ids.v.start[seq_len((dim.x - 2L) * (dim.y - 1L))]
+    ids.br <- ids.tl + (x * mult) + mult %/% 2L
+    ids.mid.tl <- (ids.tl + ids.br) %/% 2L
+    z.mid <- (map[ids.tl] + map[ids.br]) / 2L
+    err.tl <- abs(map[ids.mid.tl] - z.mid)
+
+    ids.tr <- ids.tl + x
+    ids.bl <- ids.tl + mult
+    z.mid <- (map[ids.tr] + map[ids.bl]) / 2L
+    ids.mid.tr <- (ids.tr + ids.bl) %/% 2L
+    err.tr <- abs(map[ids.mid.tr] - z.mid)
+
+    ids.mid <- c(ids.mid.tl, ids.mid.tr)
+    errors.child <- .get_child_err(ids.mid, 'diamond')
+    errors[ids.mid] <- do.call(pmax, c(list(z.err, errors.child)))
   }
   errors
 }
 errors <- compute_error(map)
 err.ind <- which(errors > 20, arr.ind=TRUE)
+
+
+compute_errors2 <- function(map) {
+
+}
 
 # For each error, we need to draw all the corresponding triangles.  This means
 # we need to figure out the size of the "diagonal", and whether we're dealing
@@ -116,18 +186,18 @@ compute_errors <- function(terrain) {
   for (i in (numTriangles - 1):0) {
 
     # get triangle coordinates from its index in an implicit binary tree
-    id = i + 2;
-    ax = ay = bx = by = cx = cy = 0;
-    if (id %% 2L) {
+    id = i + 2L;
+    ax = ay = bx = by = cx = cy = 0L;
+    if (bitwAnd(id, 1L)) {
       bx = by = cx = tileSize; # bottom-left triangle
     } else {
       ax = ay = cy = tileSize; # top-right triangle
     }
-    while (((id <- id %/% 2L)) > 1) {
-      mx = (ax + bx) %/% 2L;
-      my = (ay + by) %/% 2L;
+    while ((id <- bitwShiftR(id, 1L)) > 1L) {
+      mx = bitwShiftR(ax + bx, 1L)
+      my = bitwShiftR(ay + by, 1L)
 
-      if (id %% 2L) { # left half
+      if (bitwAnd(id, 1L)) { # left half
         bx = ax; by = ay;
         ax = cx; ay = cy;
       } else {        # right half
@@ -141,17 +211,18 @@ compute_errors <- function(terrain) {
     interpolatedHeight = (
       terrain[ay * gridSize + ax + 1L] + terrain[by * gridSize + bx + 1L]
     ) / 2;
-    middleIndex = ((ay + by) %/% 2L) * gridSize + ((ax + bx) %/% 2L) + 1L;
+    middleIndex =
+      bitwShiftR(ay + by, 1L) * gridSize + bitwShiftR(ax + bx, 1L) + 1L;
     middleError = abs(interpolatedHeight - terrain[middleIndex]);
 
     if (i >= lastLevelIndex) { # smallest triangles
       errors[middleIndex] = middleError;
     } else { # bigger triangles; accumulate error with children
       leftChildError = errors[
-        ((ay + cy) %/% 2L) * gridSize + ((ax + cx) %/% 2L) + 1L
+        bitwShiftR(ay + cy, 1L) * gridSize + bitwShiftR(ax + cx, 1L) + 1L
       ];
       rightChildError = errors[
-        ((by + cy) %/% 2L) * gridSize + ((bx + cx) %/% 2L) + 1L
+        bitwShiftR(by + cy, 1L) * gridSize + bitwShiftR(bx + cx, 1L) + 1L
       ];
       errors[middleIndex] = max(
         c(errors[middleIndex], middleError, leftChildError, rightChildError)
@@ -162,6 +233,7 @@ compute_errors <- function(terrain) {
 }
 map <- elmat1[1:257,1:257]
 system.time(errors <- compute_errors(map))
+treeprof(errors <- compute_errors(map))
 
 extract_geometry <- function(errors, maxError) {
   i = 0;
@@ -178,7 +250,7 @@ extract_geometry <- function(errors, maxError) {
       abs(ax - cx) + abs(ay - cy) > 1 &&
       errors[my * gridSize + mx + 1L] > maxError
     ) {
-      # triangle doesn't approximate the surface well enough; split it into two 
+      # triangle doesn't approximate the surface well enough; split it into two
       processTriangle(cx, cy, ax, ay, mx, my);
       processTriangle(bx, by, cx, cy, mx, my);
 
@@ -195,13 +267,13 @@ extract_geometry <- function(errors, maxError) {
   indices[seq_len(i)];
 }
 system.time({
-  raw <- extract_geometry(errors, diff(range(map)) / 25)
+  raw <- extract_geometry(errors, diff(range(map)) / 200)
   xs <- matrix(raw %/% nrow(errors), 3)
   ys <- matrix(raw %% nrow(errors), 3)
 })
 plot_new(xs, ys)
 polygon(
-  rescale(rbind(xs, NA)), rescale(rbind(ys, NA)), 
+  rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
   col='#DDDDDD', border='#444444'
 )
 
@@ -270,4 +342,20 @@ plot_new <- function(
   plot.window(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
+
+
+mx <- matrix(0, 1e3, 1e3)
+ids <- seq_len(nrow(mx) / 2L)
+
+system.time({
+  seq.row <- seq(1L, length.out=500L, by=2L)
+  seq.col <- seq(0L, to=1000000L, by=1000L)
+  ids <- rep(seq.row, length(seq.col)) + rep(seq.col, each=length(seq.row))
+})
+
+system.time({
+  ids2 <- rep(2L, 5e5)
+  ids2[seq_len(500) * 500L] <- 500L
+  ids2 <- cumsum(ids2)
+})
 
