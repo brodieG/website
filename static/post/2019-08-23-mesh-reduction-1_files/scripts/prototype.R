@@ -102,65 +102,65 @@ compute_error <- function(map) {
     dim.x <- ((x - 1L) %/% mult) + 1L
     dim.y <- ((y - 1L) %/% mult) + 1L
 
-    # square - start with vertical errors with a vector of the linear indices
-    # into the error matrix.
-    #
-    # +-*-+   Stars are the points we want to compute the erors for, the long
-    # |\ /|   edges of the triangles.  Children will be on the diagonals.
-    # * X *
-    # |/ \|
-    # +-*-+
-
     ids.raw <- rep(mult, (dim.x - 1L) * (dim.y))
     ids.raw[1L] <- 1L
-    ids.raw[seq(dim.x, length.out=dim.y - 1L, by=dim.x - 1L)] <-
-      mult - 1L + (x - (dim.x - 1L) * mult + (x * mult %/% 2L))
+    ids.raw[seq(dim.x, length.out=dim.x - 1L, by=dim.x - 1L)] <-
+      mult + (x - (dim.x - 1L) * mult + (x * mult %/% 2L))
+    ids.start <- cumsum(ids.raw)
+    type <- c('diamond', 'square')[i %% 2L + 1L]
 
-    ids.v.start <- cumsum(ids.raw)
-    ids.v.mid <- ids.v.start + mult %/% 2L
-    ids.v.end <- ids.v.start + mult
-    err.v <- abs(map[ids.v.mid] - (map[ids.v.start] + map[ids.v.end]) / 2)
+    if(type == 'square') {
+      # - Square Tiles, vertical
+      ids.v.start <- cumsum(ids.raw)
+      ids.v.mid <- ids.v.start + mult %/% 2L
+      ids.v.end <- ids.v.start + mult
+      err.v <- abs(map[ids.v.mid] - (map[ids.v.start] + map[ids.v.end]) / 2)
 
-    ids.h.start <- c(matrix(ids.v.start, ncol=dim.x - 1L, byrow=TRUE))
-    ids.h.mid <- ids.h.start + (x * mult %/% 2L)
-    ids.h.end <- ids.h.start + (x * mult)
-    err.h <- abs(map[ids.h.mid] - (map[ids.h.start] + map[ids.h.end]) / 2)
+      # - Square Tiles, horizontal
+      ids.raw <- rep(x * mult, (dim.y - 1L) * dim.x)
+      ids.raw[1L] <- 1L
+      ids.raw[seq(dim.y, length.out=dim.y - 1L, by=dim.y - 1L)] <-
+        -x * mult * (dim.y - 2L) + y - (dim.y - 1L) * mult + mult %/% 2L
 
-    ids.mid <- c(ids.v.mid, ids.h.mid)
-    z.err <- c(err.v, err.h)
+      ids.h.start <- cumsum(ids.raw)
+      ids.h.mid <- ids.h.start + (x * mult %/% 2L)
+      ids.h.end <- ids.h.start + (x * mult)
+      err.h <- abs(map[ids.h.mid] - (map[ids.h.start] + map[ids.h.end]) / 2)
 
-    errors.child <- .get_child_err(ids.mid, 'square')
-    errors[ids.mid] <- do.call(pmax, c(list(z.err), errors.child))
+      ids.mid <- c(ids.v.mid, ids.h.mid)
+      z.err <- c(err.v, err.h)
+    } else {
+      # - Diamond Tiles
+      ids.tl <- cumsum(ids.raw)
+      ids.br <- ids.tl + (x * mult) + mult %/% 2L
+      ids.mid.tl <- (ids.tl + ids.br - 1L) %/% 2L + 1L
+      z.mid <- (map[ids.tl] + map[ids.br]) / 2L
+      err.tl <- abs(map[ids.mid.tl] - z.mid)
 
-    # Diamonds - sides are diagonals: imagine rotating the previous pictogram 45
-    # degrees.  One big thing though, we don't actually do the diamonds, we
-    # decompose them into the diagonals in the grid, which are their sides.
+      ids.tr <- ids.tl + (x * mult * 2)
+      ids.bl <- ids.tl + mult
+      z.mid <- (map[ids.tr] + map[ids.bl]) / 2L
+      ids.mid.tr <- (ids.tr + ids.bl - 1L) %/% 2L + 1L
+      err.tr <- abs(map[ids.mid.tr] - z.mid)
 
-    ids.tl <- ids.v.start[seq_len((dim.x - 2L) * (dim.y - 1L))]
-    ids.br <- ids.tl + (x * mult) + mult %/% 2L
-    ids.mid.tl <- (ids.tl + ids.br) %/% 2L
-    z.mid <- (map[ids.tl] + map[ids.br]) / 2L
-    err.tl <- abs(map[ids.mid.tl] - z.mid)
-
-    ids.tr <- ids.tl + x
-    ids.bl <- ids.tl + mult
-    z.mid <- (map[ids.tr] + map[ids.bl]) / 2L
-    ids.mid.tr <- (ids.tr + ids.bl) %/% 2L
-    err.tr <- abs(map[ids.mid.tr] - z.mid)
-
-    ids.mid <- c(ids.mid.tl, ids.mid.tr)
-    errors.child <- .get_child_err(ids.mid, 'diamond')
-    errors[ids.mid] <- do.call(pmax, c(list(z.err, errors.child)))
+      ids.mid <- c(ids.mid.tl, ids.mid.tr)
+      z.err <- c(err.tl, err.tr)
+    }
+    if(i > 1L) {
+      errors.child <- .get_child_err(ids.mid,type)
+      errors[ids.mid] <- do.call(pmax, c(list(z.err, na.rm=TRUE), errors.child))
+    } else {
+      errors[ids.mid] <- z.err
+    }
   }
   errors
 }
 errors <- compute_error(map)
+map <- elmat1[seq_len(257), seq_len(257)]
+system.time(errors <- compute_error(map))
+errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
 
-
-compute_errors2 <- function(map) {
-
-}
 
 # For each error, we need to draw all the corresponding triangles.  This means
 # we need to figure out the size of the "diagonal", and whether we're dealing
@@ -174,7 +174,7 @@ compute_errors2 <- function(map) {
 
 # Try a direct implementation
 
-compute_errors <- function(terrain) {
+errors_rtin <- function(terrain) {
   errors <- array(0, dim(terrain));
   numSmallestTriangles = prod(dim(terrain));
   numTriangles = numSmallestTriangles * 2 - 2;
@@ -231,8 +231,8 @@ compute_errors <- function(terrain) {
   }
   errors;
 }
-map <- elmat1[1:257,1:257]
-system.time(errors <- compute_errors(map))
+map <- elmat1[1:17,1:17]
+system.time(errors2 <- errors_rtin(map))
 treeprof(errors <- compute_errors(map))
 
 extract_geometry <- function(errors, maxError) {
@@ -267,9 +267,9 @@ extract_geometry <- function(errors, maxError) {
   indices[seq_len(i)];
 }
 system.time({
-  raw <- extract_geometry(errors, diff(range(map)) / 200)
-  xs <- matrix(raw %/% nrow(errors), 3)
-  ys <- matrix(raw %% nrow(errors), 3)
+  raw <- extract_geometry(errors2, diff(range(map)) / 100)
+  xs <- matrix(raw %/% nrow(errors2), 3)
+  ys <- matrix(raw %% nrow(errors2), 3)
 })
 plot_new(xs, ys)
 polygon(
