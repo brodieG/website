@@ -96,58 +96,56 @@ compute_error <- function(map) {
   # * then in diamonds
   # * compute errors at each of the midpoints of the size
   # * retrieve the four errors surrounding each midpoint
+  # want to start and end in square
 
-  for(i in seq_len(layers)) {
-    mult <- as.integer(2^i)
+  types <- c('square', rep(c('diamond', 'square'), layers))
+  for(i in seq_along(types)) {
+    mult <- as.integer(2^(i %/% 2L + 1L))
     dim.x <- ((x - 1L) %/% mult) + 1L
     dim.y <- ((y - 1L) %/% mult) + 1L
 
-    ids.raw <- rep(mult, (dim.x - 1L) * (dim.y))
+    ids.raw <- rep(mult, prod(dim.x, dim.y))
     ids.raw[1L] <- 1L
-    ids.raw[seq(dim.x, length.out=dim.x - 1L, by=dim.x - 1L)] <-
-      mult + (x - (dim.x - 1L) * mult + (x * mult %/% 2L))
-    ids.start <- cumsum(ids.raw)
-    type <- c('diamond', 'square')[i %% 2L + 1L]
+    ids.raw[seq_len(dim.y - 1L) * dim.x + 1L] <-
+      x * (mult - 1L) + ((x - 1L) - (dim.x - 1L) * mult) + 1L
+    ids.raw <- matrix(cumsum(ids.raw), dim.x, dim.y)
 
-    if(type == 'square') {
-      # - Square Tiles, vertical
-      ids.v.start <- cumsum(ids.raw)
-      ids.v.mid <- ids.v.start + mult %/% 2L
-      ids.v.end <- ids.v.start + mult
-      err.v <- abs(map[ids.v.mid] - (map[ids.v.start] + map[ids.v.end]) / 2)
+    if(types[i] == 'diamond') {
+      # - Diamond Tiles, TL to BR
+      ids.a.start <- c(ids.raw[-nrow(ids.raw), -ncol(ids.raw)])
+      ids.a.off <- (mult %/% 2L) * (x + 1L)
+      ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)  # top-left
+      ids.a.end <- ids.a.start + ids.a.off                    # bottom-right
+      ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
+      z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
+      err.a <- abs(map[ids.a.mid] - z.mid)
 
-      # - Square Tiles, horizontal
-      ids.raw <- rep(x * mult, (dim.y - 1L) * dim.x)
-      ids.raw[1L] <- 1L
-      ids.raw[seq(dim.y, length.out=dim.y - 1L, by=dim.y - 1L)] <-
-        -x * mult * (dim.y - 2L) + y - (dim.y - 1L) * mult + mult %/% 2L
+      # - Diamond Tiles, TR to BL
+      ids.b.start <- c(ids.raw[-nrow(ids.raw), -1L])
+      ids.b.start <- c(ids.b.start, ids.b.start - ids.a.off)  # top-right
+      ids.b.end <- ids.a.end + mult                        # bottom-left
+      z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
+      ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
+      err.b <- abs(map[ids.b.mid] - z.mid)
 
-      ids.h.start <- cumsum(ids.raw)
-      ids.h.mid <- ids.h.start + (x * mult %/% 2L)
-      ids.h.end <- ids.h.start + (x * mult)
-      err.h <- abs(map[ids.h.mid] - (map[ids.h.start] + map[ids.h.end]) / 2)
+    } else if(types[i] == 'square') {
+      # - Square Tiles, vertical sides
+      ids.a.start <- c(ids.raw[-nrow(ids.raw),])
+      ids.a.mid <- ids.a.start + mult %/% 2L
+      ids.a.end <- ids.a.start + mult
+      err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
 
-      ids.mid <- c(ids.v.mid, ids.h.mid)
-      z.err <- c(err.v, err.h)
-    } else {
-      # - Diamond Tiles
-      ids.tl <- cumsum(ids.raw)
-      ids.br <- ids.tl + (x * mult) + mult %/% 2L
-      ids.mid.tl <- (ids.tl + ids.br - 1L) %/% 2L + 1L
-      z.mid <- (map[ids.tl] + map[ids.br]) / 2L
-      err.tl <- abs(map[ids.mid.tl] - z.mid)
-
-      ids.tr <- ids.tl + (x * mult * 2)
-      ids.bl <- ids.tl + mult
-      z.mid <- (map[ids.tr] + map[ids.bl]) / 2L
-      ids.mid.tr <- (ids.tr + ids.bl - 1L) %/% 2L + 1L
-      err.tr <- abs(map[ids.mid.tr] - z.mid)
-
-      ids.mid <- c(ids.mid.tl, ids.mid.tr)
-      z.err <- c(err.tl, err.tr)
+      # - Square Tiles, horizontal sides
+      ids.b.start <- c(t(ids.raw[,-ncol(ids.raw)]))
+      ids.b.mid <- ids.b.start + (mult %/% 2L) * x
+      ids.b.end <- ids.b.start + (mult * x)
+      err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
     }
+    ids.mid <- c(ids.a.mid, ids.b.mid)
+    z.err <- c(err.a, err.b)
+
     if(i > 1L) {
-      errors.child <- .get_child_err(ids.mid,type)
+      errors.child <- .get_child_err(ids.mid, types[i])
       errors[ids.mid] <- do.call(pmax, c(list(z.err, na.rm=TRUE), errors.child))
     } else {
       errors[ids.mid] <- z.err
@@ -155,6 +153,7 @@ compute_error <- function(map) {
   }
   errors
 }
+debug(compute_error)
 errors <- compute_error(map)
 map <- elmat1[seq_len(257), seq_len(257)]
 system.time(errors <- compute_error(map))
