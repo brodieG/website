@@ -44,6 +44,12 @@ split_tile <- function(x1, x2, y1, y2, xu, yu) {
     c(3, 2), dimnames=list(vertex=1:3, dim=c('x', 'y'))
   )
 }
+# Notes
+#
+# Need to update so diamond is done in same mult level as square so that we're
+# guaranteed at least one diagonal per square.  The code in get_child_err will
+# need to be updated, probably by multiplying col.off/row.off by 2.
+
 compute_error <- function(map) {
   x <- nrow(map)
   y <- ncol(map)
@@ -63,8 +69,8 @@ compute_error <- function(map) {
       col.off <- c(-1L, 1L, 1L, -1L)
       row.off <- c(-1L, -1L, 1L, 1L)
     } else if (identical(type, 'diamond')) {
-      col.off <- c(0L, 1L, 0L, -1L)
-      row.off <- c(-1L, 0L, 1L, 0L)
+      col.off <- c(0L, 2L, 0L, -2L)
+      row.off <- c(-2L, 0L, 2L, 0L)
     } else stop("bad input")
     row.off <- row.off * mult %/% 4L
     col.off <- col.off * x * mult %/% 4L
@@ -99,9 +105,9 @@ compute_error <- function(map) {
   # * retrieve the four errors surrounding each midpoint
   # want to start and end in square
 
-  types <- c('square', rep(c('diamond', 'square'), layers - 1L))
+  types <- rep(c('square', 'diamond'), layers)
   for(i in seq_along(types)) {
-    mult <- as.integer(2^(i %/% 2L + 1L))
+    mult <- as.integer(2^((i + 1L) %/% 2L))
     dim.x <- ((x - 1L) %/% mult) + 1L
     dim.y <- ((y - 1L) %/% mult) + 1L
 
@@ -113,19 +119,26 @@ compute_error <- function(map) {
 
     if(types[i] == 'diamond') {
       # - Diamond Tiles, TL to BR
-      ids.a.start <- c(ids.raw[-nrow(ids.raw), -ncol(ids.raw)])
-      ids.a.off <- (mult %/% 2L) * (x + 1L)
-      ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)  # top-left
-      ids.a.end <- ids.a.start + ids.a.off                    # bottom-right
+      ids.a.start <-
+        c(ids.raw[seq(1L, dim.x - 1L, mult * 2), seq(1L, dim.y - 1L, mult * 2)])
+      ids.a.off <- mult * (x + 1L)
+      if(dim.x > 2L & dim.y > 2L)
+        ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
+      ids.a.end <- ids.a.start + ids.a.off
       ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
       z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
       err.a <- abs(map[ids.a.mid] - z.mid)
 
       # - Diamond Tiles, TR to BL
-      ids.b.start <- c(ids.raw[-nrow(ids.raw), -1L])
-      ids.b.off <- (mult %/% 2L) * (1L - x)
-      ids.b.start <- c(ids.b.start, ids.b.start + ids.b.off)  # top-right
-      ids.b.end <- ids.b.start + ids.b.off                    # bottom-left
+      ids.b.start <- c(
+        integer(),
+        if(dim.y > 2L)
+          c(ids.raw[seq(2L, dim.x, mult * 2), seq(2L, dim.y - 1L, mult * 2)]),
+        if(dim.x > 2L)
+          c(ids.raw[seq(3L, dim.x, mult * 2), 1L])
+      )
+      ids.b.off <- mult * (x - 1L)
+      ids.b.end <- ids.b.start + ids.b.off
       z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
       ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
       err.b <- abs(map[ids.b.mid] - z.mid)
@@ -155,9 +168,10 @@ compute_error <- function(map) {
   }
   errors
 }
+map <- elmat1[1:5,1:5]
 debug(compute_error)
 errors <- compute_error(map)
-map <- elmat1[seq_len(257), seq_len(257)]
+
 system.time(errors <- compute_error(map))
 errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
@@ -232,7 +246,6 @@ errors_rtin <- function(terrain) {
   }
   errors;
 }
-map <- elmat1[1:17,1:17]
 system.time(errors2 <- errors_rtin(map))
 treeprof(errors <- compute_errors(map))
 
