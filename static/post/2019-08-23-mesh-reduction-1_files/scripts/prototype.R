@@ -66,22 +66,23 @@ compute_error <- function(map) {
       col.off <- c(0L, 1L, 0L, -1L)
       row.off <- c(-1L, 0L, 1L, 0L)
     } else stop("bad input")
-    row.off <- row.off * mult %/% 2L
-    col.off <- col.off * x * mult %/% 2L
+    row.off <- row.off * mult %/% 4L
+    col.off <- col.off * x * mult %/% 4L
 
     child.ids <- lapply(
       seq_along(row.off),
       function(i) ids.mid + (row.off[i] + col.off[i])
     )
     if(identical(type, 'square')) {
-      # deal with oob children that may occur in square mode.  b/c of wrapping
-      # indices this is a bit of a PITA.  Would be easier with matrix index.
-      # Ids are expected to be in vertical then horizontal order.
+      # square sides on perimeter will produce some OOB children
       cells <- (dim.x - 1L) * (dim.y)
       col.1 <- seq_len(dim.x - 1L)
       col.n <- seq(cells - dim.x, cells, by=1L)
       row.1 <- seq(cells + 1L, 2 * cells - dim.x + 1L, by=dim.x)
       row.n <- seq(cells + dim.x - 1L, 2 * cells, by=dim.x)
+
+      # Vertical sides come first, followed by horizontal ones, so in e.g.
+      # c(row.1, col.1) index row.1 is for vertical sides.
       child.ids[[1]][c(row.1, col.1)] <- NA
       child.ids[[2]][c(row.1, col.n)] <- NA
       child.ids[[3]][c(row.n, col.n)] <- NA
@@ -98,7 +99,7 @@ compute_error <- function(map) {
   # * retrieve the four errors surrounding each midpoint
   # want to start and end in square
 
-  types <- c('square', rep(c('diamond', 'square'), layers))
+  types <- c('square', rep(c('diamond', 'square'), layers - 1L))
   for(i in seq_along(types)) {
     mult <- as.integer(2^(i %/% 2L + 1L))
     dim.x <- ((x - 1L) %/% mult) + 1L
@@ -122,8 +123,9 @@ compute_error <- function(map) {
 
       # - Diamond Tiles, TR to BL
       ids.b.start <- c(ids.raw[-nrow(ids.raw), -1L])
-      ids.b.start <- c(ids.b.start, ids.b.start - ids.a.off)  # top-right
-      ids.b.end <- ids.a.end + mult                        # bottom-left
+      ids.b.off <- (mult %/% 2L) * (1L - x)
+      ids.b.start <- c(ids.b.start, ids.b.start + ids.b.off)  # top-right
+      ids.b.end <- ids.b.start + ids.b.off                    # bottom-left
       z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
       ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
       err.b <- abs(map[ids.b.mid] - z.mid)
