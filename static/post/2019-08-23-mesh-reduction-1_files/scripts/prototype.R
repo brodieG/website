@@ -44,11 +44,6 @@ split_tile <- function(x1, x2, y1, y2, xu, yu) {
     c(3, 2), dimnames=list(vertex=1:3, dim=c('x', 'y'))
   )
 }
-# Notes
-#
-# Need to update so diamond is done in same mult level as square so that we're
-# guaranteed at least one diagonal per square.  The code in get_child_err will
-# need to be updated, probably by multiplying col.off/row.off by 2.
 
 compute_error <- function(map) {
   x <- nrow(map)
@@ -119,8 +114,7 @@ compute_error <- function(map) {
 
     if(types[i] == 'diamond') {
       # - Diamond Tiles, TL to BR
-      ids.a.start <-
-        c(ids.raw[seq(1L, dim.x - 1L, mult * 2), seq(1L, dim.y - 1L, mult * 2)])
+      ids.a.start <- c(ids.raw[seq(1L, dim.x-1L, 2L), seq(1L, dim.y-1L, 2L)])
       ids.a.off <- mult * (x + 1L)
       if(dim.x > 2L & dim.y > 2L)
         ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
@@ -131,11 +125,8 @@ compute_error <- function(map) {
 
       # - Diamond Tiles, TR to BL
       ids.b.start <- c(
-        integer(),
-        if(dim.y > 2L)
-          c(ids.raw[seq(2L, dim.x, mult * 2), seq(2L, dim.y - 1L, mult * 2)]),
-        if(dim.x > 2L)
-          c(ids.raw[seq(3L, dim.x, mult * 2), 1L])
+        if(dim.y > 2L) c(ids.raw[seq(2L, dim.x, 2L), seq(2L, dim.y - 1L, 2L)]),
+        if(dim.x > 2L) c(ids.raw[seq(3L, dim.x, 2L), 1L])
       )
       ids.b.off <- mult * (x - 1L)
       ids.b.end <- ids.b.start + ids.b.off
@@ -168,14 +159,50 @@ compute_error <- function(map) {
   }
   errors
 }
-map <- elmat1[1:5,1:5]
-# debug(compute_error)
+map <- elmat1[1:9,1:9]
+debug(compute_error)
 errors <- compute_error(map)
 
-system.time(errors <- compute_error(map))
+system.time(errors <- compute_error(elmat1[1:257,1:257]))
 errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
 
+writeLines(
+  paste0(
+    'terrain = [', paste0(map, collapse=','), 
+    sprintf('];
+    JSON.stringify(comp_errors(terrain, %d, %d));
+    ', nrow(map), nrow(map) - 1
+) ) )
+errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
+# > errors
+#       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
+#  [1,]  0.0  0.0  1.5  0.5  4.0  0.0  0.5  0.5  0.0
+#  [2,]  1.0  1.0  0.0  1.5  1.5  0.0  0.0  0.0  0.5
+#  [3,]  1.5  1.0  2.5  0.0  1.5  0.5  1.5  0.0  1.5
+#  [4,]  0.5  1.5  0.5  0.5  0.0  0.0  1.0  0.0  1.0
+#  [5,] 10.5  1.0  2.5  0.5 10.5  0.5  1.5  0.0  5.5
+#  [6,]  0.5  0.0  1.5  0.0  3.0  0.0  0.5  0.0  0.0
+#  [7,]  3.0  2.0  5.5  1.0  5.5  1.0  5.5  1.5  3.0
+#  [8,]  2.5  0.0  1.5  0.0  1.5  0.0  1.0  0.0  1.0
+#  [9,]  0.0  1.0  0.0  1.0  5.5  0.5  0.0  0.5  0.0
+# > errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
+# > errors - errors3
+#       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
+#  [1,]    0  0.0  0.0  0.0    0  0.0 -1.0  0.0    0
+#  [2,]    0  0.0  0.0  0.0    0 -1.5  0.0 -0.5    0
+#  [3,]    0  0.0 -0.5  0.0    0  0.0 -1.5  0.0    0
+#  [4,]    0  0.0  0.0  0.0    0 -1.0  0.0 -1.0    0
+#  [5,]    0  0.0 -0.5  0.0    0  0.0 -1.5  0.0    0
+#  [6,]    0 -2.0  0.0 -3.0    0 -3.0  0.0 -1.5    0
+#  [7,]    0  0.0  0.0  0.0    0  0.0  0.0  0.0    0
+#  [8,]    0 -2.5  0.0 -1.5    0 -1.5  0.0 -1.5    0
+#  [9,]    0  0.0 -2.5  0.0    0  0.0 -1.5  0.0    0
+
+
+# This is the test against the direct JS version using elmat1[1:5,1:5]
+# errors3 <- unlist(jsonlite::parse_json("{\"0\":0,\"1\":1,\"2\":1.5,\"3\":0.5,\"4\":0,\"5\":0,\"6\":1,\"7\":1,\"8\":1.5,\"9\":1,\"10\":1.5,\"11\":0,\"12\":2.5,\"13\":0.5,\"14\":2.5,\"15\":0.5,\"16\":1.5,\"17\":0,\"18\":0.5,\"19\":0.5,\"20\":0,\"21\":1.5,\"22\":1.5,\"23\":0,\"24\":0}"))
+# errors3 <- matrix(errors3, 5)
 
 # For each error, we need to draw all the corresponding triangles.  This means
 # we need to figure out the size of the "diagonal", and whether we're dealing
@@ -187,7 +214,7 @@ err.ind <- which(errors > 20, arr.ind=TRUE)
 # tile as a rhombus so the diagonal is actually parallel to the x axis (or y
 # axis depending on how you draw it)?
 
-# Try a direct implementation
+# Try a direct implementation; something's not right here
 
 errors_rtin <- function(terrain) {
   errors <- array(0, dim(terrain));
@@ -281,7 +308,7 @@ extract_geometry <- function(errors, maxError) {
   indices[seq_len(i)];
 }
 system.time({
-  raw <- extract_geometry(errors2, diff(range(map)) / 100)
+  raw <- extract_geometry(errors2, 10)
   xs <- matrix(raw %/% nrow(errors2), 3)
   ys <- matrix(raw %% nrow(errors2), 3)
 })
