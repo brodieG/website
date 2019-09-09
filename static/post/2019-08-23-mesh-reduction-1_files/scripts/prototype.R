@@ -72,8 +72,8 @@ compute_error <- function(map) {
       col.off <- c(0L, 2L, 0L, -2L)
       row.off <- c(-2L, 0L, 2L, 0L)
     } else stop("bad input")
-    row.off <- row.off * mult %/% 4L
-    col.off <- col.off * x * mult %/% 4L
+    row.off <- (row.off * mult) %/% 4L
+    col.off <- x * (col.off * mult) %/% 4L
 
     child.ids <- lapply(
       seq_along(row.off),
@@ -169,7 +169,7 @@ compute_error <- function(map) {
   errors
 }
 map <- elmat1[1:5,1:5]
-debug(compute_error)
+# debug(compute_error)
 errors <- compute_error(map)
 
 system.time(errors <- compute_error(map))
