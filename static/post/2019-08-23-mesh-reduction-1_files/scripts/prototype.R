@@ -5,7 +5,8 @@ eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
 compute_error <- function(map) {
-  .get_child_err <- function(ids.mid, type) {
+  .get_child_err <- function(ids.mid, type, nr, nc, mult) {
+    # retrieve children clockwise starting from top left
     if(identical(type, 's')) {          # square sides
       col.off <- c(-1L, 1L, 1L, -1L)
       row.off <- c(-1L, -1L, 1L, 1L)
@@ -14,20 +15,17 @@ compute_error <- function(map) {
       row.off <- c(-2L, 0L, 2L, 0L)
     } else stop("bad input")
     offset <- (row.off * mult) %/% 4L + nr * (col.off * mult) %/% 4L
-
     child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
+
     if(identical(type, 's')) {
-      # square sides on perimeter will produce some OOB children
+      # square sides on perimeter will produce some OOB children depending on
+      # which child it is (remember, children clockwise from top left)
       ids.mod.x <- ids.mid %% nr
       ids.div.y <- (ids.mid - 1L) %/% nc
       row.1 <- ids.mod.x == 1L
       row.n <- ids.mod.x == 0L
       col.1 <- ids.div.y == 0L
       col.n <- ids.div.y == (nc - 1L)
-
-      # Vertical sides come first, followed by horizontal ones, so in e.g.
-      # c(row.1, col.1) index row.1 is for vertical sides.
-
       child.ids[[1]][row.1 | col.1] <- NA
       child.ids[[2]][row.1 | col.n] <- NA
       child.ids[[3]][row.n | col.n] <- NA
@@ -106,6 +104,75 @@ treeprof::treeprof(errors <- compute_error(elmat1[1:257,1:257]))
 errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
 
+extract_mesh <- function(errors, tol) {
+  # 1. start from the lowest level out
+  # 2. check diag point error, if fail:
+  # 3. get child diag coordinates
+  # 4. if NA, already plotted, don't plot
+  # 5. else, generate child triangles
+  # 6. mark diag point as NA
+  # 7. at top level, draw remaining children
+  nr <- nrow(map)
+  nc <- ncol(map)
+  layers <- floor(min(log2(c(nr, nc))))
+  errors <- array(0, dim=dim(map))
+
+  for(i in seq_len(layers)) {
+    mult <- as.integer(2^i)
+    grid.nr <- ((nr - 1L) %/% mult) + 1L
+    grid.nc <- ((nc - 1L) %/% mult) + 1L
+    ids.raw <- rep(mult, prod(grid.nr, grid.nc))
+    ids.raw[1L] <- 1L
+    ids.raw[seq_len(grid.nc - 1L) * grid.nr + 1L] <-
+      nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
+    ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
+
+    # - Square Tiles, vertical sides
+    ids.a.start <- c(ids.raw[-grid.nr,])
+    ids.a.mid <- ids.a.start + mult %/% 2L
+    ids.a.end <- ids.a.start + mult
+    err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
+
+    # - Square Tiles, horizontal sides
+    ids.b.start <- c(t(ids.raw[,-grid.nc]))
+    ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
+    ids.b.end <- ids.b.start + (mult * nr)
+    err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
+
+    ids.mid <- c(ids.a.mid, ids.b.mid)
+    z.err <- c(err.a, err.b)
+    errors[ids.mid] <- if(i > 1L)
+      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 's')))
+    else z.err
+
+    # - Diagonal: TL to BR
+    ids.a.start <- c(ids.raw[seq(1L, grid.nr-1L, 2L), seq(1L, grid.nc-1L, 2L)])
+    ids.a.off <- mult * (nr + 1L)
+    if(grid.nr > 2L & grid.nc > 2L)
+      ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
+    ids.a.end <- ids.a.start + ids.a.off
+    ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
+    z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
+    err.a <- abs(map[ids.a.mid] - z.mid)
+
+    # - Diagonal: TR to BL
+    ids.b.start <- c(
+      if(grid.nc>2L) c(ids.raw[seq(2L, grid.nr, 2L), seq(2L, grid.nc-1L, 2L)]),
+      if(grid.nr>2L) c(ids.raw[seq(3L, grid.nr, 2L), seq(1L, grid.nc-1L, 2L)])
+    )
+    ids.b.off <- mult * (nr - 1L)
+    ids.b.end <- ids.b.start + ids.b.off
+    z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
+    ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
+    err.b <- abs(map[ids.b.mid] - z.mid)
+
+    ids.mid <- c(ids.a.mid, ids.b.mid)
+    z.err <- c(err.a, err.b)
+    errors[ids.mid] <-
+      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 'd')))
+  }
+}
+
 # # debugging code
 # writeLines(
 #   paste0(
@@ -130,7 +197,7 @@ err.ind <- which(errors > 20, arr.ind=TRUE)
 
 errors_rtin <- function(terrain) {
   errors <- array(0, dim(terrain));
-  numSmallestTriangles = prod(dim(terrain));
+  numSmallestTriangles = prod(dim(terrain) - 1L);
   numTriangles = numSmallestTriangles * 2 - 2;
   lastLevelIndex = numTriangles - numSmallestTriangles;
   gridSize = nrow(terrain)
@@ -159,24 +226,25 @@ errors_rtin <- function(terrain) {
         bx = cx; by = cy;
       }
       cx = mx; cy = my;
+      # polygon(c(ax, bx, cx)/4, c(ay, by, cy)/4, col='#00000003')
     }
     # calculate error in the middle of the long edge of the triangle
 
     interpolatedHeight = (
-      terrain[ay * gridSize + ax + 1L] + terrain[by * gridSize + bx + 1L]
+      terrain[ax * gridSize + ay + 1L] + terrain[bx * gridSize + by + 1L]
     ) / 2;
     middleIndex =
-      bitwShiftR(ay + by, 1L) * gridSize + bitwShiftR(ax + bx, 1L) + 1L;
+      bitwShiftR(ax + bx, 1L) * gridSize + bitwShiftR(ay + by, 1L) + 1L;
     middleError = abs(interpolatedHeight - terrain[middleIndex]);
 
     if (i >= lastLevelIndex) { # smallest triangles
       errors[middleIndex] = middleError;
     } else { # bigger triangles; accumulate error with children
       leftChildError = errors[
-        bitwShiftR(ay + cy, 1L) * gridSize + bitwShiftR(ax + cx, 1L) + 1L
+        bitwShiftR(ax + cx, 1L) * gridSize + bitwShiftR(ay + cy, 1L) + 1L
       ];
       rightChildError = errors[
-        bitwShiftR(by + cy, 1L) * gridSize + bitwShiftR(bx + cx, 1L) + 1L
+        bitwShiftR(bx + cx, 1L) * gridSize + bitwShiftR(by + cy, 1L) + 1L
       ];
       errors[middleIndex] = max(
         c(errors[middleIndex], middleError, leftChildError, rightChildError)
@@ -185,8 +253,11 @@ errors_rtin <- function(terrain) {
   }
   errors;
 }
+map <- elmat1[1:5, 1:5]
+map <- elmat1[1:17, 1:17]
+map <- elmat1[1:257, 1:257]
 system.time(errors2 <- errors_rtin(map))
-treeprof(errors <- compute_errors(map))
+errors <- compute_error(map)
 
 extract_geometry <- function(errors, maxError) {
   i = 0;
@@ -219,6 +290,8 @@ extract_geometry <- function(errors, maxError) {
 
   indices[seq_len(i)];
 }
+treeprof::treeprof(raw <- extract_geometry(errors, 30))
+
 system.time({
   raw <- extract_geometry(errors, 30)
   xs <- matrix(raw %/% nrow(errors), 3)
@@ -229,6 +302,8 @@ polygon(
   rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
   col='#DDDDDD', border='#444444'
 )
+plot_new(c(0,4), c(0,4))
+points(rep(0:4, 5)/4, rep(0:4, each=5)/4)
 
 
 # map <- elmat1
