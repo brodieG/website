@@ -67,27 +67,24 @@ compute_error <- function(map) {
       col.off <- c(0L, 2L, 0L, -2L)
       row.off <- c(-2L, 0L, 2L, 0L)
     } else stop("bad input")
-    row.off <- (row.off * mult) %/% 4L
-    col.off <- x * (col.off * mult) %/% 4L
+    offset <- (row.off * mult) %/% 4L + x * (col.off * mult) %/% 4L
 
-    child.ids <- lapply(
-      seq_along(row.off),
-      function(i) ids.mid + (row.off[i] + col.off[i])
-    )
+    child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
     if(identical(type, 'square')) {
       # square sides on perimeter will produce some OOB children
-      cells <- (dim.x - 1L) * (dim.y)
-      col.1 <- seq_len(dim.x - 1L)
-      col.n <- seq(cells - dim.x, cells, by=1L)
-      row.1 <- seq(cells + 1L, 2 * cells - dim.x + 1L, by=dim.x)
-      row.n <- seq(cells + dim.x - 1L, 2 * cells, by=dim.x)
+      ids.mod.x <- ids.mid %% x
+      ids.div.y <- (ids.mid - 1L) %/% y
+      row.1 <- ids.mod.x == 1L
+      row.n <- ids.mod.x == 0L
+      col.1 <- ids.div.y == 0L
+      col.n <- ids.div.y == (y - 1L)
 
       # Vertical sides come first, followed by horizontal ones, so in e.g.
       # c(row.1, col.1) index row.1 is for vertical sides.
-      child.ids[[1]][c(row.1, col.1)] <- NA
-      child.ids[[2]][c(row.1, col.n)] <- NA
-      child.ids[[3]][c(row.n, col.n)] <- NA
-      child.ids[[4]][c(row.n, col.1)] <- NA
+      child.ids[[1]][row.1 | col.1] <- NA
+      child.ids[[2]][row.1 | col.n] <- NA
+      child.ids[[3]][row.n | col.n] <- NA
+      child.ids[[4]][row.n | col.1] <- NA
     }
     lapply(child.ids, function(ids) errors[ids])
   }
@@ -160,10 +157,12 @@ compute_error <- function(map) {
   errors
 }
 map <- elmat1[1:9,1:9]
-debug(compute_error)
+map <- elmat1[1:257,1:257]
+# debug(compute_error)
 errors <- compute_error(map)
 
 system.time(errors <- compute_error(elmat1[1:257,1:257]))
+treeprof::treeprof(errors <- compute_error(elmat1[1:257,1:257]))
 errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
 
@@ -307,9 +306,9 @@ extract_geometry <- function(errors, maxError) {
   indices[seq_len(i)];
 }
 system.time({
-  raw <- extract_geometry(errors2, 10)
-  xs <- matrix(raw %/% nrow(errors2), 3)
-  ys <- matrix(raw %% nrow(errors2), 3)
+  raw <- extract_geometry(errors, 20)
+  xs <- matrix(raw %/% nrow(errors), 3)
+  ys <- matrix(raw %% nrow(errors), 3)
 })
 plot_new(xs, ys)
 polygon(
