@@ -60,17 +60,17 @@ compute_error <- function(map) {
     abs(z.mid - map[ids.mid])
   }
   .get_child_err <- function(ids.mid, type) {
-    if(identical(type, 'square')) {
+    if(identical(type, 's')) {          # square sides
       col.off <- c(-1L, 1L, 1L, -1L)
       row.off <- c(-1L, -1L, 1L, 1L)
-    } else if (identical(type, 'diamond')) {
+    } else if (identical(type, 'd')) {  # diagonals
       col.off <- c(0L, 2L, 0L, -2L)
       row.off <- c(-2L, 0L, 2L, 0L)
     } else stop("bad input")
     offset <- (row.off * mult) %/% 4L + x * (col.off * mult) %/% 4L
 
     child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
-    if(identical(type, 'square')) {
+    if(identical(type, 's')) {
       # square sides on perimeter will produce some OOB children
       ids.mod.x <- ids.mid %% x
       ids.div.y <- (ids.mid - 1L) %/% y
@@ -98,8 +98,8 @@ compute_error <- function(map) {
   # want to start and end in square
 
   types <- rep(c('square', 'diamond'), layers)
-  for(i in seq_along(types)) {
-    mult <- as.integer(2^((i + 1L) %/% 2L))
+  for(i in seq_len(layers)) {
+    mult <- as.integer(2^i)
     dim.x <- ((x - 1L) %/% mult) + 1L
     dim.y <- ((y - 1L) %/% mult) + 1L
 
@@ -109,55 +109,53 @@ compute_error <- function(map) {
       x * (mult - 1L) + ((x - 1L) - (dim.x - 1L) * mult) + 1L
     ids.raw <- matrix(cumsum(ids.raw), dim.x, dim.y)
 
-    if(types[i] == 'diamond') {
-      # - Diamond Tiles, TL to BR
-      ids.a.start <- c(ids.raw[seq(1L, dim.x-1L, 2L), seq(1L, dim.y-1L, 2L)])
-      ids.a.off <- mult * (x + 1L)
-      if(dim.x > 2L & dim.y > 2L)
-        ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
-      ids.a.end <- ids.a.start + ids.a.off
-      ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
-      z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
-      err.a <- abs(map[ids.a.mid] - z.mid)
+    # - Square Tiles, vertical sides
+    ids.a.start <- c(ids.raw[-nrow(ids.raw),])
+    ids.a.mid <- ids.a.start + mult %/% 2L
+    ids.a.end <- ids.a.start + mult
+    err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
 
-      # - Diamond Tiles, TR to BL
-      ids.b.start <- c(
-        if(dim.y > 2L) c(ids.raw[seq(2L, dim.x, 2L), seq(2L, dim.y - 1L, 2L)]),
-        if(dim.x > 2L) c(ids.raw[seq(3L, dim.x, 2L), seq(1L, dim.y - 1L, 2L)])
-      )
-      ids.b.off <- mult * (x - 1L)
-      ids.b.end <- ids.b.start + ids.b.off
-      z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
-      ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
-      err.b <- abs(map[ids.b.mid] - z.mid)
+    # - Square Tiles, horizontal sides
+    ids.b.start <- c(t(ids.raw[,-ncol(ids.raw)]))
+    ids.b.mid <- ids.b.start + (mult %/% 2L) * x
+    ids.b.end <- ids.b.start + (mult * x)
+    err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
 
-    } else if(types[i] == 'square') {
-      # - Square Tiles, vertical sides
-      ids.a.start <- c(ids.raw[-nrow(ids.raw),])
-      ids.a.mid <- ids.a.start + mult %/% 2L
-      ids.a.end <- ids.a.start + mult
-      err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
-
-      # - Square Tiles, horizontal sides
-      ids.b.start <- c(t(ids.raw[,-ncol(ids.raw)]))
-      ids.b.mid <- ids.b.start + (mult %/% 2L) * x
-      ids.b.end <- ids.b.start + (mult * x)
-      err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
-    }
     ids.mid <- c(ids.a.mid, ids.b.mid)
     z.err <- c(err.a, err.b)
 
-    if(i > 1L) {
-      errors.child <- .get_child_err(ids.mid, types[i])
-      errors[ids.mid] <- do.call(pmax, c(list(z.err, na.rm=TRUE), errors.child))
-    } else {
-      errors[ids.mid] <- z.err
-    }
+    errors[ids.mid] <- if(i > 1L)
+      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 's')))
+    else z.err
+
+    # - Diagonal: TL to BR
+    ids.a.start <- c(ids.raw[seq(1L, dim.x-1L, 2L), seq(1L, dim.y-1L, 2L)])
+    ids.a.off <- mult * (x + 1L)
+    if(dim.x > 2L & dim.y > 2L)
+      ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
+    ids.a.end <- ids.a.start + ids.a.off
+    ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
+    z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
+    err.a <- abs(map[ids.a.mid] - z.mid)
+
+    # - Diagonal: TR to BL
+    ids.b.start <- c(
+      if(dim.y > 2L) c(ids.raw[seq(2L, dim.x, 2L), seq(2L, dim.y - 1L, 2L)]),
+      if(dim.x > 2L) c(ids.raw[seq(3L, dim.x, 2L), seq(1L, dim.y - 1L, 2L)])
+    )
+    ids.b.off <- mult * (x - 1L)
+    ids.b.end <- ids.b.start + ids.b.off
+    z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
+    ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
+    err.b <- abs(map[ids.b.mid] - z.mid)
+
+    errors[ids.mid] <-
+      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 'd')))
   }
   errors
 }
 map <- elmat1[1:9,1:9]
-map <- elmat1[1:257,1:257]
+# map <- elmat1[1:257,1:257]
 # debug(compute_error)
 errors <- compute_error(map)
 
@@ -168,7 +166,7 @@ err.ind <- which(errors > 20, arr.ind=TRUE)
 
 writeLines(
   paste0(
-    'terrain = [', paste0(map, collapse=','), 
+    'terrain = [', paste0(map, collapse=','),
     sprintf('];
     JSON.stringify(comp_errors(terrain, %d, %d));
     ', nrow(map), nrow(map) - 1
