@@ -4,61 +4,7 @@ eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
-# Compute the diagonals of the tiles.  There is one fewer tile than there are
-# cols per row, and also than there are rows per col.
-
-make_diags <- function(splits.x, splits.y, map, last.id=0, thresh=Inf) {
-  x.raw <- .row(c(length(splits.x), length(splits.y)))
-  y.raw <- .col(c(length(splits.x), length(splits.y)))
-  within(
-    list(), {
-      col <- y.raw[-ncol(x.raw), -ncol(y.raw)]
-      row <- x.raw[-nrow(x.raw), -ncol(x.raw)]
-      x1 <- splits.x[c(row)]
-      y1 <- splits.y[c(col)]
-      x2 <- splits.x[c(x.raw[-1, -1])]
-      y2 <- splits.y[c(y.raw[-1, -1])]
-      z1 <- map[cbind(x1, y1)]
-      z2 <- map[cbind(x2, y2)]
-      mid.coord <- cbind((x1 + x2) / 2, (y1 + y2) / 2)
-      zE <- (z1 + z2) / 2 - map[mid.coord]
-} ) }
-split_tile <- function(x1, x2, y1, y2, xu, yu) {
-  # Organize our data into vertices of the tile going in clockwise order
-
-  idx.base <- rep(1:4, each=2L)
-  idx <- rep(5L, 12L)
-  idx[-(seq_len(4) * 3L)] <- c(idx.base[-1L], idx.base[1L])
-  vert.dat <- array(
-    c(
-      list(x1, x2, x2, x1, xu)[idx],
-      list(y1, y1, y2, y2, yu)[idx]
-    ),
-    c(3, 4, 2)  # 3 verts/triangle, 4 triangles/tile, 2 coords/vert
-  )
-  # Append the triangles coords of each triangle to each other to
-  # simplify the data structure
-
-  array(
-    lapply(asplit(vert.dat, c(1,3)), unlist),
-    c(3, 2), dimnames=list(vertex=1:3, dim=c('x', 'y'))
-  )
-}
-
 compute_error <- function(map) {
-  x <- nrow(map)
-  y <- ncol(map)
-
-  layers <- floor(min(log2(c(x, y))))
-  diags <- vector("list", layers)
-
-  .get_err <- function(ids.mid) {
-    ids.start <- ids.mid - (mult %/% 2L)
-    ids.end <- ids.start + mult
-    z <- map[ids.mid]
-    z.mid <- (z[ids.start] + z[ids.end]) / 2L
-    abs(z.mid - map[ids.mid])
-  }
   .get_child_err <- function(ids.mid, type) {
     if(identical(type, 's')) {          # square sides
       col.off <- c(-1L, 1L, 1L, -1L)
@@ -67,20 +13,21 @@ compute_error <- function(map) {
       col.off <- c(0L, 2L, 0L, -2L)
       row.off <- c(-2L, 0L, 2L, 0L)
     } else stop("bad input")
-    offset <- (row.off * mult) %/% 4L + x * (col.off * mult) %/% 4L
+    offset <- (row.off * mult) %/% 4L + nr * (col.off * mult) %/% 4L
 
     child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
     if(identical(type, 's')) {
       # square sides on perimeter will produce some OOB children
-      ids.mod.x <- ids.mid %% x
-      ids.div.y <- (ids.mid - 1L) %/% y
+      ids.mod.x <- ids.mid %% nr
+      ids.div.y <- (ids.mid - 1L) %/% nc
       row.1 <- ids.mod.x == 1L
       row.n <- ids.mod.x == 0L
       col.1 <- ids.div.y == 0L
-      col.n <- ids.div.y == (y - 1L)
+      col.n <- ids.div.y == (nc - 1L)
 
       # Vertical sides come first, followed by horizontal ones, so in e.g.
       # c(row.1, col.1) index row.1 is for vertical sides.
+
       child.ids[[1]][row.1 | col.1] <- NA
       child.ids[[2]][row.1 | col.n] <- NA
       child.ids[[3]][row.n | col.n] <- NA
@@ -88,50 +35,43 @@ compute_error <- function(map) {
     }
     lapply(child.ids, function(ids) errors[ids])
   }
+  nr <- nrow(map)
+  nc <- ncol(map)
+  layers <- floor(min(log2(c(nr, nc))))
   errors <- array(0, dim=dim(map))
 
-  # at each interval range, we want to:
-  # * compute the tiling in squares,
-  # * then in diamonds
-  # * compute errors at each of the midpoints of the size
-  # * retrieve the four errors surrounding each midpoint
-  # want to start and end in square
-
-  types <- rep(c('square', 'diamond'), layers)
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
-    dim.x <- ((x - 1L) %/% mult) + 1L
-    dim.y <- ((y - 1L) %/% mult) + 1L
-
-    ids.raw <- rep(mult, prod(dim.x, dim.y))
+    grid.nr <- ((nr - 1L) %/% mult) + 1L
+    grid.nc <- ((nc - 1L) %/% mult) + 1L
+    ids.raw <- rep(mult, prod(grid.nr, grid.nc))
     ids.raw[1L] <- 1L
-    ids.raw[seq_len(dim.y - 1L) * dim.x + 1L] <-
-      x * (mult - 1L) + ((x - 1L) - (dim.x - 1L) * mult) + 1L
-    ids.raw <- matrix(cumsum(ids.raw), dim.x, dim.y)
+    ids.raw[seq_len(grid.nc - 1L) * grid.nr + 1L] <-
+      nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
+    ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
 
     # - Square Tiles, vertical sides
-    ids.a.start <- c(ids.raw[-nrow(ids.raw),])
+    ids.a.start <- c(ids.raw[-grid.nr,])
     ids.a.mid <- ids.a.start + mult %/% 2L
     ids.a.end <- ids.a.start + mult
     err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
 
     # - Square Tiles, horizontal sides
-    ids.b.start <- c(t(ids.raw[,-ncol(ids.raw)]))
-    ids.b.mid <- ids.b.start + (mult %/% 2L) * x
-    ids.b.end <- ids.b.start + (mult * x)
+    ids.b.start <- c(t(ids.raw[,-grid.nc]))
+    ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
+    ids.b.end <- ids.b.start + (mult * nr)
     err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
 
     ids.mid <- c(ids.a.mid, ids.b.mid)
     z.err <- c(err.a, err.b)
-
     errors[ids.mid] <- if(i > 1L)
       do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 's')))
     else z.err
 
     # - Diagonal: TL to BR
-    ids.a.start <- c(ids.raw[seq(1L, dim.x-1L, 2L), seq(1L, dim.y-1L, 2L)])
-    ids.a.off <- mult * (x + 1L)
-    if(dim.x > 2L & dim.y > 2L)
+    ids.a.start <- c(ids.raw[seq(1L, grid.nr-1L, 2L), seq(1L, grid.nc-1L, 2L)])
+    ids.a.off <- mult * (nr + 1L)
+    if(grid.nr > 2L & grid.nc > 2L)
       ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
     ids.a.end <- ids.a.start + ids.a.off
     ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
@@ -140,15 +80,17 @@ compute_error <- function(map) {
 
     # - Diagonal: TR to BL
     ids.b.start <- c(
-      if(dim.y > 2L) c(ids.raw[seq(2L, dim.x, 2L), seq(2L, dim.y - 1L, 2L)]),
-      if(dim.x > 2L) c(ids.raw[seq(3L, dim.x, 2L), seq(1L, dim.y - 1L, 2L)])
+      if(grid.nc>2L) c(ids.raw[seq(2L, grid.nr, 2L), seq(2L, grid.nc-1L, 2L)]),
+      if(grid.nr>2L) c(ids.raw[seq(3L, grid.nr, 2L), seq(1L, grid.nc-1L, 2L)])
     )
-    ids.b.off <- mult * (x - 1L)
+    ids.b.off <- mult * (nr - 1L)
     ids.b.end <- ids.b.start + ids.b.off
     z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
     ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
     err.b <- abs(map[ids.b.mid] - z.mid)
 
+    ids.mid <- c(ids.a.mid, ids.b.mid)
+    z.err <- c(err.a, err.b)
     errors[ids.mid] <-
       do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 'd')))
   }
@@ -164,41 +106,15 @@ treeprof::treeprof(errors <- compute_error(elmat1[1:257,1:257]))
 errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
 
-writeLines(
-  paste0(
-    'terrain = [', paste0(map, collapse=','),
-    sprintf('];
-    JSON.stringify(comp_errors(terrain, %d, %d));
-    ', nrow(map), nrow(map) - 1
-) ) )
-errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
-# > errors
-#       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
-#  [1,]  0.0  0.0  1.5  0.5  4.0  0.0  0.5  0.5  0.0
-#  [2,]  1.0  1.0  0.0  1.5  1.5  1.5  0.0  0.5  0.5
-#  [3,]  1.5  1.0  3.0  0.0  1.5  0.5  3.0  0.0  1.5
-#  [4,]  0.5  1.5  0.5  0.5  0.0  0.0  1.0  1.0  1.0
-#  [5,] 10.5  1.0  3.0  0.5 10.5  0.5  3.0  0.0  5.5
-#  [6,]  0.5  2.0  1.5  3.0  3.0  3.0  0.5  1.5  0.0
-#  [7,]  3.0  2.0  5.5  1.0  5.5  1.0  5.5  1.5  3.0
-#  [8,]  2.5  2.5  1.5  1.5  1.5  0.0  1.0  1.5  1.0
-#  [9,]  0.0  1.0  2.5  1.0  5.5  0.5  1.5  0.5  0.0
-# > errors - errors3
-#       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
-#  [1,]    0    0    0    0    0  0.0   -1    0    0
-#  [2,]    0    0    0    0    0  0.0    0    0    0
-#  [3,]    0    0    0    0    0  0.0    0    0    0
-#  [4,]    0    0    0    0    0 -1.0    0    0    0
-#  [5,]    0    0    0    0    0  0.0    0    0    0
-#  [6,]    0    0    0    0    0  0.0    0    0    0
-#  [7,]    0    0    0    0    0  0.0    0    0    0
-#  [8,]    0    0    0    0    0 -1.5    0    0    0
-#  [9,]    0    0    0    0    0  0.0    0    0    0
-
-
-# This is the test against the direct JS version using elmat1[1:5,1:5]
-# errors3 <- unlist(jsonlite::parse_json("{\"0\":0,\"1\":1,\"2\":1.5,\"3\":0.5,\"4\":0,\"5\":0,\"6\":1,\"7\":1,\"8\":1.5,\"9\":1,\"10\":1.5,\"11\":0,\"12\":2.5,\"13\":0.5,\"14\":2.5,\"15\":0.5,\"16\":1.5,\"17\":0,\"18\":0.5,\"19\":0.5,\"20\":0,\"21\":1.5,\"22\":1.5,\"23\":0,\"24\":0}"))
-# errors3 <- matrix(errors3, 5)
+# # debugging code
+# writeLines(
+#   paste0(
+#     'terrain = [', paste0(map, collapse=','),
+#     sprintf('];
+#     JSON.stringify(comp_errors(terrain, %d, %d));
+#     ', nrow(map), nrow(map) - 1
+# ) ) )
+# errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
 
 # For each error, we need to draw all the corresponding triangles.  This means
 # we need to figure out the size of the "diagonal", and whether we're dealing
@@ -304,7 +220,7 @@ extract_geometry <- function(errors, maxError) {
   indices[seq_len(i)];
 }
 system.time({
-  raw <- extract_geometry(errors, 20)
+  raw <- extract_geometry(errors, 30)
   xs <- matrix(raw %/% nrow(errors), 3)
   ys <- matrix(raw %% nrow(errors), 3)
 })
@@ -379,20 +295,4 @@ plot_new <- function(
   plot.window(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
-
-
-mx <- matrix(0, 1e3, 1e3)
-ids <- seq_len(nrow(mx) / 2L)
-
-system.time({
-  seq.row <- seq(1L, length.out=500L, by=2L)
-  seq.col <- seq(0L, to=1000000L, by=1000L)
-  ids <- rep(seq.row, length(seq.col)) + rep(seq.col, each=length(seq.row))
-})
-
-system.time({
-  ids2 <- rep(2L, 5e5)
-  ids2[seq_len(500) * 500L] <- 500L
-  ids2 <- cumsum(ids2)
-})
 
