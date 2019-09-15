@@ -4,33 +4,38 @@ eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
-compute_error <- function(map) {
-  .get_child_err <- function(ids.mid, type, nr, nc, mult) {
-    # retrieve children clockwise starting from top left
-    if(identical(type, 's')) {          # square sides
-      col.off <- c(-1L, 1L, 1L, -1L)
-      row.off <- c(-1L, -1L, 1L, 1L)
-    } else if (identical(type, 'd')) {  # diagonals
-      col.off <- c(0L, 2L, 0L, -2L)
-      row.off <- c(-2L, 0L, 2L, 0L)
-    } else stop("bad input")
-    offset <- (row.off * mult) %/% 4L + nr * (col.off * mult) %/% 4L
-    child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
 
-    if(identical(type, 's')) {
-      # square sides on perimeter will produce some OOB children depending on
-      # which child it is (remember, children clockwise from top left)
-      ids.mod.x <- ids.mid %% nr
-      ids.div.y <- (ids.mid - 1L) %/% nc
-      row.1 <- ids.mod.x == 1L
-      row.n <- ids.mod.x == 0L
-      col.1 <- ids.div.y == 0L
-      col.n <- ids.div.y == (nc - 1L)
-      child.ids[[1]][row.1 | col.1] <- NA
-      child.ids[[2]][row.1 | col.n] <- NA
-      child.ids[[3]][row.n | col.n] <- NA
-      child.ids[[4]][row.n | col.1] <- NA
-    }
+# retrieve children around ids.mid clockwise starting from top left
+get_child_ids <- function(ids.mid, type, nr, nc, mult) {
+  if(identical(type, 's')) {          # square sides
+    col.off <- c(-1L, 1L, 1L, -1L)
+    row.off <- c(-1L, -1L, 1L, 1L)
+  } else if (identical(type, 'd')) {  # diagonals
+    col.off <- c(0L, 2L, 0L, -2L)
+    row.off <- c(-2L, 0L, 2L, 0L)
+  } else stop("bad input")
+  offset <- (row.off * mult) %/% 4L + nr * (col.off * mult) %/% 4L
+  child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
+  if(identical(type, 's')) {
+    # square sides on perimeter will produce some OOB children depending on
+    # which child it is (remember, children clockwise from top left)
+    ids.mod.x <- ids.mid %% nr
+    ids.div.y <- (ids.mid - 1L) %/% nc
+    row.1 <- ids.mod.x == 1L
+    row.n <- ids.mod.x == 0L
+    col.1 <- ids.div.y == 0L
+    col.n <- ids.div.y == (nc - 1L)
+    child.ids[[1]][row.1 | col.1] <- NA
+    child.ids[[2]][row.1 | col.n] <- NA
+    child.ids[[3]][row.n | col.n] <- NA
+    child.ids[[4]][row.n | col.1] <- NA
+  }
+  child.ids
+}
+compute_error <- function(map) {
+  .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
+  .get_child_err <- function(ids.mid, type) {
+    child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
     lapply(child.ids, function(ids) errors[ids])
   }
   nr <- nrow(map)
@@ -48,22 +53,22 @@ compute_error <- function(map) {
       nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
     ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
 
-    # - Square Tiles, vertical sides
+    # - Square, vertical
     ids.a.start <- c(ids.raw[-grid.nr,])
     ids.a.mid <- ids.a.start + mult %/% 2L
     ids.a.end <- ids.a.start + mult
     err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
 
-    # - Square Tiles, horizontal sides
+    # - Square, horizontal
     ids.b.start <- c(t(ids.raw[,-grid.nc]))
     ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
     ids.b.end <- ids.b.start + (mult * nr)
     err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
 
+    # - Square record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
     z.err <- c(err.a, err.b)
-    errors[ids.mid] <- if(i > 1L)
-      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 's')))
+    errors[ids.mid] <- if(i > 1L) pmax2(z.err, .get_child_err(ids.mid, 's'))
     else z.err
 
     # - Diagonal: TL to BR
@@ -87,15 +92,14 @@ compute_error <- function(map) {
     ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
     err.b <- abs(map[ids.b.mid] - z.mid)
 
+    # - Diagonal record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- c(err.a, err.b)
-    errors[ids.mid] <-
-      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 'd')))
+    errors[ids.mid] <- pmax2(c(err.a, err.b), .get_child_err(ids.mid, 'd'))
   }
   errors
 }
-map <- elmat1[1:9,1:9]
-# map <- elmat1[1:257,1:257]
+map <- elmat1[1:9,1:20]
+map <- elmat1[1:257,1:257]
 # debug(compute_error)
 errors <- compute_error(map)
 
@@ -103,75 +107,106 @@ system.time(errors <- compute_error(elmat1[1:257,1:257]))
 treeprof::treeprof(errors <- compute_error(elmat1[1:257,1:257]))
 errors <- compute_error(volcano[1:61,1:61])
 err.ind <- which(errors > 20, arr.ind=TRUE)
+# 1. start from the lowest level out
+# 2. check diag point error, if fail:
+# 3. get child diag coordinates
+# 4. if NA, already plotted, don't plot
+# 5. else, generate child triangles
+# 6. mark diag point as NA
+# 7. at top level, draw remaining children
 
+# Alternative (more like original)
+#
+# 1. Start from top level
+#    * Get initial ids, in theory spreading out from those should guarantee
+#    getting all the midpoints.
+# 2. If not failing, draw the two triangles
+#    * need to know if vert/hz tr/tl
+# 3. If failing, get children
+# 4. repeat
+
+draw_triangle <- function(id.mid, type, mult, nr, nc) {
+  ids.y <- ((ids.mid - 1L) %% nr)
+  ids.x <- ((ids.mid - 1L) %/% nc)
+
+  if(identical(type,  's')) {
+    off.a <- c( 0L,   0L, -2L,  0L,  0L, 2L) * (mult %/% 2L) + 1L
+    off.b <- c(-1L,   1L,  0L,  1L, -1L, 0L) * (mult) + 1L
+
+    vertical <- as.logical((ids.mid - 1L) %% mult)
+    x.res <- c(
+      outer(ids.x[vertical],  off.a, '+'),
+      outer(ids.x[!vertical], off.b, '+')
+    )
+    y.res <- c(
+      outer(ids.y[vertical],  off.b, '+'),
+      outer(ids.y[!vertical], off.a, '+')
+    )
+  } else if(identical(type, 'd')) {
+    off.a <- c(-1L,  1L,  1L,  1L, -1L, -1L) * mult + 1L
+    off.b <- c( 1L,  1L, -1L, -1L, -1L,  1L) * mult + 1L
+
+    off.aa <- c(-1L,  1L, -1L, -1L,  1L,  1L) * mult + 1L
+    off.bb <- c( 1L,  1L, -1L, -1L,  1L, -1L) * mult + 1L
+
+    col.odd <- (ids.y - mult %/% 2L) %/% mult %% 2L
+    row.odd <- (ids.x - mult %/% 2L) %/% mult %% 2L
+
+    # top left diags are those for which both x and y grid coords are
+    # each even or odd, whereas top right ones are of mixed evenness.  Because
+    # our coords are in original ids computing whether we are in an even or odd
+    # grid grouping gets complicated.
+
+    topleft <- (col.odd & row.odd) | (!col.odd & !row.odd)
+
+    x.res <- c(
+      outer(ids.x[topleft],  off.a, '+'),
+      outer(ids.x[!topleft], off.aa, '+')
+    )
+    y.res <- c(
+      outer(ids.y[topleft],  off.b, '+'),
+      outer(ids.y[!topleft], off.bb, '+')
+    )
+
+
+  } else stop("Invalid type")
+}
 extract_mesh <- function(errors, tol) {
-  # 1. start from the lowest level out
-  # 2. check diag point error, if fail:
-  # 3. get child diag coordinates
-  # 4. if NA, already plotted, don't plot
-  # 5. else, generate child triangles
-  # 6. mark diag point as NA
-  # 7. at top level, draw remaining children
   nr <- nrow(map)
   nc <- ncol(map)
   layers <- floor(min(log2(c(nr, nc))))
-  errors <- array(0, dim=dim(map))
+
+  # Need to find the midpoints of the largest k^n + 1 squares that fit into
+  # our grid
+
+  mult <- 2^layers
+  points.r <- ((nr - 1L) %/% mult)
+  points.c <- ((nc - 1L) %/% mult)
+
+  # if we don't use ids elsewhere we need to direct compute the indices
+  ids <- array(seq_along(errors), dim(errors))
+  points <- ids[
+    seq(1L + mult %/% 2L, length.out = points.r, by=mult),
+    seq(1L + mult %/% 2L, length.out = points.c, by=mult)
+  ]
+  triangles <- vector("list", layers * 2L)
 
   for(i in seq_len(layers)) {
-    mult <- as.integer(2^i)
-    grid.nr <- ((nr - 1L) %/% mult) + 1L
-    grid.nc <- ((nc - 1L) %/% mult) + 1L
-    ids.raw <- rep(mult, prod(grid.nr, grid.nc))
-    ids.raw[1L] <- 1L
-    ids.raw[seq_len(grid.nc - 1L) * grid.nr + 1L] <-
-      nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
-    ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
+    mult <- as.integer(2^(layers - i + 1L))
 
-    # - Square Tiles, vertical sides
-    ids.a.start <- c(ids.raw[-grid.nr,])
-    ids.a.mid <- ids.a.start + mult %/% 2L
-    ids.a.end <- ids.a.start + mult
-    err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
+    err.p <- errors[points] > tol
+    triangles[[2L * (i - 1L) + 1L]] <- draw_triangle(points[!err.p], 'd', mult)
+    points <- unique(unlist(get_child_ids(points[err.p], 'd', nr, nc, mult)))
 
-    # - Square Tiles, horizontal sides
-    ids.b.start <- c(t(ids.raw[,-grid.nc]))
-    ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
-    ids.b.end <- ids.b.start + (mult * nr)
-    err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
-
-    ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- c(err.a, err.b)
-    errors[ids.mid] <- if(i > 1L)
-      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 's')))
-    else z.err
-
-    # - Diagonal: TL to BR
-    ids.a.start <- c(ids.raw[seq(1L, grid.nr-1L, 2L), seq(1L, grid.nc-1L, 2L)])
-    ids.a.off <- mult * (nr + 1L)
-    if(grid.nr > 2L & grid.nc > 2L)
-      ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
-    ids.a.end <- ids.a.start + ids.a.off
-    ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
-    z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
-    err.a <- abs(map[ids.a.mid] - z.mid)
-
-    # - Diagonal: TR to BL
-    ids.b.start <- c(
-      if(grid.nc>2L) c(ids.raw[seq(2L, grid.nr, 2L), seq(2L, grid.nc-1L, 2L)]),
-      if(grid.nr>2L) c(ids.raw[seq(3L, grid.nr, 2L), seq(1L, grid.nc-1L, 2L)])
-    )
-    ids.b.off <- mult * (nr - 1L)
-    ids.b.end <- ids.b.start + ids.b.off
-    z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
-    ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
-    err.b <- abs(map[ids.b.mid] - z.mid)
-
-    ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- c(err.a, err.b)
-    errors[ids.mid] <-
-      do.call(pmax, c(list(z.err, na.rm=TRUE), .get_child_err(ids.mid, 'd')))
+    err.p <- errors[points] > tol
+    triangles[[2L * i]] <- draw_triangle(points[!err.p], 's', mult)
+    points <- unique(unlist(get_child_ids(points[err.p], 's', nr, nc, mult)))
   }
+  triangles
 }
+# debug(extract_mesh)
+system.time(xx <- extract_mesh(errors, 2))
+treeprof::treeprof(xx <- extract_mesh(errors, 2))
 
 # # debugging code
 # writeLines(
@@ -193,7 +228,8 @@ extract_mesh <- function(errors, tol) {
 # tile as a rhombus so the diagonal is actually parallel to the x axis (or y
 # axis depending on how you draw it)?
 
-# Try a direct implementation; something's not right here
+# Try a direct implementation; mostly the same except that we need to transpose
+# some of the coordinates
 
 errors_rtin <- function(terrain) {
   errors <- array(0, dim(terrain));
