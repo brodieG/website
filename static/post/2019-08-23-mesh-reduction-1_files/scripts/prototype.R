@@ -133,11 +133,6 @@ y.diag <- as.integer(c(0,  1, 1, 0,  1,-1, 0, -1, -1, 0, -1, 1))
 x <- x.diag
 y <- y.diag
 
-x <- rbind(matrix(unlist(lapply(xx, '[[', 'x')), 3), NA)
-y <- rbind(matrix(unlist(lapply(xx, '[[', 'y')), 3), NA)
-plot_new(x, y)
-polygon(rescale(x), rescale(y))
-
 draw_triangle <- function(ids.mid, type, nr, nc, mult) {
   ids.y <- ((ids.mid - 1L) %% nr)
   ids.x <- ((ids.mid - 1L) %/% nc)
@@ -183,10 +178,20 @@ extract_mesh <- function(errors, tol) {
   triangles
 }
 # debug(extract_mesh)
-map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:17, 1:17]
+map <- elmat1[1:257, 1:257]
 errors <- compute_error(map)
-system.time(xx <- extract_mesh(errors, 2))
-treeprof::treeprof(xx <- extract_mesh(errors, 2))
+system.time(xx <- extract_mesh(errors, 30))
+x0 <- matrix(unlist(lapply(xx, '[[', 'x')), 3)
+y0 <- matrix(unlist(lapply(xx, '[[', 'y')), 3)
+valid <- which(colSums(
+  x0 < 0 | y0 < 0 | x0 > nrow(map) - 1 | y0 > ncol(map) - 1) == 0
+)
+x <- rbind(x0[, valid], NA)
+y <- rbind(y0[, valid], NA)
+plot_new(x, y)
+polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
 
 # # debugging code
 # writeLines(
@@ -306,7 +311,7 @@ extract_geometry <- function(errors, maxError) {
 
   indices[seq_len(i)];
 }
-treeprof::treeprof(raw <- extract_geometry(errors, 30))
+raw <- extract_geometry(errors, 30)
 
 system.time({
   raw <- extract_geometry(errors, 30)
