@@ -125,51 +125,28 @@ err.ind <- which(errors > 20, arr.ind=TRUE)
 # 3. If failing, get children
 # 4. repeat
 
-draw_triangle <- function(id.mid, type, mult, nr, nc) {
+
+x.square <- as.integer(c(0, 0, 1, 0, 1, 0, 0,  0, -1, 0, -1, 0))
+y.square <- as.integer(c(0, 1, 0, 0, 0,-1, 0, -1,  0, 0,  0, 1))
+x.diag <- as.integer(c(0, -1, 1, 0,  1, 1, 0,  1, -1, 0, -1,-1))
+y.diag <- as.integer(c(0,  1, 1, 0,  1,-1, 0, -1, -1, 0, -1, 1))
+x <- x.diag
+y <- y.diag
+
+x <- rbind(matrix(unlist(lapply(xx, '[[', 'x')), 3), NA)
+y <- rbind(matrix(unlist(lapply(xx, '[[', 'y')), 3), NA)
+plot_new(x, y)
+polygon(rescale(x), rescale(y))
+
+draw_triangle <- function(ids.mid, type, nr, nc, mult) {
   ids.y <- ((ids.mid - 1L) %% nr)
   ids.x <- ((ids.mid - 1L) %/% nc)
-
-  if(identical(type,  's')) {
-    off.a <- c( 0L,   0L, -2L,  0L,  0L, 2L) * (mult %/% 2L) + 1L
-    off.b <- c(-1L,   1L,  0L,  1L, -1L, 0L) * (mult) + 1L
-
-    vertical <- as.logical((ids.mid - 1L) %% mult)
-    x.res <- c(
-      outer(ids.x[vertical],  off.a, '+'),
-      outer(ids.x[!vertical], off.b, '+')
-    )
-    y.res <- c(
-      outer(ids.y[vertical],  off.b, '+'),
-      outer(ids.y[!vertical], off.a, '+')
-    )
-  } else if(identical(type, 'd')) {
-    off.a <- c(-1L,  1L,  1L,  1L, -1L, -1L) * mult + 1L
-    off.b <- c( 1L,  1L, -1L, -1L, -1L,  1L) * mult + 1L
-
-    off.aa <- c(-1L,  1L, -1L, -1L,  1L,  1L) * mult + 1L
-    off.bb <- c( 1L,  1L, -1L, -1L,  1L, -1L) * mult + 1L
-
-    col.odd <- (ids.y - mult %/% 2L) %/% mult %% 2L
-    row.odd <- (ids.x - mult %/% 2L) %/% mult %% 2L
-
-    # top left diags are those for which both x and y grid coords are
-    # each even or odd, whereas top right ones are of mixed evenness.  Because
-    # our coords are in original ids computing whether we are in an even or odd
-    # grid grouping gets complicated.
-
-    topleft <- (col.odd & row.odd) | (!col.odd & !row.odd)
-
-    x.res <- c(
-      outer(ids.x[topleft],  off.a, '+'),
-      outer(ids.x[!topleft], off.aa, '+')
-    )
-    y.res <- c(
-      outer(ids.y[topleft],  off.b, '+'),
-      outer(ids.y[!topleft], off.bb, '+')
-    )
-
-
-  } else stop("Invalid type")
+  x.off <- if(identical(type, 's')) x.square else x.diag
+  y.off <- if(identical(type, 's')) y.square else y.diag
+  list(
+    x=outer(x.off * (mult %/% 2L), ids.x, '+'),
+    y=outer(y.off * (mult %/% 2L), ids.y, '+')
+  )
 }
 extract_mesh <- function(errors, tol) {
   nr <- nrow(map)
@@ -195,16 +172,19 @@ extract_mesh <- function(errors, tol) {
     mult <- as.integer(2^(layers - i + 1L))
 
     err.p <- errors[points] > tol
-    triangles[[2L * (i - 1L) + 1L]] <- draw_triangle(points[!err.p], 'd', mult)
+    triangles[[2L * (i - 1L) + 1L]] <- 
+      draw_triangle(points[!err.p], 'd', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 'd', nr, nc, mult)))
 
     err.p <- errors[points] > tol
-    triangles[[2L * i]] <- draw_triangle(points[!err.p], 's', mult)
+    triangles[[2L * i]] <- draw_triangle(points[!err.p], 's', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 's', nr, nc, mult)))
   }
   triangles
 }
 # debug(extract_mesh)
+map <- elmat1[1:5, 1:5]
+errors <- compute_error(map)
 system.time(xx <- extract_mesh(errors, 2))
 treeprof::treeprof(xx <- extract_mesh(errors, 2))
 
