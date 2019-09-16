@@ -139,8 +139,8 @@ draw_triangle <- function(ids.mid, type, nr, nc, mult) {
   x.off <- if(identical(type, 's')) x.square else x.diag
   y.off <- if(identical(type, 's')) y.square else y.diag
   list(
-    x=outer(x.off * (mult %/% 2L), ids.x, '+'),
-    y=outer(y.off * (mult %/% 2L), ids.y, '+')
+    x=outer(x.off * (mult / 2L), ids.x, '+'),
+    y=outer(y.off * (mult / 2L), ids.y, '+')
   )
 }
 extract_mesh <- function(errors, tol) {
@@ -161,7 +161,7 @@ extract_mesh <- function(errors, tol) {
     seq(1L + mult %/% 2L, length.out = points.r, by=mult),
     seq(1L + mult %/% 2L, length.out = points.c, by=mult)
   ]
-  triangles <- vector("list", layers * 2L)
+  triangles <- vector("list", (layers + 1L) * 2L)
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^(layers - i + 1L))
@@ -171,20 +171,21 @@ extract_mesh <- function(errors, tol) {
       draw_triangle(points[!err.p], 'd', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 'd', nr, nc, mult)))
 
-    err.p <- errors[points] > tol
+    err.p <- errors[points] > tol & i != layers
     triangles[[2L * i]] <- draw_triangle(points[!err.p], 's', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 's', nr, nc, mult)))
   }
-  triangles
+  list(tri=triangles, points=points)
 }
 # debug(extract_mesh)
-# map <- elmat1[1:5, 1:5]
+tol <- 1
+map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
-map <- elmat1[1:257, 1:257]
+# map <- elmat1[1:257, 1:257]
 errors <- compute_error(map)
-system.time(xx <- extract_mesh(errors, 30))
-x0 <- matrix(unlist(lapply(xx, '[[', 'x')), 3)
-y0 <- matrix(unlist(lapply(xx, '[[', 'y')), 3)
+system.time(xx <- extract_mesh(errors, tol))
+x0 <- matrix(unlist(lapply(xx$tri, '[[', 'x')), 3)
+y0 <- matrix(unlist(lapply(xx$tri, '[[', 'y')), 3)
 valid <- which(colSums(
   x0 < 0 | y0 < 0 | x0 > nrow(map) - 1 | y0 > ncol(map) - 1) == 0
 )
@@ -311,20 +312,14 @@ extract_geometry <- function(errors, maxError) {
 
   indices[seq_len(i)];
 }
-raw <- extract_geometry(errors, 30)
-
-system.time({
-  raw <- extract_geometry(errors, 30)
-  xs <- matrix(raw %/% nrow(errors), 3)
-  ys <- matrix(raw %% nrow(errors), 3)
-})
+raw <- extract_geometry(errors, tol)
+xs <- matrix(raw %/% nrow(errors), 3)
+ys <- matrix(raw %% nrow(errors), 3)
 plot_new(xs, ys)
 polygon(
   rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
   col='#DDDDDD', border='#444444'
 )
-plot_new(c(0,4), c(0,4))
-points(rep(0:4, 5)/4, rep(0:4, each=5)/4)
 
 
 # map <- elmat1
