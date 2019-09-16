@@ -130,10 +130,22 @@ x.square <- as.integer(c(0, 0, 1, 0, 1, 0, 0,  0, -1, 0, -1, 0))
 y.square <- as.integer(c(0, 1, 0, 0, 0,-1, 0, -1,  0, 0,  0, 1))
 x.diag <- as.integer(c(0, -1, 1, 0,  1, 1, 0,  1, -1, 0, -1,-1))
 y.diag <- as.integer(c(0,  1, 1, 0,  1,-1, 0, -1, -1, 0, -1, 1))
-x <- x.diag
-y <- y.diag
 
-draw_triangle <- function(ids.mid, type, nr, nc, mult) {
+# gah, the problem with this is that when we get to the first level that didn't
+# fail, we need to draw the triangles with the smallest split possible since
+# that level did not fail.  So we need to be able to tell easily whether it is a
+# vert/hrz or tl/tr tile.
+#
+# Formula for vert/hrz:
+#
+# * if x coord a multiple of `mult`, then vertical, else horizontal
+#
+# Formula for tl/tr
+#
+# * if both x and y coord shifted by mult/2 and divided `mult` are even or both
+#   are odd, then tl, else br
+
+draw_triangle2 <- function(ids.mid, type, nr, nc, mult) {
   ids.y <- ((ids.mid - 1L) %% nr)
   ids.x <- ((ids.mid - 1L) %/% nc)
   x.off <- if(identical(type, 's')) x.square else x.diag
@@ -142,6 +154,51 @@ draw_triangle <- function(ids.mid, type, nr, nc, mult) {
     x=outer(x.off * (mult / 2L), ids.x, '+'),
     y=outer(y.off * (mult / 2L), ids.y, '+')
   )
+}
+draw_triangle <- function(ids.mid, type, nr, nc, mult) {
+  ids.y <- ((ids.mid - 1L) %% nr)
+  ids.x <- ((ids.mid - 1L) %/% nc)
+
+  if(identical(type,  's')) {
+    off.a <- c( 0L,   0L, -1L,  0L,  0L, 1L) * (mult)
+    off.b <- c(-1L,   1L,  0L,  1L, -1L, 0L) * (mult)
+
+    vertical <- as.logical((ids.mid - 1L) %% mult)
+    x.res <- c(
+      outer(off.a, ids.x[vertical],  '+'),
+      outer(off.b, ids.x[!vertical], '+')
+    )
+    y.res <- c(
+      outer(off.b, ids.y[vertical],  '+'),
+      outer(off.a, ids.y[!vertical], '+')
+    )
+  } else if(identical(type, 'd')) {
+    off.a <- c(-1L,  1L,  1L,  1L, -1L, -1L) * mult / 2
+    off.b <- c( 1L,  1L, -1L, -1L, -1L,  1L) * mult / 2
+
+    off.aa <- c(-1L,  1L, -1L, -1L,  1L,  1L) * mult / 2
+    off.bb <- c( 1L,  1L, -1L, -1L,  1L, -1L) * mult / 2
+
+    col.odd <- (ids.y - mult %/% 2L) %/% mult %% 2L
+    row.odd <- (ids.x - mult %/% 2L) %/% mult %% 2L
+
+    # top left diags are those for which both x and y grid coords are
+    # each even or odd, whereas top right ones are of mixed evenness.  Because
+    # our coords are in original ids computing whether we are in an even or odd
+    # grid grouping gets complicated.
+
+    topleft <- (col.odd & row.odd) | (!col.odd & !row.odd)
+
+    x.res <- c(
+      outer(off.a, ids.x[topleft],  '+'),
+      outer(off.aa, ids.x[!topleft], '+')
+    )
+    y.res <- c(
+      outer(off.b, ids.y[topleft],  '+'),
+      outer(off.bb, ids.y[!topleft], '+')
+    )
+  }
+  list(x=x.res, y=y.res)
 }
 extract_mesh <- function(errors, tol) {
   nr <- nrow(map)
@@ -183,7 +240,7 @@ map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
 # map <- elmat1[1:257, 1:257]
 errors <- compute_error(map)
-system.time(xx <- extract_mesh(errors, tol))
+xx <- extract_mesh(errors, tol)
 x0 <- matrix(unlist(lapply(xx$tri, '[[', 'x')), 3)
 y0 <- matrix(unlist(lapply(xx$tri, '[[', 'y')), 3)
 valid <- which(colSums(
@@ -193,6 +250,18 @@ x <- rbind(x0[, valid], NA)
 y <- rbind(y0[, valid], NA)
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
+
+plot_triangles <- function(tri, nr, nc) {
+  x0 <- matrix(tri$x, 3)
+  y0 <- matrix(tri$y, 3)
+  valid <- which(colSums(
+    x0 < 0 | y0 < 0 | x0 > nr - 1 | y0 > nc - 1) == 0
+  )
+  x <- rbind(x0[, valid], NA)
+  y <- rbind(y0[, valid], NA)
+  plot_new(x, y)
+  polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
+}
 
 # # debugging code
 # writeLines(
