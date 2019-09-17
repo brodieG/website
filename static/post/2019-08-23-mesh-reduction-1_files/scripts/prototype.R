@@ -160,17 +160,17 @@ draw_triangle <- function(ids.mid, type, nr, nc, mult) {
   ids.x <- ((ids.mid - 1L) %/% nc)
 
   if(identical(type,  's')) {
-    off.a <- c( 0L,   0L, -1L,  0L,  0L, 1L) * (mult)
-    off.b <- c(-1L,   1L,  0L,  1L, -1L, 0L) * (mult)
+    off.a <- c( 0L,   0L, -1L,  0L,  0L, 1L) * (mult/2L)
+    off.b <- c(-1L,   1L,  0L,  1L, -1L, 0L) * (mult/2L)
 
-    vertical <- as.logical((ids.mid - 1L) %% mult)
+    vertical <- which(as.logical((ids.x - 1L) %% mult))
     x.res <- c(
       outer(off.a, ids.x[vertical],  '+'),
-      outer(off.b, ids.x[!vertical], '+')
+      outer(off.b, ids.x[-vertical], '+')
     )
     y.res <- c(
       outer(off.b, ids.y[vertical],  '+'),
-      outer(off.a, ids.y[!vertical], '+')
+      outer(off.a, ids.y[-vertical], '+')
     )
   } else if(identical(type, 'd')) {
     off.a <- c(-1L,  1L,  1L,  1L, -1L, -1L) * mult / 2
@@ -187,19 +187,89 @@ draw_triangle <- function(ids.mid, type, nr, nc, mult) {
     # our coords are in original ids computing whether we are in an even or odd
     # grid grouping gets complicated.
 
-    topleft <- (col.odd & row.odd) | (!col.odd & !row.odd)
+    topright <- which((col.odd &row.odd) | (!col.odd & !row.odd))
 
     x.res <- c(
-      outer(off.a, ids.x[topleft],  '+'),
-      outer(off.aa, ids.x[!topleft], '+')
+      outer(off.a, ids.x[-topright],  '+'),
+      outer(off.aa, ids.x[topright], '+')
     )
     y.res <- c(
-      outer(off.b, ids.y[topleft],  '+'),
-      outer(off.bb, ids.y[!topleft], '+')
+      outer(off.b, ids.y[-topright],  '+'),
+      outer(off.bb, ids.y[topright], '+')
     )
   }
   list(x=x.res, y=y.res)
 }
+# Alternate extract mesh algo:
+#
+# 1. Compute midpoints at lowest level
+# 2. If break error:
+# 3.   Compute corresponding tile vertices
+# 4.   Find triangles with "free" vertices in base
+# 5.   Draw them
+# 6.   Mark all darwn vertices as busy
+# 7. Increase level
+# 8. Compute midpoints
+# 9. Go to 2.
+
+base_coords <- function(ids.mid, type, nr, nc, mult) {
+  if(identical(type, 's')) {
+    x.off <- c(+0L, +1L, +0L, -1L, +1L, +0L, -1L, +0L)
+    y.off <- c(+1L, +0L, -1L, +0L, +0L, -1L, +0L, +0L)
+  } else if(identical(type, 'd')) {
+    x.off <- c(-1L, +1L, +1L, -1L, +1L, +1L, -1L, -1L)
+    y.off <- c(+1L, +1L, -1L, -1L, +1L, -1L, -1L, +1L)
+  }
+  ids <- ids.mid - 1L
+  x <- ids %/% nr + 1L
+  y <- ids %% nc + 1L
+
+  # Need to detect and eliminate OOB, use `dim` to avoid refcount bump
+
+  x.res <- rep(x.off, each=length(x)) + rep(x, length(x.off))
+  dim(x.res) <- c(length(x), length(x.off)/2L, 2L)
+  y.res <- rep(y.off, each=length(y)) + rep(y, length(y.off))
+  dim(y.res) <- dim(x.res)
+
+  oob <- rowSums(x.res < 1L | x.res > nr | y.res < 1L | y.res > nc, dims=2) > 0L
+  list(x=x.res, y=y.res, oob=oob)
+}
+
+extract_mesh2 <- function(errors, tol) {
+  stopifnot(length(errors) > 1L)
+  nr <- nrow(map)
+  nc <- ncol(map)
+  layers <- floor(min(log2(c(nr, nc))))
+  vertex <- array(FALSE, dim(errors))
+
+  for(i in seq_along(layers)) {
+    mult <- as.integer(2^i)
+    grid.nr <- ((nr - 1L) %/% mult) + 1L
+    grid.nc <- ((nc - 1L) %/% mult) + 1L
+    r.extra <- nr - ((grid.nr - 1L) * mult + 1L)
+
+    ids.sq <- rep(mult, grid.nr * (grid.nc - 1L) + grid.nc * (grid.nr - 1L))
+    ids.sq[cumsum(rep(c(grid.nr - 1L, grid.nr), grid.nc - 1L)) + 1L] <-
+      r.extra + mult
+    ids.sq <- cumsum(ids.sq)
+    base.sq <- base_coords(ids.sq, type='s', nr, nc, mult)
+    base.drawn <- rep(TRUE, length(ids.sq) * 8L)
+    base.idx <- cbind(c(base.sq$x), c(base.sq$y))[!base.sq$oob, , drop=FALSE]
+    base.drawn[!base.sq$oob] <- vertex[base.idx]
+    tri.draw <- .rowSums(base.drawn, m=length(base.drawn) / 2L, n=2L) < 2
+
+
+
+    ids.di <- rep(mult, (grid.nr - 1L) * (grid.nc - 1L))
+    ids.di[seq(1L, by=grid.nr - 1L, length.out=grid.nc - 1L)] <-
+      2L * mult - 1L + nr * (mult %/% 2L) + r.extra
+    ids.di[1] <- ids.di[1] - r.extra - mult + 1L
+    ids.di <- cumsum(ids.di)
+  }
+}
+debug(extract_mesh2)
+extract_mesh2(errors, tol)
+
 extract_mesh <- function(errors, tol) {
   nr <- nrow(map)
   nc <- ncol(map)
@@ -220,6 +290,9 @@ extract_mesh <- function(errors, tol) {
   ]
   triangles <- vector("list", (layers + 1L) * 2L)
 
+  # gaaah, it matters what the failing parent of the non failing child is, we
+  # only want to draw the triangle that touches the failing parent
+
   for(i in seq_len(layers)) {
     mult <- as.integer(2^(layers - i + 1L))
 
@@ -228,7 +301,7 @@ extract_mesh <- function(errors, tol) {
       draw_triangle(points[!err.p], 'd', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 'd', nr, nc, mult)))
 
-    err.p <- errors[points] > tol & i != layers
+    err.p <- errors[points] > tol
     triangles[[2L * i]] <- draw_triangle(points[!err.p], 's', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 's', nr, nc, mult)))
   }
@@ -389,6 +462,7 @@ polygon(
   rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
   col='#DDDDDD', border='#444444'
 )
+points(rescale(which(errors > tol, arr.ind=TRUE)[,2:1] - 1), pch=19, col='red')
 
 
 # map <- elmat1
