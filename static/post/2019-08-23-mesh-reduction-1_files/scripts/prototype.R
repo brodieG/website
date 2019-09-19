@@ -212,7 +212,7 @@ draw_triangle <- function(ids.mid, type, nr, nc, mult) {
 # 8. Compute midpoints
 # 9. Go to 2.
 
-base_coords <- function(ids.mid, type, nr, nc, mult) {
+base_coords <- function(ids.mid, type, nr, nc, mult, id.type) {
   if(identical(type, 's')) {
     x.off <- c(+0L, +1L, +0L, -1L, +1L, +0L, -1L, +0L)
     y.off <- c(+1L, +0L, -1L, +0L, +0L, -1L, +0L, +0L)
@@ -220,7 +220,14 @@ base_coords <- function(ids.mid, type, nr, nc, mult) {
     x.off <- c(-1L, +1L, +1L, -1L, +1L, +1L, -1L, -1L)
     y.off <- c(+1L, +1L, -1L, -1L, +1L, -1L, -1L, +1L)
   }
-  ids <- ids.mid - 1L
+  oob <-
+    x.off < 0L & ids.type == 1L |
+    x.off > 0L & ids.type == 2L |
+    y.off < 0L & ids.type == 3L |
+    y.off > 0L & ids.type == 4L
+    Jkk
+  x.off <- rep(x.off * mult %/% 2L, each(length(x)))
+  ids <- ids.mid + x.off * mult + y.off * (nr * mult)
   x <- ids %/% nr + 1L
   y <- ids %% nc + 1L
 
@@ -252,7 +259,40 @@ extract_mesh2 <- function(errors, tol) {
     ids.sq[cumsum(rep(c(grid.nr - 1L, grid.nr), grid.nc - 1L)) + 1L] <-
       r.extra + mult
     ids.sq <- cumsum(ids.sq)
-    base.sq <- base_coords(ids.sq, type='s', nr, nc, mult)
+
+    ids.sq0 <- ids.sq[errors[ids.sq] > tol] - 1L
+    col.1 <- ids.sq0 < nr
+    col.n <- ids.sq0 >= nr * (nc - 1L)
+    row.sq <- ids.sq0 %% nr
+    row.1 <- row.sq == 0L
+    row.n <- row.sq == nr - 1L
+
+    col.n <- seq(to=length(ids.sq), length.out=grid.nr -1L, by=1L)
+    row.1 <- length(col.1) + 1L +
+      seq(0L, length.out=grid.nr - 1L, by=2L * grid.nr - 1L)
+    row.n <- row.1 + grid.nr - 1L
+
+    # col.1 & 4, col.n & 2, row.1 & 1, row.n & 3
+
+    ids.seq <- seq_len(ids.sq)
+    col.1.b <- ids.seq[col.1][err.break]
+    col.n.b <- ids.seq[col.n][err.break]
+    row.1.b <- ids.seq[row.1][err.break]
+
+
+    # base_coords should return a n x 4 matrix of ids, we need to identify
+    # the entries returned that are oob
+
+    tri.vert <- base_coords(ids.sq[err.brk], type='s', nr, nc, mult)
+    tri.vert.inb <- tri.vert[
+
+    ]
+    tri.draw <-
+
+
+
+
+    base.sq <- 
     base.drawn <- rep(TRUE, length(ids.sq) * 8L)
     base.idx <- cbind(c(base.sq$x), c(base.sq$y))[!base.sq$oob, , drop=FALSE]
     base.drawn[!base.sq$oob] <- vertex[base.idx]
