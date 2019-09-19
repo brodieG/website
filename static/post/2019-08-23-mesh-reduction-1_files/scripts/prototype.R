@@ -260,30 +260,20 @@ extract_mesh2 <- function(errors, tol) {
       r.extra + mult
     ids.sq <- cumsum(ids.sq)
 
-    ids.sq0 <- ids.sq[errors[ids.sq] > tol] - 1L
+    ids.sq <- ids.sq[errors[ids.sq] > tol] - 1L
+    ids.sq0 <- ids.sq - 1L
     col.1 <- ids.sq0 < nr
     col.n <- ids.sq0 >= nr * (nc - 1L)
     row.sq <- ids.sq0 %% nr
     row.1 <- row.sq == 0L
     row.n <- row.sq == nr - 1L
 
-    col.n <- seq(to=length(ids.sq), length.out=grid.nr -1L, by=1L)
-    row.1 <- length(col.1) + 1L +
-      seq(0L, length.out=grid.nr - 1L, by=2L * grid.nr - 1L)
-    row.n <- row.1 + grid.nr - 1L
-
-    # col.1 & 4, col.n & 2, row.1 & 1, row.n & 3
-
-    ids.seq <- seq_len(ids.sq)
-    col.1.b <- ids.seq[col.1][err.break]
-    col.n.b <- ids.seq[col.n][err.break]
-    row.1.b <- ids.seq[row.1][err.break]
-
-
     # base_coords should return a n x 4 matrix of ids, we need to identify
     # the entries returned that are oob
 
-    tri.vert <- base_coords(ids.sq[err.brk], type='s', nr, nc, mult)
+    tri.vert <- base_coords(ids.sq0 + 1L, type='s', nr, nc, mult)
+    vert.oob <- logical(length(ids.sq0)
+
     tri.vert.inb <- tri.vert[
 
     ]
