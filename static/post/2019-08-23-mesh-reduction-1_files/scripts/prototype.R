@@ -200,105 +200,135 @@ draw_triangle <- function(ids.mid, type, nr, nc, mult) {
   }
   list(x=x.res, y=y.res)
 }
+# Triangle Base Coords
+#
+# Returns for each id, the four pairs of ids of the base vertices connected
+# to that ids.  E.g, for `ids.mid` x, will return a,b,c,d, with first the
+# two ids for a, then b, etc.
+#
+#              a---b                  a
+#              |\ /|                 /|\
+#  type = 'd': | x |    type = 's': d-x-b
+#              |/ \|                 \|/
+#              c---d                  c
+
+base_coords <- function(ids.mid, type, nr, nc, mult) {
+  if(identical(type, 's')) {
+    r.off <- c(+0L, +1L, +1L, +0L, +0L, -1L, -1L, +0L)
+    c.off <- c(+1L, +0L, +0L, -1L, -1L, +0L, +0L, +1L)
+  } else if(identical(type, 'd')) {
+    r.off <- c(-1L, +1L, +1L, +1L, +1L, -1L, -1L, -1L)
+    c.off <- c(+1L, +1L, +1L, -1L, -1L, -1L, -1L, +1L)
+  }
+  off <- r.off * mult %/%2L + c.off * (nr * mult %/%2L)
+  rep(ids.mid, each=length(off)) + rep(off, length(ids.mid))
+}
 # Alternate extract mesh algo:
 #
-# 1. Compute midpoints at lowest level
-# 2. If break error:
-# 3.   Compute corresponding tile vertices
-# 4.   Find triangles with "free" vertices in base
+# 1. Compute long edge midpoints at lowest level
+# 2. If error > tolerance:
+# 3.   Find the four triangles that have that midpoint for a vertex
+# 4.   Check which of those have undrawn vertices
 # 5.   Draw them
-# 6.   Mark all darwn vertices as busy
+# 6.   Mark drawn vertices as drawn
 # 7. Increase level
-# 8. Compute midpoints
+# 8. Compute long edge midpoints
 # 9. Go to 2.
-
-base_coords <- function(ids.mid, type, nr, nc, mult, id.type) {
-  if(identical(type, 's')) {
-    x.off <- c(+0L, +1L, +0L, -1L, +1L, +0L, -1L, +0L)
-    y.off <- c(+1L, +0L, -1L, +0L, +0L, -1L, +0L, +0L)
-  } else if(identical(type, 'd')) {
-    x.off <- c(-1L, +1L, +1L, -1L, +1L, +1L, -1L, -1L)
-    y.off <- c(+1L, +1L, -1L, -1L, +1L, -1L, -1L, +1L)
-  }
-  oob <-
-    x.off < 0L & ids.type == 1L |
-    x.off > 0L & ids.type == 2L |
-    y.off < 0L & ids.type == 3L |
-    y.off > 0L & ids.type == 4L
-    Jkk
-  x.off <- rep(x.off * mult %/% 2L, each(length(x)))
-  ids <- ids.mid + x.off * mult + y.off * (nr * mult)
-  x <- ids %/% nr + 1L
-  y <- ids %% nc + 1L
-
-  # Need to detect and eliminate OOB, use `dim` to avoid refcount bump
-
-  x.res <- rep(x.off, each=length(x)) + rep(x, length(x.off))
-  dim(x.res) <- c(length(x), length(x.off)/2L, 2L)
-  y.res <- rep(y.off, each=length(y)) + rep(y, length(y.off))
-  dim(y.res) <- dim(x.res)
-
-  oob <- rowSums(x.res < 1L | x.res > nr | y.res < 1L | y.res > nc, dims=2) > 0L
-  list(x=x.res, y=y.res, oob=oob)
-}
 
 extract_mesh2 <- function(errors, tol) {
   stopifnot(length(errors) > 1L)
   nr <- nrow(map)
   nc <- ncol(map)
   layers <- floor(min(log2(c(nr, nc))))
-  vertex <- array(FALSE, dim(errors))
+  undrawn <- array(TRUE, dim(errors))
+  triangles <- vector('list', 2L * layers)
 
-  for(i in seq_along(layers)) {
+  for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
     grid.nr <- ((nr - 1L) %/% mult) + 1L
     grid.nc <- ((nc - 1L) %/% mult) + 1L
     r.extra <- nr - ((grid.nr - 1L) * mult + 1L)
 
-    ids.sq <- rep(mult, grid.nr * (grid.nc - 1L) + grid.nc * (grid.nr - 1L))
-    ids.sq[cumsum(rep(c(grid.nr - 1L, grid.nr), grid.nc - 1L)) + 1L] <-
-      r.extra + mult
-    ids.sq <- cumsum(ids.sq)
+    # - Vertical and Horizontal Bases ("square") -
 
-    ids.sq <- ids.sq[errors[ids.sq] > tol] - 1L
-    ids.sq0 <- ids.sq - 1L
-    col.1 <- ids.sq0 < nr
-    col.n <- ids.sq0 >= nr * (nc - 1L)
-    row.sq <- ids.sq0 %% nr
-    row.1 <- row.sq == 0L
-    row.n <- row.sq == nr - 1L
+    # Index munging to compute midpoints for long edges that are vertical
+    # or horizontal
 
-    # base_coords should return a n x 4 matrix of ids, we need to identify
-    # the entries returned that are oob
+    c.lens <- rep_len(c(grid.nr %/% 2L, grid.nr %/% 2L + 1L), grid.nc + 1L)
+    ids.len <- sum(c.lens)
+    ids.r.raw <- rep_len(
+      c(seq(mult %/% 2L + 1L, nr, by=mult), seq(1L, nr, by=mult)),
+      length.out=ids.len
+    )
+    ids.c.raw <- (rep(seq_len(grid.nc + 1L), c.lens) - 1L) * mult %/% 2L * nr
+    ids <- ids.c.raw + ids.r.raw
 
-    tri.vert <- base_coords(ids.sq0 + 1L, type='s', nr, nc, mult)
-    vert.oob <- logical(length(ids.sq0)
+    # Midpoints at edges of tile will produce oob triangles with our naive
+    # offset algorithm.  To detect the oob triangles we must add padding to our
+    # indices as otherwise oob offsets would overlap with valid offsets.
 
-    tri.vert.inb <- tri.vert[
+    ids.pad <- ids + ids.c.raw + nr
 
-    ]
+    # Which midpoints exeede tolerance
+
+    ids.err <- errors[ids] > tol
+    ids.pad.err <- ids.pad[ids.err]
+
+    # Coords for the bases for each of four triangles that form the tile around
+    # each midpoint.
+
+    base.vert <- base_coords(ids.pad.err, type='s', nr * 2L, nc, mult)
+
+    # detect oob, and then undo padding
+
+    base.vert.inb <- base.vert > 0L & base.vert <= (nr * nc * 2L) &
+      (((base.vert - 1L) %/% nr) %% 2L) == 1L
+    base.vert <- base.vert - ((base.vert - 1L) %/% (nr * 2L) + 1L) * nr
+
+    # detect whether a vertex has already been drawn
+    # UPDATE (for first pass we should draw all, no need to check)
+
+    base.vert.undrawn <- rep(TRUE, length(base.vert))
+    base.vert.undrawn[base.vert.inb] <- undrawn[base.vert[base.vert.inb]]
+
+    # valid triangles are those that have no oob vertices and have at least one
+    # of two vertices not drawn.
+
     tri.draw <-
+      .colSums(base.vert.undrawn, m=2L, n=length(base.vert.undrawn)/2L) &
+      .colSums(base.vert.inb, m=2L, n=length(base.vert.inb)/2L) == 2L
 
+    # generate triangle coords, and mark the vertices as drawn.
 
+    tri.draw.vert <- matrix(base.vert[rep(tri.draw, each=2L)], nrow=2)
+    triangles[[(i - 1L) * 2L + 1L]] <-
+      rbind(tri.draw.vert, rep(ids[ids.err], each=4L)[tri.draw])
+    undrawn[c(tri.draw.vert)] <- FALSE
 
+    # - Diagonal Bases -
 
-    base.sq <- 
-    base.drawn <- rep(TRUE, length(ids.sq) * 8L)
-    base.idx <- cbind(c(base.sq$x), c(base.sq$y))[!base.sq$oob, , drop=FALSE]
-    base.drawn[!base.sq$oob] <- vertex[base.idx]
-    tri.draw <- .rowSums(base.drawn, m=length(base.drawn) / 2L, n=2L) < 2
-
-
-
-    ids.di <- rep(mult, (grid.nr - 1L) * (grid.nc - 1L))
-    ids.di[seq(1L, by=grid.nr - 1L, length.out=grid.nc - 1L)] <-
+    ids.raw <- rep(mult, (grid.nr - 1L) * (grid.nc - 1L))
+    ids.raw[seq(1L, by=grid.nr - 1L, length.out=grid.nc - 1L)] <-
       2L * mult - 1L + nr * (mult %/% 2L) + r.extra
-    ids.di[1] <- ids.di[1] - r.extra - mult + 1L
-    ids.di <- cumsum(ids.di)
+    ids.raw[1] <- ids.raw[1] - r.extra - mult + 1L
+    ids <- cumsum(ids.raw)
+    ids.err <- errors[ids] > tol
+
+    base.vert <- base_coords(ids[ids.err], type='d', nr, nc, mult)
+    base.vert.undrawn <- undrawn[base.vert]
+    tri.draw <-
+      .colSums(base.vert.undrawn, m=2L, n=length(base.vert.undrawn)/2L) > 0
+
+    tri.draw.vert <- matrix(base.vert[rep(tri.draw, each=2L)], nrow=2)
+    triangles[[i * 2L]] <-
+      rbind(tri.draw.vert, rep(ids[ids.err], each=4L)[tri.draw])
+    undrawn[c(tri.draw.vert)] <- FALSE
   }
+  triangles
 }
 debug(extract_mesh2)
-extract_mesh2(errors, tol)
+tris <- extract_mesh2(errors, tol)
+plot_tri_ids(tris, dim(errors))
 
 extract_mesh <- function(errors, tol) {
   nr <- nrow(map)
@@ -327,7 +357,7 @@ extract_mesh <- function(errors, tol) {
     mult <- as.integer(2^(layers - i + 1L))
 
     err.p <- errors[points] > tol
-    triangles[[2L * (i - 1L) + 1L]] <- 
+    triangles[[2L * (i - 1L) + 1L]] <-
       draw_triangle(points[!err.p], 'd', nr, nc, mult)
     points <- unique(unlist(get_child_ids(points[err.p], 'd', nr, nc, mult)))
 
@@ -362,6 +392,13 @@ plot_triangles <- function(tri, nr, nc) {
   )
   x <- rbind(x0[, valid], NA)
   y <- rbind(y0[, valid], NA)
+  plot_new(x, y)
+  polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
+}
+plot_tri_ids <- function(tri, dim) {
+  ids <- rbind(do.call(cbind, tri), NA) - 1L
+  x <- ids %% dim[1]
+  y <- ids %/% dim[2]
   plot_new(x, y)
   polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
 }
