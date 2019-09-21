@@ -286,25 +286,26 @@ extract_mesh2 <- function(errors, tol) {
       (((base.vert - 1L) %/% nr) %% 2L) == 1L
     base.vert <- base.vert - ((base.vert - 1L) %/% (nr * 2L) + 1L) * nr
 
-    # detect whether a vertex has already been drawn
+    # detect whether a triangle has already been drawn
     # UPDATE (for first pass we should draw all, no need to check)
 
-    base.vert.undrawn <- rep(TRUE, length(base.vert))
-    base.vert.undrawn[base.vert.inb] <- undrawn[base.vert[base.vert.inb]]
+    tri.inb <- .colSums(base.vert.inb, m=2L, n=length(base.vert.inb)/2L) == 2L
+    base.vert.undrawn <- rep(TRUE, length(base.vert)/2L)
+    base.vert.mid.id <- 
+      .colMeans(base.vert[rep(tri.inb, each=2L)], m=2L, n=sum(tri.inb))
+    base.vert.undrawn[tri.inb] <- undrawn[base.vert.mid.id]
 
     # valid triangles are those that have no oob vertices and have at least one
     # of two vertices not drawn.
 
-    tri.draw <-
-      .colSums(base.vert.undrawn, m=2L, n=length(base.vert.undrawn)/2L) &
-      .colSums(base.vert.inb, m=2L, n=length(base.vert.inb)/2L) == 2L
+    tri.draw <- base.vert.undrawn & tri.inb
 
     # generate triangle coords, and mark the vertices as drawn.
 
     tri.draw.vert <- matrix(base.vert[rep(tri.draw, each=2L)], nrow=2)
     triangles[[(i - 1L) * 2L + 1L]] <-
       rbind(tri.draw.vert, rep(ids[ids.err], each=4L)[tri.draw])
-    undrawn[c(tri.draw.vert)] <- FALSE
+    undrawn[ids[ids.err]] <- FALSE
 
     # - Diagonal Bases -
 
@@ -316,14 +317,14 @@ extract_mesh2 <- function(errors, tol) {
     ids.err <- errors[ids] > tol
 
     base.vert <- base_coords(ids[ids.err], type='d', nr, nc, mult)
-    base.vert.undrawn <- undrawn[base.vert]
-    tri.draw <-
-      .colSums(base.vert.undrawn, m=2L, n=length(base.vert.undrawn)/2L) > 0
+    base.vert.mid.id <- .colMeans(base.vert, m=2L, n=length(base.vert)/2L)
+    base.vert.undrawn <- undrawn[base.vert.mid.id]
+    tri.draw <- base.vert.undrawn
 
     tri.draw.vert <- matrix(base.vert[rep(tri.draw, each=2L)], nrow=2)
     triangles[[i * 2L]] <-
       rbind(tri.draw.vert, rep(ids[ids.err], each=4L)[tri.draw])
-    undrawn[c(tri.draw.vert)] <- FALSE
+    undrawn[ids[ids.err]] <- FALSE
   }
   triangles
 }
@@ -331,8 +332,11 @@ map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
 # map <- elmat1[1:257, 1:257]
 errors <- compute_error(map)
-tris <- extract_mesh2(errors, diff(range(map)) / 20)
+tol <- diff(range(map)) / 20
+# debug(extract_mesh2)
+tris <- extract_mesh2(errors, tol)
 plot_tri_ids(tris, dim(errors))
+plot_points_ids(which(errors > tol), dim(map))
 
 extract_mesh <- function(errors, tol) {
   nr <- nrow(map)
