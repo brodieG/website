@@ -245,22 +245,23 @@ extract_mesh2 <- function(errors, tol) {
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
-    grid.nr <- ((nr - 1L) %/% mult) + 1L
-    grid.nc <- ((nc - 1L) %/% mult) + 1L
-    r.extra <- nr - ((grid.nr - 1L) * mult + 1L)
+    grid.nr <- ((nr - 1L) %/% mult)
+    grid.nc <- ((nc - 1L) %/% mult)
+    r.extra <- nr - ((grid.nr) * mult + 1L)
 
     # - Vertical and Horizontal Bases ("square") -
 
     # Index munging to compute midpoints for long edges that are vertical
     # or horizontal
 
-    c.lens <- rep_len(c(grid.nr %/% 2L, grid.nr %/% 2L + 1L), grid.nc + 1L)
+    c.lens <- rep_len(c(grid.nr %/% 2L + 1L, grid.nr + 1L), grid.nc * 2L + 1L)
     ids.len <- sum(c.lens)
     ids.r.raw <- rep_len(
       c(seq(mult %/% 2L + 1L, nr, by=mult), seq(1L, nr, by=mult)),
       length.out=ids.len
     )
-    ids.c.raw <- (rep(seq_len(grid.nc + 1L), c.lens) - 1L) * mult %/% 2L * nr
+    ids.c.raw <- (rep(seq_len(grid.nc * 2L + 1L), c.lens) - 1L) *
+      mult %/% 2L * nr
     ids <- ids.c.raw + ids.r.raw
 
     # Midpoints at edges of tile will produce oob triangles with our naive
@@ -307,8 +308,8 @@ extract_mesh2 <- function(errors, tol) {
 
     # - Diagonal Bases -
 
-    ids.raw <- rep(mult, (grid.nr - 1L) * (grid.nc - 1L))
-    ids.raw[seq(1L, by=grid.nr - 1L, length.out=grid.nc - 1L)] <-
+    ids.raw <- rep(mult, grid.nr * grid.nc)
+    ids.raw[seq(1L, by=grid.nr, length.out=grid.nc)] <-
       2L * mult - 1L + nr * (mult %/% 2L) + r.extra
     ids.raw[1] <- ids.raw[1] - r.extra - mult + 1L
     ids <- cumsum(ids.raw)
@@ -326,8 +327,11 @@ extract_mesh2 <- function(errors, tol) {
   }
   triangles
 }
-debug(extract_mesh2)
-tris <- extract_mesh2(errors, tol)
+map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:17, 1:17]
+# map <- elmat1[1:257, 1:257]
+errors <- compute_error(map)
+tris <- extract_mesh2(errors, diff(range(map)) / 20)
 plot_tri_ids(tris, dim(errors))
 
 extract_mesh <- function(errors, tol) {
@@ -401,6 +405,12 @@ plot_tri_ids <- function(tri, dim) {
   y <- ids %/% dim[2]
   plot_new(x, y)
   polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
+}
+plot_points_ids <- function(points.ids, dim) {
+  ids <- points.ids - 1L
+  x <- ids %% dim[1]
+  y <- ids %/% dim[2]
+  points(rescale(x), rescale(y), pch=16, col='red')
 }
 
 # # debugging code
