@@ -20,7 +20,7 @@ get_child_ids <- function(ids.mid, type, nr, nc, mult) {
     # square sides on perimeter will produce some OOB children depending on
     # which child it is (remember, children clockwise from top left)
     ids.mod.x <- ids.mid %% nr
-    ids.div.y <- (ids.mid - 1L) %/% nc
+    ids.div.y <- (ids.mid - 1L) %/% nr
     row.1 <- ids.mod.x == 1L
     row.n <- ids.mod.x == 0L
     col.1 <- ids.div.y == 0L
@@ -68,14 +68,21 @@ compute_error <- function(map) {
     # - Square record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
     z.err <- c(err.a, err.b)
-    errors[ids.mid] <- if(i > 1L) pmax2(z.err, .get_child_err(ids.mid, 's'))
+    errors[ids.mid] <- if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
     else z.err
 
     # - Diagonal: TL to BR
-    ids.a.start <- c(ids.raw[seq(1L, grid.nr-1L, 2L), seq(1L, grid.nc-1L, 2L)])
+    ids.a.raw <- ids.raw[
+      seq(1L, grid.nr - 1L, 2L), seq(1L, grid.nc - 1L, 2L), drop=FALSE
+    ]
     ids.a.off <- mult * (nr + 1L)
-    if(grid.nr > 2L & grid.nc > 2L)
-      ids.a.start <- c(ids.a.start, ids.a.start + ids.a.off)
+    ids.a.start <- c(
+      ids.a.raw,
+      ids.a.raw[
+        if(grid.nr %% 2L) TRUE else -nrow(ids.a.raw),
+        if(grid.nc %% 2L) TRUE else -ncol(ids.a.raw)
+      ] + ids.a.off
+    )
     ids.a.end <- ids.a.start + ids.a.off
     ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
     z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
@@ -94,12 +101,13 @@ compute_error <- function(map) {
 
     # - Diagonal record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
-    errors[ids.mid] <- pmax2(c(err.a, err.b), .get_child_err(ids.mid, 'd'))
+    errors[ids.mid] <- .pmax2(c(err.a, err.b), .get_child_err(ids.mid, 'd'))
   }
   errors
 }
 map <- elmat1[1:9,1:20]
 map <- elmat1[1:257,1:257]
+map <- elmat1
 # debug(compute_error)
 errors <- compute_error(map)
 
@@ -330,10 +338,13 @@ extract_mesh2 <- function(errors, tol) {
 # map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
 map <- elmat1[1:257, 1:257]
+# map <- elmat1[1:5, 1:9]
+# map <- volcano
 errors <- compute_error(map)
 tol <- diff(range(map)) / 50
 # debug(extract_mesh2)
-tris <- extract_mesh2(errors, tol)
+system.time(tris <- extract_mesh2(errors, tol))
+# treeprof::treeprof((tris <- extract_mesh2(errors, tol))
 plot_tri_ids(tris, dim(errors))
 plot_points_ids(which(errors > tol), dim(map))
 
@@ -394,14 +405,14 @@ polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
 plot_tri_ids <- function(tri, dim, new=TRUE) {
   ids <- rbind(do.call(cbind, tri), NA) - 1L
   x <- ids %% dim[1]
-  y <- ids %/% dim[2]
+  y <- ids %/% dim[1]
   if(new) plot_new(x, y)
   polygon(x/(dim[1] - 1), y/(dim[2]-1), col='#DDDDDD', border='#444444')
 }
 plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
   x <- ids %% dim[1]
-  y <- ids %/% dim[2]
+  y <- ids %/% dim[1]
   x0 <- seq_len(dim[1]) - 1L
   y0 <- seq_len(dim[2]) - 1L
   points(
@@ -530,8 +541,8 @@ extract_geometry <- function(errors, maxError) {
   indices[seq_len(i)];
 }
 raw <- extract_geometry(errors, tol)
-xs <- matrix(raw %/% nrow(errors), 3)
-ys <- matrix(raw %% nrow(errors), 3)
+xs <- matrix(raw %% nrow(errors), 3)
+ys <- matrix(raw %/% ncol(errors), 3)
 plot_new(xs, ys)
 polygon(
   rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
