@@ -255,7 +255,8 @@ extract_mesh2 <- function(errors, tol) {
     mult <- as.integer(2^i)
     grid.nr <- ((nr - 1L) %/% mult)
     grid.nc <- ((nc - 1L) %/% mult)
-    r.extra <- nr - ((grid.nr) * mult + 1L)
+    nr.g <- grid.nr * mult + 1L
+    nc.g <- grid.nc * mult + 1L
 
     # - Vertical and Horizontal Bases ("square") -
 
@@ -265,7 +266,7 @@ extract_mesh2 <- function(errors, tol) {
     c.lens <- rep_len(c(grid.nr, grid.nr + 1L), grid.nc * 2L + 1L)
     ids.len <- sum(c.lens)
     ids.r.raw <- rep_len(
-      c(seq(mult %/% 2L + 1L, nr, by=mult), seq(1L, nr, by=mult)),
+      c(seq(mult %/% 2L + 1L, nr.g, by=mult), seq(1L, nr.g, by=mult)),
       length.out=ids.len
     )
     ids.c.raw <- (rep(seq_len(grid.nc * 2L + 1L), c.lens) - 1L) *
@@ -278,7 +279,7 @@ extract_mesh2 <- function(errors, tol) {
 
     ids.pad <- ids + ids.c.raw + nr
 
-    # Which midpoints exeede tolerance
+    # Which midpoints exeed tolerance
 
     ids.err <- errors[ids] > tol
     ids.pad.err <- ids.pad[ids.err]
@@ -295,7 +296,6 @@ extract_mesh2 <- function(errors, tol) {
     base.vert <- base.vert - ((base.vert - 1L) %/% (nr * 2L) + 1L) * nr
 
     # detect whether a triangle has already been drawn
-    # UPDATE (for first pass we should draw all, no need to check)
 
     tri.inb <- .colSums(base.vert.inb, m=2L, n=length(base.vert.inb)/2L) == 2L
     base.vert.undrawn <- rep(TRUE, length(base.vert)/2L)
@@ -321,8 +321,15 @@ extract_mesh2 <- function(errors, tol) {
     ids.c.raw <- seq(nr * mult %/% 2L, length.out=grid.nc, by=nr * mult)
     ids <- rep(ids.r.raw, each=length(ids.c.raw)) + 
       rep(ids.c.raw, length(ids.r.raw))
-    ids.err <- errors[ids] > tol
-
+    # Error, or at edge of plot and we will see no more larger triangles when
+    # plot is strictly square and of 2^k + 1.
+    ids.err <- errors[ids] > tol | (
+      if((nc %/% (mult * 2L)) * (mult * 2L) >= grid.nc * mult) FALSE
+      else ids > max(ids.c.raw)
+    ) | (
+      if((nr %/% (mult * 2L)) * (mult * 2L) >= grid.nr * mult) FALSE
+      else rep(ids.r.raw == max(ids.r.raw), each=length(ids.c.raw))
+    )
     base.vert <- base_coords(ids[ids.err], type='d', nr, nc, mult)
     base.vert.mid.id <- .colMeans(base.vert, m=2L, n=length(base.vert)/2L)
     base.vert.undrawn <- undrawn[base.vert.mid.id]
@@ -332,16 +339,23 @@ extract_mesh2 <- function(errors, tol) {
     triangles[[i * 2L]] <-
       rbind(tri.draw.vert, rep(ids[ids.err], each=4L)[tri.draw])
     undrawn[ids[ids.err]] <- FALSE
+
+    # Need to draw any undrawn triangles at this particular level (or maybe
+    # pair of levels?)
   }
   triangles
 }
 # map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
-map <- elmat1[1:257, 1:257]
+# map <- elmat1[1:257, 1:257]
 # map <- elmat1[1:5, 1:9]
-# map <- volcano
+# map <- elmat1[1:(2*4+1), 1:(2*3+1)]  # smallest error?
+# map <- elmat1[1:(2*5+1), 1:(2*4+1)]
+map <- elmat1[1:(2*3+1), 1:(2*4+1)]
+map <- elmat1
 errors <- compute_error(map)
-tol <- diff(range(map)) / 50
+tol <- diff(range(map)) / 25
+# tol <- diff(range(map))
 # debug(extract_mesh2)
 system.time(tris <- extract_mesh2(errors, tol))
 # treeprof::treeprof((tris <- extract_mesh2(errors, tol))
@@ -390,6 +404,7 @@ tol <- 1
 # map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
 # map <- elmat1[1:257, 1:257]
+map <- elmat1[3, 6]
 errors <- compute_error(map)
 xx <- extract_mesh(errors, tol)
 x0 <- matrix(unlist(lapply(xx$tri, '[[', 'x')), 3)
