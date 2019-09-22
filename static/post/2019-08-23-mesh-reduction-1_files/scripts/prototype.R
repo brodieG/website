@@ -254,7 +254,7 @@ extract_mesh2 <- function(errors, tol) {
     # Index munging to compute midpoints for long edges that are vertical
     # or horizontal
 
-    c.lens <- rep_len(c(grid.nr %/% 2L + 1L, grid.nr + 1L), grid.nc * 2L + 1L)
+    c.lens <- rep_len(c(grid.nr, grid.nr + 1L), grid.nc * 2L + 1L)
     ids.len <- sum(c.lens)
     ids.r.raw <- rep_len(
       c(seq(mult %/% 2L + 1L, nr, by=mult), seq(1L, nr, by=mult)),
@@ -291,7 +291,7 @@ extract_mesh2 <- function(errors, tol) {
 
     tri.inb <- .colSums(base.vert.inb, m=2L, n=length(base.vert.inb)/2L) == 2L
     base.vert.undrawn <- rep(TRUE, length(base.vert)/2L)
-    base.vert.mid.id <- 
+    base.vert.mid.id <-
       .colMeans(base.vert[rep(tri.inb, each=2L)], m=2L, n=sum(tri.inb))
     base.vert.undrawn[tri.inb] <- undrawn[base.vert.mid.id]
 
@@ -309,11 +309,10 @@ extract_mesh2 <- function(errors, tol) {
 
     # - Diagonal Bases -
 
-    ids.raw <- rep(mult, grid.nr * grid.nc)
-    ids.raw[seq(1L, by=grid.nr, length.out=grid.nc)] <-
-      2L * mult - 1L + nr * (mult %/% 2L) + r.extra
-    ids.raw[1] <- ids.raw[1] - r.extra - mult + 1L
-    ids <- cumsum(ids.raw)
+    ids.r.raw <- seq(mult %/% 2L + 1L, length.out=grid.nr, by=mult)
+    ids.c.raw <- seq(nr * mult %/% 2L, length.out=grid.nc, by=nr * mult)
+    ids <- rep(ids.r.raw, each=length(ids.c.raw)) + 
+      rep(ids.c.raw, length(ids.r.raw))
     ids.err <- errors[ids] > tol
 
     base.vert <- base_coords(ids[ids.err], type='d', nr, nc, mult)
@@ -328,11 +327,11 @@ extract_mesh2 <- function(errors, tol) {
   }
   triangles
 }
-map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
-# map <- elmat1[1:257, 1:257]
+map <- elmat1[1:257, 1:257]
 errors <- compute_error(map)
-tol <- diff(range(map)) / 20
+tol <- diff(range(map)) / 50
 # debug(extract_mesh2)
 tris <- extract_mesh2(errors, tol)
 plot_tri_ids(tris, dim(errors))
@@ -377,7 +376,7 @@ extract_mesh <- function(errors, tol) {
 }
 # debug(extract_mesh)
 tol <- 1
-map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:5, 1:5]
 # map <- elmat1[1:17, 1:17]
 # map <- elmat1[1:257, 1:257]
 errors <- compute_error(map)
@@ -392,29 +391,24 @@ y <- rbind(y0[, valid], NA)
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
 
-plot_triangles <- function(tri, nr, nc) {
-  x0 <- matrix(tri$x, 3)
-  y0 <- matrix(tri$y, 3)
-  valid <- which(colSums(
-    x0 < 0 | y0 < 0 | x0 > nr - 1 | y0 > nc - 1) == 0
-  )
-  x <- rbind(x0[, valid], NA)
-  y <- rbind(y0[, valid], NA)
-  plot_new(x, y)
-  polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
-}
-plot_tri_ids <- function(tri, dim) {
+plot_tri_ids <- function(tri, dim, new=TRUE) {
   ids <- rbind(do.call(cbind, tri), NA) - 1L
   x <- ids %% dim[1]
   y <- ids %/% dim[2]
-  plot_new(x, y)
-  polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
+  if(new) plot_new(x, y)
+  polygon(x/(dim[1] - 1), y/(dim[2]-1), col='#DDDDDD', border='#444444')
 }
-plot_points_ids <- function(points.ids, dim) {
+plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
   x <- ids %% dim[1]
   y <- ids %/% dim[2]
-  points(rescale(x), rescale(y), pch=16, col='red')
+  x0 <- seq_len(dim[1]) - 1L
+  y0 <- seq_len(dim[2]) - 1L
+  points(
+    rep(x0/max(x0), each=dim[2]), rep(y0/max(y0), dim[1]),
+    pch=16, col='black', cex=0.5
+  )
+  points(x/max(x0), y/max(y0), pch=16, col=col, cex=cex)
 }
 
 # # debugging code
