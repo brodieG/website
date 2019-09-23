@@ -287,7 +287,7 @@ extract_mesh2 <- function(errors, tol) {
       else ids > max(ids.c.raw)
     ) | (
       if(nr == grid.nr * mult + 1L) FALSE
-      else rep(ids.r.raw == max(ids.r.raw), each=length(ids.c.raw))
+      else ids.r.raw == max(ids.r.raw)
     )
     ids.pad.err <- ids.pad[ids.err]
 
@@ -360,7 +360,7 @@ extract_mesh2 <- function(errors, tol) {
 # map <- elmat1[1:(2*4+1), 1:(2*3+1)]  # smallest error?
 # map <- elmat1[1:(2*5+1), 1:(2*4+1)]
 map <- elmat1[1:(2*3+1), 1:(2*4+1)]
-map <- elmat1[1:9, 1:15]
+map <- elmat1[1:11, 1:15]
 errors <- compute_error(map)
 tol <- diff(range(map))
 # tol <- diff(range(map))
