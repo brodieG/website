@@ -279,9 +279,16 @@ extract_mesh2 <- function(errors, tol) {
 
     ids.pad <- ids + ids.c.raw + nr
 
-    # Which midpoints exeed tolerance
+    # Error, or at edge of plot and we will see no more larger triangles when
+    # plot is strictly square and of 2^k + 1.
 
-    ids.err <- errors[ids] > tol
+    ids.err <- errors[ids] > tol | (
+      if(nc == grid.nc * mult + 1L) FALSE
+      else ids > max(ids.c.raw)
+    ) | (
+      if(nr == grid.nr * mult + 1L) FALSE
+      else rep(ids.r.raw == max(ids.r.raw), each=length(ids.c.raw))
+    )
     ids.pad.err <- ids.pad[ids.err]
 
     # Coords for the bases for each of four triangles that form the tile around
@@ -321,6 +328,7 @@ extract_mesh2 <- function(errors, tol) {
     ids.c.raw <- seq(nr * mult %/% 2L, length.out=grid.nc, by=nr * mult)
     ids <- rep(ids.r.raw, each=length(ids.c.raw)) + 
       rep(ids.c.raw, length(ids.r.raw))
+
     # Error, or at edge of plot and we will see no more larger triangles when
     # plot is strictly square and of 2^k + 1.
     ids.err <- errors[ids] > tol | (
@@ -352,9 +360,9 @@ extract_mesh2 <- function(errors, tol) {
 # map <- elmat1[1:(2*4+1), 1:(2*3+1)]  # smallest error?
 # map <- elmat1[1:(2*5+1), 1:(2*4+1)]
 map <- elmat1[1:(2*3+1), 1:(2*4+1)]
-map <- elmat1
+map <- elmat1[1:9, 1:15]
 errors <- compute_error(map)
-tol <- diff(range(map)) / 25
+tol <- diff(range(map))
 # tol <- diff(range(map))
 # debug(extract_mesh2)
 system.time(tris <- extract_mesh2(errors, tol))
