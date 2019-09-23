@@ -243,6 +243,11 @@ base_coords <- function(ids.mid, type, nr, nc, mult) {
 # 8. Compute long edge midpoints
 # 9. Go to 2.
 
+# problem right now is that when we add the fake errors to cause the partial
+# strips to be drawn our logic only works if we have adjscent size strips
+# happening, if we skip one size then there is no conveyance of the break, the
+# break needs to carry all the way.
+
 extract_mesh2 <- function(errors, tol) {
   stopifnot(length(errors) > 1L)
   nr <- nrow(map)
@@ -282,6 +287,7 @@ extract_mesh2 <- function(errors, tol) {
     # Error, or at edge of plot and we will see no more larger triangles when
     # plot is strictly square and of 2^k + 1.
 
+    browser()
     ids.err <- errors[ids] > tol | (
       if(nc == grid.nc * mult + 1L) FALSE
       else ids > max(ids.c.raw)
@@ -361,6 +367,7 @@ extract_mesh2 <- function(errors, tol) {
 # map <- elmat1[1:(2*5+1), 1:(2*4+1)]
 map <- elmat1[1:(2*3+1), 1:(2*4+1)]
 map <- elmat1[1:11, 1:15]
+map <- elmat1[1:11, 1:11]
 errors <- compute_error(map)
 tol <- diff(range(map))
 # tol <- diff(range(map))
