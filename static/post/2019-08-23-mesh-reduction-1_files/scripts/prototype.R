@@ -3,39 +3,39 @@ eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
-# retrieve children around ids.mid clockwise starting from top left
+# retrieve children around ids.mid clockwise starting from top left,
+# and also return ids.mid
 get_child_ids <- function(ids.mid, type, nr, nc, mult) {
   if(identical(type, 's')) {          # square sides
-    col.off <- c(-1L, 1L, 1L, -1L)
-    row.off <- c(-1L, -1L, 1L, 1L)
+    col.off <- c(-1L, 1L, 1L, -1L, 0L)
+    row.off <- c(-1L, -1L, 1L, 1L, 0L)
   } else if (identical(type, 'd')) {  # diagonals
-    col.off <- c(0L, 2L, 0L, -2L)
-    row.off <- c(-2L, 0L, 2L, 0L)
+    col.off <- c(0L, 2L, 0L, -2L, 0L)
+    row.off <- c(-2L, 0L, 2L, 0L, 0L)
   } else stop("bad input")
   offset <- (row.off * mult) %/% 4L + nr * (col.off * mult) %/% 4L
-  child.ids <- lapply(seq_along(offset), function(i) ids.mid + offset[i])
-  if(identical(type, 's')) {
-    # square sides on perimeter will produce some OOB children depending on
-    # which child it is (remember, children clockwise from top left)
-    ids.mod.x <- ids.mid %% nr
-    ids.div.y <- (ids.mid - 1L) %/% nr
-    row.1 <- ids.mod.x == 1L
-    row.n <- ids.mod.x == 0L
-    col.1 <- ids.div.y == 0L
-    col.n <- ids.div.y == (nc - 1L)
-    child.ids[[1]][row.1 | col.1] <- NA
-    child.ids[[2]][row.1 | col.n] <- NA
-    child.ids[[3]][row.n | col.n] <- NA
-    child.ids[[4]][row.n | col.1] <- NA
-  }
-  child.ids
+  rep(ids.mid, length(offset)) + rep(offset, each=length(ids.mid))
 }
 compute_error <- function(map) {
   stopifnot(all(dim(map) %% 2L), min(dim(map)) > 2L)
-  .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
-  .get_child_err <- function(ids.mid, type) {
-    child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
-    lapply(child.ids, function(ids) errors[ids])
+  .child_err <- function(ids.mid, type) {
+    if(identical(type, 's')) {
+      # square elements can produce OOB children, must detect and remove
+      pad <- (((ids.mid - 1L) %/% nr) + 1L) * nr
+      ids.pad <- ids.mid + pad
+      child.ids <- get_child_ids(ids.pad, type, nr * 2, nc, mult)
+      child.inb <- child.ids > 0 & child.ids <= (nr * nc * 2L) &
+        (((child.ids - 1L) %/% nr) %% 2L) == 1L
+      child.err <- numeric(length(child.ids))
+      child.pad <- ((child.ids - 1L) %/% (nr * 2L) + 1L) * nr
+      child.err[child.inb] <- errors[(child.ids - child.pad)[child.inb]]
+    } else if(identical(type, 'd')) {
+      child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
+      child.err <- errors[child.ids]
+    } else stop('Invalid Type')
+
+    dim(child.err) <- c(length(ids.mid), 5L)
+    child.err[cbind(seq_len(nrow(child.err)), max.col(child.err, 'first'))]
   }
   nr <- nrow(map)
   nc <- ncol(map)
@@ -54,6 +54,8 @@ compute_error <- function(map) {
       c.extra <- c.extra - 2^(floor(log2(c.extra)))
     errors[seq(c.extra / 2L + 1L, nr, by=c.extra), nc] <- Inf
   }
+  # Compute interpoloation errors
+
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
     grid.nr <- ((nr - 1L) %/% mult) + 1L
@@ -78,9 +80,9 @@ compute_error <- function(map) {
 
     # - Square record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
-    errors[ids.mid] <- if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
-    else pmax(z.err, errors[ids.mid])
+    errors[ids.mid] <- pmax(
+      c(err.a, err.b), if(i > 1L) .child_err(ids.mid, 's') else errors[ids.mid]
+    )
 
     # - Diagonal: TL to BR
     ids.a.raw <- ids.raw[
@@ -112,14 +114,13 @@ compute_error <- function(map) {
 
     # - Diagonal record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
-    errors[ids.mid] <- .pmax2(z.err, .get_child_err(ids.mid, 'd'))
+    errors[ids.mid] <- pmax(c(err.a, err.b), .child_err(ids.mid, 'd'))
   }
   errors
 }
-map <- elmat1[1:9,1:20]
-map <- elmat1[1:257,1:257]
-map <- elmat1
+map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:257,1:257]
+# map <- elmat1
 # debug(compute_error)
 errors <- compute_error(map)
 
@@ -289,16 +290,17 @@ extract_mesh2 <- function(errors, tol) {
 # map <- elmat1[1:(2*5+1), 1:(2*4+1)]
 map <- elmat1[1:(2*3+1), 1:(2*4+1)]
 # map <- elmat1[1:11, 1:15]
-map <- elmat1[1:13, 1:11]
-map <- volcano
-map <- elmat1[-1,]
+# map <- elmat1[1:13, 1:11]
+# map <- volcano
+# map <- elmat1[-1,]
 map <- elmat1[1:257,1:257]
 system.time(errors <- compute_error(map))
-tol <- diff(range(map)) / 50
+treeprof::treeprof(errors <- compute_error(map))
+# tol <- diff(range(map)) / 50
 # tol <- diff(range(map))
 # debug(extract_mesh2)
 system.time(tris <- extract_mesh2(errors, tol))
-treeprof::treeprof((tris <- extract_mesh2(errors, tol))
+# treeprof::treeprof((tris <- extract_mesh2(errors, tol))
 plot_tri_ids(tris, dim(errors))
 plot_points_ids(which(errors > tol), dim(map))
 
