@@ -1,9 +1,7 @@
-
 # File originally from http://tylermw.com/data/dem_01.tif.zip
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
-
 
 # retrieve children around ids.mid clockwise starting from top left
 get_child_ids <- function(ids.mid, type, nr, nc, mult) {
@@ -128,7 +126,7 @@ errors <- compute_error(map)
 system.time(errors <- compute_error(elmat1[1:257,1:257]))
 treeprof::treeprof(errors <- compute_error(elmat1[1:257,1:257]))
 errors <- compute_error(volcano[1:61,1:61])
-err.ind <- which(errors > 20, arr.ind=TRUE)
+
 # 1. start from the lowest level out
 # 2. check diag point error, if fail:
 # 3. get child diag coordinates
@@ -147,81 +145,6 @@ err.ind <- which(errors > 20, arr.ind=TRUE)
 # 3. If failing, get children
 # 4. repeat
 
-
-x.square <- as.integer(c(0, 0, 1, 0, 1, 0, 0,  0, -1, 0, -1, 0))
-y.square <- as.integer(c(0, 1, 0, 0, 0,-1, 0, -1,  0, 0,  0, 1))
-x.diag <- as.integer(c(0, -1, 1, 0,  1, 1, 0,  1, -1, 0, -1,-1))
-y.diag <- as.integer(c(0,  1, 1, 0,  1,-1, 0, -1, -1, 0, -1, 1))
-
-# gah, the problem with this is that when we get to the first level that didn't
-# fail, we need to draw the triangles with the smallest split possible since
-# that level did not fail.  So we need to be able to tell easily whether it is a
-# vert/hrz or tl/tr tile.
-#
-# Formula for vert/hrz:
-#
-# * if x coord a multiple of `mult`, then vertical, else horizontal
-#
-# Formula for tl/tr
-#
-# * if both x and y coord shifted by mult/2 and divided `mult` are even or both
-#   are odd, then tl, else br
-
-draw_triangle2 <- function(ids.mid, type, nr, nc, mult) {
-  ids.y <- ((ids.mid - 1L) %% nr)
-  ids.x <- ((ids.mid - 1L) %/% nc)
-  x.off <- if(identical(type, 's')) x.square else x.diag
-  y.off <- if(identical(type, 's')) y.square else y.diag
-  list(
-    x=outer(x.off * (mult / 2L), ids.x, '+'),
-    y=outer(y.off * (mult / 2L), ids.y, '+')
-  )
-}
-draw_triangle <- function(ids.mid, type, nr, nc, mult) {
-  ids.y <- ((ids.mid - 1L) %% nr)
-  ids.x <- ((ids.mid - 1L) %/% nc)
-
-  if(identical(type,  's')) {
-    off.a <- c( 0L,   0L, -1L,  0L,  0L, 1L) * (mult/2L)
-    off.b <- c(-1L,   1L,  0L,  1L, -1L, 0L) * (mult/2L)
-
-    vertical <- which(as.logical((ids.x - 1L) %% mult))
-    x.res <- c(
-      outer(off.a, ids.x[vertical],  '+'),
-      outer(off.b, ids.x[-vertical], '+')
-    )
-    y.res <- c(
-      outer(off.b, ids.y[vertical],  '+'),
-      outer(off.a, ids.y[-vertical], '+')
-    )
-  } else if(identical(type, 'd')) {
-    off.a <- c(-1L,  1L,  1L,  1L, -1L, -1L) * mult / 2
-    off.b <- c( 1L,  1L, -1L, -1L, -1L,  1L) * mult / 2
-
-    off.aa <- c(-1L,  1L, -1L, -1L,  1L,  1L) * mult / 2
-    off.bb <- c( 1L,  1L, -1L, -1L,  1L, -1L) * mult / 2
-
-    col.odd <- (ids.y - mult %/% 2L) %/% mult %% 2L
-    row.odd <- (ids.x - mult %/% 2L) %/% mult %% 2L
-
-    # top left diags are those for which both x and y grid coords are
-    # each even or odd, whereas top right ones are of mixed evenness.  Because
-    # our coords are in original ids computing whether we are in an even or odd
-    # grid grouping gets complicated.
-
-    topright <- which((col.odd &row.odd) | (!col.odd & !row.odd))
-
-    x.res <- c(
-      outer(off.a, ids.x[-topright],  '+'),
-      outer(off.aa, ids.x[topright], '+')
-    )
-    y.res <- c(
-      outer(off.b, ids.y[-topright],  '+'),
-      outer(off.bb, ids.y[topright], '+')
-    )
-  }
-  list(x=x.res, y=y.res)
-}
 # Triangle Base Coords
 #
 # Returns for each id, the four pairs of ids of the base vertices connected
@@ -378,61 +301,6 @@ system.time(tris <- extract_mesh2(errors, tol))
 plot_tri_ids(tris, dim(errors))
 plot_points_ids(which(errors > tol), dim(map))
 
-extract_mesh <- function(errors, tol) {
-  nr <- nrow(map)
-  nc <- ncol(map)
-  layers <- floor(min(log2(c(nr, nc))))
-
-  # Need to find the midpoints of the largest k^n + 1 squares that fit into
-  # our grid
-
-  mult <- 2^layers
-  points.r <- ((nr - 1L) %/% mult)
-  points.c <- ((nc - 1L) %/% mult)
-
-  # if we don't use ids elsewhere we need to direct compute the indices
-  ids <- array(seq_along(errors), dim(errors))
-  points <- ids[
-    seq(1L + mult %/% 2L, length.out = points.r, by=mult),
-    seq(1L + mult %/% 2L, length.out = points.c, by=mult)
-  ]
-  triangles <- vector("list", (layers + 1L) * 2L)
-
-  # gaaah, it matters what the failing parent of the non failing child is, we
-  # only want to draw the triangle that touches the failing parent
-
-  for(i in seq_len(layers)) {
-    mult <- as.integer(2^(layers - i + 1L))
-
-    err.p <- errors[points] > tol
-    triangles[[2L * (i - 1L) + 1L]] <-
-      draw_triangle(points[!err.p], 'd', nr, nc, mult)
-    points <- unique(unlist(get_child_ids(points[err.p], 'd', nr, nc, mult)))
-
-    err.p <- errors[points] > tol
-    triangles[[2L * i]] <- draw_triangle(points[!err.p], 's', nr, nc, mult)
-    points <- unique(unlist(get_child_ids(points[err.p], 's', nr, nc, mult)))
-  }
-  list(tri=triangles, points=points)
-}
-# debug(extract_mesh)
-tol <- 1
-# map <- elmat1[1:5, 1:5]
-# map <- elmat1[1:17, 1:17]
-# map <- elmat1[1:257, 1:257]
-map <- elmat1[3, 6]
-errors <- compute_error(map)
-xx <- extract_mesh(errors, tol)
-x0 <- matrix(unlist(lapply(xx$tri, '[[', 'x')), 3)
-y0 <- matrix(unlist(lapply(xx$tri, '[[', 'y')), 3)
-valid <- which(colSums(
-  x0 < 0 | y0 < 0 | x0 > nrow(map) - 1 | y0 > ncol(map) - 1) == 0
-)
-x <- rbind(x0[, valid], NA)
-y <- rbind(y0[, valid], NA)
-plot_new(x, y)
-polygon(rescale(x), rescale(y), col='#DDDDDD', border='#444444')
-
 plot_tri_ids <- function(tri, dim, new=TRUE) {
   ids <- rbind(do.call(cbind, tri), NA) - 1L
   x <- ids %% dim[1]
@@ -581,54 +449,6 @@ polygon(
 )
 points(rescale(which(errors > tol, arr.ind=TRUE)[,2:1] - 1), pch=19, col='red')
 
-
-# map <- elmat1
-map <- volcano
-system.time(xx <- compute_layers(map, thresh=1))
-plot_mesh(xx, facet=FALSE)
-# old.par <- par(mfrow=c(3,2), mar=numeric(4))
-# lapply(xx, function(x) {
-#   res <- x[['draw']]
-#   dim(res) <- dim(x[['id']])
-#   plot(as.raster(res))
-# })
-
-plot_mesh <- function(tiles, facet=FALSE) {
-  dev.off()
-  dev.new()
-  if(facet) {
-    rows <- floor(sqrt(length(xx)))
-    cols <- ceiling(length(xx) / rows)
-    old.par <- par(mfrow=c(rows, cols), mar=numeric(4))
-  } else {
-    par(mai=numeric(4))
-    plot_new(0, 1)
-    rect(0, 0, 1, 1, col='green', border='green')
-  }
-  lapply(
-    rev(tiles),
-    function(x) {
-      if(facet) {
-        plot_new(0, 1)
-        rect(0, 0, 1, 1, col='green', border='green')
-      }
-      x.new <- lapply(x, '[', x[['draw']])
-      with(x.new,
-        rect(
-          (x1 - 1) / (nrow(map) - 1),
-          (y2 - 1) / (ncol(map) - 1),
-          (x2 - 1) / (nrow(map) - 1),
-          (y1 - 1) / (ncol(map) - 1),
-          col = '#FFFFFF66',
-          # col = gray((zu - min(map))/diff(range(map))),
-          border='black'
-          # border = gray((zu - min(map))/diff(range(map)))
-          # col=ifelse(draw, gray((zu - min(map))/diff(range(map))), 'green'),
-          # border=ifelse(draw, gray((zu - min(map))/diff(range(map))), 'green')
-        )
-      )
-  })
-}
 
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
