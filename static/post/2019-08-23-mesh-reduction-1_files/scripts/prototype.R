@@ -33,6 +33,7 @@ get_child_ids <- function(ids.mid, type, nr, nc, mult) {
   child.ids
 }
 compute_error <- function(map) {
+  stopifnot(all(dim(map) %% 2L), min(dim(map)) > 2L)
   .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
   .get_child_err <- function(ids.mid, type) {
     child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
@@ -40,9 +41,21 @@ compute_error <- function(map) {
   }
   nr <- nrow(map)
   nc <- ncol(map)
-  layers <- floor(min(log2(c(nr, nc))))
+  layers <- floor(min(log2(c(nr, nc) - 1L)))
   errors <- array(0, dim=dim(map))
 
+  # Force tile splits in areas that don't fall in 2^layers squares
+
+  if((r.extra <- (nr - 1L) %% 2L^layers)) {
+    while(r.extra - 2^(floor(log2(r.extra))))
+      r.extra <- r.extra - 2^(floor(log2(r.extra)))
+    errors[nr, seq(r.extra / 2L + 1L, nc, by=r.extra)] <- Inf
+  }
+  if((c.extra <- (nc - 1L) %% 2L^layers)) {
+    while(c.extra - 2^(floor(log2(c.extra))))
+      c.extra <- c.extra - 2^(floor(log2(c.extra)))
+    errors[seq(c.extra / 2L + 1L, nr, by=c.extra), nc] <- Inf
+  }
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
     grid.nr <- ((nr - 1L) %/% mult) + 1L
@@ -67,9 +80,9 @@ compute_error <- function(map) {
 
     # - Square record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- c(err.a, err.b)
+    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
     errors[ids.mid] <- if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
-    else z.err
+    else pmax(z.err, errors[ids.mid])
 
     # - Diagonal: TL to BR
     ids.a.raw <- ids.raw[
@@ -101,7 +114,8 @@ compute_error <- function(map) {
 
     # - Diagonal record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
-    errors[ids.mid] <- .pmax2(c(err.a, err.b), .get_child_err(ids.mid, 'd'))
+    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
+    errors[ids.mid] <- .pmax2(z.err, .get_child_err(ids.mid, 'd'))
   }
   errors
 }
@@ -287,14 +301,7 @@ extract_mesh2 <- function(errors, tol) {
     # Error, or at edge of plot and we will see no more larger triangles when
     # plot is strictly square and of 2^k + 1.
 
-    browser()
-    ids.err <- errors[ids] > tol | (
-      if(nc == grid.nc * mult + 1L) FALSE
-      else ids > max(ids.c.raw)
-    ) | (
-      if(nr == grid.nr * mult + 1L) FALSE
-      else ids.r.raw == max(ids.r.raw)
-    )
+    ids.err <- errors[ids] > tol
     ids.pad.err <- ids.pad[ids.err]
 
     # Coords for the bases for each of four triangles that form the tile around
@@ -332,18 +339,10 @@ extract_mesh2 <- function(errors, tol) {
 
     ids.r.raw <- seq(mult %/% 2L + 1L, length.out=grid.nr, by=mult)
     ids.c.raw <- seq(nr * mult %/% 2L, length.out=grid.nc, by=nr * mult)
-    ids <- rep(ids.r.raw, each=length(ids.c.raw)) + 
+    ids <- rep(ids.r.raw, each=length(ids.c.raw)) +
       rep(ids.c.raw, length(ids.r.raw))
 
-    # Error, or at edge of plot and we will see no more larger triangles when
-    # plot is strictly square and of 2^k + 1.
-    ids.err <- errors[ids] > tol | (
-      if((nc %/% (mult * 2L)) * (mult * 2L) >= grid.nc * mult) FALSE
-      else ids > max(ids.c.raw)
-    ) | (
-      if((nr %/% (mult * 2L)) * (mult * 2L) >= grid.nr * mult) FALSE
-      else rep(ids.r.raw == max(ids.r.raw), each=length(ids.c.raw))
-    )
+    ids.err <- errors[ids] > tol
     base.vert <- base_coords(ids[ids.err], type='d', nr, nc, mult)
     base.vert.mid.id <- .colMeans(base.vert, m=2L, n=length(base.vert)/2L)
     base.vert.undrawn <- undrawn[base.vert.mid.id]
@@ -366,10 +365,12 @@ extract_mesh2 <- function(errors, tol) {
 # map <- elmat1[1:(2*4+1), 1:(2*3+1)]  # smallest error?
 # map <- elmat1[1:(2*5+1), 1:(2*4+1)]
 map <- elmat1[1:(2*3+1), 1:(2*4+1)]
-map <- elmat1[1:11, 1:15]
-map <- elmat1[1:11, 1:11]
+# map <- elmat1[1:11, 1:15]
+map <- elmat1[1:13, 1:11]
+map <- volcano
+map <- elmat1[-1,]
 errors <- compute_error(map)
-tol <- diff(range(map))
+tol <- diff(range(map)) / 50
 # tol <- diff(range(map))
 # debug(extract_mesh2)
 system.time(tris <- extract_mesh2(errors, tol))
