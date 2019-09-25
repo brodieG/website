@@ -292,12 +292,13 @@ map <- elmat1[1:(2*3+1), 1:(2*4+1)]
 map <- elmat1[1:13, 1:11]
 map <- volcano
 map <- elmat1[-1,]
-errors <- compute_error(map)
+map <- elmat1[1:257,1:257]
+system.time(errors <- compute_error(map))
 tol <- diff(range(map)) / 50
 # tol <- diff(range(map))
 # debug(extract_mesh2)
 system.time(tris <- extract_mesh2(errors, tol))
-# treeprof::treeprof((tris <- extract_mesh2(errors, tol))
+treeprof::treeprof((tris <- extract_mesh2(errors, tol))
 plot_tri_ids(tris, dim(errors))
 plot_points_ids(which(errors > tol), dim(map))
 
