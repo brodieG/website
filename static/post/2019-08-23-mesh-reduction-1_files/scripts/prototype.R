@@ -31,7 +31,7 @@ get_child_ids <- function(ids.mid, type, nr, nc, mult) {
   child.ids
 }
 compute_error <- function(map) {
-  stopifnot(all(dim(map) %% 2L), min(dim(map)) > 2L)
+  if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
   .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
   .get_child_err <- function(ids.mid, type) {
     child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
@@ -79,8 +79,9 @@ compute_error <- function(map) {
     # - Square record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
     z.err <- pmax(c(err.a, err.b), errors[ids.mid])
-    errors[ids.mid] <- if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
-    else pmax(z.err, errors[ids.mid])
+    errors[ids.mid] <-
+      if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
+      else pmax(z.err, errors[ids.mid])
 
     # - Diagonal: TL to BR
     ids.a.raw <- ids.raw[
@@ -117,16 +118,6 @@ compute_error <- function(map) {
   }
   errors
 }
-map <- elmat1[1:9,1:20]
-map <- elmat1[1:257,1:257]
-map <- elmat1
-# debug(compute_error)
-errors <- compute_error(map)
-
-system.time(errors <- compute_error(elmat1[1:257,1:257]))
-treeprof::treeprof(errors <- compute_error(elmat1[1:257,1:257]))
-errors <- compute_error(volcano[1:61,1:61])
-
 # 1. start from the lowest level out
 # 2. check diag point error, if fail:
 # 3. get child diag coordinates
@@ -290,15 +281,15 @@ extract_mesh2 <- function(errors, tol) {
 map <- elmat1[1:(2*3+1), 1:(2*4+1)]
 # map <- elmat1[1:11, 1:15]
 map <- elmat1[1:13, 1:11]
-map <- volcano
-map <- elmat1[-1,]
-map <- elmat1[1:257,1:257]
+# map <- volcano
+# map <- elmat1[-1,]
+# map <- elmat1[1:257,1:257]
 system.time(errors <- compute_error(map))
-tol <- diff(range(map)) / 50
-# tol <- diff(range(map))
+# tol <- diff(range(map)) / 50
+tol <- diff(range(map))
 # debug(extract_mesh2)
 system.time(tris <- extract_mesh2(errors, tol))
-treeprof::treeprof((tris <- extract_mesh2(errors, tol))
+# treeprof::treeprof((tris <- extract_mesh2(errors, tol))
 plot_tri_ids(tris, dim(errors))
 plot_points_ids(which(errors > tol), dim(map))
 
