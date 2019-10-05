@@ -355,9 +355,9 @@ errors_rtin <- function(terrain) {
     } else {
       ax = ay = cy = tileSize; # top-right triangle
     }
-    while ((id <- bitwShiftR(id, 1L)) > 1L) {
-      mx = bitwShiftR(ax + bx, 1L)
-      my = bitwShiftR(ay + by, 1L)
+    while ((id <- (id %/% 2L)) > 1L) {
+      mx = (ax + bx) / 2L
+      my = (ay + by) / 2L
 
       if (bitwAnd(id, 1L)) { # left half
         bx = ax; by = ay;
@@ -374,18 +374,17 @@ errors_rtin <- function(terrain) {
     interpolatedHeight = (
       terrain[ax * gridSize + ay + 1L] + terrain[bx * gridSize + by + 1L]
     ) / 2;
-    middleIndex =
-      bitwShiftR(ax + bx, 1L) * gridSize + bitwShiftR(ay + by, 1L) + 1L;
+    middleIndex = ((ax + bx) / 2L) * gridSize + ((ay + by) / 2L) + 1L;
     middleError = abs(interpolatedHeight - terrain[middleIndex]);
 
     if (i >= lastLevelIndex) { # smallest triangles
       errors[middleIndex] = middleError;
     } else { # bigger triangles; accumulate error with children
       leftChildError = errors[
-        bitwShiftR(ax + cx, 1L) * gridSize + bitwShiftR(ay + cy, 1L) + 1L
+        ((ax + cx) / 2L) * gridSize + ((ay + cy) / 2L) + 1L
       ];
       rightChildError = errors[
-        bitwShiftR(bx + cx, 1L) * gridSize + bitwShiftR(by + cy, 1L) + 1L
+        ((bx + cx) / 2L) * gridSize + ((by + cy) / 2L) + 1L
       ];
       errors[middleIndex] = max(
         c(errors[middleIndex], middleError, leftChildError, rightChildError)
@@ -394,11 +393,26 @@ errors_rtin <- function(terrain) {
   }
   errors;
 }
+# Version for animation
+#
+# We'll want to track:
+#
+# * ax, ay, bx, by,
+# * cx, cy, mx, my
+# * az, bz, mz
+# * *Error?
+# * lcx, lcy, rcx, rcy
+# * errors array
+#
+# We'll display the errors array, and the terrain array overlaid with the
+# triangle tracking.
+
 map <- elmat1[1:5, 1:5]
 map <- elmat1[1:17, 1:17]
 map <- elmat1[1:257, 1:257]
 system.time(errors2 <- errors_rtin(map))
 errors <- compute_error(map)
+all.equal(errors, errors2)
 
 extract_geometry <- function(errors, maxError) {
   i = 0;
@@ -458,4 +472,88 @@ plot_new <- function(
   plot.window(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
+
+## Messing With Watching Algo
+
+map <- elmat1[1:3, 1:3]
+source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
+library(watcher)
+xx <- watch(
+  errors_rtin2, 
+  c('ax', 'ay', 'bx', 'by', 'cx', 'cy', 'mx', 'my', 'errors')
+)(map)
+zz.raw <- simplify_data(attr(xx, 'watch.data'))
+library(reshape2)
+
+nframes <- 50
+zz <- lapply(zz.raw, head, nframes)
+
+zz[['id']] <- seq_along(zz[[1]])
+dat <- melt(as.data.frame(zz), id.vars=c('id', '.line'))
+dat[['label']] <- substr(dat[['variable']], 1, 1)
+dat[['var']] <- substr(dat[['variable']], 2, 2)
+dat <- dcast(dat, id + .line + label ~ var, value.var='value')
+dat[['type']] <- 'a'
+# dat.s <- subset(dat, id %in% 1:40)
+
+dat.s <- dat
+dat.s2 <- subset(dat.s, label %in% letters[1:3])
+dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
+
+code <- deparse(errors_rtin2, control='all')
+writeLines(code[1:10])
+code.context <- 10
+dat.lines <- do.call(
+  rbind,
+  lapply(
+    seq_along(zz$.line),
+    function(i) {
+      data.frame(
+        y=(-seq_along(code) + zz$.line[i]) * .5 + 3L,
+        id=rep(i, length(code)),
+        code=code,
+        highlight=seq_along(code) == zz$.line[i]
+      )
+}) )
+dat.lines[['type']] <- 'b'
+
+library(ggplot2)
+p <- ggplot(dat.s, aes(x, y)) +
+  geom_path(data=dat.s2, aes(group=id)) +
+  geom_point(aes(color=label), size=8) +
+  geom_text(aes(label=label)) +
+  geom_text(
+    data=dat.lines, aes(x=0, label=code, color=highlight),
+    hjust=0
+  ) +
+  guides(color=FALSE) +
+  ylab(NULL) + xlab(NULL) +
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
+  ) +
+  labs(title = "ID {frame}") +
+  facet_wrap(~type) +
+  coord_cartesian(ylim=c(1L, nrow(mat)) - 1L, xlim=c(1L, nrow(map) - 1L)) +
+  NULL
+# p
+# p + facet_wrap(~id)
+library(gganimate)
+p.anim <- p + transition_manual(id)
+anim_save(
+  '~/Downloads/mesh-anim/anim-1.gif',
+  nframes=nframes, p.anim, width=400, height=200
+)
+animate(p.anim)
+animate(
+  p.anim,
+  nframes = 400, fps=25, device = "png",
+  renderer = file_renderer(
+    "~/Downloads/colsums-anim/", prefix = "gganim-img", overwrite = TRUE
+  ),
+  width=400, height=400
+)
+
+
+
 
