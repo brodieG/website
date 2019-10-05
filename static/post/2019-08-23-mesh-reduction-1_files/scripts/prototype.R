@@ -480,19 +480,18 @@ source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R
 library(watcher)
 xx <- watch(
   errors_rtin2, 
-  c('ax', 'ay', 'bx', 'by', 'cx', 'cy', 'mx', 'my', 'errors')
+  c('ax', 'ay', 'bx', 'by', 'cx', 'cy', 'Mx', 'My', 'errors')
 )(map)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
 nframes <- 50
 zz <- lapply(zz.raw, head, nframes)
-
-zz[['id']] <- seq_along(zz[[1]])
-dat <- melt(as.data.frame(zz), id.vars=c('id', '.line'))
+zz.vec <- zz.raw[['.scalar']]
+dat <- melt(as.data.frame(zz.vec), id.vars=c('.id', '.line'))
 dat[['label']] <- substr(dat[['variable']], 1, 1)
 dat[['var']] <- substr(dat[['variable']], 2, 2)
-dat <- dcast(dat, id + .line + label ~ var, value.var='value')
+dat <- dcast(dat, .id + .line + label ~ var, value.var='value')
 dat[['type']] <- 'a'
 # dat.s <- subset(dat, id %in% 1:40)
 
@@ -506,25 +505,42 @@ code.context <- 10
 dat.lines <- do.call(
   rbind,
   lapply(
-    seq_along(zz$.line),
+    seq_along(zz.vec$.line),
     function(i) {
       data.frame(
-        y=(-seq_along(code) + zz$.line[i]) * .5 + 3L,
-        id=rep(i, length(code)),
+        y=(-seq_along(code) + zz.vec$.line[i]),
+        .id=rep(i, length(code)),
         code=code,
-        highlight=seq_along(code) == zz$.line[i]
+        highlight=seq_along(code) == zz.vec$.line[i]
       )
 }) )
-dat.lines[['type']] <- 'b'
+dat.lines[['type']] <- 'a'
+dat.err <- zz.raw$errors
+dat.err[['type']] <- 'c'
+dat.err[['x']] <- dat.err[['x']] - 1L
+dat.err[['y']] <- dat.err[['y']] - 1L
+
+# dat.s <- subset(dat.s, .id == 40)
+# dat.s2 <- subset(dat.s2, .id == 40)
+# dat.err <- subset(dat.err, .id == 40)
+# dat.lines <- subset(dat.lines, .id == 40)
+
+dpi <- 72
+width <- 900
+height <- width/3
 
 library(ggplot2)
 p <- ggplot(dat.s, aes(x, y)) +
-  geom_path(data=dat.s2, aes(group=id)) +
+  geom_path(data=dat.s2, aes(group=.id)) +
+  geom_point(data=dat.err, aes(y=x, x=y, size=val)) +
   geom_point(aes(color=label), size=8) +
   geom_text(aes(label=label)) +
   geom_text(
-    data=dat.lines, aes(x=0, label=code, color=highlight),
-    hjust=0
+    data=dat.lines, 
+    aes(
+      x=-2.5, y=y*.125 + 1.25, label=code, color=highlight
+    ),
+    hjust=0, family='mono'
   ) +
   guides(color=FALSE) +
   ylab(NULL) + xlab(NULL) +
@@ -534,15 +550,21 @@ p <- ggplot(dat.s, aes(x, y)) +
   ) +
   labs(title = "ID {frame}") +
   facet_wrap(~type) +
-  coord_cartesian(ylim=c(1L, nrow(mat)) - 1L, xlim=c(1L, nrow(map) - 1L)) +
+  coord_cartesian(
+    ylim=c(1L, nrow(map)) - 1L, xlim=c(1L, nrow(map)) - 1L,
+    clip=FALSE
+  ) +
+  guides(size=FALSE) +
+  theme(plot.margin=unit(c(0, 0, 0, height/dpi), "inches"))
   NULL
-# p
+
+# dev.new(width=width/dpi, height=height/dpi, dpi=dpi)
 # p + facet_wrap(~id)
 library(gganimate)
-p.anim <- p + transition_manual(id)
+p.anim <- p + transition_manual(.id)
 anim_save(
   '~/Downloads/mesh-anim/anim-1.gif',
-  nframes=nframes, p.anim, width=400, height=200
+  nframes=nrow(dat.s), p.anim, width=width, height=height
 )
 animate(p.anim)
 animate(
