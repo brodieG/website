@@ -478,15 +478,13 @@ plot_new <- function(
 map <- elmat1[1:3, 1:3]
 source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
 library(watcher)
-xx <- watch(
-  errors_rtin2, 
-  c('ax', 'ay', 'bx', 'by', 'cx', 'cy', 'Mx', 'My', 'errors')
-)(map)
+vars <- c('ax', 'ay', 'bx', 'by', 'cx', 'cy', 'mx', 'my', 'errors')
+xx <- watch(errors_rtin2, vars)(map)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
-nframes <- 50
-zz <- lapply(zz.raw, head, nframes)
+# nframes <- 50
+# zz <- lapply(zz.raw, head, nframes)
 zz.vec <- zz.raw[['.scalar']]
 dat <- melt(as.data.frame(zz.vec), id.vars=c('.id', '.line'))
 dat[['label']] <- substr(dat[['variable']], 1, 1)
@@ -532,7 +530,7 @@ height <- width/3
 library(ggplot2)
 p <- ggplot(dat.s, aes(x, y)) +
   geom_path(data=dat.s2, aes(group=.id)) +
-  geom_point(data=dat.err, aes(y=x, x=y, size=val)) +
+  geom_point(data=dat.err, aes(y=y, x=x, size=val)) +
   geom_point(aes(color=label), size=8) +
   geom_text(aes(label=label)) +
   geom_text(
@@ -558,22 +556,31 @@ p <- ggplot(dat.s, aes(x, y)) +
   theme(plot.margin=unit(c(0, 0, 0, height/dpi), "inches"))
   NULL
 
+# To improve animation:
+#
+# * Make 'm' same color as the error dots (e.g. black, maybe with white 'm')
+# * For emphasis show the 'm' on the error side as well?  Does this confuse
+#   error with position semantic?  A little.
+# * Stack the panels vertically.
+# * Change text to black / highlight.
+# * change mx/my to tmpx/tmpy, and Mx/My to mx/my
+#
+
 # dev.new(width=width/dpi, height=height/dpi, dpi=dpi)
 # p + facet_wrap(~id)
 library(gganimate)
 p.anim <- p + transition_manual(.id)
-anim_save(
-  '~/Downloads/mesh-anim/anim-1.gif',
-  nframes=nrow(dat.s), p.anim, width=width, height=height
-)
-animate(p.anim)
+# anim_save(
+#   '~/Downloads/mesh-anim/anim-1.gif',
+#   nframes=nrow(zz$.scalar), p.anim, width=width, height=height
+# )
 animate(
   p.anim,
-  nframes = 400, fps=25, device = "png",
+  nframes = length(zz$.scalar$.id), fps=25, device = "png",
   renderer = file_renderer(
-    "~/Downloads/colsums-anim/", prefix = "gganim-img", overwrite = TRUE
+    "~/Downloads/mesh-anim/", prefix = "gganim-img", overwrite = TRUE
   ),
-  width=400, height=400
+  width=width, height=height
 )
 
 
