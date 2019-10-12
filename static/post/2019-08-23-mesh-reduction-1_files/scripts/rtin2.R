@@ -11,7 +11,7 @@ errors_rtin2 <- function(terrain) {
 
     # get triangle coordinates from its index in an implicit binary tree
     id <- i + 2L
-    mx <- my <- NA_real_
+    mx <- my <- rcx <- rcy <- lcx <- lcy <- NA_real_
     ax <- ay <- bx <- by <- cx <- cy <- 0L
     if (bitwAnd(id, 1L)) {
       bx <- by <- cx <- tileSize
@@ -46,10 +46,11 @@ errors_rtin2 <- function(terrain) {
     mx <- ((ax + bx) / 2L)
     my <- ((ay + by) / 2L)
     mz <- terrain[mx + 1, my + 1L]
-    middleError <- abs(interpolatedHeight - mz)
-    errors[mx + 1, my + 1] <- middleError
+    middleError <-
+      max(abs(interpolatedHeight - mz), errors[mx + 1, my + 1], na.rm=TRUE)
 
     # Propagate child errors
+    leftChildError <- rightChildError <- 0
     if (i < lastLevelIndex) {
       lcx <- (ax + cx) / 2L
       lcy <- (ay + cy) / 2L
@@ -57,10 +58,9 @@ errors_rtin2 <- function(terrain) {
       rcx <- (bx + cx) / 2L
       rcy <- (by + cy) / 2L
       rightChildError <- errors[rcx + 1, rcy + 1]
-      errors[mx + 1, my + 1] <-
-        max(c(middleError, leftChildError, rightChildError))
     }
-    mx <- my <- rcx <- rcy <- lcx <- lcy <- NA_real_
+    errors[mx + 1, my + 1] <-
+      max(c(middleError, leftChildError, rightChildError))
   }
   errors
 }
