@@ -1,6 +1,7 @@
 # matrix that has most error on the top left part as that is done last
 # it's shown as plotted, and re-ordered for actual use
 
+library(data.table)
 map <- matrix(c(
   0, 3, 0,
   3, 1, 2,
@@ -15,9 +16,13 @@ xx <- watch(errors_rtin2, vars)(map)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
-nframes <- Inf
-zz.raw[[1]] <- lapply(zz.raw[[1]], head, nframes)
-zz.raw[-1] <- lapply(zz.raw[-1], head, nframes)
+frame.ids <- zz.raw[['.scalar']][['.id']]
+# frame.ids <- 50:60
+scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
+zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
+zz.raw[-1] <- lapply( # assuming df, not necessarily true
+  zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
+)
 
 zz.vec <- zz.raw[['.scalar']]
 dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
@@ -53,18 +58,37 @@ dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
 dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
 dat.s4[['type']] <- 'Errors'
 
+# Background triangles
+
+dat.s5a <- subset(dat.s2, .line == 46)
+max.id <- max(zz.vec[['.id']])
+dat.s5 <- do.call(
+  rbind,
+  lapply(
+    unique(dat.s5a[['.id']]),
+    function(x) {
+      ids <- which(dat.s5a[['.id']] == x)
+      ids.len <- length(ids)
+      new.ids <- rep(seq(x, max.id, by=1), each=ids.len)
+      res <- dat.s5a[rep_len(ids, length.out=length(new.ids)),,drop=FALSE]
+      res[['.id']] <- new.ids
+      res
+    }
+) )
+
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
 dat.lines <- do.call(
   rbind,
   lapply(
-    seq_along(zz.vec$.line),
+    zz.vec$.id,
     function(i) {
+      line <- zz.vec$.line[zz.vec$.id == i]
       data.frame(
-        y=(-seq_along(code) + zz.vec$.line[i]),
+        y=(-seq_along(code) + line),
         .id=rep(i, length(code)),
         code=code,
-        highlight=ifelse(seq_along(code) == zz.vec$.line[i], 'red', 'black')
+        highlight=ifelse(seq_along(code) == line, 'red', 'black')
       )
 }) )
 dat.lines[['type']] <- 'Coords'
@@ -78,8 +102,8 @@ dat.meta <- as.data.table(dat.meta)[, paste0(variable, ': ', value, collapse=', 
 dat.meta[['type']] <- 'Coords'
 
 dpi <- 72
-width <- 900
-height <- width/3
+width <- 600
+height <- width
 size <- nrow(map)
 
 library(ggplot2)
@@ -87,7 +111,8 @@ p <- ggplot(dat.s1, aes(x, y)) +
   geom_point(
     data=dat.s3, fill='NA', color='black', shape=21, size=18
   ) +
-  geom_path(data=dat.s2, aes(group=.id)) +
+  geom_path(data=dat.s5, aes(group=.id), color='white', alpha=0.4) +
+  geom_path(data=dat.s2, aes(group=.id), color='white', size=1.5) +
   geom_point(size=8, color=dat.s1$pcolor) +
   geom_segment(
     data=dat.s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
@@ -100,8 +125,8 @@ p <- ggplot(dat.s1, aes(x, y)) +
   ) +
   geom_text(aes(label=label)) +
   geom_text(
-    data=dat.lines, 
-    aes(x=-2.5, y=y*.125 + 1.25, label=code),
+    data=dat.lines,
+    aes(x=-2.55, y=y*.1, label=code),
     hjust=0, family='mono', color=dat.lines$highlight
   ) +
   guides(color=FALSE) +
@@ -111,14 +136,14 @@ p <- ggplot(dat.s1, aes(x, y)) +
     axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
   ) +
   labs(title = "Frame {frame}/{nframes}") +
-  facet_wrap(~type) +
+  facet_wrap(~type, ncol=1) +
   coord_cartesian(
     ylim=c(1L, nrow(map)) - 1L, xlim=c(1L, nrow(map)) - 1L,
-    clip=FALSE
+    clip="off"
   ) +
   guides(size=FALSE) +
   theme(
-    plot.margin=unit(c(.1, .1, .1, (height)/dpi), "inches"),
+    plot.margin=unit(c(.1, .1, .1, (height/2)/dpi), "inches"),
     panel.grid=element_blank(),
     text=element_text(size=16)
   )
@@ -135,7 +160,8 @@ p <- ggplot(dat.s1, aes(x, y)) +
 #
 
 # dev.new(width=width/dpi, height=height/dpi, dpi=dpi)
-# p + facet_wrap(~id)
+# p + facet_wrap(~.id)
+# stop()
 library(gganimate)
 p.anim <- p + transition_manual(.id)
 # anim_save(
