@@ -8,32 +8,37 @@ map <- matrix(c(
 
 source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
 library(watcher)
-vars <- c(
-  'ax', 'ay', 'bx', 'by', 'cx', 'cy', 'mx', 'my', 'errors',
-  'lcx', 'lcy', 'rcx', 'rcy'
-)
+coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
+id.vars <- c('.id', '.line')
+vars <- c(coord.vars, 'errors', 'id', 'i')
 xx <- watch(errors_rtin2, vars)(map)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
-# nframes <- 50
-# zz <- lapply(zz.raw, head, nframes)
+nframes <- Inf
+zz.raw[[1]] <- lapply(zz.raw[[1]], head, nframes)
+zz.raw[-1] <- lapply(zz.raw[-1], head, nframes)
+
 zz.vec <- zz.raw[['.scalar']]
-dat <- melt(as.data.frame(zz.vec), id.vars=c('.id', '.line'))
+dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
 dat[['variable']] <- as.character(dat[['variable']])
 var.chrs <- nchar(dat[['variable']])
 dat[['label']] <- substr(dat[['variable']], 1, var.chrs - 1L)
 dat[['var']] <- substr(dat[['variable']], var.chrs, var.chrs)
 dat <- dcast(dat, .id + .line + label ~ var, value.var='value')
-dat[['type']] <- '*x-*y'
+dat[['type']] <- 'Coords'
 dat.s <- dat
 # dat.s <- subset(dat, id %in% 1:40)
-
-dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm'))
+pcolor <- c(
+  a='#66c2a5', b='#fc8d62', c='grey65',
+  m='#8da0cb', lc='#8da0cb88', rc='#8da0cb88'
+)
+dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm', 'lc', 'rc'))
+dat.s1 <- transform(dat.s1, pcolor=pcolor[label])
 dat.s2 <- subset(dat.s, label %in% letters[1:3])
 dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
 dat.s3a <- subset(dat.s, label %in% c('lc', 'rc', 'm'))
-dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='errors'))
+dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='Errors'))
 
 # Data for child to parent arrows; surely there is a better way to do this
 
@@ -46,9 +51,10 @@ dat.s4c <- melt(
 names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'type', 'c')
 dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
 dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
-dat.s4[['type']] <- 'errors'
+dat.s4[['type']] <- 'Errors'
 
 code <- deparse(errors_rtin2, control='all')
+code[[1]] <- ""
 dat.lines <- do.call(
   rbind,
   lapply(
@@ -61,15 +67,20 @@ dat.lines <- do.call(
         highlight=ifelse(seq_along(code) == zz.vec$.line[i], 'red', 'black')
       )
 }) )
-dat.lines[['type']] <- '*x-*y'
+dat.lines[['type']] <- 'Coords'
 dat.err <- zz.raw$errors
-dat.err[['type']] <- 'errors'
+dat.err[['type']] <- 'Errors'
 dat.err[['x']] <- dat.err[['x']] - 1L
 dat.err[['y']] <- dat.err[['y']] - 1L
+
+dat.meta <- melt(as.data.frame(zz.vec[c('i', 'id', id.vars)]), id.vars=id.vars)
+dat.meta <- as.data.table(dat.meta)[, paste0(variable, ': ', value, collapse=', '), .id]
+dat.meta[['type']] <- 'Coords'
 
 dpi <- 72
 width <- 900
 height <- width/3
+size <- nrow(map)
 
 library(ggplot2)
 p <- ggplot(dat.s1, aes(x, y)) +
@@ -77,19 +88,21 @@ p <- ggplot(dat.s1, aes(x, y)) +
     data=dat.s3, fill='NA', color='black', shape=21, size=18
   ) +
   geom_path(data=dat.s2, aes(group=.id)) +
-  geom_point(data=dat.err, aes(y=y, x=x, size=val)) +
-  geom_point(aes(color=label), size=8) +
+  geom_point(size=8, color=dat.s1$pcolor) +
   geom_segment(
     data=dat.s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
     arrow=arrow(type='closed'), color='grey65'
   ) +
+  geom_point(data=dat.err, aes(y=y, x=x, size=val)) +
+  geom_text(
+    data=dat.meta, aes(y=size - 1 + size/8, x=(size - 1) * 1.1, label=V1),
+    hjust=0
+  ) +
   geom_text(aes(label=label)) +
   geom_text(
     data=dat.lines, 
-    aes(
-      x=-2.5, y=y*.125 + 1.25, label=code, color=I(highlight)
-    ),
-    hjust=0, family='mono'
+    aes(x=-2.5, y=y*.125 + 1.25, label=code),
+    hjust=0, family='mono', color=dat.lines$highlight
   ) +
   guides(color=FALSE) +
   ylab(NULL) + xlab(NULL) +
@@ -97,14 +110,18 @@ p <- ggplot(dat.s1, aes(x, y)) +
     axis.text.x=element_blank(), axis.text.y=element_blank(),
     axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
   ) +
-  labs(title = "ID {frame}") +
-  facet_grid(type~.) +
+  labs(title = "Frame {frame}/{nframes}") +
+  facet_wrap(~type) +
   coord_cartesian(
     ylim=c(1L, nrow(map)) - 1L, xlim=c(1L, nrow(map)) - 1L,
     clip=FALSE
   ) +
   guides(size=FALSE) +
-  theme(plot.margin=unit(c(0, 0, 0, (height)/dpi), "inches"))
+  theme(
+    plot.margin=unit(c(.1, .1, .1, (height)/dpi), "inches"),
+    panel.grid=element_blank(),
+    text=element_text(size=16)
+  )
   NULL
 
 # To improve animation:
