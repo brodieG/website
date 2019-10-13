@@ -6,6 +6,11 @@ map <- matrix(c(
   0, 3, 0,
   3, 1, 2,
   0, 2, 0), 3)[,3:1]
+# eltif <- raster::raster("~/Downloads/dem_01.tif")
+# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+# elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+
+map <- elmat1[1:5, 1:5]
 
 source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
 library(watcher)
@@ -17,7 +22,7 @@ zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
 frame.ids <- zz.raw[['.scalar']][['.id']]
-# frame.ids <- 50:60
+# frame.ids <- 1:200
 scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
 zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
 zz.raw[-1] <- lapply( # assuming df, not necessarily true
@@ -60,7 +65,7 @@ dat.s4[['type']] <- 'Errors'
 
 # Background triangles
 
-dat.s5a <- subset(dat.s2, .line == 46)
+dat.s5a <- subset(dat.s2, .line == 52)
 max.id <- max(zz.vec[['.id']])
 dat.s5 <- do.call(
   rbind,
@@ -72,9 +77,14 @@ dat.s5 <- do.call(
       new.ids <- rep(seq(x, max.id, by=1), each=ids.len)
       res <- dat.s5a[rep_len(ids, length.out=length(new.ids)),,drop=FALSE]
       res[['.id']] <- new.ids
+      res[['.id.old']] <- rep(x, length(new.ids))
       res
     }
 ) )
+
+# background points
+
+dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
 
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
@@ -108,10 +118,11 @@ size <- nrow(map)
 
 library(ggplot2)
 p <- ggplot(dat.s1, aes(x, y)) +
-  geom_point(
-    data=dat.s3, fill='NA', color='black', shape=21, size=18
+  geom_point(data=dat.s6, color='grey65', size=.5, shape=3) +
+  geom_polygon(
+    data=dat.s5, aes(group=.id.old), fill='yellow', alpha=0.3,
+    color='yellow', size=0.5
   ) +
-  geom_path(data=dat.s5, aes(group=.id), color='white', alpha=0.4) +
   geom_path(data=dat.s2, aes(group=.id), color='white', size=1.5) +
   geom_point(size=8, color=dat.s1$pcolor) +
   geom_segment(
@@ -119,14 +130,19 @@ p <- ggplot(dat.s1, aes(x, y)) +
     arrow=arrow(type='closed'), color='grey65'
   ) +
   geom_point(data=dat.err, aes(y=y, x=x, size=val)) +
+  geom_point(
+    data=dat.s3, fill='NA', color='black', shape=21, size=18
+  ) +
   geom_text(
-    data=dat.meta, aes(y=size - 1 + size/8, x=(size - 1) * 1.1, label=V1),
+    data=dat.meta,
+    aes(y=size - 1 + 1, x=(size - 1) * 1.1, label=V1),
     hjust=0
   ) +
   geom_text(aes(label=label)) +
   geom_text(
     data=dat.lines,
-    aes(x=-2.55, y=y*.1, label=code),
+    # aes(x=-2.55, y=y*.1, label=code),
+    aes(x=-(nrow(map)-1)/.7843, y=y*.1*(nrow(map)-1)/2, label=code),
     hjust=0, family='mono', color=dat.lines$highlight
   ) +
   guides(color=FALSE) +
@@ -135,7 +151,7 @@ p <- ggplot(dat.s1, aes(x, y)) +
     axis.text.x=element_blank(), axis.text.y=element_blank(),
     axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
   ) +
-  labs(title = "Frame {frame}/{nframes}") +
+  labs(title = "Step {frame}/{nframes}") +
   facet_wrap(~type, ncol=1) +
   coord_cartesian(
     ylim=c(1L, nrow(map)) - 1L, xlim=c(1L, nrow(map)) - 1L,
@@ -166,13 +182,13 @@ library(gganimate)
 p.anim <- p + transition_manual(.id)
 # anim_save(
 #   '~/Downloads/mesh-anim/anim-1.gif',
-#   nframes=nrow(zz$.scalar), p.anim, width=width, height=height
+#   nframes=length(zz.vec$.id), p.anim, width=width, height=height
 # )
 res <- animate(
   p.anim,
   nframes = length(zz.vec$.id), device = "png",
   renderer = file_renderer(
-    "~/Downloads/mesh-anim/", prefix = "gganim-img", overwrite = TRUE
+    "~/Downloads/mesh-anim-2/", prefix = "gganim-img", overwrite = TRUE
   ),
   width=width, height=height
 )
