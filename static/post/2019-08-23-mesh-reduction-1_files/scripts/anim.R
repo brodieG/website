@@ -6,9 +6,9 @@ map <- matrix(c(
   0, 3, 0,
   3, 1, 2,
   0, 2, 0), 3)[,3:1]
-# eltif <- raster::raster("~/Downloads/dem_01.tif")
-# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-# elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+eltif <- raster::raster("~/Downloads/dem_01.tif")
+eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
 map <- elmat1[1:5, 1:5]
 
@@ -22,7 +22,7 @@ zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
 frame.ids <- zz.raw[['.scalar']][['.id']]
-# frame.ids <- 1:200
+# frame.ids <- tail(frame.ids, 1)
 scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
 zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
 zz.raw[-1] <- lapply( # assuming df, not necessarily true
@@ -116,55 +116,75 @@ width <- 600
 height <- width
 size <- nrow(map)
 
-library(ggplot2)
-p <- ggplot(dat.s1, aes(x, y)) +
-  geom_point(data=dat.s6, color='grey65', size=.5, shape=3) +
-  geom_polygon(
-    data=dat.s5, aes(group=.id.old), fill='yellow', alpha=0.3,
-    color='yellow', size=0.5
-  ) +
-  geom_path(data=dat.s2, aes(group=.id), color='white', size=1.5) +
-  geom_point(size=8, color=dat.s1$pcolor) +
-  geom_segment(
-    data=dat.s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
-    arrow=arrow(type='closed'), color='grey65'
-  ) +
-  geom_point(data=dat.err, aes(y=y, x=x, size=val)) +
-  geom_point(
-    data=dat.s3, fill='NA', color='black', shape=21, size=18
-  ) +
-  geom_text(
-    data=dat.meta,
-    aes(y=size - 1 + 1, x=(size - 1) * 1.1, label=V1),
-    hjust=0
-  ) +
-  geom_text(aes(label=label)) +
-  geom_text(
-    data=dat.lines,
-    # aes(x=-2.55, y=y*.1, label=code),
-    aes(x=-(nrow(map)-1)/.7843, y=y*.1*(nrow(map)-1)/2, label=code),
-    hjust=0, family='mono', color=dat.lines$highlight
-  ) +
-  guides(color=FALSE) +
-  ylab(NULL) + xlab(NULL) +
-  theme(
-    axis.text.x=element_blank(), axis.text.y=element_blank(),
-    axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
-  ) +
-  labs(title = "Step {frame}/{nframes}") +
-  facet_wrap(~type, ncol=1) +
-  coord_cartesian(
-    ylim=c(1L, nrow(map)) - 1L, xlim=c(1L, nrow(map)) - 1L,
-    clip="off"
-  ) +
-  guides(size=FALSE) +
-  theme(
-    plot.margin=unit(c(.1, .1, .1, (height/2)/dpi), "inches"),
-    panel.grid=element_blank(),
-    text=element_text(size=16)
-  )
-  NULL
 
+
+# ggsave(
+#   sprintf('~/Downloads/mesh-anim-2/gganim-img%04d.svg', 1),
+#   p, width=width/dpi, height=height/dpi, units='in'
+# )
+library(ggplot2)
+cat('\n')
+frames <- sort(unique(dat.s1$.id))
+# frames <- 1:3
+data <- list(
+  s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
+  meta=as.data.frame(dat.meta), lines=dat.lines, s3=dat.s3
+)
+for(i in frames) {
+  cat(sprintf("\rFrame %04d", i))
+  d <- lapply(data, function(x) subset(x, .id == i))
+
+  p <- ggplot(d$s1, aes(x, y)) +
+    geom_point(data=dat.s6, color='grey65', size=.5, shape=3) +
+    geom_polygon(
+      data=d$s5, aes(group=.id.old), fill='yellow', alpha=0.15,
+      color='yellow', size=0.5
+    ) +
+    geom_path(data=d$s2, aes(group=.id), color='white', size=1.5) +
+    geom_point(size=8, color=d$s1$pcolor) +
+    geom_segment(
+      data=d$s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
+      arrow=arrow(type='closed'), color='grey65'
+    ) +
+    geom_point(data=d$err, aes(y=y, x=x, size=val)) +
+    geom_point(
+      data=d$s3, fill='NA', color='black', shape=21, size=18
+    ) +
+    geom_text(aes(label=label)) +
+    geom_text(
+      data=d$lines,
+      # aes(x=-2.55, y=y*.1, label=code),
+      aes(x=-(nrow(map)-1)/.7, y=y*.1*(nrow(map)-1)/2, label=code),
+      hjust=0, family='mono', color=d$lines$highlight
+    ) +
+    guides(color=FALSE) +
+    ylab(NULL) + xlab(NULL) +
+    theme(
+      axis.text.x=element_blank(), axis.text.y=element_blank(),
+      axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
+    ) +
+    labs(title = "Step {frame}/{nframes}") +
+    facet_wrap(~type, ncol=1) +
+    coord_fixed(
+      ylim=c(1L, nrow(map)) - 1L, xlim=c(1L, nrow(map)) - 1L,
+      clip="off"
+    ) +
+    guides(size=FALSE) +
+    theme(
+      plot.margin=unit(c(.1, .1, .1, (height/2)/dpi), "inches"),
+      panel.grid=element_blank(),
+      text=element_text(size=16)
+    ) +
+    ggtitle(sprintf('Frame %04d/%d (%s)', i, max(frames), d$meta$V1)) +
+    NULL
+  ggsave(
+    filename=sprintf('~/Downloads/mesh-anim-3/img-%04d.png', i),
+    plot=p,
+    width=width/dpi, height=height/dpi, units='in', device='png',
+    dpi=dpi
+  )
+
+}
 # To improve animation:
 #
 # * Make 'm' same color as the error dots (e.g. black, maybe with white 'm')
@@ -178,18 +198,18 @@ p <- ggplot(dat.s1, aes(x, y)) +
 # dev.new(width=width/dpi, height=height/dpi, dpi=dpi)
 # p + facet_wrap(~.id)
 # stop()
-library(gganimate)
-p.anim <- p + transition_manual(.id)
-# anim_save(
-#   '~/Downloads/mesh-anim/anim-1.gif',
-#   nframes=length(zz.vec$.id), p.anim, width=width, height=height
+# library(gganimate)
+# p.anim <- p + transition_manual(.id)
+# # anim_save(
+# #   '~/Downloads/mesh-anim/anim-1.gif',
+# #   nframes=length(zz.vec$.id), p.anim, width=width, height=height
+# # )
+# res <- animate(
+#   p.anim,
+#   nframes = length(zz.vec$.id), device = "png",
+#   renderer = file_renderer(
+#     "~/Downloads/mesh-anim-2/", prefix = "gganim-img", overwrite = TRUE
+#   ),
+#   width=width, height=height
 # )
-res <- animate(
-  p.anim,
-  nframes = length(zz.vec$.id), device = "png",
-  renderer = file_renderer(
-    "~/Downloads/mesh-anim-2/", prefix = "gganim-img", overwrite = TRUE
-  ),
-  width=width, height=height
-)
 
