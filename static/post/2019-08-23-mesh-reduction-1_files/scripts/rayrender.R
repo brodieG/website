@@ -5,24 +5,32 @@ x <- runif(10)
 x.width <- 1
 x.off <- seq(-x.width / 2, x.width/2, length.out=length(x))
 
-floor.mult <- 2
+floor.mult <- 1.25
 scene <- xz_rect(
   xwidth=floor.mult*x.width, 
   zwidth=floor.mult*x.width,
   z=floor.mult*x.width/2,
   y=0,
-  # material=lambertian(checkercolor='black', checkerperiod=x.width/length(x))
-  material=lambertian()
+  # material=lambertian(checkercolor='black', checkerperiod=x.width/length(x) * 3)
+  material=lambertian(color='grey35')
 )
+scene <- add_object(scene,
+  xy_rect(
+    xwidth=floor.mult*x.width, ywidth=floor.mult*x.width,
+    z=floor.mult*x.width/2, y=floor.mult*x.width/2,
+    # material=lambertian(checkercolor='black', checkerperiod=x.width/length(x)),
+    material=lambertian(color='grey35'),
+    flipped=TRUE
+) )
 # scene <- generate_ground(material = lambertian())
 for(i in seq_along(x)) {
   scene <- scene %>% add_object(
     cube(
-      x=x.off[i], y=x[i] / 2, z=0,
-      xwidth=x.width / length(x),
-      zwidth=x.width / length(x),
+      x=x.off[i], y=x[i] / 2, z=0.25,
+      xwidth=x.width / length(x) * .9,
+      zwidth=x.width / length(x) * .9,
       ywidth=x[i],
-      material=dielectric(color='red'),
+      material=dielectric(color='#FFFF99'),
       angle=c(0,22.5,0)
     )
   )
@@ -37,12 +45,9 @@ final <- add_object(
     material = lambertian(lightintensity = 3000, implicit_sample = TRUE)
 ) )
 render_scene(
-  final, parallel = TRUE, width = 200, height = 200, samples = 200,
-  lookfrom=c(0,1,-2),
-  lookat=c(0,0,1),
-  fov=20,
-  ambient_light=FALSE,
-  aperture=.0
+  final, parallel = TRUE, width = 200, height = 200, samples = 1000,
+  lookfrom=c(0,1,-2), lookat=c(0,0,1), fov=30,
+  ambient_light=FALSE, aperture=.0, clamp=5
 )
 
 generate_cornell() %>%
