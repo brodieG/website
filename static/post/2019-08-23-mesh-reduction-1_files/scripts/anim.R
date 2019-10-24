@@ -6,9 +6,9 @@ map <- matrix(c(
   0, 3, 0,
   3, 1, 2,
   0, 2, 0), 3)[,3:1]
-eltif <- raster::raster("~/Downloads/dem_01.tif")
-eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+# eltif <- raster::raster("~/Downloads/dem_01.tif")
+# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+# elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
 map <- elmat1[1:5, 1:5]
 
