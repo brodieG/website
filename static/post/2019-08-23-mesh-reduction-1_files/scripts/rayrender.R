@@ -5,6 +5,19 @@ x <- runif(10)
 x.width <- 1
 image <- png::readPNG(sprintf('~/Downloads/ray-anim/img-%04d.png', 1))
 
+raw <- watch(insert_sort, c('i', 'j', 'x'))(x)
+dat <- simplify_data(attr(raw, 'watch.data'))
+code.txt <- expand_text(attr(raw, 'watch.code'), dat)
+dats <- dat[['scalar']]
+
+for(id in unique(dats[['.id']])) {
+
+}
+
+dpi <- 72
+width <- 800
+height <- width/3*2
+
 floor.mult <- 1.25
 wall.mult <- floor.mult/3*2
 scene <- xz_rect(
@@ -61,12 +74,10 @@ for(i in seq_along(x.delim)) {
     )
   )
 }
-
-
 # Add letters
 
-scene <- add_object(i_factory(z=-0.15, scale=rep(0.15,3)), scene)
-scene <- add_object(j_factory(z=-0.05, scale=rep(0.15,3)), scene)
+scene <- add_object(i_factory(z=-0.15, x=x.off[1], scale=rep(0.15,3)), scene)
+scene <- add_object(j_factory(z=-0.05, x=x.off[5], scale=rep(0.15,3)), scene)
 
 # Add light source
 
