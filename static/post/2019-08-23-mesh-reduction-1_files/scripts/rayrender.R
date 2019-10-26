@@ -4,7 +4,7 @@ library(watcher)
 set.seed(1220)
 x <- runif(10)
 x.width <- 1
-x.width.2 <- x.width * .8
+x.width.2 <- x.width * .9
 
 raw <- watch(insert_sort, c('i', 'j', 'x'))(x)
 dat <- simplify_data(attr(raw, 'watch.data'))
@@ -18,7 +18,7 @@ x.off <- c(x.off, x.off[length(x.off)] + x.step)
 floor.mult <- 1.25
 wall.mult <- floor.mult/3*2
 scn0 <- xz_rect(
-  xwidth=floor.mult*x.width, zwidth=floor.mult*x.width * 1.255555,
+  xwidth=floor.mult*x.width, zwidth=floor.mult*x.width * 1.1,
   z=-floor.mult*x.width/2, y=0,
   material=lambertian(color='grey50')
 )
@@ -33,6 +33,7 @@ scn0 <- add_object(
 ) )
 
 for(id in unique(dats[['.id']])) {
+  writeLines(sprintf("** Frame %d **", id))
   scn <- scn0
   x <- subset(dat$x, .id == id)[['val']]
   i.val <- dats[['i']][id]
@@ -52,22 +53,36 @@ for(id in unique(dats[['.id']])) {
         xwidth=x.width.2 / length(x) * .75,
         zwidth=x.width.2 / length(x) * .75,
         ywidth=x[i],
-        material=dielectric(color='#FFFF99'),
+        material=
+          if(!is.na(j.val) && j.val == i) dielectric(color='#BBBBFF')
+          else dielectric(color='#FFFFBB'),
         angle=c(0,22.5,0)
   ) ) }
   # letters
 
-  lsizes <- rep(0.12, 3)
-  scn <- add_object(i_factory(z=-0.15, x=x.off[i.val], scale=lsizes), scn)
-  scn <- add_object(j_factory(z=-0.05, x=x.off[j.val], scale=lsizes), scn)
-
+  lsizes <- rep(0.10, 3)
+  if(!is.na(j.val)) {
+    scn <- add_object(
+      j_factory(
+        z=-0.1, x=x.off[j.val], y=lsizes[1]/13/2,
+        scale=lsizes, angle=c(90, 0, 0)
+      ), scn
+    )
+  }
+  scn <- add_object(
+    i_factory(
+      z=0.02, x=x.off[i.val], scale=lsizes, y=lsizes[1]/13/2,
+      angle=c(90, 0, 0)
+    ), scn
+  )
   # render
 
   render_scene(
     file=sprintf('~/Downloads/ray-anim-2/img-%d.png', id),
     scn, parallel = TRUE,
-    width = 200, height = 200, samples = 50,
-    # width = 600, height = 600, samples = 1000,
+    # width = 200, height = 200, samples = 50,
+    width = 600, height = 600, samples = 1000,
+    # width = 400, height = 400, samples = 500,
     lookfrom=c(0,.75,1), lookat=c(0,.125,-1), fov=45,
     ambient_light=FALSE, aperture=.0, clamp=5
   )

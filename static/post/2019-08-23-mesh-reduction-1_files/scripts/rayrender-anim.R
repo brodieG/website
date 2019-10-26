@@ -35,18 +35,17 @@ as_cubes <- function(mx, material=lambertian()) {
 }
 i_factory <- as_cubes(
   !read.csv('~/Downloads/i.csv', header=F), 
-  material=metal(color='green')
+  material=metal(color='#77FF44')
+  # material=dielectric(color='green')
+  # material=lambertian(color='black')
 )
 j_factory <- as_cubes(
   !read.csv('~/Downloads/j.csv', header=F), 
-  material=metal(color='green')
+  material=metal(color='#77FF44')
+  # material=dielectric(color='green')
+  # material=lambertian(color='black')
 )
-i.obj <- i_factory(x=-.5)
-j.obj <- j_factory(x=.5)
-
 # Function to generate background image
-
-# Function to generate glass bars, mark which one to 
 
 backdrop_rect <- function(text, width) {
   dpi <- 72
@@ -56,8 +55,8 @@ backdrop_rect <- function(text, width) {
   p <- ggplot(text) +
     geom_text(
       aes(
-        x=0, y=y.raw, label=code,
-        color=I(ifelse(highlight, 'red', 'black'))
+        x=0, y=y.raw * 1.1, label=code,
+        color=I(ifelse(highlight, '#226622', 'black'))
       ),
       hjust=0, size=12, family='mono', fontface='bold'
     ) +
@@ -70,7 +69,7 @@ backdrop_rect <- function(text, width) {
       plot.background = element_rect(fill = "transparent", colour = NA),
       plot.margin=unit(c(0, 0, heightpx/3/dpi, 0), "inches"),
     ) +
-    coord_cartesian(ylim=c(0,12), xlim=c(0, 60)) +
+    coord_cartesian(ylim=c(0,12)*1.1, xlim=c(0, 60)) +
     NULL
 
   ggsave(
@@ -87,10 +86,6 @@ backdrop_rect <- function(text, width) {
     angle=c(0, -90, 0), #flipped=TRUE
   )
 }
-# render_scene(
-#   width=200, height=200, samples=200, ww, 
-#   lookat=c(0,5,-1), fov=45
-# )
 
 floor_grooves <- function(xs) {
   x.step <- diff(xs)[1]
@@ -105,7 +100,7 @@ floor_grooves <- function(xs) {
         y=line.width/2,
         xwidth=line.width,
         ywidth=line.width,
-        zwidth=.25,
+        zwidth=.4,
         material=lambertian(color='grey50')
       )
     )
