@@ -103,13 +103,13 @@ image <- png::readPNG(sprintf('~/Downloads/ray-anim/img-%04d.png', i))
 ## coordinates.  Currently assumes coord are x/y and z == 0. Objects are
 ## centered on zero in x and scaled such that range(y) == c(0,1)
 
-as_cubes <- function(vals, material=lambertian()) {
-  x.rng <- diff(range(vals[,1]))
-  y.rng <- diff(range(vals[,1]))
+as_cubes <- function(mx, material=lambertian()) {
+  vals <- which(mx, arr.ind=TRUE)
+  x.rng <- ncol(mx)
+  y.rng <- nrow(mx)
   scale.fac <- 1 / (y.rng + 1)
-  vals[,2] <- -vals[,2]
-  vals[,1] <- max(vals[,1]) - vals[,1] + 1/2
-  vals[,2] <- max(vals[,2]) - vals[,2] - y.rng / 2
+  vals[,2] <- vals[,2] - 1 - x.rng / 2
+  vals[,1] <- y.rng - vals[,1] + 1/2
   vals <- vals * scale.fac
 
   obj <- NULL
@@ -129,22 +129,27 @@ as_cubes <- function(vals, material=lambertian()) {
     )
   }
 }
-i.vals <- which(!read.csv('~/Downloads/i.csv'), arr.ind=TRUE)
-i_factory <- as_cubes(i.vals, material=metal(color='yellow'))
-j.vals <- which(!read.csv('~/Downloads/j.csv'), arr.ind=TRUE)
-j_factory <- as_cubes(j.vals, material=dielectric(color='green'))
+i_factory <- as_cubes(
+  !read.csv('~/Downloads/i.csv', header=F), material=metal(color='yellow')
+)
+j_factory <- as_cubes(
+  !read.csv('~/Downloads/j.csv', header=F), material=dielectric(color='green')
+)
 
-i.obj <- i_factory(x=.5)
-j.obj <- j_factory(x=-.5)
+i.obj <- i_factory(x=-.5)
+j.obj <- j_factory(x=.5)
 
-floor <- xz_rect(xwidth=3, zwidth=3, material=lambertian(color='grey35'))
+floor <- xz_rect(
+  xwidth=10, zwidth=10, 
+  material=lambertian(color='grey35')
+)
 light <-  sphere(
   material=lambertian(lightintensity=50, implicit_sample=TRUE),
   x=1, y=1, z=3
 )
 render_scene(
   add_object(add_object(floor, light), add_object(i.obj, j.obj)),
-  width=200, height=200, samples=1000,
-  lookfrom=c(0, 2, 2), lookat=c(0, .5, 0), fov=60,
+  width=400, height=400, samples=1000,
+  lookfrom=c(0, 1.5, 2), lookat=c(0, .5, 0), fov=60,
   clamp=5
 )
