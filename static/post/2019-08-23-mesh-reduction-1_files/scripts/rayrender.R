@@ -3,53 +3,84 @@ library(rayrender)
 set.seed(1220)
 x <- runif(10)
 x.width <- 1
-x.off <- seq(-x.width / 2, x.width/2, length.out=length(x))
+image <- png::readPNG(sprintf('~/Downloads/ray-anim/img-%04d.png', 1))
 
 floor.mult <- 1.25
 wall.mult <- floor.mult/3*2
 scene <- xz_rect(
   xwidth=floor.mult*x.width, 
-  zwidth=floor.mult*x.width,
-  z=floor.mult*x.width/2,
+  zwidth=floor.mult*x.width * 1.255555,
+  z=-floor.mult*x.width/2,
   y=0,
   # material=lambertian(checkercolor='black', checkerperiod=x.width/length(x) * 3)
-  material=lambertian(color='grey35')
+  material=lambertian(color='grey50')
 )
 scene <- add_object(scene,
   yz_rect(
     zwidth=floor.mult*x.width, ywidth=wall.mult*x.width,
-    z=floor.mult*x.width/2, y=wall.mult*x.width/2,
+    z=-floor.mult*x.width/2, y=wall.mult*x.width/2,
     # material=lambertian(checkercolor='black', checkerperiod=x.width/length(x)),
     material=lambertian(image=image),
-    angle=c(0, 90, 0), #flipped=TRUE
+    angle=c(0, -90, 0), #flipped=TRUE
 ) )
 # scene <- generate_ground(material = lambertian())
+
+x.squish <- .8
+x.width.2 <- x.width * x.squish
+x.off <- seq(-x.width.2 / 2, x.width.2/2, length.out=length(x))
 for(i in seq_along(x)) {
   scene <- scene %>% add_object(
     cube(
-      x=x.off[i], y=x[i] / 2, z=0.25,
-      xwidth=x.width / length(x) * .9,
-      zwidth=x.width / length(x) * .9,
+      x=x.off[i], y=x[i] / 2, z=-0.25,
+      xwidth=x.width.2 / length(x) * .75,
+      zwidth=x.width.2 / length(x) * .75,
       ywidth=x[i],
       material=dielectric(color='#FFFF99'),
       angle=c(0,22.5,0)
+    ) 
+  )
+}
+# Add lines
+
+x.delim <- seq(
+  -x.width.2 / 2 - x.width.2 / length(x) / 2,
+  x.width.2 / 2 + x.width.2 / length(x) / 2,
+  length.out=length(x) + 1
+)
+line.width <- x.width.2 / length(x) * .9 * .1
+for(i in seq_along(x.delim)) {
+  scene <- add_object(
+    scene,
+    cube(
+      x=x.delim[i], z=-.175, 
+      y=line.width/2,
+      xwidth=line.width,
+      ywidth=line.width,
+      zwidth=.25,
+      material=lambertian(color='grey50')
     )
   )
 }
+
+
+# Add letters
+
+scene <- add_object(i_factory(z=-0.15, scale=rep(0.15,3)), scene)
+scene <- add_object(j_factory(z=-0.05, scale=rep(0.15,3)), scene)
 
 # Add light source
 
 final <- add_object(
   scene,
   sphere(
-    y=3, z = -2, x = 1, radius = .1,
+    y=3, z = 2, x = 1, radius = .1,
     material = lambertian(lightintensity = 3000, implicit_sample = TRUE)
 ) )
 render_scene(
   final, parallel = TRUE, 
   width = 200, height = 200, samples = 200,
   # width = 600, height = 600, samples = 1000,
-  lookfrom=c(0,1,-1), lookat=c(0,0,1), fov=45,
+  lookfrom=c(0,.75,1), lookat=c(0,.125,-1), fov=45,
   ambient_light=FALSE, aperture=.0, clamp=5
 )
 
@@ -94,9 +125,8 @@ ggsave(
   filename=sprintf('~/Downloads/ray-anim/img-%04d.png', i),
   plot=p,
   width=width/dpi, height=height/dpi, units='in', device='png',
-  dpi=dpi, bg='grey35'
+  dpi=dpi, bg='grey50'
 )
-image <- png::readPNG(sprintf('~/Downloads/ray-anim/img-%04d.png', i))
 
 
 ## Takes a set of coordinates and makes cubes centered on each of those
@@ -125,15 +155,17 @@ as_cubes <- function(mx, material=lambertian()) {
     group_objects(
       obj, group_translate=c(x, y, z),
       group_angle=angle, group_order_rotation=order_rotation,
-      group_scale=scale
+      group_scale=scale, pivot_point=numeric(3)
     )
   }
 }
 i_factory <- as_cubes(
-  !read.csv('~/Downloads/i.csv', header=F), material=metal(color='yellow')
+  !read.csv('~/Downloads/i.csv', header=F), 
+  material=metal(color='green')
 )
 j_factory <- as_cubes(
-  !read.csv('~/Downloads/j.csv', header=F), material=dielectric(color='green')
+  !read.csv('~/Downloads/j.csv', header=F), 
+  material=metal(color='green')
 )
 
 i.obj <- i_factory(x=-.5)
@@ -149,7 +181,7 @@ light <-  sphere(
 )
 render_scene(
   add_object(add_object(floor, light), add_object(i.obj, j.obj)),
-  width=400, height=400, samples=1000,
+  width=200, height=200, samples=200,
   lookfrom=c(0, 1.5, 2), lookat=c(0, .5, 0), fov=60,
   clamp=5
 )
