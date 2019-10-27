@@ -1,0 +1,198 @@
+---
+title: Visualizing Algorithms
+author: ~
+date: '2019-10-19'
+slug: visualizing-algorithms
+categories: []
+tags: []
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+---
+
+```{r echo=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```
+
+# Failure of Imagination
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+I recently got caught up trying to port a JavaScript algorithm[^martini] into R.
+A straight up port would have been straightforward (and slow), but I wanted to
+vectorize it.  I had a rough idea what the algorithm did from the description
+and from the code, but because I did not understand the semantics _exactly_
+I wasted a lot of time on bad implementations.  It wasn't until I buckled up and
+figured out how to step through the JS version in my browser console and
+painstakingly recorded what was happening that I finally got things right.
+
+Even though I resolved the issue the experience left me wanting a better way of
+visualizing algorithms in action.
+
+# R's Super Powers
+
+One of R's lesser known super powers is its ability to manipulate unevaluated R
+code.  We used this to visualize an [R RPN parser in action][1], which is
+exactly the type of thing I wanted for this new algorithm.  Unfortunately the
+RPN implementation is specific for that problem and generalizing it felt like
+too much work at the time.
+
+The basic concept is to modify each top-level statement such that we can trigger
+a side effect.  For example:
+
+```{r}
+f0 <- function() {
+  1 + 1
+}
+f0()
+```
+
+Becomes:
+
+```{r}
+f1 <- function() {
+  {
+    message("I'm a side effect")
+    1 + 1
+  }
+}
+f1()
+```
+
+The result of evaluating the two expressions is the same, but we have the
+opportunity to trigger a side effect.  In this case the side effect is to
+issue a message, but we could have easily recorded variable values.
+
+So how do we turn `1 + 1` into the version with the `message` call?  First,
+let's use R's language manipulation capabilities to create a template in which
+we can insert the original expressions:
+
+```{r}
+template <- call('{', quote(message("I'm a side effect")), NULL)
+template
+```
+
+We can then apply this template to the body of the function:
+
+```{r}
+f1 <- f0
+template[[3]] <- body(f1)[[2]]
+body(f1)[[2]] <- template
+f1
+```
+
+Our example function only has one line of code, but with a loop we could have
+just as easily modified every line of any function[^ctrl].
+
+With some looping we could modify every line of a function, though control
+statements require some additional logic.  Emitting a message is not
+particularly useful, but this can be extended pretty naturally.  I took the idea
+from [Jim Hester's][2] [`covr`][3] package, where it is used to measure
+coverage, and I used a variation to record some elements of state in the
+aforementioned [RPN example][1].
+
+In retrospect it would have been wise to take the time to generalize the
+instrumentation code ahead of tackling the algorithm translation.  Instead, I
+prayed to the gods of trial-and-error and pounded on the keyboard until I ground
+down all the off-by-one errors and corner cases into a plausible simulacrum of
+working code.
+
+Of course with the task accomplished I decided that I couldn't possibly have
+anything more useful to do than writing the generalized instrumentation I no
+longer needed.  So I did, and threw the results into the [`watcher` package][5].
+This is highly experimental, of dubious quality, and generalized just enough for
+the algorithms I was working on.
+
+# Visualizing Insertion Sort
+
+Insertion sort is an algorithm for sorting an array of values.  For our purposes
+its key feature is that it is non-recursive so we can easily instrument it with
+`watcher`.  It wouldn't be too difficult to extend `watcher` to work with
+recursive algorithms, but the algorithm I was working was not recursive, so I
+didn't do that.
+
+I include an implementation of insertion sort in `watcher` for illustrative
+purposes:
+
+```{r}
+library(watcher) # you'll need to install from github for this
+insert_sort
+```
+
+Instrumenting it is trivial (you can see what the instrumented function [looks
+like](#instrumented-insertion-sort) in the appendix):
+
+```{r}
+insert_sort_w <- watch(insert_sort, c('i', 'j', 'x'))
+```
+
+Here we requested that the values of the variables `i`, `j`, and `x` be
+recorded.  Those values are returned as an attribute to the instrumented
+function:
+
+```{r}
+set.seed(1220)
+x <- runif(10)
+res <- insert_sort_w(x)
+watch.dat <- attr(res, 'watch.data')
+str(watch.dat[1:2])         # state for first two steps of function eval
+```
+
+`watcher::simplify_data` can be used to combine values across steps into data
+structures for easier manipulation.  For example, scalar values are turned into
+vectors with one element per step, and stored in a data frame:
+
+```{r}
+watch.simple <- simplify_data(watch.dat)
+head(watch.simple[['.scalar']])
+```
+
+The `.id` variable represents the evaluation step, and the `.line` variable the
+corresponding line number from the function.  This gives us all the information
+we need to visualize the algorithm in action.  For an even clearer
+understanding, we can juxtapose it with the function sources in `attr(res,
+"watch.code")`:
+
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id='feedback-cont'></div>
+
+# Appendix
+
+## Acknowledgments
+
+* R
+* covr
+* rayrender
+* gganimate
+* ggplot2
+* png
+
+
+## Instrumented Insertion Sort
+
+```{r}
+insert_sort_i
+```
+[^ctrl]: Control statements such as `if`, `for`, etc. do require some additional
+  work.
+[^martini]: Vladimir Agafonkin's [adaption of the RTIN algorithm][6].
+
+[1]: /2019/01/11/reverse-polish-notation-parsing-in-r/
+[2]: https://github.com/jimhester/
+[3]: https://github.com/r-lib/covr
+[4]: https://en.wikipedia.org/wiki/Insertion_sort
+[5]: https://github.com/brodieG/watcher
+[6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
