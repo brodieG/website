@@ -5,7 +5,8 @@ date: '2019-10-19'
 slug: visualizing-algorithms
 categories: []
 tags: []
-image: /front-img/default.png
+image:
+  /post/2019-10-19-visualizing-algorithms_files/images/front-black.png
 imagerect: ~
 imagemrgvt: 0%
 imagemrghz: 0%
@@ -23,12 +24,13 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 <!-- this needs to become a shortcode -->
 <img
-  id='front-img' src='/front-img/default.png'
+  id='front-img'
+  src='/post/2019-10-19-visualizing-algorithms_files/images/front-black.png'
   class='post-inset-image'
 />
 
 I recently got caught up trying to port a JavaScript algorithm[^martini] into R.
-A straight up port would have been straightforward (and slow), but I wanted to
+A direct port would have been straightforward (and slow), but I wanted to
 vectorize it.  I had a rough idea what the algorithm did from the description
 and from the code, but because I did not understand the semantics _exactly_
 I wasted a lot of time on bad implementations.  It wasn't until I buckled up and
@@ -38,16 +40,16 @@ painstakingly recorded what was happening that I finally got things right.
 Even though I resolved the issue the experience left me wanting a better way of
 visualizing algorithms in action.
 
-# R's Super Powers
+# Instrumenting Code
 
-One of R's lesser known super powers is its ability to manipulate unevaluated R
-code.  We used this to visualize an [R RPN parser in action][1], which is
-exactly the type of thing I wanted for this new algorithm.  Unfortunately the
-RPN implementation is specific for that problem and generalizing it felt like
-too much work at the time.
+One of R's lesser known super-powers is its ability to manipulate unevaluated R
+code.  We used this to instrument an R RPN parser, which in turn allowed us
+to [visualize it in action][1].  Unfortunately the instrumentation was specific
+to that function, and generalizing for use with the R translation of the JS
+algorithm felt like too much work.
 
-The basic concept is to modify each top-level statement such that we can trigger
-a side effect.  For example:
+How does instrumentation work?  The basic concept is to modify each top-level
+statement to trigger a side effect.  For example if we start with:
 
 ```{r}
 f0 <- function() {
@@ -56,7 +58,7 @@ f0 <- function() {
 f0()
 ```
 
-Becomes:
+With [some language manipulation](#adding-side-effects) we can get:
 
 ```{r}
 f1 <- function() {
@@ -68,102 +70,126 @@ f1 <- function() {
 f1()
 ```
 
-The result of evaluating the two expressions is the same, but we have the
-opportunity to trigger a side effect.  In this case the side effect is to
-issue a message, but we could have easily recorded variable values.
+The functions produce the same result, but the second one triggers a side
+effect.  In this case the side effect is to issue a message, but we could have
+instead recorded variable values.  In other words, the side effect is the
+instrumentation.  I first saw this concept in [Jim Hester's][2] wonderful
+[`covr`][3] package where it is used to measure test code coverage.
 
-So how do we turn `1 + 1` into the version with the `message` call?  First,
-let's use R's language manipulation capabilities to create a template in which
-we can insert the original expressions:
+Of course only _after_ my need for a generalized instrumentation tool passed, I
+got the irrepressible urge to write it.  So i quickly threw something together
+into the [`watcher` package][5].  It's experimental, limited[^not-recursive],
+but does just enough for my purposes.
 
-```{r}
-template <- call('{', quote(message("I'm a side effect")), NULL)
-template
-```
-
-We can then apply this template to the body of the function:
-
-```{r}
-f1 <- f0
-template[[3]] <- body(f1)[[2]]
-body(f1)[[2]] <- template
-f1
-```
-
-Our example function only has one line of code, but with a loop we could have
-just as easily modified every line of any function[^ctrl].
-
-With some looping we could modify every line of a function, though control
-statements require some additional logic.  Emitting a message is not
-particularly useful, but this can be extended pretty naturally.  I took the idea
-from [Jim Hester's][2] [`covr`][3] package, where it is used to measure
-coverage, and I used a variation to record some elements of state in the
-aforementioned [RPN example][1].
-
-In retrospect it would have been wise to take the time to generalize the
-instrumentation code ahead of tackling the algorithm translation.  Instead, I
-prayed to the gods of trial-and-error and pounded on the keyboard until I ground
-down all the off-by-one errors and corner cases into a plausible simulacrum of
-working code.
-
-Of course with the task accomplished I decided that I couldn't possibly have
-anything more useful to do than writing the generalized instrumentation I no
-longer needed.  So I did, and threw the results into the [`watcher` package][5].
-This is highly experimental, of dubious quality, and generalized just enough for
-the algorithms I was working on.
-
-# Visualizing Insertion Sort
-
-Insertion sort is an algorithm for sorting an array of values.  For our purposes
-its key feature is that it is non-recursive so we can easily instrument it with
-`watcher`.  It wouldn't be too difficult to extend `watcher` to work with
-recursive algorithms, but the algorithm I was working was not recursive, so I
-didn't do that.
-
-I include an implementation of insertion sort in `watcher` for illustrative
-purposes:
+Here we use it to instrument an implementation of the [insertion sort
+algorithm][4]:
 
 ```{r}
 library(watcher) # you'll need to install from github for this
 insert_sort
-```
-
-Instrumenting it is trivial (you can see what the instrumented function [looks
-like](#instrumented-insertion-sort) in the appendix):
-
-```{r}
 insert_sort_w <- watch(insert_sort, c('i', 'j', 'x'))
 ```
 
-Here we requested that the values of the variables `i`, `j`, and `x` be
-recorded.  Those values are returned as an attribute to the instrumented
-function:
+`watch` transmogrifies `insert_sort` into its instrumented cousin
+[`insert_sort_w`](#instrumented-insertion-sort).  The latter function works
+exactly like the former, except that the values of the specified variables
+are recorded at each evaluation step and attached to the result as an attribute:
 
 ```{r}
 set.seed(1220)
 x <- runif(10)
-res <- insert_sort_w(x)
-watch.dat <- attr(res, 'watch.data')
-str(watch.dat[1:2])         # state for first two steps of function eval
+x
+insert_sort(x)
+c(insert_sort_w(x))   # `c()` drops attributes
+dat <- attr(insert_sort_w(x), 'watch.data')
+str(dat[1:2])  # show first two steps
 ```
 
-`watcher::simplify_data` can be used to combine values across steps into data
-structures for easier manipulation.  For example, scalar values are turned into
-vectors with one element per step, and stored in a data frame:
+`watcher::simplify_data` can be used to combine the recorded values across steps
+into more accessible data structures.  For example, scalar values are turned
+into vectors with one element per step, and stored in a data frame:
 
 ```{r}
-watch.simple <- simplify_data(watch.dat)
-head(watch.simple[['.scalar']])
+dat.s <- simplify_data(dat)
+head(dat.s[['.scalar']])
 ```
 
 The `.id` variable represents the evaluation step, and the `.line` variable the
-corresponding line number from the function.  This gives us all the information
-we need to visualize the algorithm in action.  For an even clearer
-understanding, we can juxtapose it with the function sources in `attr(res,
-"watch.code")`:
+corresponding line number from the function.
 
+# Visualizing Algorithms
+
+`watcher` provides all the _data_ we need to visualize the algorithm.
+Unfortunately that is as far as `watcher` goes.  Actual visualization requires a
+human to map values to aesthetics.  For example, here we render the values of
+`x` as the height of 3D glass bars.  Certainly we all know that 3D bar charts
+are bad, but 3D bar charts made of ray-traced dielectrics?  Surely there can be
+nothing better!
+
+<video style='display: block; margin: 0 auto;' controls loop>
+  <source src="/post/2019-10-19-visualizing-algorithms_files/images/out.mp4" type="video/mp4" />
+</video>
+
+If you would rather mine bitcoin[^bitcoin] with your CPU cycles we can settle
+for a 2D flipbook instead.  This is the better visualization and medium, at
+least for someone trying to understand how the code maps to the algorithm, but
+it does feel flat in comparison.
+
+<script type='text/javascript'>
+var img_dir = "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/";
+var fps_def = 4;
+var img_n = 75;
+var end_delay = 8;
+</script>
+```{r child='../../static/chunks/flipbook.Rmd'}
+```
+
+The very basic `ggplot2` animation is straightforward:
+
+```{r eval=FALSE}
+# Extract x data and augment with the corresponding scalar `j` loop index
+
+xs <- dat.s[['x']]
+xs <- transform(
+  xs, j=dat.s[['.scalar']][['j']][.id], ix=rep_len(seq_along(x), length(val))
+)
+# Data for labels
+
+labs <- reshape2::melt(dat.s[['.scalar']][c('.id', 'i', 'j')], id.var='.id')
+
+# Plot!
+
+library(ggplot2)
+p <- ggplot(xs, aes(x=ix, y=val)) +
+  geom_col(aes(fill=I(ifelse(!is.na(j) & ix==j, 'red', 'grey35')))) +
+  geom_label(
+    data=labs, aes(x=value, label=variable, y=-0.25 + (variable=='j') * .125)
+  ) +
+  gganimate::transition_manual(.id)
+
+# gganimate::anim_save(
+#   animation=p, '~/Downloads/sort-3.gif', nframes=nrow(dat.s[['.scalar']]),
+#   width=400, height=400, fps=5
+# )
+```
+
+But things get tricky beyond that.  Juxtaposing the code is challenging and
+would benefit from some tools to render the text and graphics independently.  My
+own `ggplot` implementation is a [horrid hack][9].  Transitioning to the
+[ray-traced version][10] was relatively[^relative-ease] easy thanks to the
+surprisingly full-featured and all-around awesome [`rayrender`][7] package by
+[Tyler Morgan Wall][8].  I did have to deploy my rendering farm[^render-farm]
+though.
 
 # Conclusions
+
+I'm unsure if `watcher` does enough to make visualizing algorithms more
+generally practical.  More complex algorithms are far more challenging to
+map to intuitive aesthetic, and getting the data quickly may not make much of a
+difference.  And currently without good tools to link the code text and the
+visualization even simple algorithms are challenging.  Finally, while R is great
+because it allows us to do things like code instrumentation, the static output
+formats are limiting.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -180,19 +206,60 @@ understanding, we can juxtapose it with the function sources in `attr(res,
 * ggplot2
 * png
 
+## Adding Side Effects
+
+So how do we turn `1 + 1` into the version with the `message` side effect call?
+First, we create an unevaluated language template in which we can insert the
+original expressions:
+
+```{r}
+template <- call('{', quote(message("I'm a side effect")), NULL)
+template
+```
+
+We then apply this template to the body of the function:
+
+```{r}
+f1 <- f0
+template[[3]] <- body(f1)[[2]]
+body(f1)[[2]] <- template
+f1
+```
+
+Our example function only has one line of code, but with a loop we could have
+just as easily modified every line of any function[^ctrl].
 
 ## Instrumented Insertion Sort
 
 ```{r}
-insert_sort_i
+insert_sort_w
 ```
+[^not-recursive]: In particular recursive calls are not supported.  It should
+  not be too difficult to add support for them, but it was not necessary for the
+  algorithm I was working on.
 [^ctrl]: Control statements such as `if`, `for`, etc. do require some additional
   work.
 [^martini]: Vladimir Agafonkin's [adaption of the RTIN algorithm][6].
+[^bitcoin]: Now that I think about it...  Hey, Tyler, I have a business proposal
+  for you &#x1f92a;.
+[^relative-ease]: Well, relatively.  Obviously I had to compute positions
+  manually and generally figure out how to use `rayrender`, but I spent less
+  time getting up to the hi-res render batch run than I did completing the
+  ggplot2 version with the code juxtaposed.
+[^render-farm]: I had to retrieve my old 2012 11" Macbook Air to supplement my
+  2016 12" Macbook and manually split the frame batch across the two.  Four
+  physical cores baby!  Interestingly the 2012 machine renders substantially
+  faster.  Clock speed rules sometimes; even though the 2016 machine is using a
+  processor three generations newer, it is clocked at 1.2GHz vs 2.0 for the 2012
+  one.  I guess it's the price of not having a fan.
 
-[1]: /2019/01/11/reverse-polish-notation-parsing-in-r/
+[1]: /2019/01/11/reverse-polish-notation-parsing-in-r/#rpn-flipbook
 [2]: https://github.com/jimhester/
 [3]: https://github.com/r-lib/covr
 [4]: https://en.wikipedia.org/wiki/Insertion_sort
 [5]: https://github.com/brodieG/watcher
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+[7]: http://www.rayrender.net/
+[8]: https://twitter.com/tylermorganwall
+[9]: /post/2019-10-19-visualizing-algorithms_files/scripts/sort-2d-full.R
+[10]: /post/2019-10-19-visualizing-algorithms_files/scripts/sort-3d.R
