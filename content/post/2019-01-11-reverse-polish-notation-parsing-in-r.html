@@ -176,7 +176,7 @@ of RPN tokens:</p>
 <pre class="r"><code>rpn(9, 3, &#39;-&#39;, 2, 5, &#39;+&#39;, &#39;*&#39;)</code></pre>
 <pre><code>(9 - 3) * (2 + 5)</code></pre>
 <p>In order to get a better sense of what is going on in <code>rpn</code> we modified it
-with <code>explain</code> and recorded the results for you to step through here:</p>
+with <code>explain</code> and recorded the results for you to step through here:<span id="rpn-flipbook"></span></p>
 <p><a name='flipbook'></a></p>
 <script type='text/javascript'>
 var img_dir = '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/';
@@ -214,6 +214,9 @@ var img_dir =      // location of flipbook images
 Images must be in `img_dir` and be named in this format:
 
 img-001.png
+
+Failure to set the folder or file names properly will result in errors like
+"NS_ERROR_NOT_AVAILABLE" (firefox).
 
 First file is 001, and its naturalWidth and naturalHeight will set the size of
 the HTML canvas element the images are drawn in.
@@ -555,7 +558,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7ff5a421cd60&gt;</code></pre>
+&lt;bytecode: 0x7f7f88046298&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows
