@@ -29,3 +29,7 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 <div id='feedback-cont'></div>
 
 # Appendix
+
+## Acknowledgments
+
+## Session Info
