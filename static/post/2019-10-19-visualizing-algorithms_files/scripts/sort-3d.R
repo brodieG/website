@@ -203,8 +203,8 @@ for(id in frames) {
     # backgroundimage='~/Downloads/transparent.png',
     file=sprintf('~/Downloads/ray-anim-4/img-%d.png', id),
     scn, parallel = TRUE,
-    # width = 200, height = 200, samples = 50,
-    width = 800, height = 800, samples = 1000,
+    width = 200, height = 200, samples = 50,
+    # width = 1200, height = 600, samples = 1000,
     # lookfrom=c(0,.75,1), lookat=c(0,.125,-1), fov=45,    # video view point
     lookfrom=c(.375,.04,.04), lookat=c(0,.125,-1), fov=90,
     ambient_light=FALSE, aperture=.0, clamp=5
