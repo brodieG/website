@@ -7,20 +7,23 @@ categories: [r]
 tags: [algorithms,viz]
 image:
   /post/2019-10-19-visualizing-algorithms_files/images/front-black-square.jpg
-imagerect: ~
+imagerect:
+  /post/2019-10-19-visualizing-algorithms_files/images/front-black-rect.jpg
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: How to record algorithms in action and use the resulting data to
+  visualize them.
+
 ---
 
 ```{r echo=FALSE}
-options(digits=3)
+options(digits=2)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 
-# Failure of Imagination
+# If Only We Could See Code In Action
 
 <!-- this needs to become a shortcode -->
 <img
@@ -37,15 +40,15 @@ I wasted a lot of time on bad implementations.  It wasn't until I buckled up and
 figured out how to step through the JS version in my browser console and
 painstakingly recorded what was happening that I finally got things right.
 
-Even though I resolved the issue the experience left me wanting a better way of
-visualizing algorithms in action.
+Even though I resolved the issue the experience left me wanting for a better way
+of visualizing algorithms in action.
 
-# Instrumenting Code
+# Instrumenting R Functions
 
 One of R's lesser known super-powers is its ability to manipulate unevaluated R
 code.  We used this to instrument an R RPN parser, which in turn allowed us
 to [visualize it in action][1].  Unfortunately the instrumentation was specific
-to that function, and generalizing for use with the R translation of the JS
+to that function, and generalizing it for use with the R translation of the JS
 algorithm felt like too much work.
 
 How does instrumentation work?  The basic concept is to modify each top-level
@@ -77,23 +80,28 @@ instrumentation.  I first saw this concept in [Jim Hester's][2] wonderful
 [`covr`][3] package where it is used to measure test code coverage.
 
 Of course only _after_ my need for a generalized instrumentation tool passed, I
-got the irrepressible urge to write it.  So i quickly threw something together
+got the irrepressible urge to write one.  So I quickly threw something together
 into the [`watcher` package][5].  It's experimental, limited[^not-recursive],
 but does just enough for my purposes.
 
-Here we use it to instrument an implementation of the [insertion sort
-algorithm][4]:
+`watcher` ships with an implementation of the [insertion sort algorithm][4] for
+demonstration purposes:
 
 ```{r}
 library(watcher) # you'll need to install from github for this
 insert_sort
+```
+
+We can use `watcher::watch` to transmogrify `insert_sort` into its instrumented
+cousin [`insert_sort_w`](#instrumented-insertion-sort):
+
+```{r}
 insert_sort_w <- watch(insert_sort, c('i', 'j', 'x'))
 ```
 
-`watch` transmogrifies `insert_sort` into its instrumented cousin
-[`insert_sort_w`](#instrumented-insertion-sort).  The latter function works
-exactly like the former, except that the values of the specified variables
-are recorded at each evaluation step and attached to the result as an attribute:
+This new function works exactly like the original, except that the values of the
+specified variables are recorded at each evaluation step and attached to the
+result as an attribute:
 
 ```{r}
 set.seed(1220)
@@ -101,21 +109,26 @@ x <- runif(10)
 x
 insert_sort(x)
 all.equal(insert_sort(x), insert_sort_w(x), check.attributes=FALSE)
+```
+
+We can retrieve the recorded data from the "watch.data" attribute:
+
+```{r}
 dat <- attr(insert_sort_w(x), 'watch.data')
 str(dat[1:2])  # show first two steps
 ```
 
-`watcher::simplify_data` can be used to combine the recorded values across steps
-into more accessible data structures.  For example, scalar values are turned
-into vectors with one element per step, and stored in a data frame:
+`watcher::simplify_data` combines values across steps into more accessible
+structures.  For example, scalars are turned into vectors with one element
+per step:
 
 ```{r}
 dat.s <- simplify_data(dat)
 head(dat.s[['.scalar']])
 ```
 
-The `.id` variable represents the evaluation step, and the `.line` variable the
-corresponding line number from the function.
+`.id` represents the evaluation step, and `.line` the corresponding line number
+from the function.
 
 # Visualizing Algorithms
 
@@ -131,9 +144,8 @@ nothing better!
 </video>
 
 If you would rather mine bitcoin[^bitcoin] with your CPU cycles we can settle
-for a 2D flipbook instead.  This is the better visualization and medium, at
-least for someone trying to understand how the code maps to the algorithm, but
-it does feel flat in comparison.
+for a 2D flipbook.  From a pedagogical standpoint this is probably a more
+effective visualization, if a bit flat in comparison:
 
 <script type='text/javascript'>
 var img_dir = "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/";
@@ -144,7 +156,8 @@ var end_delay = 8;
 ```{r child='../../static/chunks/flipbook.Rmd'}
 ```
 
-The very basic `ggplot2` animation is straightforward:
+If we're content with just the right hand side of the boring 2D visualization it
+is pretty easy to create that:
 
 ```{r eval=FALSE}
 # Extract x data and augment with the corresponding scalar `j` loop index
@@ -166,20 +179,25 @@ p <- ggplot(xs, aes(x=ix, y=val)) +
     data=labs, aes(x=value, label=variable, y=-0.25 + (variable=='j') * .125)
   ) +
   gganimate::transition_manual(.id)
-
-# gganimate::anim_save(
-#   animation=p, '~/Downloads/sort-3.gif', nframes=nrow(dat.s[['.scalar']]),
-#   width=400, height=400, fps=5
-# )
 ```
+
+This will produce an approximation of the right hand side of the flipbook
+(showing frame 50 here):
+
+<img
+  class='aligncenter'
+  src='/post/2019-10-19-visualizing-algorithms_files/images/sort-2d-simple.png'
+  alt='Minimal visualization of step 50 of the insert_sort call'
+/>
 
 But things get tricky beyond that.  Juxtaposing the code is challenging and
 would benefit from some tools to render the text and graphics independently.  My
 own `ggplot` implementation requires [horrid text positioning hacks][9].
-Transitioning to the [ray-traced version][10] was relatively[^relative-ease]
-easy thanks to the surprisingly full-featured and all-around awesome
-[`rayrender`][7] package by [Tyler Morgan Wall][8].  I did have to deploy my
-rendering farm[^render-farm] though.
+
+Transitioning to the [ray-traced version][10] was relatively
+easy[^relative-ease] thanks to the surprisingly full-featured and all-around
+awesome [`rayrender`][7] package by [Tyler Morgan Wall][8].  I did have to
+deploy my rendering farm[^render-farm] though.
 
 # Conclusions
 
@@ -206,8 +224,8 @@ thanks to [generous people and organizations][260] that have made it possible.
 * [R-core](https://www.r-project.org/contributors.html) for creating and
   maintaining a language so wonderful it allows crazy things like
   self-instrumentation out of the box.
-* Special thanks to [Tyler Morgan Wall][8] for giving us the power to bend
-  light with [`rayrender`][7].
+* [Tyler Morgan Wall][8] for giving us the power to bend light with
+  [`rayrender`][7].
 * [Jim Hester][12] for the instrumentation concept which I borrowed from
   [`covr`][13]; if you are interested in writing your own instrumented code
   please base it off of his and not mine as I just threw something together
@@ -217,6 +235,7 @@ thanks to [generous people and organizations][260] that have made it possible.
   stitched the frames off the ray-shaded video.
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with
   which I made many the plots in this post.
+* [Hadley Wickham][202] for [`reshape2`][14].
 * Simon Urbanek for the [`png`][11] package.
 
 ## Adding Side Effects
@@ -248,14 +267,51 @@ just as easily modified every line of any function[^ctrl].
 insert_sort_w
 ```
 
-[^not-recursive]: In particular recursive calls are not supported.  It should
-  not be too difficult to add support for them, but it was not necessary for the
-  algorithm I was working on.
+## Session Info
+
+```{r eval=FALSE}
+sessionInfo()
+```
+```
+R version 3.6.0 (2019-04-26)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] watcher_0.0.1   rayrender_0.4.0 ggplot2_3.2.0  
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.1        compiler_3.6.0    pillar_1.4.2      prettyunits_1.0.2
+ [5] remotes_2.1.0     tools_3.6.0       testthat_2.1.1    digest_0.6.20    
+ [9] pkgbuild_1.0.3    pkgload_1.0.2     memoise_1.1.0     tibble_2.1.3     
+[13] gtable_0.3.0      png_0.1-7         pkgconfig_2.0.2   rlang_0.4.0      
+[17] cli_1.1.0         parallel_3.6.0    withr_2.1.2       dplyr_0.8.3      
+[21] desc_1.2.0        fs_1.3.1          devtools_2.2.1    rprojroot_1.3-2  
+[25] grid_3.6.0        tidyselect_0.2.5  glue_1.3.1        R6_2.4.0         
+[29] processx_3.3.1    sessioninfo_1.1.1 callr_3.2.0       purrr_0.3.2      
+[33] magrittr_1.5      backports_1.1.4   scales_1.0.0      ps_1.3.0         
+[37] ellipsis_0.3.0    usethis_1.5.0     assertthat_0.2.1  colorspace_1.4-1 
+[41] labeling_0.3      lazyeval_0.2.2    munsell_0.5.0     crayon_1.3.4   
+```
+
+[^not-recursive]: In particular recursive calls and not all control structures
+  are supported .  It should not be too difficult to add support for them, but
+  it was not necessary for the algorithm I was working on.
 [^ctrl]: Control statements such as `if`, `for`, etc. do require some additional
   work.
-[^martini]: Vladimir Agafonkin's [adaption of the RTIN algorithm][6].
+[^martini]: Vladimir Agafonkin's [adaptation of the RTIN algorithm][6].
 [^bitcoin]: Now that I think about it...  Hey, Tyler, I have a business proposal
-  for you &#x1f92a;.
+  for you &#x1f92a;...
 [^relative-ease]: Well, relatively.  Obviously I had to compute positions
   manually and generally figure out how to use `rayrender`, but I spent less
   time getting up to the hi-res render batch run than I did completing the
@@ -280,6 +336,7 @@ insert_sort_w
 [11]: https://cran.r-project.org/package=png
 [12]: https://github.com/jimhester/
 [13]: https://github.com/r-lib/covr
+[14]: https://github.com/hadley/reshape
 [202]: https://github.com/hadley
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html
 [260]: /about/#acknowledgments
