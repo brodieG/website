@@ -1,0 +1,693 @@
+---
+title: Visualizing Algorithms
+author: ~
+date: '2019-10-19'
+slug: visualizing-algorithms
+categories: [r]
+tags: [algorithms,viz]
+image:
+  /post/2019-10-19-visualizing-algorithms_files/images/front-black-square.jpg
+imagerect:
+  /post/2019-10-19-visualizing-algorithms_files/images/front-black-rect.jpg
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: How to record algorithms in action and use the resulting data to
+  visualize them.
+
+---
+
+
+
+<div id="if-only-we-could-see-code-in-action" class="section level1">
+<h1>If Only We Could See Code In Action</h1>
+<!-- this needs to become a shortcode -->
+<p><img
+  id='front-img'
+  src='/post/2019-10-19-visualizing-algorithms_files/images/front-black-square.jpg'
+  class='post-inset-image'
+/></p>
+<p>I recently got caught up trying to port a JavaScript algorithm<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> into R.
+A direct port would have been straightforward (and slow), but I wanted to
+vectorize it. I had a rough idea what the algorithm did from the description
+and from the code, but because I did not understand the semantics <em>exactly</em>
+I wasted a lot of time on bad implementations. It wasn’t until I buckled up and
+figured out how to step through the JS version in my browser console and
+painstakingly recorded what was happening that I finally got things right.</p>
+<p>Even though I resolved the issue the experience left me wanting for a better way
+of visualizing algorithms in action.</p>
+</div>
+<div id="instrumenting-r-functions" class="section level1">
+<h1>Instrumenting R Functions</h1>
+<p>One of R’s lesser known super-powers is its ability to manipulate unevaluated R
+code. We used this to instrument an R RPN parser, which in turn allowed us
+to <a href="/2019/01/11/reverse-polish-notation-parsing-in-r/#rpn-flipbook">visualize it in action</a>. Unfortunately the instrumentation was specific
+to that function, and generalizing it for use with the R translation of the JS
+algorithm felt like too much work.</p>
+<p>How does instrumentation work? The basic concept is to modify each top-level
+statement to trigger a side effect. For example if we start with:</p>
+<pre class="r"><code>f0 &lt;- function() {
+  1 + 1
+}
+f0()</code></pre>
+<pre><code>[1] 2</code></pre>
+<p>With <a href="#adding-side-effects">some language manipulation</a> we can get:</p>
+<pre class="r"><code>f1 &lt;- function() {
+  {
+    message(&quot;I&#39;m a side effect&quot;)
+    1 + 1
+  }
+}
+f1()</code></pre>
+<pre><code>I&#39;m a side effect</code></pre>
+<pre><code>[1] 2</code></pre>
+<p>The functions produce the same result, but the second one triggers a side
+effect. In this case the side effect is to issue a message, but we could have
+instead recorded variable values. In other words, the side effect is the
+instrumentation. I first saw this concept in <a href="https://github.com/jimhester/">Jim Hester’s</a> wonderful
+<a href="https://github.com/r-lib/covr"><code>covr</code></a> package where it is used to measure test code coverage.</p>
+<p>Of course only <em>after</em> my need for a generalized instrumentation tool passed, I
+got the irrepressible urge to write one. So I quickly threw something together
+into the <a href="https://github.com/brodieG/watcher"><code>watcher</code> package</a>. It’s experimental, limited<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>,
+but does just enough for my purposes.</p>
+<p><code>watcher</code> ships with an implementation of the <a href="https://en.wikipedia.org/wiki/Insertion_sort">insertion sort algorithm</a> for
+demonstration purposes:</p>
+<pre class="r"><code>library(watcher) # you&#39;ll need to install from github for this
+insert_sort</code></pre>
+<pre><code>function(x) {
+  i &lt;- 2
+  while(i &lt;= length(x)) {
+    j &lt;- i
+    while(j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j]) {
+      j &lt;- j - 1
+      x[j + 0:1] &lt;- x[j + 1:0]
+    }
+    i &lt;- i + 1
+  }
+  x
+}
+&lt;bytecode: 0x7f8e38e412d8&gt;
+&lt;environment: namespace:watcher&gt;</code></pre>
+<p>We can use <code>watcher::watch</code> to transmogrify <code>insert_sort</code> into its instrumented
+cousin <a href="#instrumented-insertion-sort"><code>insert_sort_w</code></a>:</p>
+<pre class="r"><code>insert_sort_w &lt;- watch(insert_sort, c(&#39;i&#39;, &#39;j&#39;, &#39;x&#39;))</code></pre>
+<p>This new function works exactly like the original, except that the values of the
+specified variables are recorded at each evaluation step and attached to the
+result as an attribute:</p>
+<pre class="r"><code>set.seed(1220)
+x &lt;- runif(10)
+x</code></pre>
+<pre><code> [1] 0.098 0.232 0.030 0.333 0.567 0.485 0.415 0.678 0.308 0.512</code></pre>
+<pre class="r"><code>insert_sort(x)</code></pre>
+<pre><code> [1] 0.030 0.098 0.232 0.308 0.333 0.415 0.485 0.512 0.567 0.678</code></pre>
+<pre class="r"><code>all.equal(insert_sort(x), insert_sort_w(x), check.attributes=FALSE)</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>We can retrieve the recorded data from the “watch.data” attribute:</p>
+<pre class="r"><code>dat &lt;- attr(insert_sort_w(x), &#39;watch.data&#39;)
+str(dat[1:2])  # show first two steps</code></pre>
+<pre><code>List of 2
+ $ :List of 2
+  ..$ i: num 2
+  ..$ x: num [1:10] 0.0979 0.2324 0.0297 0.3333 0.5672 ...
+  ..- attr(*, &quot;line&quot;)= int 2
+ $ :List of 2
+  ..$ i: num 2
+  ..$ x: num [1:10] 0.0979 0.2324 0.0297 0.3333 0.5672 ...
+  ..- attr(*, &quot;line&quot;)= int 3</code></pre>
+<p><code>watcher::simplify_data</code> combines values across steps into more accessible
+structures. For example, scalars are turned into vectors with one element
+per step:</p>
+<pre class="r"><code>dat.s &lt;- simplify_data(dat)
+head(dat.s[[&#39;.scalar&#39;]])</code></pre>
+<pre><code>  .id .line i  j
+1   1     2 2 NA
+2   2     3 2 NA
+3   3     4 2  2
+4   4     5 2  2
+5   5     9 3  2
+6   6     3 3  2</code></pre>
+<p><code>.id</code> represents the evaluation step, and <code>.line</code> the corresponding line number
+from the function.</p>
+</div>
+<div id="visualizing-algorithms" class="section level1">
+<h1>Visualizing Algorithms</h1>
+<p><code>watcher</code> provides all the <em>data</em> we need to visualize the algorithm, but
+unfortunately that is as far as it goes. Actual visualization requires a human
+to map values to aesthetics. For example, here we render the values of
+<code>x</code> as the height of 3D glass bars. Certainly we all know that 3D bar charts
+are bad, but 3D bar charts made of ray-traced dielectrics? Surely there can be
+nothing better!</p>
+<video style='display: block; margin: 0 auto;' controls loop>
+<source src="/post/2019-10-19-visualizing-algorithms_files/images/out.mp4" type="video/mp4" />
+</video>
+<p>If you would rather mine bitcoin<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a> with your CPU cycles we can settle
+for a 2D flipbook. From a pedagogical standpoint this is probably a more
+effective visualization, if a bit flat in comparison:</p>
+<script type='text/javascript'>
+var img_dir = "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/";
+var fps_def = 4;
+var img_n = 75;
+var end_delay = 8;
+</script>
+<!--
+ Copyright (C) 2019 Brodie Gaslam
+ 
+ This file is part of the website "www.brodieg.com"
+ 
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 2 of the License, or
+ (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ Go to <https://www.r-project.org/Licenses/GPL-2> for a copy of the license.
+-->
+<!--
+- Instructions -
+In order to use set the following global variables:
+
+var fps_def = 3;   // default frames per second for play
+var img_n = 6;     // number of images in flipbook
+var end_delay = 1; // frames to repeat at end
+var img_dir =      // location of flipbook images
+  '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook';
+
+Images must be in `img_dir` and be named in this format:
+
+img-001.png
+
+Failure to set the folder or file names properly will result in errors like
+"NS_ERROR_NOT_AVAILABLE" (firefox).
+
+First file is 001, and its naturalWidth and naturalHeight will set the size of
+the HTML canvas element the images are drawn in.
+
+- To Dos -
+
+* Research more into whether something like this already exists.
+* Package this into closure/object to avoid namespace issues / allow multiple
+  instances.
+* Javascript availability fallback
+* SVG buttons.
+* Better fall-back / a11y.
+* Better image zoon in.
+* Frame browsing.
+* And picking.
+* And juxtaposition.
+* Progress strip.
+
+-->
+<div id="bg-flipbook-images" style="display: none">
+
+</div>
+<div style="margin: auto; display: block; width: 95%;">
+<canvas id="bg-flipbook-flipbook" style="width: 100%; display: block;" title="Click to step forward, shift+click to step backwards.">
+This is an HTML Canvas flipbook that displays key frames of an animation in a
+more controllable manner than in a video player. If you are reading this text
+your browser does not support HTML Canvas.
+</canvas>
+<p style="margin-top: 5px; margin-bottom: 25px;">
+<input
+    id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
+    title='Display help overlay'
+  />
+<input
+    id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+    title='Play/Pause'
+  />
+<input
+    id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+    title='Stop and Reset'
+  />
+ 
+<input
+    id='bg-flipbook-step-b' type='button' value='&#10703;' style='font-size: 18px;'
+    title='Step Backwards'
+  />
+<input
+    id='bg-flipbook-step-f' type='button' value='&#10704;' style='font-size: 18px;'
+    title='Step Forwards'
+  />
+ 
+FPS:
+<input
+    id='bg-flipbook-fps' type='text'
+    style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
+    title='Set Playback Rate' value=3
+  />
+ 
+Frame:
+<input
+    id='bg-flipbook-frame'
+    type='text'
+    style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+    line-height: 1; padding: 0;'
+    value=1
+    title='Jump to frame #'
+  /> / <span id="bg-flipbook-frame-n"></span>
+</p>
+</div>
+<script type='text/javascript'>
+// - Globals -------------------------------------------------------------------
+
+var playing = false;
+var pad = "000";
+var img_active = 1;
+var fps_last = fps_def;
+var interval;
+var flipbook_init = false;
+var flipbook_help_active = false;
+
+var flipbook = document.getElementById('bg-flipbook-flipbook');
+var imgs = document.getElementById('bg-flipbook-images');
+var play = document.getElementById('bg-flipbook-play');
+var help = document.getElementById('bg-flipbook-help');
+var stepf = document.getElementById('bg-flipbook-step-f');
+var stepb = document.getElementById('bg-flipbook-step-b');
+var fps = document.getElementById('bg-flipbook-fps');
+var frame = document.getElementById('bg-flipbook-frame');
+var stop = document.getElementById('bg-flipbook-stop');
+var frame_n = document.getElementById('bg-flipbook-frame-n');
+
+frame_n.innerHTML = img_n;
+fps.value = fps_last;
+if(!isNaN(parseInt(frame.value))) {img_active = parseInt(frame.value);};
+
+// - Load Images ---------------------------------------------------------------
+
+for(i = 0; i <= img_n; i++) {
+  var img = document.createElement("img");
+  var img_n_str = "" + (i + 1);
+  var img_file = pad.substring(0, pad.length - img_n_str.length) + img_n_str;
+  var img_src = img_dir + '/img-' + img_file + '.png'
+
+  img.src = img_src;
+  imgs.append(img);
+}
+
+// - Funs ----------------------------------------------------------------------
+
+function fps_read() {
+  var val = parseFloat(fps.value);
+  if(isNaN(val) || val < 0) val = fps_last;
+  fps_last = val;
+  return val;
+}
+interval = 1/fps_read() * 1000;
+
+var ctx = flipbook.getContext("2d");
+if(ctx) {
+  var intervalID = 0;
+
+  function draw() {
+    frame.value = img_active;
+    if(!flipbook_init) {
+      flipbook.width = imgs.children[0].naturalWidth;
+      flipbook.height = imgs.children[0].naturalHeight;
+    }
+    ctx.drawImage(
+      imgs.children[img_active - 1], 0, 0, flipbook.width, flipbook.height
+    );
+  }
+  /*
+  Help overlay
+  */
+  function draw_help() {
+    console.log('Draw Help');
+    var font_size = flipbook.width / 25;
+    pause_flip();
+    draw();
+    ctx.fillStyle = 'rgb(0, 0, 0, .7)';
+    ctx.fillRect(0, 0, flipbook.width, flipbook.height)
+    ctx.fillStyle = 'white'
+    ctx.font = font_size + 'px serif';
+    var th = ctx.measureText('M').width * 1.1;
+    var xoff = flipbook.width * .1
+    var yoff = flipbook.height * .1
+    var text = [
+      "This is a flipbook.  You can press '\u25b6' to cycle",
+      "through frames, but it is really intended for you to",
+      "step through them:",
+      "",
+      "* Click in frame to step forward",
+      "* Shift + click in frame to step backwards",
+      "* Or use the controls below"
+    ]
+    /* figure out center point to put the text in */
+
+    var text_max_width = 0;
+    for(i = 0; i < text.length; i++) {
+      if(text_max_width < ctx.measureText(text[i]).width) {
+        text_max_width = ctx.measureText(text[i]).width;
+      }
+    }
+    var text_tot_height = th * text.length;
+    var xstart = (flipbook.width - text_max_width) / 2;
+    var ystart = (flipbook.height - text_tot_height) / 2 + th;
+
+    for(i = 0; i < text.length; i++) {
+      ctx.fillText(text[i], xstart, ystart + th * i);
+    }
+    flipbook_help_active = true;
+  }
+  function pause_flip() {
+    playing = false;
+    console.log('pause clear interval');
+    clearInterval(intervalID);
+  }
+  function step_f_int() {
+    if(img_active == img_n) {img_active = 1} else {img_active += 1;}
+  }
+  function step_b_int() {
+    if(img_active == 1) {img_active = img_n} else {img_active -= 1;}
+  };
+  function change_frame(dir) {
+    console.log('change frame ' + dir + ' help act ' + flipbook_help_active);
+    if(!flipbook_help_active) {
+      if(dir > 0) step_f_int(); else step_b_int();
+      draw();
+    } else if(flipbook_help_active) {
+      help_clear();
+    }
+  }
+  function step(dir) {
+    pause_flip();
+    change_frame(dir);
+  }
+  function step_f() {step(1);}
+  function step_b() {step(-1);}
+  function step_click(e) {
+    pause_flip();
+    if(e.shiftKey) {step_b();} else {step_f();}
+  }
+  // automated stepping, pauses at end
+  function step_auto() {
+    console.log('stepping ', img_active);
+    if(img_active == img_n) {
+      // delay at end
+      pause_flip();
+      setTimeout(
+        function() {
+          console.log('end image');
+          change_frame(1);
+          pause_flip();
+          resume_all();
+        },
+        end_delay * interval
+      );
+    } else {
+      change_frame(1);
+    }
+  }
+  /*
+  Intended to be triggered by the play button
+  */
+  function play_all() {
+    if(playing) {
+      pause_flip();
+      return null;
+    }
+    clearInterval(intervalID);
+    step_f();  // always immediately advance
+    intervalID = setInterval(step_auto, interval);
+    playing = true;
+  }
+  /*
+  Restart when looping
+  */
+  function resume_all() {
+    clearInterval(intervalID);
+    intervalID = setInterval(step_auto, interval);
+    playing = true;
+  }
+  function help_clear() {
+    if(flipbook_help_active) {
+      flipbook_help_active = false;
+      draw();
+    }
+  }
+  // - Handlers ------------------------------------------------------------------
+
+  flipbook.addEventListener("click", step_click);
+  stepf.addEventListener("mouseup", step_f);
+  stepb.addEventListener("mouseup", step_b);
+  play.addEventListener("mouseup", play_all);
+  help.addEventListener("mouseup", draw_help);
+  stop.addEventListener("mouseup", function(e) {
+    pause_flip();
+    img_active = 1;
+    draw();
+  });
+  // FPS
+  fps.addEventListener("input", function(e) {
+    interval = 1/fps_read() * 1000;
+    pause_flip();
+    play_all();
+  });
+  // Frame
+  frame.addEventListener("input", function(e) {
+    var frame_val = parseInt(frame.value)
+    if(
+      (isNaN(frame_val) || frame_val < 1 || frame_val >= img_n) ||
+      frame_val == img_active
+    ) {return;}
+    img_active = frame_val;
+    pause_flip();
+    draw();
+  });
+  window.addEventListener("load", 
+    function() {
+      draw();
+      draw_help();
+      flipbook_init=true;
+    }
+  );
+
+}
+</script>
+<p>If we’re content with just the right hand side of the boring 2D visualization it
+is pretty easy to create that:</p>
+<pre class="r"><code># Extract x data and augment with the corresponding scalar `j` loop index
+
+xs &lt;- dat.s[[&#39;x&#39;]]
+xs &lt;- transform(
+  xs, j=dat.s[[&#39;.scalar&#39;]][[&#39;j&#39;]][.id], ix=rep_len(seq_along(x), length(val))
+)
+# Data for labels
+
+labs &lt;- reshape2::melt(dat.s[[&#39;.scalar&#39;]][c(&#39;.id&#39;, &#39;i&#39;, &#39;j&#39;)], id.var=&#39;.id&#39;)
+
+# Plot!
+
+library(ggplot2)
+p &lt;- ggplot(xs, aes(x=ix, y=val)) +
+  geom_col(aes(fill=I(ifelse(!is.na(j) &amp; ix==j, &#39;red&#39;, &#39;grey35&#39;)))) +
+  geom_label(
+    data=labs, aes(x=value, label=variable, y=-0.25 + (variable==&#39;j&#39;) * .125)
+  ) +
+  gganimate::transition_manual(.id)</code></pre>
+<p>This will produce an approximation of the right hand side of the flipbook
+(showing frame 50 here):</p>
+<p><img
+  class='aligncenter'
+  src='/post/2019-10-19-visualizing-algorithms_files/images/sort-2d-simple.png'
+  alt='Minimal visualization of step 50 of the insert_sort call'
+/></p>
+<p>But things get tricky beyond that. Juxtaposing the code is challenging and
+would benefit from some tools to render the text and graphics independently. My
+own <code>ggplot</code> implementation requires <a href="/post/2019-10-19-visualizing-algorithms_files/scripts/sort-2d-full.R">horrid text positioning hacks</a>.</p>
+<p>Transitioning to the <a href="/post/2019-10-19-visualizing-algorithms_files/scripts/sort-3d.R">ray-traced version</a> was relatively
+easy<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a> thanks to the surprisingly full-featured and all-around
+awesome <a href="http://www.rayrender.net/"><code>rayrender</code></a> package by <a href="https://twitter.com/tylermorganwall">Tyler Morgan Wall</a>. I did have to
+deploy my rendering farm<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a> though.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>I’m unsure if <code>watcher</code> does enough to make visualizing algorithms more
+generally practical. Perhaps automated handling of the code rendering and
+juxtaposition would make this easy enough to be worth the trouble. On the
+flipside, as algorithms become more complex figuring out aesthetic mappings that
+intuitively represent them becomes increasingly difficult. Finally, while R
+provides some great tools for instrumenting and visualizing algorithms, the
+static nature of the output limits the possibilities for interactive
+visualizations.</p>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<div id="feedback-cont">
+
+</div>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="acknowledgments" class="section level2">
+<h2>Acknowledgments</h2>
+<p>These are post-specific acknowledgments. This website owes many additional
+thanks to <a href="/about/#acknowledgments">generous people and organizations</a> that have made it possible.</p>
+<ul>
+<li><a href="https://www.r-project.org/contributors.html">R-core</a> for creating and
+maintaining a language so wonderful it allows crazy things like
+self-instrumentation out of the box.</li>
+<li><a href="https://twitter.com/tylermorganwall">Tyler Morgan Wall</a> for giving us the power to bend light with
+<a href="http://www.rayrender.net/"><code>rayrender</code></a>.</li>
+<li><a href="https://github.com/jimhester/">Jim Hester</a> for the instrumentation concept which I borrowed from
+<a href="https://github.com/r-lib/covr"><code>covr</code></a>; if you are interested in writing your own instrumented code
+please base it off of his and not mine as I just threw something together
+quickly with little thought.</li>
+<li><a href="https://twitter.com/thomasp85">Thomas Lin Pedersen</a> for <a href="https://github.com/thomasp85/gganimate"><code>gganimate</code></a> with which I prototyped some
+of the earlier animations, and the FFmpeg team for <a href="http://ffmpeg.org/about.html">FFmpeg</a> with which I
+stitched the frames off the ray-shaded video.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> and the <a href="https://cran.r-project.org/web/packages/ggplot2/index.html"><code>ggplot2</code> authors</a> for <code>ggplot2</code> with
+which I made many the plots in this post.</li>
+<li><a href="https://github.com/hadley">Hadley Wickham</a> for <a href="https://github.com/hadley/reshape"><code>reshape2</code></a>.</li>
+<li>Simon Urbanek for the <a href="https://cran.r-project.org/package=png"><code>png</code></a> package.</li>
+</ul>
+</div>
+<div id="adding-side-effects" class="section level2">
+<h2>Adding Side Effects</h2>
+<p>So how do we turn <code>1 + 1</code> into the version with the <code>message</code> side effect call?
+First, we create an unevaluated language template in which we can insert the
+original expressions:</p>
+<pre class="r"><code>template &lt;- call(&#39;{&#39;, quote(message(&quot;I&#39;m a side effect&quot;)), NULL)
+template</code></pre>
+<pre><code>{
+    message(&quot;I&#39;m a side effect&quot;)
+    NULL
+}</code></pre>
+<p>We then apply this template to the body of the function:</p>
+<pre class="r"><code>f1 &lt;- f0
+template[[3]] &lt;- body(f1)[[2]]
+body(f1)[[2]] &lt;- template
+f1</code></pre>
+<pre><code>function () 
+{
+    {
+        message(&quot;I&#39;m a side effect&quot;)
+        1 + 1
+    }
+}</code></pre>
+<p>Our example function only has one line of code, but with a loop we could have
+just as easily modified every line of any function<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>.</p>
+</div>
+<div id="instrumented-insertion-sort" class="section level2">
+<h2>Instrumented Insertion Sort</h2>
+<pre class="r"><code>insert_sort_w</code></pre>
+<pre><code>function (x) 
+{
+    watcher:::watch_init(c(&quot;i&quot;, &quot;j&quot;, &quot;x&quot;))
+    res &lt;- {
+        {
+            .res &lt;- (i &lt;- 2)
+            watcher:::capture_data(environment(), 2L)
+            .res
+        }
+        while ({
+            .res &lt;- (i &lt;= length(x))
+            watcher:::capture_data(environment(), 3L)
+            .res
+        }) {
+            {
+                .res &lt;- (j &lt;- i)
+                watcher:::capture_data(environment(), 4L)
+                .res
+            }
+            while ({
+                .res &lt;- (j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j])
+                watcher:::capture_data(environment(), 5L)
+                .res
+            }) {
+                {
+                  .res &lt;- (j &lt;- j - 1)
+                  watcher:::capture_data(environment(), 6L)
+                  .res
+                }
+                {
+                  .res &lt;- (x[j + 0:1] &lt;- x[j + 1:0])
+                  watcher:::capture_data(environment(), 7L)
+                  .res
+                }
+            }
+            {
+                .res &lt;- (i &lt;- i + 1)
+                watcher:::capture_data(environment(), 9L)
+                .res
+            }
+        }
+        {
+            .res &lt;- (x)
+            watcher:::capture_data(environment(), 11L)
+            .res
+        }
+    }
+    attr(res, &quot;watch.data&quot;) &lt;- watcher:::watch_data()
+    attr(res, &quot;watch.code&quot;) &lt;- c(&quot;insert_sort &lt;- function(x) {&quot;, 
+    &quot;  i &lt;- 2&quot;, &quot;  while(i &lt;= length(x)) {&quot;, &quot;    j &lt;- i&quot;, &quot;    while(j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j]) {&quot;, 
+    &quot;      j &lt;- j - 1&quot;, &quot;      x[j + 0:1] &lt;- x[j + 1:0]&quot;, &quot;    }&quot;, 
+    &quot;    i &lt;- i + 1&quot;, &quot;  }&quot;, &quot;  x&quot;, &quot;}&quot;)
+    res
+}
+&lt;bytecode: 0x7f8e38725a40&gt;
+&lt;environment: namespace:watcher&gt;</code></pre>
+</div>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.6.0 (2019-04-26)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] watcher_0.0.1   rayrender_0.4.0 ggplot2_3.2.0  
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.1        compiler_3.6.0    pillar_1.4.2      prettyunits_1.0.2
+ [5] remotes_2.1.0     tools_3.6.0       testthat_2.1.1    digest_0.6.20    
+ [9] pkgbuild_1.0.3    pkgload_1.0.2     memoise_1.1.0     tibble_2.1.3     
+[13] gtable_0.3.0      png_0.1-7         pkgconfig_2.0.2   rlang_0.4.0      
+[17] cli_1.1.0         parallel_3.6.0    withr_2.1.2       dplyr_0.8.3      
+[21] desc_1.2.0        fs_1.3.1          devtools_2.2.1    rprojroot_1.3-2  
+[25] grid_3.6.0        tidyselect_0.2.5  glue_1.3.1        R6_2.4.0         
+[29] processx_3.3.1    sessioninfo_1.1.1 callr_3.2.0       purrr_0.3.2      
+[33] magrittr_1.5      backports_1.1.4   scales_1.0.0      ps_1.3.0         
+[37] ellipsis_0.3.0    usethis_1.5.0     assertthat_0.2.1  colorspace_1.4-1 
+[41] labeling_0.3      lazyeval_0.2.2    munsell_0.5.0     crayon_1.3.4   </code></pre>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Vladimir Agafonkin’s <a href="https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh">adaptation of the RTIN algorithm</a>.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>In particular recursive calls and not all control structures
+are supported . It should not be too difficult to add support for them, but
+it was not necessary for the algorithm I was working on.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>Now that I think about it… Hey, Tyler, I have a business proposal
+for you 🤪…<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>Well, relatively. Obviously I had to compute positions
+manually and generally figure out how to use <code>rayrender</code>, but I spent less
+time getting up to the hi-res render batch run than I did completing the
+ggplot2 version with the code juxtaposed.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>I had to retrieve my old 2012 11&quot; Macbook Air to supplement my
+2016 12&quot; Macbook and manually split the frame batch across the two. Four
+physical cores baby! Interestingly the 2012 machine renders substantially
+faster. Clock speed rules sometimes; even though the 2016 machine is using a
+processor three generations newer, it is clocked at 1.2GHz vs 2.0 for the 2012
+one. I guess it’s the price of not having a fan.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>Control statements such as <code>if</code>, <code>for</code>, etc. do require some additional
+work.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
