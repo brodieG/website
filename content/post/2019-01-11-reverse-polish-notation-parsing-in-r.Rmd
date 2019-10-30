@@ -220,7 +220,8 @@ rpn(9, 3, '-', 2, 5, '+', '*')
 ```
 
 In order to get a better sense of what is going on in `rpn` we modified it
-with `explain` and recorded the results for you to step through here:
+with `explain` and recorded the results for you to step through here:<span
+id=rpn-flipbook></span>
 
 <a name='flipbook'></a>
 ```{r eval=FALSE, echo=FALSE}
