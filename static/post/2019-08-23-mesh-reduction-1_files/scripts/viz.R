@@ -1,4 +1,8 @@
+source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
+source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin-vec.R')
+
 # - Plot Helper Tools ----------------------------------------------------------
+#
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
@@ -36,18 +40,21 @@ plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
 }
 # Plotting extract geom
 
-raw <- extract_geometry(errors, tol)
-points(rescale(which(errors > tol, arr.ind=TRUE)[,2:1] - 1), pch=19, col='red')
+if(FALSE) {
+  raw <- extract_geometry(errors, tol)
 
-plot_ex_geom <- function(raw, errors) {
-  xs <- matrix(raw %% nrow(errors), 3)
-  ys <- matrix(raw %/% ncol(errors), 3)
+  points(rescale(which(errors > tol, arr.ind=TRUE)[,2:1] - 1), pch=19, col='red')
 
-  plot_new(xs, ys)
-  polygon(
-    rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
-    col='#DDDDDD', border='#444444'
-  )
+  plot_ex_geom <- function(raw, errors) {
+    xs <- matrix(raw %% nrow(errors), 3)
+    ys <- matrix(raw %/% ncol(errors), 3)
+
+    plot_new(xs, ys)
+    polygon(
+      rescale(rbind(xs, NA)), rescale(rbind(ys, NA)),
+      col='#DDDDDD', border='#444444'
+    )
+  }
 }
 # Mx to mesh
 
@@ -102,7 +109,7 @@ mesh_to_obj <- function(mesh) {
 
   # faces are easy because we've repeated the vertices so no shared vertices
 
-  mesh.f <-matrix(seq_along(mesh.v), nrow=3)
+  mesh.f <-matrix(seq_len(length(mesh[[1]]) * 3), nrow=3)
   f.chr <- paste('f', mesh.f[1,], mesh.f[2,], mesh.f[3,], collapse="\n")
 
   paste0(c(v.chr, f.chr), collapase="\n")
@@ -112,13 +119,31 @@ mesh.obj <- mesh_to_obj(mesh.tri.s)
 
 # rayrender a mesh in list format
 
+stop()
 library(rayrender)
 
 f <- tempfile()
 writeLines(mesh.obj, f)
 
-scn <- generate_ground()
-scn <- add_object(scn, obj_model(filename=f, x=-.5, y=-.5))
+scn <- sphere(
+  y=3, z = 2, x = 1, radius = .2,
+  material = lambertian(lightintensity = 200, implicit_sample = TRUE)
+)
+scn <- add_object(
+  scn,
+  obj_model(filename=f, x=-.5, y=0, angle=c(90, 0, 0))
+)
+scn <- add_object(
+  scn, xz_rect(xwidth=3, zwidth=3, material=lambertian(color='grey50'))
+)
+render_scene(
+  scn, width=200, height=200, samples=50,
+  lookfrom=c(x=0, z=8, y=10),
+  lookat=c(0, 0, 0)
+)
+
+if(FALSE) {
+}
 
 # for(i in seq_along(mesh.tri.s[[1]])) {
 #   scn <- add_object(
@@ -130,24 +155,21 @@ scn <- add_object(scn, obj_model(filename=f, x=-.5, y=-.5))
 #     )
 #   )
 # }
-render_scene(scn, width=200, height=200, samples=200)
-
 
 # - Test it Out ----------------------------------------------------------------
 
+if(FALSE) {
+  map <- elmat1[1:65, 1:65]
+  errors <- compute_error(map)
+  tol <- diff(range(map)) / 50
+  m <- extract_mesh2(errors, tol)
+  plot_tri_ids(tris, dim(errors))
 
-source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin-vec.R')
+  m2 <- extract_geometry(errors, tol)
 
-map <- elmat1[1:65, 1:65]
-errors <- compute_error(map)
-tol <- diff(range(map)) / 50
-m <- extract_mesh2(errors, tol)
-plot_tri_ids(tris, dim(errors))
-
-m2 <- extract_geometry(errors, tol)
-
-vsq <- matrix(min(volcano), 65, 65)
-vsq[1:65, 3:63] <- volcano[1:65,1:61]
-plot(as.raster((vsq - min(vsq)) / diff(range(vsq))))
+  vsq <- matrix(min(volcano), 65, 65)
+  vsq[1:65, 3:63] <- volcano[1:65,1:61]
+  plot(as.raster((vsq - min(vsq)) / diff(range(vsq))))
+}
 
 

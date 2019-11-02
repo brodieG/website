@@ -1,3 +1,5 @@
+# Cleaned up implementation for animation
+
 errors_rtin2 <- function(terrain) {
   errors <- array(NA_real_, dim(terrain))
   nSmallestTriangles <- prod(dim(terrain) - 1L)
@@ -72,4 +74,97 @@ errors_rtin2 <- function(terrain) {
     )
   }
   errors
+}
+
+# Try a direct implementation; mostly the same except that we need to transpose
+# some of the coordinates
+
+errors_rtin <- function(terrain) {
+  errors <- array(0, dim(terrain));
+  numSmallestTriangles = prod(dim(terrain) - 1L);
+  numTriangles = numSmallestTriangles * 2 - 2;
+  lastLevelIndex = numTriangles - numSmallestTriangles;
+  gridSize = nrow(terrain)
+  tileSize = gridSize - 1L
+
+  # iterate over all possible triangles, starting from the smallest level
+  for (i in (numTriangles - 1):0) {
+
+    # get triangle coordinates from its index in an implicit binary tree
+    id = i + 2L;
+    ax = ay = bx = by = cx = cy = 0L;
+    if (bitwAnd(id, 1L)) {
+      bx = by = cx = tileSize; # bottom-left triangle
+    } else {
+      ax = ay = cy = tileSize; # top-right triangle
+    }
+    while ((id <- (id %/% 2L)) > 1L) {
+      mx = (ax + bx) / 2L
+      my = (ay + by) / 2L
+
+      if (bitwAnd(id, 1L)) { # left half
+        bx = ax; by = ay;
+        ax = cx; ay = cy;
+      } else {        # right half
+        ax = bx; ay = by;
+        bx = cx; by = cy;
+      }
+      cx = mx; cy = my;
+      # polygon(c(ax, bx, cx)/4, c(ay, by, cy)/4, col='#00000003')
+    }
+    # calculate error in the middle of the long edge of the triangle
+
+    interpolatedHeight = (
+      terrain[ax * gridSize + ay + 1L] + terrain[bx * gridSize + by + 1L]
+    ) / 2;
+    middleIndex = ((ax + bx) / 2L) * gridSize + ((ay + by) / 2L) + 1L;
+    middleError = abs(interpolatedHeight - terrain[middleIndex]);
+
+    if (i >= lastLevelIndex) { # smallest triangles
+      errors[middleIndex] = middleError;
+    } else { # bigger triangles; accumulate error with children
+      leftChildError = errors[
+        ((ax + cx) / 2L) * gridSize + ((ay + cy) / 2L) + 1L
+      ];
+      rightChildError = errors[
+        ((bx + cx) / 2L) * gridSize + ((by + cy) / 2L) + 1L
+      ];
+      errors[middleIndex] = max(
+        c(errors[middleIndex], middleError, leftChildError, rightChildError)
+      );
+    }
+  }
+  errors;
+}
+
+extract_geometry <- function(errors, maxError) {
+  i = 0;
+  indices = integer(prod(dim(errors) - 1L))  # overallocate to max num triangles
+  gridSize = nrow(errors)
+  tileSize = gridSize - 1L
+
+  processTriangle <- function(ax, ay, bx, by, cx, cy) {
+    # middle of the long edge
+    mx = (ax + bx) %/% 2L;
+    my = (ay + by) %/% 2L;
+
+    if (
+      abs(ax - cx) + abs(ay - cy) > 1 &&
+      errors[my * gridSize + mx + 1L] > maxError
+    ) {
+      # triangle doesn't approximate the surface well enough; split it into two
+      processTriangle(cx, cy, ax, ay, mx, my);
+      processTriangle(bx, by, cx, cy, mx, my);
+
+    } else {
+      ## add a triangle to the final mesh (note this is +1 the original)
+      indices[(i <<- i + 1)] <<- ay * gridSize + ax;
+      indices[(i <<- i + 1)] <<- by * gridSize + bx;
+      indices[(i <<- i + 1)] <<- cy * gridSize + cx;
+    }
+  }
+  processTriangle(0, 0, tileSize, tileSize, tileSize, 0);
+  processTriangle(tileSize, tileSize, 0, 0, 0, tileSize);
+
+  indices[seq_len(i)];
 }
