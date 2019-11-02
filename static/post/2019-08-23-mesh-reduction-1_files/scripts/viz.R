@@ -59,34 +59,35 @@ if(FALSE) {
 # Mx to mesh
 
 map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
-nr <- dim(map)[1]
-nc <- dim(map)[2]
-idx.raw <- matrix(seq_along(map), nr, nc)
+mx_to_mesh <- function(mx) {
+  nr <- dim(mx)[1]
+  nc <- dim(mx)[2]
+  idx.raw <- matrix(seq_along(mx), nr, nc)
 
-idx.tile <- list(
-  v1=c(idx.raw[-nr, -nc]), v2=c(idx.raw[-nr,  -1]),
-  v3=c(idx.raw[ -1,  -1]), v4=c(idx.raw[ -1, -nc])
-)
-vl <- list(x=c(col(map)), y=c(row(map)), z=c(map), t=rep(0, length(map)))
+  idx.tile <- list(
+    v1=c(idx.raw[-nr, -nc]), v2=c(idx.raw[-nr,  -1]),
+    v3=c(idx.raw[ -1,  -1]), v4=c(idx.raw[ -1, -nc])
+  )
+  vl <- list(x=c(col(mx)), y=c(row(mx)), z=c(mx), t=rep(0, length(mx)))
 
-mesh.tile <- matrix(
-  list(), nrow=length(idx.tile), ncol=length(vl),
-  dimnames=list(names(idx.tile), names(vl))
-)
-## Fill it with the correctly subset volcano data
-for(i in names(idx.tile))
-  for(j in names(vl))
-    mesh.tile[[i,j]] <- vl[[j]][idx.tile[[i]]]
+  mesh.tile <- matrix(
+    list(), nrow=length(idx.tile), ncol=length(vl),
+    dimnames=list(names(idx.tile), names(vl))
+  )
+  ## Fill it with the correctly subset volcano data
+  for(i in names(idx.tile))
+    for(j in names(vl))
+      mesh.tile[[i,j]] <- vl[[j]][idx.tile[[i]]]
 
-mesh.tile
+  mesh.tile
 
-vertex.blue <- 1:3
-vertex.green <- c(3,4,1)
-mesh.tri <- Map('c', mesh.tile[vertex.blue,], mesh.tile[vertex.green,])
-dim(mesh.tri) <- c(3, 4)
-dimnames(mesh.tri) <- list(head(rownames(mesh.tile), -1), colnames(mesh.tile))
-mesh.tri
-
+  vertex.blue <- 1:3
+  vertex.green <- c(3,4,1)
+  mesh.tri <- Map('c', mesh.tile[vertex.blue,], mesh.tile[vertex.green,])
+  dim(mesh.tri) <- c(3, 4)
+  dimnames(mesh.tri) <- list(head(rownames(mesh.tile), -1), colnames(mesh.tile))
+  mesh.tri
+}
 scale_mesh <- function(mesh, scale=rep(1, 4)) {
   stopifnot(identical(ncol(mesh), length(scale)))
   res <- mesh
@@ -114,62 +115,83 @@ mesh_to_obj <- function(mesh) {
 
   paste0(c(v.chr, f.chr), collapase="\n")
 }
-mesh.tri.s <- scale_mesh(mesh.tri)
-mesh.obj <- mesh_to_obj(mesh.tri.s)
+# Return format from extract_mesh2
+
+tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
+  ids <- unlist(tris)
+  x <- (ids - 1) %% dim(map)[1]
+  y <- (ids - 1) %/% dim(map)[1]
+  z <- map[ids]
+
+  x <- x / (dim(map)[1] - 1) * scale[1]
+  y <- y / (dim(map)[2] - 1) * scale[2]
+  z <- (z - min(z)) / (diff(range(z))) * scale[3]
+
+  # need these ordered counterclockwise; for each triangle start with leftmost
+  # (lowest x), then highest y.
+  o <- order(
+    rep(seq_len(length(ids)/3), each=3),
+    rep(1:3, length(ids)/3) !=
+      rep(max.col(matrix(-x, ncol=3, byrow=TRUE), ties.method='first'), each=3),
+    y, x
+  )
+  t.ids <- matrix(seq_along(ids), 3)
+  v.chr <- paste('v', x[o], y[o], z[o], collapse='\n')
+  f.chr <- paste('f', t.ids[1,], t.ids[2,], t.ids[3,], collapse='\n')
+  paste0(c(v.chr, f.chr), collapse='\n')
+}
+
+stop('loaded')
+
+# - Test it Out ----------------------------------------------------------------
+
+vsq <- matrix(min(volcano), 65, 65)
+vsq[1:65, 3:63] <- volcano[1:65,1:61]
+
+map <- vsq
+errors <- compute_error(map)
+tol <- diff(range(map)) / 3
+# m2 <- extract_geometry(errors, tol)
+tris <- extract_mesh2(errors, tol)
+plot_tri_ids(tris, dim(errors))
 
 # rayrender a mesh in list format
 
-stop()
+mesh.tri <- mx_to_mesh(vsq)
+mesh.tri.s <- scale_mesh(mesh.tri)
+mesh.obj <- mesh_to_obj(mesh.tri.s)
+
+mesh.obj.2 <- tris_to_obj(tris, map)
+
 library(rayrender)
 
 f <- tempfile()
 writeLines(mesh.obj, f)
+f2 <- tempfile()
+writeLines(mesh.obj.2, f2)
 
 scn <- sphere(
-  y=3, z = 2, x = 1, radius = .2,
-  material = lambertian(lightintensity = 200, implicit_sample = TRUE)
+  y=6, z = 2, x = 1, radius = 1,
+  material = lambertian(lightintensity = 50, implicit_sample = TRUE)
 )
 scn <- add_object(
   scn,
-  obj_model(filename=f, x=-.5, y=0, angle=c(90, 0, 0))
+  obj_model(
+    filename=f2, x=0.5, y=0, z=0.5, angle=c(90, 90, 0),
+    material=lambertian(color='white')
+  )
 )
 scn <- add_object(
   scn, xz_rect(xwidth=3, zwidth=3, material=lambertian(color='grey50'))
 )
 render_scene(
-  scn, width=200, height=200, samples=50,
-  lookfrom=c(x=0, z=8, y=10),
-  lookat=c(0, 0, 0)
+  scn, width=200, height=200, samples=200,
+  lookfrom=c(0, 8, 1),
+  lookat=c(0, 0.25, 0)
 )
 
-if(FALSE) {
-}
-
-# for(i in seq_along(mesh.tri.s[[1]])) {
-#   scn <- add_object(
-#     scn,
-#     triangle(
-#       v1=sapply(mesh.tri.s['v1', 1:3], '[', i),
-#       v2=sapply(mesh.tri.s['v2', 1:3], '[', i),
-#       v3=sapply(mesh.tri.s['v3', 1:3], '[', i)
-#     )
-#   )
-# }
-
-# - Test it Out ----------------------------------------------------------------
-
-if(FALSE) {
-  map <- elmat1[1:65, 1:65]
-  errors <- compute_error(map)
-  tol <- diff(range(map)) / 50
-  m <- extract_mesh2(errors, tol)
-  plot_tri_ids(tris, dim(errors))
-
-  m2 <- extract_geometry(errors, tol)
-
-  vsq <- matrix(min(volcano), 65, 65)
-  vsq[1:65, 3:63] <- volcano[1:65,1:61]
-  plot(as.raster((vsq - min(vsq)) / diff(range(vsq))))
-}
-
-
+library(rgl)
+par3d(windowRect=c(20,20,400,400))
+mesh.obj.2 <- tris_to_obj(tris, map)
+writeLines(mesh.obj.2, f2)
+plot3d(readOBJ(f2), col='grey50')
