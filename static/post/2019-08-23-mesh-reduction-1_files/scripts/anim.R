@@ -10,7 +10,7 @@ map <- matrix(c(
 # eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 # elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
-map <- elmat1[1:5, 1:5]
+# map <- elmat1[1:5, 1:5]
 
 source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
 library(watcher)
@@ -159,10 +159,6 @@ for(i in frames) {
     ) +
     guides(color=FALSE) +
     ylab(NULL) + xlab(NULL) +
-    theme(
-      axis.text.x=element_blank(), axis.text.y=element_blank(),
-      axis.ticks.x=element_blank(), axis.ticks.y=element_blank()
-    ) +
     labs(title = "Step {frame}/{nframes}") +
     facet_wrap(~type, ncol=1) +
     coord_fixed(
@@ -171,20 +167,26 @@ for(i in frames) {
     ) +
     guides(size=FALSE) +
     theme(
+      axis.text.x=element_blank(), axis.text.y=element_blank(),
+      axis.ticks.x=element_blank(), axis.ticks.y=element_blank(),
       plot.margin=unit(c(.1, .1, .1, (height/2)/dpi), "inches"),
       panel.grid=element_blank(),
       text=element_text(size=16)
     ) +
     ggtitle(sprintf('Frame %04d/%d (%s)', i, max(frames), d$meta$V1)) +
+    scale_size(limits=c(0, max(xx, na.rm=TRUE)), range=c(0,10)) +
     NULL
   ggsave(
-    filename=sprintf('~/Downloads/mesh-anim-3/img-%04d.png', i),
+    filename=sprintf('~/Downloads/mesh-anim-2/img-%04d.png', i),
     plot=p,
     width=width/dpi, height=height/dpi, units='in', device='png',
     dpi=dpi
   )
 
 }
+# ffmpeg -framerate 8 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
+#   open out.mp4
+#
 # To improve animation:
 #
 # * Make 'm' same color as the error dots (e.g. black, maybe with white 'm')

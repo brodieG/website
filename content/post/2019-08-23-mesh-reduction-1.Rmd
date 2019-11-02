@@ -27,6 +27,72 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
   class='post-inset-image'
 />
 
+A few months ago a stumbled on Vladimir Agafonkin's fantastic observable
+notebook on the [adaptation of the Right-Triangulated Irregular Networks (RTIN)
+algorithm][6].  The subject matter is interesting and the exposition superb.
+I'll admit I envy the elegance of natively interactive notebooks.
+
+I almost left it at that, but then the irrepressible "but can we do that in R"
+bug in whispered into my ear, once again setting me hopelessly
+off-course[^off-course].  Obviously we can do it by porting the code directly,
+but the loop heavy nature of it would doom it.  We could also trivially port it
+to C and interface that into R, but where's the fun in that?
+
+# The Algorithm
+
+You should look at [Agafonkin's notebook][6] or the original [Will Evans et al.
+1997 paper][8] for in-depth details as the point of this post is the translation
+to an R idiomatic implementation.  But I do need to cover some of the
+basic concepts.  The basic idea is to approximate a right-angle isoceles
+triangle mesh by removing some of the detail subject to error tolerances:
+
+```{r}
+## volcano or the dem, simplified vs not
+```
+
+A key feature of this algorithm is that the triangles are arranged in a
+hierarchy of increasing detail. Each triangle at a given level of detail
+can be fully reconstructed with smaller triangles at a smaller level of detail:
+
+```{r hierarchy}
+## Exploded view of several levels of the hierarchy
+```
+
+As a result, if a triangle too coarse for the desired level of fidelity, it can
+be replaced with the smaller triangles it comprises.  One restriction brought
+about by this hierarchy is that the mesh must be square and `$2^k + 1$` to the
+side (not strictly true).
+
+The first step of the algorithm is to compute the error caused by each level of
+approximation.  Subsequently that error can be compared against a tolerance and
+the mesh can be drawn from the triangles that meet it.  In this post we will
+focus on the error computation part.
+
+Error is computed at the middle of the hypotenuse of each triangle:
+
+```{r error-ex}
+## Simplest example of error, 3x3 grid.  Actually, might need a 5x5 grid to show
+## the complexity of the child errors?
+```
+
+There is a complication though.  We can't just break up triangles into smaller
+pieces willy nilly as otherwise we end up with problems.  This is resolved by
+carrying over the error in any given triangle to it's parent triangle to ensure
+that triangles are broken up in a self-consistent way.  I.e., if a triangle is
+broken up, then all it's siblings must be drawn (or something like that anyway)..
+
+```{r child-ex}
+## Example of what happens if we don't spread the error to parents
+```
+
+We can see the algorithm in action:
+
+<!-- Animation here -->
+
+
+# Vectorize The Shit Absolute Shit Out Of This
+
+
 ```{r test-plot}
 plot(1:10, 1:10)
 ```
@@ -38,3 +104,14 @@ plot(1:10, 1:10)
 <div id='feedback-cont'></div>
 
 # Appendix
+
+## Acknowledgments
+
+## System Info
+
+[^off-course]: The beauty is I wasn't going anywhere in particular anyway, so
+  why not do this.
+
+[6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+[7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
+[8]: https://www.cs.ubc.ca/~will/papers/rtin.pdf
