@@ -127,7 +127,7 @@ ids_to_xyz <- function(tris, map, scale) {
   x <- x / (dim(map)[1] - 1) * scale[1]
   y <- y / (dim(map)[2] - 1) * scale[2]
   z <- (z - min(z)) / (diff(range(z))) * scale[3]
-  list(x, y, z)
+  list(x=x, y=y, z=z)
 }
 mesh_to_xyz <- function(mesh, map, scale) {
   mesh.arr <- array(unlist(mesh[1:3, 1:3]), c(length(mesh[[1]]), 3, 3))
@@ -146,7 +146,7 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   # (lowest x), then compute the angle between that vertex and the remaining two
   # to decide how to order the remaining two.
 
-  tri.id <- rep(seq_len(length(ids)/3), each=3)
+  tri.id <- rep(seq_len(length(x)/3), each=3)
   o <- order(
     tri.id,
     x != rep(
@@ -173,7 +173,7 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   yo2 <- yo[o2]
   zo2 <- z[o][o2]
 
-  v.ids <- matrix(seq_along(ids), 3)
+  v.ids <- matrix(seq_len(length(x) * 3), 3)
   v.chr <- paste('v', xo2, yo2, zo2, collapse='\n')
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
@@ -265,7 +265,8 @@ scn <- add_object(
       mesh_to_seg(mesh.tri.s, map, radius=.005, material=lambertian(color='red')),
       obj_model(filename=f, material=lambertian(color='grey50'))
     ),
-    group_angle=c(90, 90, 0), group_translate=c(-1.75, 0.05, -.5)
+    group_angle=c(90, 90, 0), group_translate=c(-1, 0.05, -.5),
+    pivot_point=numeric(3)
 ) )
 scn <- add_object(
   scn,
@@ -274,7 +275,8 @@ scn <- add_object(
       tris_to_seg(tris, map, radius=.005, material=lambertian(color='red')),
       obj_model(filename=f2, material=lambertian(color='grey50'))
     ),
-    group_angle=c(90, 90, 0), group_translate=c(-0.5, 0.05, -.5)
+    group_angle=c(90, 90, 0), group_translate=c(+0.25, 0.05, -.5),
+    pivot_point=numeric(3)
 ) )
 # scn <- add_object(
 #   scn,
@@ -290,7 +292,7 @@ render_scene(
   scn, 
   # width=400, height=400, samples=400,
   width=400, height=200, samples=200,
-  lookfrom=c(0, 4, 1),
+  lookfrom=c(0, .5, 2),
   lookat=c(0, 0.25, 0),
   aperture=0, fov=0,
   ortho_dimensions=c(4,2)
