@@ -129,7 +129,15 @@ ids_to_xyz <- function(tris, map, scale) {
   z <- (z - min(z)) / (diff(range(z))) * scale[3]
   list(x, y, z)
 }
-
+mesh_to_xyz <- function(mesh, map, scale) {
+  mesh.arr <- array(unlist(mesh[1:3, 1:3]), c(length(mesh[[1]]), 3, 3))
+  mesh.v <- matrix(aperm(mesh.arr, c(3, 2, 1)), nrow=3)
+  res <- list(x=mesh.v[1,], y=mesh.v[2,], z=mesh.v[3,])
+  Map(
+    function(x, s) (x - min(x)) / diff(range(x)) * s,
+    res, scale
+  )
+}
 tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   dat <- ids_to_xyz(tris, map, scale)
   x <- dat[['x']]; y <- dat[['y']]; z <- dat[['z']]
@@ -170,44 +178,46 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
 }
-tris_to_cyl <- function(
-  tris, map, scale=c(1, 1, 1), material=lambertian(), radius=1
-) {
-  dat <- ids_to_xyz(tris, map, scale)
+xyz_to_seg <- function(xyz, material, radius, angle, translate) {
   coords <- array(
-    unlist(dat), c(3, length(dat[[1]]) / 3, 3),
+    unlist(xyz), c(3, length(xyz[[1]]) / 3, 3),
     dimnames=list(paste0('v', 1:3), NULL, c('x', 'y', 'z'))
   )
+  a <- rbind(coords[1,,], coords[2,,], coords[3,,])
+  b <- rbind(coords[2,,], coords[3,,], coords[1,,])
+  dir <- sqrt(rowSums(a^2)) < sqrt(rowSums(b^2))
+  starts <- a
+  ends <- b
+  starts[!dir,] <- b[!dir]
+  ends[!dir,] <- a[!dir]
 
-  # 3d dim are edges 1->2, 2->3, 3->1
-  edge.delta <- rbind(
-    coords[2,,] - coords[1,,],
-    coords[3,,] - coords[2,,],
-    coords[1,,] - coords[3,,]
+  segdat <- unique(cbind(starts, ends))
+
+  group_objects(
+    dplyr::bind_rows(
+      lapply(
+        seq_len(nrow(segdat)),
+        function(i) {
+          segment(
+            start=segdat[i, 1:3], end=segdat[i, 4:6],
+            radius=radius, material=material
+          )
+        }
+    ) ),
+    group_angle=angle, group_translate=translate
   )
-  edge.lens <- sqrt(rowSums(edge.delta^2))
-  edge.mids <- edge.delta/2 + rbind(coords[1,,], coords[2,,], coords[3,,])
-  # default is for stuff to be in x-y plane parallel to y axis
-  rotz <- atan(edge.delta[,1] / edge.delta[,1]) / pi * 180
-  roty <- atan(edge.delta[,3] / edge.delta[,1]) / pi * 180
-  rotx <- atan(edge.delta[,3] / edge.delta[,2]) / pi * 180
-
-  rotz[is.na(rotz)] <- 0
-  rotx[is.na(rotx)] <- 0
-  roty[is.na(roty)] <- 0
-
-  dplyr::bind_rows(
-    lapply(
-      seq_along(edge.lens),
-      function(i) {
-        cylinder(
-          x=edge.mids[i,1], y=edge.mids[i,2], z=edge.mids[i,3],
-          length=edge.lens[i], radius=radius, material=material,
-          angle=c(rotx[i], roty[i], rotz[i])
-        )
-      }
-    )
-  )
+}
+tris_to_seg <- function(
+  tris, map, scale=c(1, 1, 1), material=lambertian(), radius=1,
+  angle=c(0,0,0), translate=c(0,0,0)
+) {
+  xyz_to_seg(ids_to_xyz(tris, map, scale), material, radius, angle, translate)
+}
+mesh_to_seg <- function(
+  mesh, map, scale=c(1, 1, 1), material=lambertian(), radius=1,
+  angle=c(0,0,0), translate=c(0,0,0)
+) {
+  xyz_to_seg(mesh_to_xyz(mesh, map, scale), material, radius, angle, translate)
 }
 
 stop('loaded')
@@ -234,8 +244,9 @@ tris3 <- extract_mesh2(errors, tol)
 
 mesh.tri <- mx_to_mesh(vsq)
 mesh.tri.s <- scale_mesh(mesh.tri)
-mesh.obj <- mesh_to_obj(mesh.tri.s)
 
+mesh.obj <- mesh_to_obj(mesh.tri.s)
+writeLines(mesh.obj, f)
 mesh.obj.2 <- tris_to_obj(tris, map)
 writeLines(mesh.obj.2, f2)
 mesh.obj.3 <- tris_to_obj(tris3, map)
@@ -243,33 +254,35 @@ writeLines(mesh.obj.3, f3)
 
 library(rayrender)
 
-writeLines(mesh.obj, f)
-
 scn <- sphere(
   y=4, z = 2, x = 0, radius = .1,
   material = lambertian(lightintensity = 1000, implicit_sample = TRUE)
 )
 scn <- add_object(
   scn,
-  obj_model(
-    filename=f2, x=.5, y=0, z=0.5, angle=c(90, 90, 0),
-    material=lambertian(color='grey50')
-  )
-)
+  group_objects(
+    add_object(
+      mesh_to_seg(mesh.tri.s, map, radius=.005, material=lambertian(color='red')),
+      obj_model(filename=f, material=lambertian(color='grey50'))
+    ),
+    group_angle=c(90, 90, 0), group_translate=c(-1.75, 0.05, -.5)
+) )
 scn <- add_object(
   scn,
-  obj_model(
-    filename=f, x=-.75, y=0, z=0.5, angle=c(90, 90, 0),
-    material=lambertian(color='grey50')
-  )
-)
-scn <- add_object(
-  scn,
-  obj_model(
-    filename=f3, x=1.75, y=0, z=0.5, angle=c(90, 90, 0),
-    material=lambertian(color='grey50')
-  )
-)
+  group_objects(
+    add_object(
+      tris_to_seg(tris, map, radius=.005, material=lambertian(color='red')),
+      obj_model(filename=f2, material=lambertian(color='grey50'))
+    ),
+    group_angle=c(90, 90, 0), group_translate=c(-0.5, 0.05, -.5)
+) )
+# scn <- add_object(
+#   scn,
+#   obj_model(
+#     filename=f3, x=1.75, y=0, z=0.5, angle=c(90, 90, 0),
+#     material=lambertian(color='grey50')
+#   )
+# )
 scn <- add_object(
   scn, xz_rect(xwidth=5, zwidth=2, material=lambertian(color='white'))
 )
@@ -313,7 +326,7 @@ render_scene(
   width=200, height=200, samples=400
 )
 
-xx <- tris_to_cyl(
+xx <- tris_to_seg(
   tris3, map, radius=0.05, material=lambertian(color='red')
 )
 render_scene(
