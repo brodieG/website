@@ -115,9 +115,10 @@ mesh_to_obj <- function(mesh) {
 
   paste0(c(v.chr, f.chr), collapase="\n")
 }
-# Return format from extract_mesh2
+# Return format from extract_mesh2, the vertices are returned in triangle order
+# (i.e. first three are first triangle, next 3 are second triangle, etc.)
 
-tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
+ids_to_xyz <- function(tris, map, scale) {
   ids <- unlist(tris)
   y <- (ids - 1) %% dim(map)[1]
   x <- (ids - 1) %/% dim(map)[1]
@@ -126,6 +127,12 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   x <- x / (dim(map)[1] - 1) * scale[1]
   y <- y / (dim(map)[2] - 1) * scale[2]
   z <- (z - min(z)) / (diff(range(z))) * scale[3]
+  list(x, y, z)
+}
+
+tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
+  dat <- ids_to_xyz(tris, map, scale)
+  x <- dat[['x']]; y <- dat[['y']]; z <- dat[['z']]
 
   # need these ordered counterclockwise; for each triangle start with leftmost
   # (lowest x), then compute the angle between that vertex and the remaining two
@@ -163,6 +170,45 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
 }
+tris_to_cyl <- function(
+  tris, map, scale=c(1, 1, 1), material=lambertian(), radius=1
+) {
+  dat <- ids_to_xyz(tris, map, scale)
+  coords <- array(
+    unlist(dat), c(3, length(dat[[1]]) / 3, 3),
+    dimnames=list(paste0('v', 1:3), NULL, c('x', 'y', 'z'))
+  )
+
+  # 3d dim are edges 1->2, 2->3, 3->1
+  edge.delta <- rbind(
+    coords[2,,] - coords[1,,],
+    coords[3,,] - coords[2,,],
+    coords[1,,] - coords[3,,]
+  )
+  edge.lens <- sqrt(rowSums(edge.delta^2))
+  edge.mids <- edge.delta/2 + rbind(coords[1,,], coords[2,,], coords[3,,])
+  # default is for stuff to be in x-y plane parallel to y axis
+  rotz <- atan(edge.delta[,1] / edge.delta[,1]) / pi * 180
+  roty <- atan(edge.delta[,3] / edge.delta[,1]) / pi * 180
+  rotx <- atan(edge.delta[,3] / edge.delta[,2]) / pi * 180
+
+  rotz[is.na(rotz)] <- 0
+  rotx[is.na(rotx)] <- 0
+  roty[is.na(roty)] <- 0
+
+  dplyr::bind_rows(
+    lapply(
+      seq_along(edge.lens),
+      function(i) {
+        cylinder(
+          x=edge.mids[i,1], y=edge.mids[i,2], z=edge.mids[i,3],
+          length=edge.lens[i], radius=radius, material=material,
+          angle=c(rotx[i], roty[i], rotz[i])
+        )
+      }
+    )
+  )
+}
 
 stop('loaded')
 
@@ -180,7 +226,7 @@ errors <- compute_error(map)
 tol <- diff(range(map)) / 5
 # m2 <- extract_geometry(errors, tol)
 tris <- extract_mesh2(errors, tol)
-tol <- diff(range(map)) / 3
+tol <- diff(range(map)) / 2
 tris3 <- extract_mesh2(errors, tol)
 # plot_tri_ids(tris, dim(errors))
 
@@ -200,8 +246,8 @@ library(rayrender)
 writeLines(mesh.obj, f)
 
 scn <- sphere(
-  y=4, z = 2, x = 0, radius = 1,
-  material = lambertian(lightintensity = 25, implicit_sample = TRUE)
+  y=4, z = 2, x = 0, radius = .1,
+  material = lambertian(lightintensity = 1000, implicit_sample = TRUE)
 )
 scn <- add_object(
   scn,
@@ -225,26 +271,70 @@ scn <- add_object(
   )
 )
 scn <- add_object(
-  scn, xz_rect(xwidth=5, zwidth=2, material=lambertian(color='grey50'))
+  scn, xz_rect(xwidth=5, zwidth=2, material=lambertian(color='white'))
 )
 render_scene(
   scn, 
   # width=400, height=400, samples=400,
-  width=600, height=200, samples=200,
+  width=400, height=200, samples=200,
   lookfrom=c(0, 4, 1),
   lookat=c(0, 0.25, 0),
-  aperture=0
+  aperture=0, fov=0,
+  ortho_dimensions=c(4,2)
+  # backgroundimage='~/Downloads/blank.png'
 )
 
 library(rgl)
 par3d(windowRect=c(20,20,400,400))
-mesh.obj.2 <- tris_to_obj(tris, map)
-writeLines(mesh.obj.2, f2)
-plot3d(readOBJ(f2), col='grey50')
+mesh.obj.3 <- tris_to_obj(tris3, map)
+writeLines(mesh.obj.3, f3)
+plot3d(readOBJ(f3), col='grey50')
 
-a <- c(1, 0, 0)
-b <- c(0, 1, 0)
+render_scene(
+  bind_rows(
+    sphere(x=0, y=5, z=5, material=lambertian(lightintensity=300)),
+    xz_rect(xwidth=10, zwidth=10, y=-1, material=lambertian(checkercolor='grey10')),
+    cylinder(
+      length=1, x=c(-.5), radius=.125, material=metal(color='red')
+    ),
+    cylinder(
+      length=1, x=c(0), radius=.125, material=metal(color='red'),
+      angle=c(45, 45, 45), order_rotation=c(1, 2, 3)
+    ),
+    cylinder(
+      length=1, x=c(.5), radius=.125, material=lambertian(color='red'),
+      angle=c(45, 45, 45), order_rotation=c(2, 1, 3)
+    ),
+    sphere(
+      x=c(-.5,0,.5), y=0, z=0, radius=.2, material=dielectric(color='green')
+    )
+  ),
+  lookfrom=c(0, 2, 4),
+  width=200, height=200, samples=400
+)
 
-acos(sum(a * b)) / pi * 180
+xx <- tris_to_cyl(
+  tris3, map, radius=0.05, material=lambertian(color='red')
+)
+render_scene(
+  bind_rows(
+    xx,
+    xz_rect(xwidth=5, zwidth=5, y=-1, material=lambertian(color='grey50')),
+    xz_rect(
+      xwidth=5, zwidth=5, y=1.5, angle=c(-90,0,0),
+      material=lambertian(color='grey50')
+    ),
+    xz_rect(
+      xwidth=5, zwidth=5, y=1.5, x=-2, angle=c(0,0,90),
+      material=lambertian(color='grey50')
+    ),
+    sphere(material=lambertian(lightintensity=500), x=0, z=2, y=4, radius=.5)
+  ),
+  width=200, height=200, samples=200,
+  lookat=c(0.5, 0, 0),
+  lookfrom=c(0, 4, 4),
+  aperture=0,
+  fov=45
+)
 
-crossprod(b, a)
+
