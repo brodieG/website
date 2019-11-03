@@ -131,29 +131,36 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   # (lowest x), then compute the angle between that vertex and the remaining two
   # to decide how to order the remaining two.
 
+  tri.id <- rep(seq_len(length(ids)/3), each=3)
   o <- order(
-    rep(seq_len(length(ids)/3), each=3),
-    x !=
-    matrix(rep(x, 3), ncol=3)[
-      cbind(
-        seq_len(length(ids)),
-        rep(
-          max.col(matrix(-x, ncol=3, byrow=TRUE), ties.method='first'), 
-          each=3
-      ) )
-    ]
+    tri.id,
+    x != rep(
+      matrix(x, nrow=3)[
+        cbind(
+          max.col(matrix(-x, ncol=3, byrow=TRUE), ties.method='first'),
+          seq_len(length(x)/3)
+        )
+      ],
+      each=3
+    )
   )
   xo <- matrix(x[o], 3)
   yo <- matrix(y[o], 3)
 
   m1 <- (yo[2,] - yo[1,]) / (xo[2,] - xo[1,])
-  m2 <- (yo[2,] - yo[1,]) / (xo[2,] - xo[1,])
+  m2 <- (yo[3,] - yo[1,]) / (xo[3,] - xo[1,])
 
-  yo <- z[o]
+  mo <- matrix(logical(length(xo)), 3)
+  mo[2, m1 > m2] <- TRUE
 
-  t.ids <- matrix(seq_along(ids), 3)
-  v.chr <- paste('v', x[o], y[o], z[o], collapse='\n')
-  f.chr <- paste('f', t.ids[1,], t.ids[2,], t.ids[3,], collapse='\n')
+  o2 <- order(tri.id, mo)
+  xo2 <- xo[o2]
+  yo2 <- yo[o2]
+  zo2 <- z[o][o2]
+
+  v.ids <- matrix(seq_along(ids), 3)
+  v.chr <- paste('v', xo2, yo2, zo2, collapse='\n')
+  f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
 }
 
@@ -234,3 +241,10 @@ par3d(windowRect=c(20,20,400,400))
 mesh.obj.2 <- tris_to_obj(tris, map)
 writeLines(mesh.obj.2, f2)
 plot3d(readOBJ(f2), col='grey50')
+
+a <- c(1, 0, 0)
+b <- c(0, 1, 0)
+
+acos(sum(a * b)) / pi * 180
+
+crossprod(b, a)
