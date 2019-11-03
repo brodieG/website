@@ -119,8 +119,8 @@ mesh_to_obj <- function(mesh) {
 
 tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   ids <- unlist(tris)
-  x <- (ids - 1) %% dim(map)[1]
-  y <- (ids - 1) %/% dim(map)[1]
+  y <- (ids - 1) %% dim(map)[1]
+  x <- (ids - 1) %/% dim(map)[1]
   z <- map[ids]
 
   x <- x / (dim(map)[1] - 1) * scale[1]
@@ -128,13 +128,29 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   z <- (z - min(z)) / (diff(range(z))) * scale[3]
 
   # need these ordered counterclockwise; for each triangle start with leftmost
-  # (lowest x), then highest y.
+  # (lowest x), then compute the angle between that vertex and the remaining two
+  # to decide how to order the remaining two.
+
   o <- order(
     rep(seq_len(length(ids)/3), each=3),
-    rep(1:3, length(ids)/3) !=
-      rep(max.col(matrix(-x, ncol=3, byrow=TRUE), ties.method='first'), each=3),
-    y, x
+    x !=
+    matrix(rep(x, 3), ncol=3)[
+      cbind(
+        seq_len(length(ids)),
+        rep(
+          max.col(matrix(-x, ncol=3, byrow=TRUE), ties.method='first'), 
+          each=3
+      ) )
+    ]
   )
+  xo <- matrix(x[o], 3)
+  yo <- matrix(y[o], 3)
+
+  m1 <- (yo[2,] - yo[1,]) / (xo[2,] - xo[1,])
+  m2 <- (yo[2,] - yo[1,]) / (xo[2,] - xo[1,])
+
+  yo <- z[o]
+
   t.ids <- matrix(seq_along(ids), 3)
   v.chr <- paste('v', x[o], y[o], z[o], collapse='\n')
   f.chr <- paste('f', t.ids[1,], t.ids[2,], t.ids[3,], collapse='\n')
@@ -145,15 +161,21 @@ stop('loaded')
 
 # - Test it Out ----------------------------------------------------------------
 
+f <- tempfile()
+f2 <- tempfile()
+f3 <- tempfile()
+
 vsq <- matrix(min(volcano), 65, 65)
 vsq[1:65, 3:63] <- volcano[1:65,1:61]
 
 map <- vsq
 errors <- compute_error(map)
-tol <- diff(range(map)) / 3
+tol <- diff(range(map)) / 5
 # m2 <- extract_geometry(errors, tol)
 tris <- extract_mesh2(errors, tol)
-plot_tri_ids(tris, dim(errors))
+tol <- diff(range(map)) / 3
+tris3 <- extract_mesh2(errors, tol)
+# plot_tri_ids(tris, dim(errors))
 
 # rayrender a mesh in list format
 
@@ -162,32 +184,49 @@ mesh.tri.s <- scale_mesh(mesh.tri)
 mesh.obj <- mesh_to_obj(mesh.tri.s)
 
 mesh.obj.2 <- tris_to_obj(tris, map)
+writeLines(mesh.obj.2, f2)
+mesh.obj.3 <- tris_to_obj(tris3, map)
+writeLines(mesh.obj.3, f3)
 
 library(rayrender)
 
-f <- tempfile()
 writeLines(mesh.obj, f)
-f2 <- tempfile()
-writeLines(mesh.obj.2, f2)
 
 scn <- sphere(
-  y=6, z = 2, x = 1, radius = 1,
-  material = lambertian(lightintensity = 50, implicit_sample = TRUE)
+  y=4, z = 2, x = 0, radius = 1,
+  material = lambertian(lightintensity = 25, implicit_sample = TRUE)
 )
 scn <- add_object(
   scn,
   obj_model(
-    filename=f2, x=0.5, y=0, z=0.5, angle=c(90, 90, 0),
-    material=lambertian(color='white')
+    filename=f2, x=.5, y=0, z=0.5, angle=c(90, 90, 0),
+    material=lambertian(color='grey50')
   )
 )
 scn <- add_object(
-  scn, xz_rect(xwidth=3, zwidth=3, material=lambertian(color='grey50'))
+  scn,
+  obj_model(
+    filename=f, x=-.75, y=0, z=0.5, angle=c(90, 90, 0),
+    material=lambertian(color='grey50')
+  )
+)
+scn <- add_object(
+  scn,
+  obj_model(
+    filename=f3, x=1.75, y=0, z=0.5, angle=c(90, 90, 0),
+    material=lambertian(color='grey50')
+  )
+)
+scn <- add_object(
+  scn, xz_rect(xwidth=5, zwidth=2, material=lambertian(color='grey50'))
 )
 render_scene(
-  scn, width=200, height=200, samples=200,
-  lookfrom=c(0, 8, 1),
-  lookat=c(0, 0.25, 0)
+  scn, 
+  # width=400, height=400, samples=400,
+  width=600, height=200, samples=200,
+  lookfrom=c(0, 4, 1),
+  lookat=c(0, 0.25, 0),
+  aperture=0
 )
 
 library(rgl)
