@@ -173,7 +173,7 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
   yo2 <- yo[o2]
   zo2 <- z[o][o2]
 
-  v.ids <- matrix(seq_len(length(x) * 3), 3)
+  v.ids <- matrix(seq_along(x), 3)
   v.chr <- paste('v', xo2, yo2, zo2, collapse='\n')
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
@@ -228,16 +228,17 @@ f <- tempfile()
 f2 <- tempfile()
 f3 <- tempfile()
 
-vsq <- matrix(min(volcano), 65, 65)
+vsq <- matrix(0, 65, 65)
 vsq[1:65, 3:63] <- volcano[1:65,1:61]
+vsq[1:65, 1:2] <- volcano[1:65, 1]
+vsq[1:65, 64:65] <- volcano[1:65, 61]
 
 map <- vsq
 errors <- compute_error(map)
-tol <- diff(range(map)) / 5
-# m2 <- extract_geometry(errors, tol)
-tris <- extract_mesh2(errors, tol)
-tol <- diff(range(map)) / 2
-tris3 <- extract_mesh2(errors, tol)
+elmax <- diff(range(map))
+tris0 <- extract_mesh2(errors, elmax/100)
+tris2 <- extract_mesh2(errors, elmax/20)
+tris3 <- extract_mesh2(errors, elmax/3)
 # plot_tri_ids(tris, dim(errors))
 
 # rayrender a mesh in list format
@@ -245,57 +246,66 @@ tris3 <- extract_mesh2(errors, tol)
 mesh.tri <- mx_to_mesh(vsq)
 mesh.tri.s <- scale_mesh(mesh.tri)
 
-mesh.obj <- mesh_to_obj(mesh.tri.s)
+# mesh.obj <- mesh_to_obj(mesh.tri.s)
+mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
-mesh.obj.2 <- tris_to_obj(tris, map)
+mesh.obj.2 <- tris_to_obj(tris2, map)
 writeLines(mesh.obj.2, f2)
 mesh.obj.3 <- tris_to_obj(tris3, map)
 writeLines(mesh.obj.3, f3)
 
+seg.rad <- .0025
+seg.mat <- metal(color='gold')
+# seg.0 <- mesh_to_seg(mesh.tri.s, map, radius=seg.rad, material=lambertian(color='red'))
+
 library(rayrender)
 
+seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat) 
+seg2 <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat) 
+seg3 <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat) 
+
+zoff <- +.5
+
 scn <- sphere(
-  y=4, z = 2, x = 0, radius = .1,
-  material = lambertian(lightintensity = 1000, implicit_sample = TRUE)
+  y=8, z = 4, x = 0, radius = .2,
+  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
 )
 scn <- add_object(
   scn,
   group_objects(
-    add_object(
-      mesh_to_seg(mesh.tri.s, map, radius=.005, material=lambertian(color='red')),
-      obj_model(filename=f, material=lambertian(color='grey50'))
-    ),
-    group_angle=c(90, 90, 0), group_translate=c(-1, 0.05, -.5),
+    # add_object(seg0, obj_model(filename=f, material=lambertian(color='grey50'))),
+    add_object(seg0, obj_model(filename=f, material=dielectric())),
+    group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
     pivot_point=numeric(3)
 ) )
 scn <- add_object(
   scn,
   group_objects(
-    add_object(
-      tris_to_seg(tris, map, radius=.005, material=lambertian(color='red')),
-      obj_model(filename=f2, material=lambertian(color='grey50'))
-    ),
-    group_angle=c(90, 90, 0), group_translate=c(+0.25, 0.05, -.5),
+    add_object(seg2, obj_model(filename=f2, material=dielectric())),
+    group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
     pivot_point=numeric(3)
 ) )
-# scn <- add_object(
-#   scn,
-#   obj_model(
-#     filename=f3, x=1.75, y=0, z=0.5, angle=c(90, 90, 0),
-#     material=lambertian(color='grey50')
-#   )
-# )
 scn <- add_object(
-  scn, xz_rect(xwidth=5, zwidth=2, material=lambertian(color='white'))
+  scn,
+  group_objects(
+    add_object(seg3, obj_model(filename=f3, material=dielectric())),
+    group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
 )
 render_scene(
   scn, 
   # width=400, height=400, samples=400,
-  width=400, height=200, samples=200,
-  lookfrom=c(0, .5, 2),
-  lookat=c(0, 0.25, 0),
+  width=800, height=300, samples=2000,
+  # width=200, height=75, samples=100,
+  lookfrom=c(0, 4, 2),
+  lookat=c(0, 0, 0),
   aperture=0, fov=0,
-  ortho_dimensions=c(4,2)
+  ortho_dimensions=c(4,1.5),
+  clamp=3,
+  file='~/Downloads/mesh-viz/three-abreast.png'
   # backgroundimage='~/Downloads/blank.png'
 )
 
