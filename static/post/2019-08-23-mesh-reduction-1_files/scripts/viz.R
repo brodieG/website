@@ -118,7 +118,7 @@ mesh_to_obj <- function(mesh) {
 # Return format from extract_mesh2, the vertices are returned in triangle order
 # (i.e. first three are first triangle, next 3 are second triangle, etc.)
 
-ids_to_xyz <- function(tris, map, scale) {
+ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
   y <- (ids - 1) %% dim(map)[1]
   x <- (ids - 1) %/% dim(map)[1]
@@ -126,7 +126,8 @@ ids_to_xyz <- function(tris, map, scale) {
 
   x <- x / (dim(map)[1] - 1) * scale[1]
   y <- y / (dim(map)[2] - 1) * scale[2]
-  z <- (z - min(z)) / (diff(range(z))) * scale[3]
+  z <- if(flatten) numeric(length(z))
+       else (z - min(z)) / (diff(range(z))) * scale[3]
   list(x=x, y=y, z=z)
 }
 mesh_to_xyz <- function(mesh, map, scale) {
@@ -138,8 +139,8 @@ mesh_to_xyz <- function(mesh, map, scale) {
     res, scale
   )
 }
-tris_to_obj <- function(tris, map, scale=c(1, 1, 1)) {
-  dat <- ids_to_xyz(tris, map, scale)
+tris_to_obj <- function(tris, map, scale=c(1, 1, 1), flatten=FALSE) {
+  dat <- ids_to_xyz(tris, map, scale, flatten)
   x <- dat[['x']]; y <- dat[['y']]; z <- dat[['z']]
 
   # need these ordered counterclockwise; for each triangle start with leftmost
@@ -209,9 +210,11 @@ xyz_to_seg <- function(xyz, material, radius, angle, translate) {
 }
 tris_to_seg <- function(
   tris, map, scale=c(1, 1, 1), material=lambertian(), radius=1,
-  angle=c(0,0,0), translate=c(0,0,0)
+  angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
 ) {
-  xyz_to_seg(ids_to_xyz(tris, map, scale), material, radius, angle, translate)
+  xyz_to_seg(
+    ids_to_xyz(tris, map, scale, flatten), material, radius, angle, translate
+  )
 }
 mesh_to_seg <- function(
   mesh, map, scale=c(1, 1, 1), material=lambertian(), radius=1,
@@ -260,9 +263,9 @@ seg.mat <- metal(color='gold')
 
 library(rayrender)
 
-seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat) 
-seg2 <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat) 
-seg3 <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat) 
+seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
+seg2 <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat)
+seg3 <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat)
 
 zoff <- +.5
 
@@ -274,21 +277,24 @@ scn <- add_object(
   scn,
   group_objects(
     # add_object(seg0, obj_model(filename=f, material=lambertian(color='grey50'))),
-    add_object(seg0, obj_model(filename=f, material=dielectric())),
+    # add_object(seg0, obj_model(filename=f, material=dielectric())),
+    seg0,
     group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
     pivot_point=numeric(3)
 ) )
 scn <- add_object(
   scn,
   group_objects(
-    add_object(seg2, obj_model(filename=f2, material=dielectric())),
+    #add_object(seg2, obj_model(filename=f2, material=dielectric())),
+    seg2,
     group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
     pivot_point=numeric(3)
 ) )
 scn <- add_object(
   scn,
   group_objects(
-    add_object(seg3, obj_model(filename=f3, material=dielectric())),
+    #add_object(seg3, obj_model(filename=f3, material=dielectric())),
+    seg3,
     group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
     pivot_point=numeric(3)
 ) )
@@ -296,7 +302,7 @@ scn <- add_object(
   scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
 )
 render_scene(
-  scn, 
+  scn,
   # width=400, height=400, samples=400,
   width=800, height=300, samples=2000,
   # width=200, height=75, samples=100,
@@ -308,6 +314,101 @@ render_scene(
   file='~/Downloads/mesh-viz/three-abreast.png'
   # backgroundimage='~/Downloads/blank.png'
 )
+
+# ------------------------------------------------------------------------------
+# - Recorded  -------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# - mesh top -------------------------------------------------------------------
+
+zoff <- +.5
+seg0f <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat, flatten=TRUE)
+seg2f <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat, flatten=TRUE)
+seg3f <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat, flatten=TRUE)
+
+scn <- sphere(
+  y=8, z = 4, x = 0, radius = .2,
+  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
+)
+scn <- add_object(
+  scn,
+  group_objects(
+    seg0f, group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn,
+  group_objects(
+    seg2f,
+    group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn,
+  group_objects(
+    seg3f,
+    group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+)
+render_scene(
+  scn, width=300, height=800, samples=2000,
+  # scn, width=150, height=400, samples=200,
+  lookfrom=c(0, sqrt(sum(c(4, 2)^2)), 0), lookat=c(0, 0, 0), aperture=0, fov=0,
+  ortho_dimensions=c(1.5,4), camera_up=c(1,0,0),
+  clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
+)
+# - stacked meshes -------------------------------------------------------------
+
+# - mesh side ------------------------------------------------------------------
+
+zoff <- +.5
+
+scn <- sphere(
+  y=8, z = 4, x = 0, radius = .2,
+  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
+)
+scn <- add_object(
+  scn,
+  group_objects(
+    seg0, group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn,
+  group_objects(
+    seg2,
+    group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn,
+  group_objects(
+    seg3,
+    group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
+    pivot_point=numeric(3)
+) )
+scn <- add_object(
+  scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+)
+render_scene(
+  scn, width=800, height=300, samples=2000,
+  lookfrom=c(0, 4, 2), lookat=c(0, 0, 0), aperture=0, fov=0,
+  ortho_dimensions=c(4,1.5),
+  clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
+)
+
+scn <- cube(x=.5, z=.5, y=.5, material=dielectric(color='red'))
+scn <- add_object(scn, xz_rect(xwidth=5, zwidth=5))
+render_scene(
+  scn, width=200, height=200, samples=100,
+  lookfrom=c(0, 5, 10)
+)
+
+
+
 
 library(rgl)
 par3d(windowRect=c(20,20,400,400))
