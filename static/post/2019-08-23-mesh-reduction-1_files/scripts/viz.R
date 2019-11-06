@@ -58,7 +58,7 @@ if(FALSE) {
 }
 # Mx to mesh
 
-map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
+# map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
 mx_to_mesh <- function(mx) {
   nr <- dim(mx)[1]
   nc <- dim(mx)[2]
@@ -120,6 +120,12 @@ mesh_to_obj <- function(mesh) {
 
 ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
+  if(!length(ids)) {
+    # minimal triangle
+    nr <- nrow(map)
+    tr <- length(map) - nrow(map) + 1L
+    ids <- c(1L, nr, tr, tr, nr, length(map))
+  }
   y <- (ids - 1) %% dim(map)[1]
   x <- (ids - 1) %/% dim(map)[1]
   z <- map[ids]
@@ -361,6 +367,48 @@ render_scene(
   clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
 )
 # - stacked meshes -------------------------------------------------------------
+
+err.frac <- rev(elmax/2^(0:7))
+vir8 <- substr(viridisLite::viridis(8), 1, 7)
+
+meshes <- lapply(err.frac, extract_mesh2, errors=errors)
+segs <- lapply(
+  seq_along(meshes), function(i) {
+    writeLines(sprintf('running %d', i))
+    mat <- metal(color=vir8[i])
+    tris_to_seg(meshes[[i]], map, radius=seg.rad, material=mat, flatten=TRUE)
+  }
+)
+layers <- lapply(
+  seq_along(segs),
+  function(i) {
+    group_objects(
+      segs[[i]],
+      group_angle=c(90, 90, 0),
+      group_translate=c(+0.5, i/(length(segs)*3.5), zoff),
+      pivot_point=numeric(3)
+  ) }
+)
+objs <- dplyr::bind_rows(
+  c(
+    layers,
+    list(
+      sphere(
+        y=8, z = 0, x = 0, radius = .2,
+        material = lambertian(lightintensity = 1500, implicit_sample = TRUE)
+      ),
+      xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+    )
+  )
+)
+render_scene(
+  # scn, width=300, height=800, samples=2000,
+  objs, width=800, height=800, samples=1000,
+  # objs, width=300, height=300, samples=200,
+  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
+  ortho_dimensions=c(1.5,1.5), camera_up=c(1,0,0),
+  clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
+)
 
 # - mesh side ------------------------------------------------------------------
 
