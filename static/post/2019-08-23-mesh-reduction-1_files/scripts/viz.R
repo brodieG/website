@@ -245,7 +245,7 @@ vsq[1:65, 64:65] <- volcano[1:65, 61]
 map <- vsq
 errors <- compute_error(map)
 elmax <- diff(range(map))
-tris0 <- extract_mesh2(errors, elmax/100)
+tris0 <- extract_mesh2(errors, elmax/50)
 tris2 <- extract_mesh2(errors, elmax/20)
 tris3 <- extract_mesh2(errors, elmax/3)
 # plot_tri_ids(tris, dim(errors))
@@ -360,23 +360,28 @@ scn <- add_object(
   scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
 )
 render_scene(
-  scn, width=300, height=800, samples=2000,
-  # scn, width=150, height=400, samples=200,
+  # scn, width=300, height=800, samples=2000,
+  scn, width=150, height=400, samples=200,
   lookfrom=c(0, sqrt(sum(c(4, 2)^2)), 0), lookat=c(0, 0, 0), aperture=0, fov=0,
   ortho_dimensions=c(1.5,4), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
 )
 # - stacked meshes -------------------------------------------------------------
 
-err.frac <- rev(elmax/2^(0:7))
-vir8 <- substr(viridisLite::viridis(8), 1, 7)
+# err.frac <- rev(elmax/2^(0:7))
+err.frac <- elmax/c(30,15,3)
+mesh.colors <- c('gold', 'grey65', '#DD4F12')
+# mesh.colors <- c('red', 'green', 'blue')
+seg.rad2 <- seg.rad
+# err.frac <- rev(elmax/2^(0:7))
+# mesh.colors <- substr(viridisLite::viridis(8), 1, 7)
 
 meshes <- lapply(err.frac, extract_mesh2, errors=errors)
 segs <- lapply(
   seq_along(meshes), function(i) {
     writeLines(sprintf('running %d', i))
-    mat <- metal(color=vir8[i])
-    tris_to_seg(meshes[[i]], map, radius=seg.rad, material=mat, flatten=TRUE)
+    mat <- metal(color=mesh.colors[i])
+    tris_to_seg(meshes[[i]], map, radius=seg.rad2, material=mat, flatten=TRUE)
   }
 )
 layers <- lapply(
@@ -385,7 +390,7 @@ layers <- lapply(
     group_objects(
       segs[[i]],
       group_angle=c(90, 90, 0),
-      group_translate=c(+0.5, i/(length(segs)*3.5), zoff),
+      group_translate=c(+0.5, i/(length(segs)*10), zoff),
       pivot_point=numeric(3)
   ) }
 )
@@ -394,8 +399,8 @@ objs <- dplyr::bind_rows(
     layers,
     list(
       sphere(
-        y=8, z = 0, x = 0, radius = .2,
-        material = lambertian(lightintensity = 1500, implicit_sample = TRUE)
+        y=8, z = 0, x = 0, radius = 3,
+        material = lambertian(lightintensity = 7, implicit_sample = TRUE)
       ),
       xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
     )
@@ -403,8 +408,9 @@ objs <- dplyr::bind_rows(
 )
 render_scene(
   # scn, width=300, height=800, samples=2000,
-  objs, width=800, height=800, samples=1000,
-  # objs, width=300, height=300, samples=200,
+  # objs, width=800, height=800, samples=1000,
+  objs, width=300, height=300, samples=200,
+  # objs, width=150, height=150, samples=200,
   lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
   ortho_dimensions=c(1.5,1.5), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
@@ -413,6 +419,12 @@ render_scene(
 # - mesh side ------------------------------------------------------------------
 
 zoff <- +.5
+mat0 <- metal(color=mesh.colors[1])
+mat2 <- metal(color=mesh.colors[2])
+mat3 <- metal(color=mesh.colors[3])
+seg0s <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0)
+seg2s <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2)
+seg3s <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3)
 
 scn <- sphere(
   y=8, z = 4, x = 0, radius = .2,
@@ -421,20 +433,20 @@ scn <- sphere(
 scn <- add_object(
   scn,
   group_objects(
-    seg0, group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
+    seg0s, group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
     pivot_point=numeric(3)
 ) )
 scn <- add_object(
   scn,
   group_objects(
-    seg2,
+    seg2s,
     group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
     pivot_point=numeric(3)
 ) )
 scn <- add_object(
   scn,
   group_objects(
-    seg3,
+    seg3s,
     group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
     pivot_point=numeric(3)
 ) )
@@ -442,18 +454,13 @@ scn <- add_object(
   scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
 )
 render_scene(
-  scn, width=800, height=300, samples=2000,
+  # scn, width=800, height=300, samples=2000,
+  scn, width=400, height=150, samples=200,
   lookfrom=c(0, 4, 2), lookat=c(0, 0, 0), aperture=0, fov=0,
   ortho_dimensions=c(4,1.5),
   clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
 )
 
-scn <- cube(x=.5, z=.5, y=.5, material=dielectric(color='red'))
-scn <- add_object(scn, xz_rect(xwidth=5, zwidth=5))
-render_scene(
-  scn, width=200, height=200, samples=100,
-  lookfrom=c(0, 5, 10)
-)
 
 
 
