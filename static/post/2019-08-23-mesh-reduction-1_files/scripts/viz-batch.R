@@ -1,26 +1,31 @@
 # source('static/post/2019-08-23-mesh-reduction-1_files/scripts/viz.R')
 
-width <- 1000
-samples <- 1000
+width <- 200
+samples <- 200
 seg.rad <- .0025
 zoff <- +.5
 
 # - stacked meshes -------------------------------------------------------------
 
 make_layers <- function(
-  errors, tol, colors, radius, shallowness, offset, material=metal
+  errors, tol, colors, radius, shallowness, offset, material=metal,
+  xmax=Inf, ymax=Inf
 ) {
   z.off <- 0.5
   colors <- rep_len(colors, length(tol))
+  radius <- rep_len(radius, length(tol))
 
   meshes <- lapply(tol, extract_mesh2, errors=errors)
   segs <- lapply(
     seq_along(meshes), function(i) {
       writeLines(sprintf('running %d', i))
       mat <- material(color=colors[i])
-      tris_to_seg(meshes[[i]], map, radius=radius, material=mat, flatten=TRUE)
+      tris_to_seg(meshes[[i]], map, radius=radius[i], material=mat, flatten=TRUE)
     }
   )
+  if(is.finite(xmax) || is.finite(ymax)) {
+    segs <- lapply(segs, function(x) dplyr::filter(x, x <= xmax, y <= ymax))
+  }
   diag.off <- rev((seq_along(tol) - ceiling(length(tol)/2)) * offset)
   layers <- lapply(
     seq_along(segs),
@@ -37,7 +42,7 @@ make_layers <- function(
 }
 light.wide <- sphere(
   y=8, z = 0, x = 0, radius = 2,
-  material = lambertian(lightintensity = 13, implicit_sample = TRUE)
+  material = lambertian(lightintensity = 16, implicit_sample = TRUE)
 )
 light.medium <- sphere(
   y=8, z = 0, x = 0, radius = .25,
@@ -57,23 +62,26 @@ metal.col <-  c(gold, 'grey35', '#CC3322')
 mesh.colors <- metal.col
 floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
 objs <- make_layers(
-  errors, err.frac, mesh.colors, radius=seg.rad*1.5,  10, 0, material=lambertian
+  errors, err.frac, mesh.colors, radius=seg.rad*c(2,.85,.35),  10, 0, 
+  material=lambertian
 )
 scene <- dplyr::bind_rows(objs, list(light.wide, floor))
 
 render_scene(
   scene, width=width, height=width, samples=samples,
+  # lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0,
+  # fov=0, ortho_dimensions=c(1.25,1.25), camera_up=c(1,0,0),
+  # lookfrom=c(.375, 2, .375), lookat=c(.375, 0, .375), aperture=0,
   lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0,
   fov=0, ortho_dimensions=c(1.25,1.25), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/batch-1.png'
 )
-stop()
 # full 8 stack
 
-err.frac <- rev(elmax/2^(0:7))
+err.frac.8 <- rev(elmax/2^(0:7))
 mesh.colors <- gold
 floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-objs <- make_layers(errors, err.frac, mesh.colors, radius=seg.rad, 3, 0)
+objs <- make_layers(errors, err.frac.8, mesh.colors, radius=seg.rad, 3, 0)
 scene <- dplyr::bind_rows(objs, list(light.wide, floor))
 
 render_scene(
@@ -84,10 +92,9 @@ render_scene(
 )
 # # viridis 8 stack
 # 
-# err.frac <- rev(elmax/2^(0:7))
-# mesh.colors <- substr(viridisLite::viridis(8), 1, 7)
+# mesh.colors <- substr(viridisLite::viridis(length(err.frac.8)), 1, 7)
 # floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-# objs <- make_layers(errors, err.frac, mesh.colors, radius=seg.rad, 3, 0)
+# objs <- make_layers(errors, err.frac.8, mesh.colors, radius=seg.rad, 3, 0)
 # scene <- dplyr::bind_rows(objs, list(light.wide, floor))
 # 
 # render_scene(
@@ -102,9 +109,12 @@ mesh.colors <- metal.col
 mat0 <- lambertian(color=mesh.colors[1])
 mat2 <- lambertian(color=mesh.colors[2])
 mat3 <- lambertian(color=mesh.colors[3])
-seg0f <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0, flatten=TRUE)
-seg2f <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2, flatten=TRUE)
-seg3f <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3, flatten=TRUE)
+tris0 <- extract_mesh2(errors, err.frac[1])
+tris2 <- extract_mesh2(errors, err.frac[2])
+tris3 <- extract_mesh2(errors, err.frac[3])
+seg0f <- tris_to_seg(tris0, map, radius=seg.rad*1.5, material=mat0, flatten=TRUE)
+seg2f <- tris_to_seg(tris2, map, radius=seg.rad*1.5, material=mat2, flatten=TRUE)
+seg3f <- tris_to_seg(tris3, map, radius=seg.rad*1.5, material=mat3, flatten=TRUE)
 
 scn <- add_object(
   light.wide,
@@ -129,7 +139,7 @@ scn <- add_object(
 scn <- add_object(scn, floor)
 render_scene(
   scn, width=width/400*150, height=width, samples=samples,
-  lookfrom=c(0, sqrt(sum(c(4, 2)^2)), 0), lookat=c(0, 0, 0), aperture=0, fov=0,
+  lookfrom=c(0, 4, 0), lookat=c(0, 0, 0), aperture=0, fov=0,
   ortho_dimensions=c(1.5,4), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/batch-4.png'
 )
