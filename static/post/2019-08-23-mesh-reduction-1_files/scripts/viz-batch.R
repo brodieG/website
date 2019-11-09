@@ -1,11 +1,11 @@
 
-width <- 400
-samples <- 400
+width <- 1000
+samples <- 1000
 
 # - stacked meshes -------------------------------------------------------------
 
 make_layers <- function(
-  errors, tol, colors, radius, shallowness, offset, fuzz=0
+  errors, tol, colors, radius, shallowness, offset, material=metal
 ) {
   z.off <- 0.5
   colors <- rep_len(colors, length(tol))
@@ -14,7 +14,7 @@ make_layers <- function(
   segs <- lapply(
     seq_along(meshes), function(i) {
       writeLines(sprintf('running %d', i))
-      mat <- metal(color=colors[i], fuzz=fuzz)
+      mat <- material(color=colors[i])
       tris_to_seg(meshes[[i]], map, radius=radius, material=mat, flatten=TRUE)
     }
   )
@@ -53,7 +53,9 @@ gold <- '#CCAC00'
 metal.col <-  c(gold, 'grey35', '#CC3322')
 mesh.colors <- metal.col
 floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-objs <- make_layers(errors, err.frac, mesh.colors, radius=seg.rad*3,  10, 0, fuzz=1)
+objs <- make_layers(
+  errors, err.frac, mesh.colors, radius=seg.rad*1.5,  10, 0, material=lambertian
+)
 scene <- dplyr::bind_rows(objs, list(light.wide, floor))
 
 render_scene(
@@ -62,20 +64,20 @@ render_scene(
   fov=0, ortho_dimensions=c(1.25,1.25), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/batch-1.png'
 )
-# # full 8 stack
-# 
-# err.frac <- rev(elmax/2^(0:7))
-# mesh.colors <- gold
-# floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-# objs <- make_layers(errors, err.frac, mesh.colors, radius=seg.rad, 3, 0)
-# scene <- dplyr::bind_rows(objs, list(light.wide, floor))
-# 
-# render_scene(
-#   scene, width=width, height=width, samples=samples,
-#   lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
-#   camera_up=c(1,0,0),
-#   clamp=3, file='~/Downloads/mesh-viz/batch-2.png'
-# )
+# full 8 stack
+
+err.frac <- rev(elmax/2^(0:7))
+mesh.colors <- gold
+floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+objs <- make_layers(errors, err.frac, mesh.colors, radius=seg.rad, 3, 0)
+scene <- dplyr::bind_rows(objs, list(light.wide, floor))
+
+render_scene(
+  scene, width=width, height=width, samples=samples,
+  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
+  camera_up=c(1,0,0),
+  clamp=3, file='~/Downloads/mesh-viz/batch-2.png'
+)
 # # viridis 8 stack
 # 
 # err.frac <- rev(elmax/2^(0:7))
@@ -94,12 +96,12 @@ render_scene(
 
 zoff <- +.5
 mesh.colors <- metal.col
-mat0 <- metal(color=mesh.colors[1], fuzz=1)
-mat2 <- metal(color=mesh.colors[2], fuzz=1)
-mat3 <- metal(color=mesh.colors[3], fuzz=1)
-seg0f <- tris_to_seg(tris0, map, radius=seg.rad*3, material=mat0, flatten=TRUE)
-seg2f <- tris_to_seg(tris2, map, radius=seg.rad*3, material=mat2, flatten=TRUE)
-seg3f <- tris_to_seg(tris3, map, radius=seg.rad*3, material=mat3, flatten=TRUE)
+mat0 <- lambertian(color=mesh.colors[1])
+mat2 <- lambertian(color=mesh.colors[2])
+mat3 <- lambertian(color=mesh.colors[3])
+seg0f <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0, flatten=TRUE)
+seg2f <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2, flatten=TRUE)
+seg3f <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3, flatten=TRUE)
 
 scn <- add_object(
   light.wide,
@@ -130,9 +132,12 @@ render_scene(
 )
 # abreast side
 
-seg0s <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0)
-seg2s <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2)
-seg3s <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3)
+mat0m <- metal(color=mesh.colors[1])
+mat2m <- metal(color=mesh.colors[2])
+mat3m <- metal(color=mesh.colors[3])
+seg0s <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0m)
+seg2s <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2m)
+seg3s <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3m)
 
 scn <- add_object(
   light.narrow,
