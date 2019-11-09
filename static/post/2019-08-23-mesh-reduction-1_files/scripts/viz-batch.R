@@ -1,6 +1,9 @@
+# source('static/post/2019-08-23-mesh-reduction-1_files/scripts/viz.R')
 
 width <- 1000
 samples <- 1000
+seg.rad <- .0025
+zoff <- +.5
 
 # - stacked meshes -------------------------------------------------------------
 
@@ -64,6 +67,7 @@ render_scene(
   fov=0, ortho_dimensions=c(1.25,1.25), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/batch-1.png'
 )
+stop()
 # full 8 stack
 
 err.frac <- rev(elmax/2^(0:7))
@@ -94,7 +98,6 @@ render_scene(
 # )
 # abreast top
 
-zoff <- +.5
 mesh.colors <- metal.col
 mat0 <- lambertian(color=mesh.colors[1])
 mat2 <- lambertian(color=mesh.colors[2])

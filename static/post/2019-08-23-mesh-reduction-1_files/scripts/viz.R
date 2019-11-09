@@ -328,9 +328,12 @@ render_scene(
 # - mesh top -------------------------------------------------------------------
 
 zoff <- +.5
-seg0f <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat, flatten=TRUE)
-seg2f <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat, flatten=TRUE)
-seg3f <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat, flatten=TRUE)
+mat0 <- metal(color=mesh.colors[1])
+mat2 <- metal(color=mesh.colors[2])
+mat3 <- metal(color=mesh.colors[3])
+seg0f <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0, flatten=TRUE)
+seg2f <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2, flatten=TRUE)
+seg3f <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3, flatten=TRUE)
 
 scn <- sphere(
   y=8, z = 4, x = 0, radius = .2,
@@ -384,13 +387,14 @@ segs <- lapply(
     tris_to_seg(meshes[[i]], map, radius=seg.rad2, material=mat, flatten=TRUE)
   }
 )
+diag.off <- (seq_along(err.frac) - ceiling(length(err.frac)/2)) * seg.rad * 2
 layers <- lapply(
   seq_along(segs),
   function(i) {
     group_objects(
       segs[[i]],
       group_angle=c(90, 90, 0),
-      group_translate=c(+0.5, i/(length(segs)*10), zoff),
+      group_translate=c(+0.5+diag.off[i], i/(length(segs)*10), zoff-diag.off[i]),
       pivot_point=numeric(3)
   ) }
 )
@@ -411,7 +415,7 @@ render_scene(
   # objs, width=800, height=800, samples=1000,
   objs, width=300, height=300, samples=200,
   # objs, width=150, height=150, samples=200,
-  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
+  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=0,
   ortho_dimensions=c(1.5,1.5), camera_up=c(1,0,0),
   clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
 )
@@ -419,9 +423,6 @@ render_scene(
 # - mesh side ------------------------------------------------------------------
 
 zoff <- +.5
-mat0 <- metal(color=mesh.colors[1])
-mat2 <- metal(color=mesh.colors[2])
-mat3 <- metal(color=mesh.colors[3])
 seg0s <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0)
 seg2s <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2)
 seg3s <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3)
