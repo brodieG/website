@@ -5,7 +5,8 @@ date: '2019-08-23'
 slug: mesh-reduction-1
 categories: []
 tags: []
-image: /front-img/default.png
+image:
+  /post/2019-08-23-mesh-reduction-1_files/images/batch-2.png
 imagerect: ~
 imagemrgvt: 0%
 imagemrghz: 0%
@@ -23,7 +24,8 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 <!-- this needs to become a shortcode -->
 <img
-  id='front-img' src='/front-img/default.png'
+  id='front-img'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-2.png'
   class='post-inset-image'
 />
 
@@ -42,26 +44,50 @@ to C and interface that into R, but where's the fun in that?
 
 You should look at [Agafonkin's notebook][6] or the original [Will Evans et al.
 1997 paper][8] for in-depth details as the point of this post is the translation
-to an R idiomatic implementation.  But I do need to cover some of the
-basic concepts.  The basic idea is to approximate a right-angle isoceles
-triangle mesh by removing some of the detail subject to error tolerances:
+to an R idiomatic implementation.  Notwithstanding I can't resist indulging in
+some of my newly acquired `rayrender`ing powers for some illustrations.
 
-```{r}
-## volcano or the dem, simplified vs not
-```
+The basic idea is to approximate a triangle mesh with fewer triangles while
+keeping the approximation error within certain tolerances.  For example here we
+approximate the beloved `volcano` mesh at three increasingly relaxed tolerance
+levels:
 
-A key feature of this algorithm is that the triangles are arranged in a
-hierarchy of increasing detail. Each triangle at a given level of detail
-can be fully reconstructed with smaller triangles at a smaller level of detail:
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-5.png'
+/>
 
-```{r hierarchy}
-## Exploded view of several levels of the hierarchy
-```
+If we flatten the elevation component of the meshes and change our viewpoint it
+becomes apparent that all the triangles in the approximation are right angled
+isoceles triangles.  This is where the "Right-Triangulated" part of the
+algorithm name comes from.
 
-As a result, if a triangle too coarse for the desired level of fidelity, it can
-be replaced with the smaller triangles it comprises.  One restriction brought
-about by this hierarchy is that the mesh must be square and `$2^k + 1$` to the
-side (not strictly true).
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-4.png'
+/>
+
+Another important feature of this mesh approximation is that it is hierarchical.
+When we stack the three meshes we can see that each low resolution triangle is
+exactly replaced by higher resolution ones when it does not meet the error
+tolerance:
+
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-1.png'
+/>
+
+If a triangle too coarse for the desired level of fidelity, it is broken up into
+two smaller triangles.  If those triangles are still too coarse, they too are
+broken up.  The approximation error is measured at the middle of the hypotenuse
+of each triangle:
+
+<!--
+Show 
+-->
+
+can be broken up 
+replaced
+with the smaller triangles it comprises.  One restriction brought about by this
+hierarchy is that the mesh must be square and `$2^k + 1$` to the side (not
+strictly true).
 
 The first step of the algorithm is to compute the error caused by each level of
 approximation.  Subsequently that error can be compared against a tolerance and
