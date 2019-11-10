@@ -2,7 +2,6 @@ source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
 source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin-vec.R')
 
 # - Plot Helper Tools ----------------------------------------------------------
-#
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
@@ -145,7 +144,9 @@ mesh_to_xyz <- function(mesh, map, scale) {
     res, scale
   )
 }
-tris_to_obj <- function(tris, map, scale=c(1, 1, 1), flatten=FALSE) {
+tris_to_obj <- function(
+  tris, map, scale=c(1, 1, 1), flatten=FALSE, width=0, bevel=45
+) {
   dat <- ids_to_xyz(tris, map, scale, flatten)
   x <- dat[['x']]; y <- dat[['y']]; z <- dat[['z']]
 
@@ -180,8 +181,20 @@ tris_to_obj <- function(tris, map, scale=c(1, 1, 1), flatten=FALSE) {
   yo2 <- yo[o2]
   zo2 <- z[o][o2]
 
-  v.ids <- matrix(seq_along(x), 3)
-  v.chr <- paste('v', xo2, yo2, zo2, collapse='\n')
+  # Generate a second set of vertices that is just a wee bit smaller than the
+  # first
+
+  xo21 <- xo2 * .95 + .025
+  yo21 <- yo2 * .95 + .025
+  zo21 <- zo2 * .95 + .025
+
+  o3 <- order(tri.id, rep_len(c(1L, 3L, 2L), length(tri.id)))
+  xo3 <- xo21[o3]
+  yo3 <- yo21[o3]
+  zo3 <- zo21[o3]
+
+  v.ids <- matrix(seq_len(length(x) * 2), 3)
+  v.chr <- paste('v', c(xo2, xo3), c(yo2, yo3), c(zo2, zo3), collapse='\n')
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
 }
@@ -215,7 +228,7 @@ xyz_to_seg <- function(xyz, material, radius, angle, translate) {
   )
 }
 tris_to_seg <- function(
-  tris, map, scale=c(1, 1, 1), material=lambertian(), radius=1,
+  tris, map, scale=c(1, 1, 1), material=diffuse(), radius=1,
   angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
 ) {
   xyz_to_seg(
@@ -223,7 +236,7 @@ tris_to_seg <- function(
   )
 }
 mesh_to_seg <- function(
-  mesh, map, scale=c(1, 1, 1), material=lambertian(), radius=1,
+  mesh, map, scale=c(1, 1, 1), material=diffuse(), radius=1,
   angle=c(0,0,0), translate=c(0,0,0)
 ) {
   xyz_to_seg(mesh_to_xyz(mesh, map, scale), material, radius, angle, translate)
@@ -232,6 +245,78 @@ mesh_to_seg <- function(
 stop('loaded')
 
 # - Test it Out ----------------------------------------------------------------
+
+# seg.0 <- mesh_to_seg(mesh.tri.s, map, radius=seg.rad, material=diffuse(color='red'))
+
+library(rayrender)
+
+seg2 <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat)
+seg3 <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat)
+
+
+# ------------------------------------------------------------------------------
+# - Recorded  -------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# - Simplest Cases -------------------------------------------------------------
+
+f <- tempfile()
+map <- matrix(
+  c(
+     0, .1,   0,
+    .5,  1, .05,
+    .1, .2, .05
+  ), 3, byrow=TRUE
+)
+seg.rad <- .03
+seg.mat <- metal(color='gold')
+zoff <- .5
+
+errors <- compute_error(map)
+tris0 <- extract_mesh2(errors, .4)
+seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
+mesh.obj <- tris_to_obj(tris0, map)
+writeLines(mesh.obj, f)
+
+scn <- dplyr::bind_rows(
+  sphere(
+    y=8, z = 4, x = 0, radius = 1,
+    material = diffuse(lightintensity = 200, implicit_sample = TRUE)
+  ),
+  group_objects(
+    obj_model(filename=f, material=dielectric(color='#FF6666')),
+    # add_object(seg0, obj_model(filename=f, material=dielectric())),
+    group_angle=c(90, 90, 0), group_translate=c(-.5, +.5, -.5),
+    pivot_point=c(.5,.5,.5), group_scale=c(1, 1, .25)
+  ),
+  xz_rect(
+    y=-1, xwidth=5, zwidth=5, material=diffuse(
+      color='white', checkercolor='green', checkerperiod=0.25
+    )
+  ),
+  xz_rect(
+    y=1.5, z=-2.5, xwidth=5, zwidth=5, material=diffuse(
+      color='white', checkercolor='blue', checkerperiod=0.25
+    ),
+    angle=c(-90, 0, 0)
+  )
+)
+render_scene(
+  scn,
+  # ambient_light=TRUE,
+  width=400, height=400, samples=400,
+  lookfrom=c(0, 3, 2),
+  lookat=c(0, .75, 0),
+  aperture=0, fov=45, 
+  # ortho_dimensions=c(1.5,1.5),
+  clamp=3
+  # file='~/Downloads/mesh-viz/simple-1.png'
+  # backgroundimage='~/Downloads/blank.png'
+)
+
+
+
+# - Original With Glass --------------------------------------------------------
 
 f <- tempfile()
 f2 <- tempfile()
@@ -265,24 +350,17 @@ writeLines(mesh.obj.3, f3)
 
 seg.rad <- .0025
 seg.mat <- metal(color='gold')
-# seg.0 <- mesh_to_seg(mesh.tri.s, map, radius=seg.rad, material=lambertian(color='red'))
-
-library(rayrender)
-
-seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
-seg2 <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat)
-seg3 <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat)
 
 zoff <- +.5
 
 scn <- sphere(
   y=8, z = 4, x = 0, radius = .2,
-  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
+  material = diffuse(lightintensity = 2000, implicit_sample = TRUE)
 )
 scn <- add_object(
   scn,
   group_objects(
-    # add_object(seg0, obj_model(filename=f, material=lambertian(color='grey50'))),
+    # add_object(seg0, obj_model(filename=f, material=diffuse(color='grey50'))),
     # add_object(seg0, obj_model(filename=f, material=dielectric())),
     seg0,
     group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
@@ -305,7 +383,7 @@ scn <- add_object(
     pivot_point=numeric(3)
 ) )
 scn <- add_object(
-  scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+  scn, xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
 )
 render_scene(
   scn,
@@ -321,151 +399,6 @@ render_scene(
   # backgroundimage='~/Downloads/blank.png'
 )
 
-# ------------------------------------------------------------------------------
-# - Recorded  -------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-
-# - mesh top -------------------------------------------------------------------
-
-zoff <- +.5
-mat0 <- metal(color=mesh.colors[1])
-mat2 <- metal(color=mesh.colors[2])
-mat3 <- metal(color=mesh.colors[3])
-seg0f <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0, flatten=TRUE)
-seg2f <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2, flatten=TRUE)
-seg3f <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3, flatten=TRUE)
-
-scn <- sphere(
-  y=8, z = 4, x = 0, radius = .2,
-  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
-)
-scn <- add_object(
-  scn,
-  group_objects(
-    seg0f, group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn,
-  group_objects(
-    seg2f,
-    group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn,
-  group_objects(
-    seg3f,
-    group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-)
-render_scene(
-  # scn, width=300, height=800, samples=2000,
-  scn, width=150, height=400, samples=200,
-  lookfrom=c(0, sqrt(sum(c(4, 2)^2)), 0), lookat=c(0, 0, 0), aperture=0, fov=0,
-  ortho_dimensions=c(1.5,4), camera_up=c(1,0,0),
-  clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
-)
-# - stacked meshes -------------------------------------------------------------
-
-# err.frac <- rev(elmax/2^(0:7))
-err.frac <- elmax/c(30,15,3)
-mesh.colors <- c('gold', 'grey65', '#DD4F12')
-# mesh.colors <- c('red', 'green', 'blue')
-seg.rad2 <- seg.rad
-# err.frac <- rev(elmax/2^(0:7))
-# mesh.colors <- substr(viridisLite::viridis(8), 1, 7)
-
-meshes <- lapply(err.frac, extract_mesh2, errors=errors)
-segs <- lapply(
-  seq_along(meshes), function(i) {
-    writeLines(sprintf('running %d', i))
-    mat <- metal(color=mesh.colors[i])
-    tris_to_seg(meshes[[i]], map, radius=seg.rad2, material=mat, flatten=TRUE)
-  }
-)
-diag.off <- (seq_along(err.frac) - ceiling(length(err.frac)/2)) * seg.rad * 2
-layers <- lapply(
-  seq_along(segs),
-  function(i) {
-    group_objects(
-      segs[[i]],
-      group_angle=c(90, 90, 0),
-      group_translate=c(+0.5+diag.off[i], i/(length(segs)*10), zoff-diag.off[i]),
-      pivot_point=numeric(3)
-  ) }
-)
-objs <- dplyr::bind_rows(
-  c(
-    layers,
-    list(
-      sphere(
-        y=8, z = 0, x = 0, radius = 3,
-        material = lambertian(lightintensity = 7, implicit_sample = TRUE)
-      ),
-      xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-    )
-  )
-)
-render_scene(
-  # scn, width=300, height=800, samples=2000,
-  # objs, width=800, height=800, samples=1000,
-  objs, width=300, height=300, samples=200,
-  # objs, width=150, height=150, samples=200,
-  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=0,
-  ortho_dimensions=c(1.5,1.5), camera_up=c(1,0,0),
-  clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
-)
-
-# - mesh side ------------------------------------------------------------------
-
-zoff <- +.5
-seg0s <- tris_to_seg(tris0, map, radius=seg.rad, material=mat0)
-seg2s <- tris_to_seg(tris2, map, radius=seg.rad, material=mat2)
-seg3s <- tris_to_seg(tris3, map, radius=seg.rad, material=mat3)
-
-scn <- sphere(
-  y=8, z = 4, x = 0, radius = .2,
-  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
-)
-scn <- add_object(
-  scn,
-  group_objects(
-    seg0s, group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn,
-  group_objects(
-    seg2s,
-    group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn,
-  group_objects(
-    seg3s,
-    group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn, xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-)
-render_scene(
-  # scn, width=800, height=300, samples=2000,
-  scn, width=400, height=150, samples=200,
-  lookfrom=c(0, 4, 2), lookat=c(0, 0, 0), aperture=0, fov=0,
-  ortho_dimensions=c(4,1.5),
-  clamp=3, file='~/Downloads/mesh-viz/three-abreast.png'
-)
-
-
-
-
-
 library(rgl)
 par3d(windowRect=c(20,20,400,400))
 mesh.obj.3 <- tris_to_obj(tris3, map)
@@ -474,8 +407,8 @@ plot3d(readOBJ(f3), col='grey50')
 
 render_scene(
   bind_rows(
-    sphere(x=0, y=5, z=5, material=lambertian(lightintensity=300)),
-    xz_rect(xwidth=10, zwidth=10, y=-1, material=lambertian(checkercolor='grey10')),
+    sphere(x=0, y=5, z=5, material=diffuse(lightintensity=300)),
+    xz_rect(xwidth=10, zwidth=10, y=-1, material=diffuse(checkercolor='grey10')),
     cylinder(
       length=1, x=c(-.5), radius=.125, material=metal(color='red')
     ),
@@ -484,7 +417,7 @@ render_scene(
       angle=c(45, 45, 45), order_rotation=c(1, 2, 3)
     ),
     cylinder(
-      length=1, x=c(.5), radius=.125, material=lambertian(color='red'),
+      length=1, x=c(.5), radius=.125, material=diffuse(color='red'),
       angle=c(45, 45, 45), order_rotation=c(2, 1, 3)
     ),
     sphere(
@@ -494,29 +427,4 @@ render_scene(
   lookfrom=c(0, 2, 4),
   width=200, height=200, samples=400
 )
-
-xx <- tris_to_seg(
-  tris3, map, radius=0.05, material=lambertian(color='red')
-)
-render_scene(
-  bind_rows(
-    xx,
-    xz_rect(xwidth=5, zwidth=5, y=-1, material=lambertian(color='grey50')),
-    xz_rect(
-      xwidth=5, zwidth=5, y=1.5, angle=c(-90,0,0),
-      material=lambertian(color='grey50')
-    ),
-    xz_rect(
-      xwidth=5, zwidth=5, y=1.5, x=-2, angle=c(0,0,90),
-      material=lambertian(color='grey50')
-    ),
-    sphere(material=lambertian(lightintensity=500), x=0, z=2, y=4, radius=.5)
-  ),
-  width=200, height=200, samples=200,
-  lookat=c(0.5, 0, 0),
-  lookfrom=c(0, 4, 4),
-  aperture=0,
-  fov=45
-)
-
 
