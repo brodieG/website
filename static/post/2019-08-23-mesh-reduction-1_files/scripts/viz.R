@@ -226,6 +226,10 @@ tris_to_obj <- function(
 # x-y-z coordinates are ordered by triangle (i.e. first 3 of each are first
 # triangle, and so on).  The vertex order within each triangle is considered
 # important and will be used to derive the vertex orders for the new faces.
+#
+# This is not particularly efficient as we are not trying to minimize data
+# copies in our array re-arrangements, but it seems unlikely that will be the
+# bottleneck.
 
 xyz_to_shard <- function(xyz, depth, bevel) {
   vetr(
@@ -305,22 +309,48 @@ xyz_to_shard <- function(xyz, depth, bevel) {
     seq_len(length(vall)/3), dim(vall)[c(1,3,4)],
     dimnames=dimnames(vall)[c(1,3,4)]
   )
-  fids <- t(
-    matrix(
-      unlist(
-        lapply(
-          list(1:2, 2:3, 3:1),
-          function(x) {
-            c(
-              vid[,x[1],'top'], vid[,x[2],'top'], vid[,x[2],'mid'],
-              vid[,x[2],'mid'], vid[,x[1],'mid'], vid[,x[1],'top'],
-              vid[,x[1],'mid'], vid[,x[2],'mid'], vid[,x[2],'bot'],
-              vid[,x[2],'bot'], vid[,x[1],'bot'], vid[,x[1],'mid']
-            )
-      } ) ),
-      nrow=dim(vid)[1]
-  ) )
-  list(vertices=vall, faces=fids)
+  fids <- rbind(
+    # bevel faces
+    t(
+      matrix(
+        unlist(
+          lapply(
+            list(1:2, 2:3, 3:1),
+            function(x) {
+              c(
+                vid[,x[1],'top'], vid[,x[2],'top'], vid[,x[2],'mid'],
+                vid[,x[2],'mid'], vid[,x[1],'mid'], vid[,x[1],'top'],
+                vid[,x[1],'mid'], vid[,x[2],'mid'], vid[,x[2],'bot'],
+                vid[,x[2],'bot'], vid[,x[1],'bot'], vid[,x[1],'mid']
+              )
+        } ) ),
+        nrow=dim(vid)[1]
+    ) ),
+    # top and bottom faces
+
+    t(matrix(vid[,,c('top', 'bot')], nrow=dim(vid)[1]))
+  )
+  dim(fids) <- c(3, length(fids) / 3)
+
+  # drop the top/bot/mid distinction in the original vertex list, and move
+  # x/y/z dim to be last so we have per-vertex order
+
+  vfin <- matrix(aperm(vall, c(1, 3, 4, 2)), ncol=3)
+
+  list(vertices=vfin, faces=fids)
+}
+shard_to_obj <- function(shard) {
+  vetr(
+    list(
+      vertices=matrix(numeric(), ncol=3),
+      faces=matrix(numeric(), nrow=3)
+    )
+  )
+  v <- shard[['vertices']]
+  f <- shard[['faces']]
+  v.chr <- paste('v', v[,1], v[,2], v[,3], collapse="\n")
+  f.chr <- paste('f', f[1,], f[2,], f[3,], collapse="\n")
+  c(v.chr, "\n", f.chr, "\n")
 }
 xyz_to_seg <- function(xyz, material, radius, angle, translate) {
   coords <- array(
@@ -405,7 +435,26 @@ mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
 tris1 <- extract_mesh2(errors, 1)
-tris_to_xyz(tris1)
+xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
+shard <- xyz_to_shard(xyz1, depth=.05, bevel=45)
+obj <- shard_to_obj(shard)
+writeLines(obj, f)
+
+render_scene(
+  dplyr::bind_rows(
+    obj_model(
+      f, material=dielectric(color='#AA5555'), 
+      x=-.5, y=+.5,
+      angle=c(-180, 0, 0)
+    ),
+    xy_rect(
+      xwidth=5, ywidth=5, z=-2,
+      material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
+    )
+  ),
+  width=200, height=200, samples=30,
+  fov=10
+)
 
 
 map.df <- mx_to_df(map)
