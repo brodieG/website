@@ -328,7 +328,11 @@ xyz_to_shard <- function(xyz, depth, bevel) {
     ) ),
     # top and bottom faces
 
-    t(matrix(vid[,,c('top', 'bot')], nrow=dim(vid)[1]))
+    t(
+      matrix(
+        c(vid[,,'top'], vid[,c(1,3,2),'bot']),  # reorder bot vert for normals
+        nrow=dim(vid)[1]
+    ) )
   )
   dim(fids) <- c(3, length(fids) / 3)
 
@@ -447,16 +451,18 @@ writeLines(obj, f)
 render_scene(
   dplyr::bind_rows(
     obj_model(
-      f, material=diffuse(color='white', checkercolor='blue', checkerperiod=.1), 
-      x=-.5, y=-.5,
-      angle=c(0, 0, 0)
+      f,
+      # material=diffuse(color='white', checkercolor='blue', checkerperiod=.1), 
+      material=dielectric(color='#AAAAFF'),
+      x=-.5, y=+.5,
+      angle=c(180, 0, 0)
     ),
     xy_rect(
       xwidth=5, ywidth=5, z=-2,
       material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
     )
   ),
-  width=400, height=400, samples=30,
+  width=400, height=400, samples=20,
   fov=10
 )
 
