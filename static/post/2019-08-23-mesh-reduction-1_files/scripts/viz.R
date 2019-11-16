@@ -1,3 +1,5 @@
+library(vetr)
+
 source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
 source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin-vec.R')
 
@@ -55,9 +57,19 @@ if(FALSE) {
     )
   }
 }
-# Mx to mesh
-
 # map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
+
+# Mx to data frame, unlike most of the funs this flip y/z to align with the
+# default rayrender camera viewpoint.
+
+mx_to_df <- function(mx, scale=rep(1, 3)) {
+  df <- reshape2::melt(mx)
+  names(df) <- c('x', 'z', 'y')
+  df[] <- Map(rescale, df, scale, numeric(3))
+  df[, c('x', 'y', 'z')]
+}
+# Turn an elevation matrix into a triangle "mesh" stored in list matrix format
+
 mx_to_mesh <- function(mx) {
   nr <- dim(mx)[1]
   nc <- dim(mx)[2]
@@ -144,6 +156,13 @@ mesh_to_xyz <- function(mesh, map, scale) {
     res, scale
   )
 }
+# Generates vertices and triangles from id-based triangle coordinates
+# Attempts to order vertices so that the normals are "up", which really only
+# works properly so long as surfaces are no steeper than vertical.
+#
+# Maybe a better way would be to find the center of the whole object and use
+# that as the reference.
+
 tris_to_obj <- function(
   tris, map, scale=c(1, 1, 1), flatten=FALSE, width=0, bevel=45
 ) {
@@ -197,6 +216,101 @@ tris_to_obj <- function(
   v.chr <- paste('v', c(xo2, xo3), c(yo2, yo3), c(zo2, zo3), collapse='\n')
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
+}
+# We call shards a two triangle sandwich with the faces closed off by bevels,
+# which would look kind of like an arrowhead.
+#
+# Given x-y-z coordinates of triangles, a depth, and bevel angle, return
+# the corresponding coordinates of the shard / arrow head.
+#
+# x-y-z coordinates are ordered by triangle (i.e. first 3 of each are first
+# triangle, and so on).  The vertex order within each triangle is considered
+# important and will be used to derive the vertex orders for the new faces.
+
+xyz_to_shard <- function(xyz, depth, bevel) {
+  vetr(
+    list(x=numeric(), y=numeric(), z=numeric()) && length(unique(lengths(.))) == 1,
+    NUM.1.POS, NUM.1.POS && . <= 90
+  )
+  # this is inefficient...
+  x <- matrix(xyz[['x']], 3)
+  y <- matrix(xyz[['y']], 3)
+  z <- matrix(xyz[['z']], 3)
+  v1 <- cbind(x[1,], y[1,], z[1, ])
+  v2 <- cbind(x[2,], y[2,], z[2, ])
+  v3 <- cbind(x[3,], y[3,], z[3, ])
+
+  # Compute how much we need to scale the faces relative to the bevel edge,
+  # pick the first vertex as the reference point, and compute delta distance
+  # from vertex to barycenter accounting for bevel, and assume that the ratio
+  # of vertex to barycenter is the same for all other vertices.
+  #       ^
+  #      /|\
+  #     / | \        We're trying to compute the distance between the ^ for
+  #    /  ^  \       arbitrary triangles in 3D
+  #   /  / \  \
+  #  /  /   \  \
+
+  bl <- (depth / 2) / tan(bevel / 180 * pi)
+  V <- v2 - v1
+  W <- v3 - v1
+
+  # cos ab = V . W / |V||W|
+  cos.ab <- (rowSums(V * W) / (sqrt(rowSums(V ^ 2)) * sqrt(rowSums(V ^ 2))))
+  delta <- bl / (cos.ab / 2)
+
+  # barycenter coordinates and scaling factor
+  vb <- (v1 + v2 + v3) / 3
+  tri.radius <- sqrt(rowSums((v1 - vb) ^ 2))
+  scale <- (tri.radius - delta) / tri.radius
+  if(any(scale <= 0)) {
+    warning("Bevel offset exceeds triangle side for ", which(scale <= 0)[1])
+  }
+  # recompute new scaled coordinates
+  v1s <- vb + (v1 - vb) * scale
+  v2s <- vb + (v2 - vb) * scale
+  v3s <- vb + (v3 - vb) * scale
+
+  # We now need the two reduced facets, along with all the triangles to seal the
+  # bevel faces.  We need four triangles per side.  Start by offsetting the top
+  # and bottom faces along the normals by the depth of the shard.
+
+  N <- cbind(
+    V[,2] * W[,3] - V[,3] * W[,2],
+    V[,3] * W[,1] - V[,1] * W[,3],
+    V[,1] * W[,2] - V[,2] * W[,1]
+  )
+  n <- N / sqrt(rowSums(N^2))
+
+  v1t <- v1s + n * (depth / 2)
+  v2t <- v2s + n * (depth / 2)
+  v3t <- v3s + n * (depth / 2)
+
+  v1b <- v1s - n * (depth / 2)
+  v2b <- v2s - n * (depth / 2)
+  v3b <- v3s - n * (depth / 2)
+
+      triangle(v2m, v3m, v3t, material=mat),
+      triangle(v3t, v2t, v2m, material=mat),
+      triangle(v2m, v2b, v3b, material=mat),
+      triangle(v3b, v3m, v2m, material=mat),
+
+
+
+      triangle(v1t, v2t, v3t, material=mat),
+      triangle(v1b, v2b, v3b, material=mat, flipped=TRUE),
+
+
+      triangle(v1m, v2m, v2t, material=mat),
+      triangle(v2t, v1t, v1m, material=mat),
+      triangle(v1m, v1b, v2b, material=mat),
+      triangle(v2b, v2m, v1m, material=mat),
+
+      triangle(v3t, v3m, v1m, material=mat),
+      triangle(v1m, v1t, v3t, material=mat),
+      triangle(v3b, v1b, v1m, material=mat),
+      triangle(v1m, v3m, v3b, material=mat)
+
 }
 xyz_to_seg <- function(xyz, material, radius, angle, translate) {
   coords <- array(
@@ -268,30 +382,63 @@ map <- matrix(
     .1, .2, .05
   ), 3, byrow=TRUE
 )
+set.seed(1221)
+map <- matrix(runif(25), 5)
 seg.rad <- .03
 seg.mat <- metal(color='gold')
 zoff <- .5
 
 errors <- compute_error(map)
-tris0 <- extract_mesh2(errors, .4)
+tris0 <- extract_mesh2(errors, .0)
 seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
+map.df <- mx_to_df(map)
+spheres <- lapply(
+  seq_len(nrow(map.df)),
+  function(i)
+    sphere(
+      map.df[i, 'x'], map.df[i, 'y'], map.df[i, 'z'], radius=.025,
+      material=metal()
+) )
 scn <- dplyr::bind_rows(
   sphere(
     y=8, z = 4, x = 0, radius = 1,
     material = diffuse(lightintensity = 200, implicit_sample = TRUE)
   ),
   group_objects(
-    obj_model(filename=f, material=dielectric(color='#FF6666')),
-    # add_object(seg0, obj_model(filename=f, material=dielectric())),
-    group_angle=c(90, 90, 0), group_translate=c(-.5, +.5, -.5),
-    pivot_point=c(.5,.5,.5), group_scale=c(1, 1, .25)
+    obj_model(filename=f, material=dielectric(color='#AAAAFF')),
+    group_angle=c(90, -90, 0), group_translate=c(-.5, 0, -.5),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    dplyr::bind_rows(
+      segment(
+        unlist(subset(map.df, x==1& z==0)), unlist(subset(map.df, x==0& z==0)),
+        material=seg.mat, radius=0.025
+      ),
+      segment(
+        unlist(subset(map.df, x==0& z==0)), unlist(subset(map.df, x==0& z==1)),
+        material=seg.mat, radius=0.025
+      ),
+      segment(
+        unlist(subset(map.df, x==1& z==0)), unlist(subset(map.df, x==0& z==1)),
+        material=seg.mat, radius=0.025
+      )
+    ),
+    group_angle=c(0, 0, 0), 
+    group_translate=c(-.5, 0, -.5)
+  ),
+  group_objects(
+    dplyr::bind_rows(spheres),
+    group_angle=c(0, 0, 0), 
+    group_translate=c(-.5, 0, -.5)
   ),
   xz_rect(
     y=-1, xwidth=5, zwidth=5, material=diffuse(
-      color='white', checkercolor='green', checkerperiod=0.25
+      color='grey50'
+      # color='white', checkercolor='green', checkerperiod=0.25
     )
   ),
   xz_rect(
@@ -300,6 +447,20 @@ scn <- dplyr::bind_rows(
     ),
     angle=c(-90, 0, 0)
   )
+)
+rez <- 400
+render_scene(
+  scn,
+  # ambient_light=TRUE,
+  width=rez, height=rez, samples=rez,
+  lookfrom=c(.5, 4, .5),
+  lookat=c(0, .5, 0),
+  aperture=0, fov=0, 
+  ortho_dimensions=c(1.5,1.5),
+  clamp=3,
+  file='~/Downloads/mesh-viz/test-2.png',
+  # backgroundimage='~/Downloads/blank.png',
+  camera_up=c(1,0,0)
 )
 
 shift <- 0.05/sin(atan(0.5))
