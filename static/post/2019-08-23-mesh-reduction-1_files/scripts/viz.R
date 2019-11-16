@@ -129,7 +129,7 @@ mesh_to_obj <- function(mesh) {
 # Return format from extract_mesh2, the vertices are returned in triangle order
 # (i.e. first three are first triangle, next 3 are second triangle, etc.)
 
-ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
+tris_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
   if(!length(ids)) {
     # minimal triangle
@@ -166,7 +166,7 @@ mesh_to_xyz <- function(mesh, map, scale) {
 tris_to_obj <- function(
   tris, map, scale=c(1, 1, 1), flatten=FALSE, width=0, bevel=45
 ) {
-  dat <- ids_to_xyz(tris, map, scale, flatten)
+  dat <- tris_to_xyz(tris, map, scale, flatten)
   x <- dat[['x']]; y <- dat[['y']]; z <- dat[['z']]
 
   # need these ordered counterclockwise; for each triangle start with leftmost
@@ -290,27 +290,37 @@ xyz_to_shard <- function(xyz, depth, bevel) {
   v2b <- v2s - n * (depth / 2)
   v3b <- v3s - n * (depth / 2)
 
-      triangle(v2m, v3m, v3t, material=mat),
-      triangle(v3t, v2t, v2m, material=mat),
-      triangle(v2m, v2b, v3b, material=mat),
-      triangle(v3b, v3m, v2m, material=mat),
+  # We have all the vertices for each triangle we will organize them into
+  # an array so that we can then index them to define the faces.
 
+  # NOTE BOTTOM FACE NEEDS TO BE FLIPPED, maybe we can just compute normals
+  # relative to barycenter and make sure they are all flipped correctly
 
-
-      triangle(v1t, v2t, v3t, material=mat),
-      triangle(v1b, v2b, v3b, material=mat, flipped=TRUE),
-
-
-      triangle(v1m, v2m, v2t, material=mat),
-      triangle(v2t, v1t, v1m, material=mat),
-      triangle(v1m, v1b, v2b, material=mat),
-      triangle(v2b, v2m, v1m, material=mat),
-
-      triangle(v3t, v3m, v1m, material=mat),
-      triangle(v1m, v1t, v3t, material=mat),
-      triangle(v3b, v1b, v1m, material=mat),
-      triangle(v1m, v3m, v3b, material=mat)
-
+  vall <- array(
+    c(v1t, v2t, v3t, v1, v2, v3, v1b, v2b, v3b),
+    c(dim(v1t), 3, 3),
+    dimnames=list(NULL, c('x','y','z'), paste0('v',1:3), c('top','mid','bot'))
+  )
+  vid <- array(
+    seq_len(length(vall)/3), dim(vall)[c(1,3,4)],
+    dimnames=dimnames(vall)[c(1,3,4)]
+  )
+  fids <- t(
+    matrix(
+      unlist(
+        lapply(
+          list(1:2, 2:3, 3:1),
+          function(x) {
+            c(
+              vid[,x[1],'top'], vid[,x[2],'top'], vid[,x[2],'mid'],
+              vid[,x[2],'mid'], vid[,x[1],'mid'], vid[,x[1],'top'],
+              vid[,x[1],'mid'], vid[,x[2],'mid'], vid[,x[2],'bot'],
+              vid[,x[2],'bot'], vid[,x[1],'bot'], vid[,x[1],'mid']
+            )
+      } ) ),
+      nrow=dim(vid)[1]
+  ) )
+  list(vertices=vall, faces=fids)
 }
 xyz_to_seg <- function(xyz, material, radius, angle, translate) {
   coords <- array(
@@ -346,7 +356,7 @@ tris_to_seg <- function(
   angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
 ) {
   xyz_to_seg(
-    ids_to_xyz(tris, map, scale, flatten), material, radius, angle, translate
+    tris_to_xyz(tris, map, scale, flatten), material, radius, angle, translate
   )
 }
 mesh_to_seg <- function(
@@ -394,6 +404,10 @@ seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
+tris1 <- extract_mesh2(errors, 1)
+tris_to_xyz(tris1)
+
+
 map.df <- mx_to_df(map)
 spheres <- lapply(
   seq_len(nrow(map.df)),
@@ -427,12 +441,12 @@ scn <- dplyr::bind_rows(
         material=seg.mat, radius=0.025
       )
     ),
-    group_angle=c(0, 0, 0), 
+    group_angle=c(0, 0, 0),
     group_translate=c(-.5, 0, -.5)
   ),
   group_objects(
     dplyr::bind_rows(spheres),
-    group_angle=c(0, 0, 0), 
+    group_angle=c(0, 0, 0),
     group_translate=c(-.5, 0, -.5)
   ),
   xz_rect(
@@ -455,7 +469,7 @@ render_scene(
   width=rez, height=rez, samples=rez,
   lookfrom=c(.5, 4, .5),
   lookat=c(0, .5, 0),
-  aperture=0, fov=0, 
+  aperture=0, fov=0,
   ortho_dimensions=c(1.5,1.5),
   clamp=3,
   file='~/Downloads/mesh-viz/test-2.png',
@@ -530,7 +544,7 @@ render_scene(
   width=rez, height=rez, samples=rez,
   lookfrom=c(0, 2, 2),
   lookat=c(0, .75, 0),
-  aperture=0, fov=45, 
+  aperture=0, fov=45,
   # ortho_dimensions=c(1.5,1.5),
   clamp=3
   # file='~/Downloads/mesh-viz/simple-1.png'
