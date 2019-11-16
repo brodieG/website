@@ -315,7 +315,7 @@ xyz_to_shard <- function(xyz, depth, bevel) {
       matrix(
         unlist(
           lapply(
-            list(1:2, 2:3, 3:1),
+            list(1:2, 2:3, c(3,1)),
             function(x) {
               c(
                 vid[,x[1],'top'], vid[,x[2],'top'], vid[,x[2],'mid'],
@@ -336,6 +336,9 @@ xyz_to_shard <- function(xyz, depth, bevel) {
   # x/y/z dim to be last so we have per-vertex order
 
   vfin <- matrix(aperm(vall, c(1, 3, 4, 2)), ncol=3)
+
+  # For each face, compute the angle between the normal and the weighted center
+  # of the vertices
 
   list(vertices=vfin, faces=fids)
 }
@@ -436,23 +439,24 @@ writeLines(mesh.obj, f)
 
 tris1 <- extract_mesh2(errors, 1)
 xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
-shard <- xyz_to_shard(xyz1, depth=.05, bevel=45)
+xyz11 <- lapply(xyz1, '[', 1:3)
+shard <- xyz_to_shard(xyz11, depth=.05, bevel=45)
 obj <- shard_to_obj(shard)
 writeLines(obj, f)
 
 render_scene(
   dplyr::bind_rows(
     obj_model(
-      f, material=dielectric(color='#AA5555'), 
-      x=-.5, y=+.5,
-      angle=c(-180, 0, 0)
+      f, material=diffuse(color='white', checkercolor='blue', checkerperiod=.1), 
+      x=-.5, y=-.5,
+      angle=c(0, 0, 0)
     ),
     xy_rect(
       xwidth=5, ywidth=5, z=-2,
       material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
     )
   ),
-  width=200, height=200, samples=30,
+  width=400, height=400, samples=30,
   fov=10
 )
 
