@@ -144,7 +144,7 @@ tris_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   x <- x / (dim(map)[1] - 1) * scale[1]
   y <- y / (dim(map)[2] - 1) * scale[2]
   z <- if(flatten) numeric(length(z))
-       else (z - min(z)) / (diff(range(z))) * scale[3]
+       else (z - min(map)) / (diff(range(map))) * scale[3]
   list(x=x, y=y, z=z)
 }
 mesh_to_xyz <- function(mesh, map, scale) {
@@ -231,7 +231,7 @@ tris_to_obj <- function(
 # copies in our array re-arrangements, but it seems unlikely that will be the
 # bottleneck.
 
-xyz_to_shard <- function(xyz, depth, bevel) {
+xyz_to_shard <- function(xyz, depth, bevel, flatten=FALSE) {
   vetr(
     list(x=numeric(), y=numeric(), z=numeric()) && length(unique(lengths(.))) == 1,
     NUM.1.POS, NUM.1.POS && . <= 90
@@ -240,6 +240,7 @@ xyz_to_shard <- function(xyz, depth, bevel) {
   x <- matrix(xyz[['x']], 3)
   y <- matrix(xyz[['y']], 3)
   z <- matrix(xyz[['z']], 3)
+  if(flatten) z[] <- 0
   v1 <- cbind(x[1,], y[1,], z[1, ])
   v2 <- cbind(x[2,], y[2,], z[2, ])
   v3 <- cbind(x[3,], y[3,], z[3, ])
@@ -405,21 +406,92 @@ mesh_to_seg <- function(
 
 stop('loaded')
 
+# ------------------------------------------------------------------------------
+# - Recorded  -------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 # - Test it Out ----------------------------------------------------------------
 
 # seg.0 <- mesh_to_seg(mesh.tri.s, map, radius=seg.rad, material=diffuse(color='red'))
 
 library(rayrender)
 
-seg2 <- tris_to_seg(tris2, map, radius=seg.rad, material=seg.mat)
-seg3 <- tris_to_seg(tris3, map, radius=seg.rad, material=seg.mat)
+gold <- '#CCAC00'
+metal.col <-  c(gold, 'grey35', '#CC3322')
+mesh.colors <- metal.col
+seg.rad <- .0025
+seg.rad <- .005
+seg.mat1 <- metal(color=metal.col[1])
+seg.mat2 <- metal(color=metal.col[2])
+seg.mat3 <- metal(color=metal.col[3])
+
+zoff <- +.5
+
+map <- matrix(
+  c(
+     0, .1,   0,
+    .5,  1, .05,
+    .1, .2, .05
+  ), 3, byrow=TRUE
+)
+tris1 <- list(
+  matrix(
+    c(
+      1,5,2, 1,4,5, 3,6,5, 3,2,5,
+      7,4,5, 7,8,5, 9,8,5, 9,5,6
+    ),
+    nrow=3
+) )
+tris2 <- list(matrix(c(1,3,5, 1,5,7, 7,5,9, 9,5,3), 3))
+tris3 <- list(matrix(c(1,3,9, 1,7,9), 3))
+max(map[unlist(tris3)]) / max(map)
+
+seg1 <- tris_to_seg(tris1, map, material=seg.mat1, radius=seg.rad)
+seg2 <- tris_to_seg(tris2, map, material=seg.mat2, radius=seg.rad)
+seg3 <- tris_to_seg(tris3, map, material=seg.mat3, radius=seg.rad)
+
+zoff <- +.5
+
+scn <- dplyr::bind_rows(
+  sphere(
+    y=8, z = 0, x = 0, radius = .2,
+    material = diffuse(lightintensity = 1000, implicit_sample = TRUE)
+  ),
+  group_objects(
+    seg1,
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    seg2,
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    seg3,
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    pivot_point=numeric(3)
+  ),
+  xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
+)
+rez <- 200
+samp <- rez / 2
+render_scene(
+  scn,
+  width=rez, height=rez, samples=samp,
+  lookfrom=c(0, 4, 2),
+  lookat=c(0, 0, 0),
+  aperture=0, 
+  fov=25,
+  ortho_dimensions=c(1.25,1.25),
+  camera_up=c(1,0,0),
+  clamp=3
+  # file='~/Downloads/mesh-viz/three-abreast.png'
+  # backgroundimage='~/Downloads/blank.png'
+)
 
 
-# ------------------------------------------------------------------------------
-# - Recorded  -------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-
-# - Simplest Cases -------------------------------------------------------------
+# - Playing With Glass ---------------------------------------------------------
 
 f <- tempfile()
 map <- matrix(
@@ -432,7 +504,7 @@ map <- matrix(
 set.seed(1221)
 map <- matrix(runif(25), 5)
 map <- vsq
-seg.rad <- .03
+seg.rad <- .0125
 seg.mat <- metal(color='gold')
 zoff <- .5
 
@@ -442,42 +514,22 @@ seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
-tris1 <- extract_mesh2(errors, 5)
-tris1 <- list(
-  matrix(c(1,3,5,1,5,7,7,5,9,9,5,3), 3),
-  matrix(c(1,3,9,1,9,7), 3)
-)
+# tris1 <- extract_mesh2(errors, 5)
+tris1 <- list(matrix(c(1,3,5,1,5,7,7,5,9,9,5,3), 3))
+tris2 <- list(matrix(c(1,3,9), 3))
 xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
-shard <- xyz_to_shard(xyz1, depth=.01, bevel=45)
-obj <- shard_to_obj(shard)
-writeLines(obj, f)
+xyz2 <- tris_to_xyz(tris2, map, rep(1, 3))
+shard1 <- xyz_to_shard(xyz1, depth=.025, bevel=45, flatten=TRUE)
+shard2 <- xyz_to_shard(xyz2, depth=.025, bevel=45, flatten=TRUE)
 
-rez <- 200
-samp <- 50
-render_scene(
-  dplyr::bind_rows(
-    obj_model(
-      f,
-      material=dielectric(color='#CCCCFF'),
-      x=+.5,
-      angle=c(90, 90, 0)
-    ),
-    # generate_ground(material=diffuse(checkercolor='black', checkerperiod=.1)),
-    sphere(0, 5, 5, material=diffuse(lightintensity=50, implicit_sample=TRUE)),
-    xz_rect(
-      xwidth=5, zwidth=5, y=-.1,
-      # material=diffuse(color='grey50')
-      material=diffuse(color='white', checkercolor='black', checkerperiod=.1)
-    )
-  ),
-  width=rez, height=rez, samples=20,
-  fov=20,
-  lookat=c(0, 0.5, -.250),
-  lookfrom=c(0, 3, 3),
-  aperture=0,
-  clamp=3,
-  ortho_dimensions=c(1.25, 1.25)
-)
+if(FALSE) {
+  f1 <- tempfile()
+  f2 <- tempfile()
+}
+obj1 <- shard_to_obj(shard1)
+obj2 <- shard_to_obj(shard2)
+writeLines(obj1, f1)
+writeLines(obj2, f2)
 
 map.df <- mx_to_df(map)
 spheres <- lapply(
@@ -489,27 +541,32 @@ spheres <- lapply(
 ) )
 scn <- dplyr::bind_rows(
   sphere(
-    y=8, z = 0, x = 0, radius = .2,
+    y=8, z = 4, x = 3, radius = .2,
     material = diffuse(lightintensity = 200*25, implicit_sample = TRUE)
   ),
   group_objects(
-    obj_model(filename=f, material=dielectric(color='#AAAAFF')),
+    obj_model(filename=f1, material=dielectric(color='#AAAAFF')),
+    group_angle=c(90, -90, 0), group_translate=c(-.5, -.1, -.5),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    obj_model(filename=f2, material=dielectric(color='#AAAAFF')),
     group_angle=c(90, -90, 0), group_translate=c(-.5, 0, -.5),
     pivot_point=numeric(3)
   ),
   group_objects(
     dplyr::bind_rows(
       segment(
-        unlist(subset(map.df, x==1& z==0)), unlist(subset(map.df, x==0& z==0)),
-        material=seg.mat, radius=0.025
+        unlist(subset(map.df, x==1& z==1)), unlist(subset(map.df, x==0& z==0)),
+        material=seg.mat, radius=seg.rad
+      ),
+      segment(
+        unlist(subset(map.df, x==1& z==1)), unlist(subset(map.df, x==0& z==1)),
+        material=seg.mat, radius=seg.rad
       ),
       segment(
         unlist(subset(map.df, x==0& z==0)), unlist(subset(map.df, x==0& z==1)),
-        material=seg.mat, radius=0.025
-      ),
-      segment(
-        unlist(subset(map.df, x==1& z==0)), unlist(subset(map.df, x==0& z==1)),
-        material=seg.mat, radius=0.025
+        material=seg.mat, radius=seg.rad
       )
     ),
     group_angle=c(0, 0, 0),
@@ -521,36 +578,34 @@ scn <- dplyr::bind_rows(
     group_translate=c(-.5, 0, -.5)
   ),
   xz_rect(
-    y=-1, xwidth=5, zwidth=5, material=diffuse(
+    y=-.15, xwidth=5, zwidth=5, material=diffuse(
       color='grey50'
       # color='white', checkercolor='green', checkerperiod=0.25
     )
-  ),
-  xz_rect(
-    y=1.5, z=-2.5, xwidth=5, zwidth=5, material=diffuse(
-      color='white', checkercolor='blue', checkerperiod=0.25
-    ),
-    angle=c(-90, 0, 0)
   )
 )
-rez <- 100
+rez <- 400
 samples <- rez/2
 render_scene(
   scn,
   # ambient_light=TRUE,
   width=rez, height=rez, samples=samples,
-  lookfrom=c(.5, 4, .5),
-  lookat=c(0, .5, 0),
+  lookfrom=c(.5, 4, 1),
+  lookat=c(0, 0, 0),
   aperture=0,
   fov=20,
-  ortho_dimensions=c(1.5,1.5),
+  ortho_dimensions=c(1.25,1.25),
   clamp=3,
   file='~/Downloads/mesh-viz/test-2.png',
   # backgroundimage='~/Downloads/blank.png',
   camera_up=c(1,0,0)
 )
 
+
 # - Original With Glass --------------------------------------------------------
+
+# This one doesn't correctly do the glass pane, it just starts the dielectric
+# at the surface and lets it continue
 
 f <- tempfile()
 f2 <- tempfile()
