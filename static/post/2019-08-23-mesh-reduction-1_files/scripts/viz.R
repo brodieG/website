@@ -260,8 +260,8 @@ xyz_to_shard <- function(xyz, depth, bevel) {
   W <- v3 - v1
 
   # cos ab = V . W / |V||W|
-  cos.ab <- (rowSums(V * W) / (sqrt(rowSums(V ^ 2)) * sqrt(rowSums(V ^ 2))))
-  delta <- bl / (cos.ab / 2)
+  cos.ab <- (rowSums(V * W) / (sqrt(rowSums(V ^ 2)) * sqrt(rowSums(W ^ 2))))
+  delta <- bl / cos(acos(cos.ab) / 2)
 
   # barycenter coordinates and scaling factor
   vb <- (v1 + v2 + v3) / 3
@@ -441,13 +441,15 @@ seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
-tris1 <- extract_mesh2(errors, 1)
+tris1 <- extract_mesh2(errors, .7)
 xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
-xyz11 <- lapply(xyz1, '[', 1:3)
-shard <- xyz_to_shard(xyz11, depth=.05, bevel=45)
+# xyz11 <- lapply(xyz1, '[', 1:3)
+shard <- xyz_to_shard(xyz1, depth=.01, bevel=45)
 obj <- shard_to_obj(shard)
 writeLines(obj, f)
 
+rez <- 400
+samp <- 40
 render_scene(
   dplyr::bind_rows(
     obj_model(
@@ -462,8 +464,10 @@ render_scene(
       material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
     )
   ),
-  width=400, height=400, samples=20,
-  fov=10
+  width=rez, height=rez, samples=20,
+  fov=20,
+  lookfrom=c(0, .5, 3)
+  # ortho_dimensions=c(1.25, 1.25)
 )
 
 

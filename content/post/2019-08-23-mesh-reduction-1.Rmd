@@ -133,6 +133,11 @@ plot(1:10, 1:10)
 
 ## Acknowledgments
 
+* rgl
+* rayrender
+* Agafonkin
+
+
 ## System Info
 
 [^off-course]: The beauty is I wasn't going anywhere in particular anyway, so
