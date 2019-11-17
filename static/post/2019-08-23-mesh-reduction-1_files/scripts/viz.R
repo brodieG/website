@@ -431,6 +431,7 @@ map <- matrix(
 )
 set.seed(1221)
 map <- matrix(runif(25), 5)
+map <- vsq
 seg.rad <- .03
 seg.mat <- metal(color='gold')
 zoff <- .5
@@ -441,36 +442,42 @@ seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
-tris1 <- extract_mesh2(errors, .3)
+tris1 <- extract_mesh2(errors, 5)
+tris1 <- list(
+  matrix(c(1,3,5,1,5,7,7,5,9,9,5,3), 3),
+  matrix(c(1,3,9,1,9,7), 3)
+)
 xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
-# xyz11 <- lapply(xyz1, '[', 1:3)
-shard <- xyz_to_shard(xyz1, depth=.01, bevel=10)
+shard <- xyz_to_shard(xyz1, depth=.01, bevel=45)
 obj <- shard_to_obj(shard)
 writeLines(obj, f)
 
-rez <- 400
-samp <- 100
+rez <- 200
+samp <- 50
 render_scene(
   dplyr::bind_rows(
     obj_model(
       f,
-      material=dielectric(color='#AAAAFF'),
-      x=-.5, y=-.5,
-      angle=c(0, 0, 0)
+      material=dielectric(color='#CCCCFF'),
+      x=+.5,
+      angle=c(90, 90, 0)
     ),
-    xy_rect(
-      xwidth=5, ywidth=5, z=-2,
-      material=diffuse(color='grey50')
-      # material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
+    # generate_ground(material=diffuse(checkercolor='black', checkerperiod=.1)),
+    sphere(0, 5, 5, material=diffuse(lightintensity=50, implicit_sample=TRUE)),
+    xz_rect(
+      xwidth=5, zwidth=5, y=-.1,
+      # material=diffuse(color='grey50')
+      material=diffuse(color='white', checkercolor='black', checkerperiod=.1)
     )
   ),
   width=rez, height=rez, samples=20,
-  fov=30,
-  lookfrom=c(0.5, 0, 3),
+  fov=20,
+  lookat=c(0, 0.5, -.250),
+  lookfrom=c(0, 3, 3),
   aperture=0,
+  clamp=3,
   ortho_dimensions=c(1.25, 1.25)
 )
-
 
 map.df <- mx_to_df(map)
 spheres <- lapply(
@@ -482,8 +489,8 @@ spheres <- lapply(
 ) )
 scn <- dplyr::bind_rows(
   sphere(
-    y=8, z = 4, x = 0, radius = 1,
-    material = diffuse(lightintensity = 200, implicit_sample = TRUE)
+    y=8, z = 0, x = 0, radius = .2,
+    material = diffuse(lightintensity = 200*25, implicit_sample = TRUE)
   ),
   group_objects(
     obj_model(filename=f, material=dielectric(color='#AAAAFF')),
@@ -526,96 +533,22 @@ scn <- dplyr::bind_rows(
     angle=c(-90, 0, 0)
   )
 )
-rez <- 400
+rez <- 100
+samples <- rez/2
 render_scene(
   scn,
   # ambient_light=TRUE,
-  width=rez, height=rez, samples=rez,
+  width=rez, height=rez, samples=samples,
   lookfrom=c(.5, 4, .5),
   lookat=c(0, .5, 0),
-  aperture=0, fov=0,
+  aperture=0,
+  fov=20,
   ortho_dimensions=c(1.5,1.5),
   clamp=3,
   file='~/Downloads/mesh-viz/test-2.png',
   # backgroundimage='~/Downloads/blank.png',
   camera_up=c(1,0,0)
 )
-
-shift <- 0.05/sin(atan(0.5))
-baryx <- 0
-baryz <- (2 * -.5 + .5) / 3
-shift.ratio <- shift / (.5 - baryz)
-sr <- 1 + shift.ratio
-c(-.5,.5) * (1 + shift.ratio)
-
-v1t <- c(-.5,    .50,    -.5)
-v2t <- c(  0,    .50,     .5)
-v3t <- c( .5,    .50,    -.5)
-
-v1m <- c(-.5*sr, .45, -.5*sr)
-v2m <- c(     0, .45,  .5*sr)
-v3m <- c( .5*sr, .45, -.5*sr)
-
-v1b <- c(-.5,    .40,    -.5)
-v2b <- c(  0,    .40,     .5)
-v3b <- c( .5,    .40,    -.5)
-
-# mat <- diffuse(color='grey70', checkercolor='black', checkerperiod=.25)
-mat <- dielectric(color='#FFAAAA')
-scn <- dplyr::bind_rows(
-  sphere(
-    y=8, z = 4, x = 0, radius = 1,
-    material = diffuse(lightintensity = 200, implicit_sample = TRUE)
-  ),
-  group_objects(
-    dplyr::bind_rows(
-      triangle(v1t, v2t, v3t, material=mat),
-      triangle(v1b, v2b, v3b, material=mat, flipped=TRUE),
-
-      triangle(v2m, v3m, v3t, material=mat),
-      triangle(v3t, v2t, v2m, material=mat),
-      triangle(v2m, v2b, v3b, material=mat),
-      triangle(v3b, v3m, v2m, material=mat),
-
-      triangle(v1m, v2m, v2t, material=mat),
-      triangle(v2t, v1t, v1m, material=mat),
-      triangle(v1m, v1b, v2b, material=mat),
-      triangle(v2b, v2m, v1m, material=mat),
-
-      triangle(v3t, v3m, v1m, material=mat),
-      triangle(v1m, v1t, v3t, material=mat),
-      triangle(v3b, v1b, v1m, material=mat),
-      triangle(v1m, v3m, v3b, material=mat)
-    ),
-    group_angle=c(0, 0, 22.5)
-  ),
-  xz_rect(
-    y=-1, xwidth=5, zwidth=5, material=diffuse(
-      color='white', checkercolor='green', checkerperiod=0.25
-    )
-  ),
-  xz_rect(
-    y=1.5, z=-2.5, xwidth=5, zwidth=5, material=diffuse(
-      color='white', checkercolor='blue', checkerperiod=0.25
-    ),
-    angle=c(-90, 0, 0)
-  )
-)
-rez <- 400
-render_scene(
-  scn,
-  # ambient_light=TRUE,
-  width=rez, height=rez, samples=rez,
-  lookfrom=c(0, 2, 2),
-  lookat=c(0, .75, 0),
-  aperture=0, fov=45,
-  # ortho_dimensions=c(1.5,1.5),
-  clamp=3
-  # file='~/Downloads/mesh-viz/simple-1.png'
-  # backgroundimage='~/Downloads/blank.png'
-)
-
-
 
 # - Original With Glass --------------------------------------------------------
 
