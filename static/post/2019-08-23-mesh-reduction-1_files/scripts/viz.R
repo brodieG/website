@@ -441,33 +441,34 @@ seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
 writeLines(mesh.obj, f)
 
-tris1 <- extract_mesh2(errors, .7)
+tris1 <- extract_mesh2(errors, .3)
 xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
 # xyz11 <- lapply(xyz1, '[', 1:3)
-shard <- xyz_to_shard(xyz1, depth=.01, bevel=45)
+shard <- xyz_to_shard(xyz1, depth=.01, bevel=10)
 obj <- shard_to_obj(shard)
 writeLines(obj, f)
 
 rez <- 400
-samp <- 40
+samp <- 100
 render_scene(
   dplyr::bind_rows(
     obj_model(
       f,
-      # material=diffuse(color='white', checkercolor='blue', checkerperiod=.1), 
       material=dielectric(color='#AAAAFF'),
-      x=-.5, y=+.5,
-      angle=c(180, 0, 0)
+      x=-.5, y=-.5,
+      angle=c(0, 0, 0)
     ),
     xy_rect(
       xwidth=5, ywidth=5, z=-2,
-      material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
+      material=diffuse(color='grey50')
+      # material=diffuse(color='white', checkercolor='darkgreen', checkerperiod=.25)
     )
   ),
   width=rez, height=rez, samples=20,
-  fov=20,
-  lookfrom=c(0, .5, 3)
-  # ortho_dimensions=c(1.25, 1.25)
+  fov=30,
+  lookfrom=c(0.5, 0, 3),
+  aperture=0,
+  ortho_dimensions=c(1.25, 1.25)
 )
 
 
