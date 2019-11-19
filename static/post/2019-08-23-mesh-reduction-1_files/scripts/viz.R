@@ -59,13 +59,11 @@ if(FALSE) {
 }
 # map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
 
-# Mx to data frame, unlike most of the funs this flip y/z to align with the
-# default rayrender camera viewpoint.
+# Mx to data frame
 
-mx_to_df <- function(mx, scale=rep(1, 3)) {
+mx_to_df <- function(mx, scale=rep(, 3)) {
   df <- reshape2::melt(mx)
-  names(df) <- c('x', 'z', 'y')
-  df[] <- Map(rescale, df, scale, numeric(3))
+  if(length(scale)) df[] <- Map(rescale, df, scale, numeric(3))
   df[, c('x', 'y', 'z')]
 }
 # Turn an elevation matrix into a triangle "mesh" stored in list matrix format
@@ -128,6 +126,13 @@ mesh_to_obj <- function(mesh) {
 }
 # Return format from extract_mesh2, the vertices are returned in triangle order
 # (i.e. first three are first triangle, next 3 are second triangle, etc.)
+# 
+# row -> y
+# col -> x
+#
+# But just remember that rows are 'backward', i.e. increasing rows go down in
+# the matrix, but up in the plots.  Would be good to make all this consistent
+# sometime.
 
 tris_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
@@ -135,7 +140,7 @@ tris_to_xyz <- function(tris, map, scale, flatten=FALSE) {
     # minimal triangle
     nr <- nrow(map)
     tr <- length(map) - nrow(map) + 1L
-    ids <- c(1L, nr, tr, tr, nr, length(map))
+    ids <- c(1L, nr, length(map), 1L, tr, length(map))
   }
   y <- (ids - 1) %% dim(map)[1]
   x <- (ids - 1) %/% dim(map)[1]
@@ -441,6 +446,7 @@ map <- matrix(
      0.9, 0.7, 0.9
   ), 3, byrow=TRUE
 )
+
 tris1 <- list(
   matrix(
     c(
@@ -451,45 +457,79 @@ tris1 <- list(
 ) )
 tris2 <- list(matrix(c(1,3,5, 1,5,7, 7,5,9, 9,5,3), 3))
 tris3 <- list(matrix(c(1,3,9, 1,7,9), 3))
-max(map[unlist(tris3)]) / max(map)
+zscl <- 1
 
-seg1 <- tris_to_seg(tris1, map, material=seg.mat1, radius=seg.rad)
+seg1 <- tris_to_seg(tris1, map, material=seg.mat1, radius=seg.rad, scale=c(1,1,zscl))
 seg2 <- tris_to_seg(tris2, map, material=seg.mat2, radius=seg.rad)
 seg3 <- tris_to_seg(tris3, map, material=seg.mat3, radius=seg.rad)
 
-xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
-shard1 <- xyz_to_shard(xyz1, depth=.005, bevel=45, flatten=FALSE)
+xyz1 <- tris_to_xyz(tris1, map, c(1, 1, zscl))
+shard1 <- xyz_to_shard(xyz1, depth=.03, bevel=45)
 obj1 <- shard_to_obj(shard1)
 writeLines(obj1, f1)
 
-zoff <- +.5
+# manually compute the errors as too much of a pita to do auto since the
+# actual error does the child error carry over
 
+errs <- list(
+  list(x=.5, z=0, y=sum(map[c(1,3)]/2) - map[2], y0=map[2]),
+  list(x=0, z=-.5, y=sum(map[c(1,7)]/2) - map[4], y0=map[4]),
+  list(x=-.5, z=0, y=sum(map[c(7,9)]/2) - map[8], y0=map[8]),
+  list(x=0, z=0.5, y=sum(map[c(9,3)]/2) - map[6], y0=map[2])
+)
+errs <- compute_error(map)
+errs[5] <- (map[1] + map[9]) / 2 - map[5]
+
+errors2 <- compute_error(map2)
+
+err.cyl <- lapply(errs,
+  function(x) {
+    mat <- diffuse(color='red')
+    rad <- 0.05
+    with(
+      x,
+      add_object(
+        cylinder(x, y0 + y/2, z, length=y, material=mat, radius=rad),
+        disk(x, y0 + y, z, material=mat, radius=rad)
+      )
+    )
+} )
+
+zoff <- .5
+light.narrow <- sphere(
+  y=8, z = 6, x = 2, radius = .2,
+  material = diffuse(lightintensity = 2000, implicit_sample = TRUE)
+)
+light.old <- sphere(
+  y=2, z = 3, x = 0, radius = .2,
+  material = diffuse(lightintensity = 500, implicit_sample = TRUE)
+)
 scn <- dplyr::bind_rows(
-  sphere(
-    y=8, z = 0, x = 0, radius = .2,
-    material = diffuse(lightintensity = 1250, implicit_sample = TRUE)
-  ),
+  light.narrow,
   group_objects(
-    obj_model(filename=f1, material=dielectric(color='#AAAAFF')),
-    group_angle=c(90, -90, 0), group_translate=c(-.5, -.1, -.5),
+    obj_model(filename=f1, material=dielectric('#CCCCCC')),
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
     pivot_point=numeric(3)
   ),
+  # err.cyl,
   # group_objects(
   #   seg1,
   #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
   #   pivot_point=numeric(3)
   # ),
-  group_objects(
-    seg2,
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
-    pivot_point=numeric(3)
-  ),
   # group_objects(
-  #   seg3,
+  #   seg2,
   #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
   #   pivot_point=numeric(3)
   # ),
+  group_objects(
+    seg3,
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    pivot_point=numeric(3)
+  ),
   # group_objects(dplyr::bind_rows(cyls), group_translate=c(-.5, 0, -.5)),
+  # sphere(radius=0.125, material=diffuse(color='green')),
+  # sphere(x=1, z=1, radius=0.125, material=diffuse(color='yellow')),
   xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
 )
 rez <- 200
@@ -497,12 +537,14 @@ samp <- rez / 2
 render_scene(
   scn,
   width=rez, height=rez, samples=samp,
-  lookfrom=c(-4, 4, 0),
-  lookat=c(0, .25, 0),
+  lookfrom=c(0, 4, 1),
+  lookat=c(0, 0.5, 0),
+  # lookat=c(0, 0, 0),
+  fov=20,
+  # ortho_dimensions=c(1.5,1.5),
+  # lookat=c(0, zscl/2, 0),
   aperture=0,
-  fov=30,
-  ortho_dimensions=c(1.25,1.25),
-  camera_up=c(1,0,0),
+  camera_up=c(0,1,0),
   clamp=3
   # file='~/Downloads/mesh-viz/simple-mesh.png'
   # backgroundimage='~/Downloads/blank.png'
@@ -515,12 +557,12 @@ cyls <- lapply(
     mat <- dielectric(color='#FFCCCC')
     with(
       df[i,],
-      cube(x, y/2, z, xwidth=.3, zwidth=.3, ywidth=y, material=mat)
+      cube(x, z/2, y, xwidth=.3, zwidth=.3, ywidth=z, material=mat)
       # dplyr::bind_rows(
       #   cylinder(x, y/2, z, length=y, material=mat, radius=.1),
       #   disk(x, y, z, material=mat, radius=.1),
       #   disk(x, 0, z, material=mat, radius=.1, flipped=TRUE)
-      # ) 
+      # )
     )
   }
 )
@@ -540,9 +582,9 @@ render_scene(
   scn,
   width=rez, height=rez, samples=samp,
   lookfrom=c(-4, 4, 2),
-  lookat=c(0, 0, 0),
+  lookat=c(0, .5, 0),
   aperture=0,
-  fov=20,
+  fov=15,
   ortho_dimensions=c(1.25,1.25),
   camera_up=c(1,0,0),
   clamp=3
@@ -569,6 +611,7 @@ seg.mat <- metal(color='gold')
 zoff <- .5
 
 errors <- compute_error(map)
+
 tris0 <- extract_mesh2(errors, .0)
 seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
 mesh.obj <- tris_to_obj(tris0, map)
@@ -596,7 +639,7 @@ spheres <- lapply(
   seq_len(nrow(map.df)),
   function(i)
     sphere(
-      map.df[i, 'x'], map.df[i, 'y'], map.df[i, 'z'], radius=.025,
+      map.df[i, 'x'], map.df[i, 'z'], map.df[i, 'y'], radius=.025,
       material=metal()
 ) )
 scn <- dplyr::bind_rows(
