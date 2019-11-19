@@ -358,7 +358,7 @@ shard_to_obj <- function(shard) {
   f <- shard[['faces']]
   v.chr <- paste('v', v[,1], v[,2], v[,3], collapse="\n")
   f.chr <- paste('f', f[1,], f[2,], f[3,], collapse="\n")
-  c(v.chr, "\n", f.chr, "\n")
+  c(v.chr, f.chr)
 }
 xyz_to_seg <- function(xyz, material, radius, angle, translate) {
   coords <- array(
@@ -420,18 +420,25 @@ gold <- '#CCAC00'
 metal.col <-  c(gold, 'grey35', '#CC3322')
 mesh.colors <- metal.col
 seg.rad <- .0025
-seg.rad <- .005
-seg.mat1 <- metal(color=metal.col[1])
-seg.mat2 <- metal(color=metal.col[2])
-seg.mat3 <- metal(color=metal.col[3])
+seg.rad <- .01
+seg.mat1 <- dielectric(color=metal.col[1])
+seg.mat2 <- dielectric(color=metal.col[2])
+seg.mat3 <- dielectric(color=metal.col[3])
 
 zoff <- +.5
 
 map <- matrix(
   c(
-     0, .1,   0,
+     0, .1, .01,
     .5,  1, .05,
     .1, .2, .05
+  ), 3, byrow=TRUE
+)
+map <- matrix(
+  c(
+     1.0, 0.9, 0.9,
+     0.0, 0.5, 0.8,
+     0.9, 0.7, 0.9
   ), 3, byrow=TRUE
 )
 tris1 <- list(
@@ -450,28 +457,39 @@ seg1 <- tris_to_seg(tris1, map, material=seg.mat1, radius=seg.rad)
 seg2 <- tris_to_seg(tris2, map, material=seg.mat2, radius=seg.rad)
 seg3 <- tris_to_seg(tris3, map, material=seg.mat3, radius=seg.rad)
 
+xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
+shard1 <- xyz_to_shard(xyz1, depth=.005, bevel=45, flatten=FALSE)
+obj1 <- shard_to_obj(shard1)
+writeLines(obj1, f1)
+
 zoff <- +.5
 
 scn <- dplyr::bind_rows(
   sphere(
     y=8, z = 0, x = 0, radius = .2,
-    material = diffuse(lightintensity = 1000, implicit_sample = TRUE)
+    material = diffuse(lightintensity = 1250, implicit_sample = TRUE)
   ),
   group_objects(
-    seg1,
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    obj_model(filename=f1, material=dielectric(color='#AAAAFF')),
+    group_angle=c(90, -90, 0), group_translate=c(-.5, -.1, -.5),
     pivot_point=numeric(3)
   ),
+  # group_objects(
+  #   seg1,
+  #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+  #   pivot_point=numeric(3)
+  # ),
   group_objects(
     seg2,
     group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
     pivot_point=numeric(3)
   ),
-  group_objects(
-    seg3,
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
-    pivot_point=numeric(3)
-  ),
+  # group_objects(
+  #   seg3,
+  #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+  #   pivot_point=numeric(3)
+  # ),
+  # group_objects(dplyr::bind_rows(cyls), group_translate=c(-.5, 0, -.5)),
   xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
 )
 rez <- 200
@@ -479,14 +497,56 @@ samp <- rez / 2
 render_scene(
   scn,
   width=rez, height=rez, samples=samp,
-  lookfrom=c(0, 4, 2),
-  lookat=c(0, 0, 0),
-  aperture=0, 
-  fov=25,
+  lookfrom=c(-4, 4, 0),
+  lookat=c(0, .25, 0),
+  aperture=0,
+  fov=30,
   ortho_dimensions=c(1.25,1.25),
   camera_up=c(1,0,0),
   clamp=3
-  # file='~/Downloads/mesh-viz/three-abreast.png'
+  # file='~/Downloads/mesh-viz/simple-mesh.png'
+  # backgroundimage='~/Downloads/blank.png'
+)
+
+df <- mx_to_df(map)
+cyls <- lapply(
+  seq_len(nrow(df)),
+  function(i) {
+    mat <- dielectric(color='#FFCCCC')
+    with(
+      df[i,],
+      cube(x, y/2, z, xwidth=.3, zwidth=.3, ywidth=y, material=mat)
+      # dplyr::bind_rows(
+      #   cylinder(x, y/2, z, length=y, material=mat, radius=.1),
+      #   disk(x, y, z, material=mat, radius=.1),
+      #   disk(x, 0, z, material=mat, radius=.1, flipped=TRUE)
+      # ) 
+    )
+  }
+)
+scn <- dplyr::bind_rows(
+  sphere(
+    y=8, z = 0, x = 0, radius = .2,
+    material = diffuse(lightintensity = 1250, implicit_sample = TRUE)
+  ),
+  group_objects(dplyr::bind_rows(cyls), group_translate=c(-.5, 0, -.5)),
+  xz_rect(xwidth=5, zwidth=5, y=-0.0001,
+    material=diffuse(color='white', checkercolor='black', checkerperiod=.25)
+  )
+)
+rez <- 400
+samp <- rez / 2
+render_scene(
+  scn,
+  width=rez, height=rez, samples=samp,
+  lookfrom=c(-4, 4, 2),
+  lookat=c(0, 0, 0),
+  aperture=0,
+  fov=20,
+  ortho_dimensions=c(1.25,1.25),
+  camera_up=c(1,0,0),
+  clamp=3
+  # file='~/Downloads/mesh-viz/test.png'
   # backgroundimage='~/Downloads/blank.png'
 )
 
@@ -692,7 +752,7 @@ library(rgl)
 par3d(windowRect=c(20,20,400,400))
 mesh.obj.3 <- tris_to_obj(tris3, map)
 writeLines(mesh.obj.3, f3)
-plot3d(readOBJ(f3), col='grey50')
+plot3d(readOBJ(f1), col='grey50')
 
 render_scene(
   bind_rows(
