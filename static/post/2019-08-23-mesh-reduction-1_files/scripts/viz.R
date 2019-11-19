@@ -60,11 +60,12 @@ if(FALSE) {
 }
 # map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
 
-# Mx to data frame, scale of 0 doesn't rescale
+# Mx to data frame, scale of 0 doesn't rescale,
 
 mx_to_df <- function(mx, scale=rep(1, 3)) {
   df <- reshape2::melt(mx)
-  names(df) <- c('x', 'y', 'z')
+  names(df) <- c('y', 'x', 'z')
+  df <- df[,c('x', 'y', 'z')]
   if(length(scale)) df[] <- Map(rescale, df, scale, numeric(3))
   df
 }
@@ -517,11 +518,11 @@ scn <- dplyr::bind_rows(
     group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
     pivot_point=numeric(3)
   ),
-  # group_objects(
-  #   seg1,
-  #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
-  #   pivot_point=numeric(3)
-  # ),
+  group_objects(
+    seg1,
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    pivot_point=numeric(3)
+  ),
   # group_objects(
   #   seg2,
   #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
@@ -537,7 +538,7 @@ scn <- dplyr::bind_rows(
   # sphere(x=1, z=1, radius=0.125, material=diffuse(color='yellow')),
   xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
 )
-rez <- 200
+rez <- 100
 samp <- rez / 2
 render_scene(
   scn,
