@@ -136,6 +136,8 @@ plot(1:10, 1:10)
 * rgl
 * rayrender
 * Agafonkin
+* reshape2
+* ggplot2
 
 
 ## System Info

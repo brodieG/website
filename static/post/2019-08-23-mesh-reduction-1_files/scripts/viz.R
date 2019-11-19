@@ -7,6 +7,7 @@ source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin-vec.R')
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
+  if(range <= 0) x else 
   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
    (1 - range) * center
 
@@ -59,12 +60,13 @@ if(FALSE) {
 }
 # map <- matrix(c(0, 0, 0, 0, 1, 0, 0, 1, 0), nrow=3)
 
-# Mx to data frame
+# Mx to data frame, scale of 0 doesn't rescale
 
-mx_to_df <- function(mx, scale=rep(, 3)) {
+mx_to_df <- function(mx, scale=rep(1, 3)) {
   df <- reshape2::melt(mx)
+  names(df) <- c('x', 'y', 'z')
   if(length(scale)) df[] <- Map(rescale, df, scale, numeric(3))
-  df[, c('x', 'y', 'z')]
+  df
 }
 # Turn an elevation matrix into a triangle "mesh" stored in list matrix format
 
@@ -468,32 +470,31 @@ shard1 <- xyz_to_shard(xyz1, depth=.03, bevel=45)
 obj1 <- shard_to_obj(shard1)
 writeLines(obj1, f1)
 
-# manually compute the errors as too much of a pita to do auto since the
-# actual error does the child error carry over
+# Need to recompute middle error b/c of auto-carryover
 
-errs <- list(
-  list(x=.5, z=0, y=sum(map[c(1,3)]/2) - map[2], y0=map[2]),
-  list(x=0, z=-.5, y=sum(map[c(1,7)]/2) - map[4], y0=map[4]),
-  list(x=-.5, z=0, y=sum(map[c(7,9)]/2) - map[8], y0=map[8]),
-  list(x=0, z=0.5, y=sum(map[c(9,3)]/2) - map[6], y0=map[2])
-)
 errs <- compute_error(map)
 errs[5] <- (map[1] + map[9]) / 2 - map[5]
-
-errors2 <- compute_error(map2)
-
-err.cyl <- lapply(errs,
-  function(x) {
+errs.df <- mx_to_df(errs, scale=c(1, 1, 0))
+errs.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
+errs.df <- subset(errs.df, z > 0)
+errs.cyl <- dplyr::bind_rows(
+  lapply(
+  seq_len(nrow(errs.df)),
+  function(i) {
+    rad <- .05
     mat <- diffuse(color='red')
-    rad <- 0.05
+    ang <- c(-90,0,0)
     with(
-      x,
+      errs.df[i,],
       add_object(
-        cylinder(x, y0 + y/2, z, length=y, material=mat, radius=rad),
-        disk(x, y0 + y, z, material=mat, radius=rad)
-      )
-    )
-} )
+        cylinder(
+          x, y, z0 + z/2, radius=rad, angle=ang, length=z,
+          material=diffuse(color='red')
+        ),
+        disk(x, y, z0, radius=rad, mat=mat, angle=ang)
+    ) )
+  }
+) )
 
 zoff <- .5
 light.narrow <- sphere(
@@ -511,7 +512,11 @@ scn <- dplyr::bind_rows(
     group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
     pivot_point=numeric(3)
   ),
-  # err.cyl,
+  group_objects(
+    errs.cyl,
+    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    pivot_point=numeric(3)
+  ),
   # group_objects(
   #   seg1,
   #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
@@ -540,7 +545,7 @@ render_scene(
   lookfrom=c(0, 4, 1),
   lookat=c(0, 0.5, 0),
   # lookat=c(0, 0, 0),
-  fov=20,
+  fov=25,
   # ortho_dimensions=c(1.5,1.5),
   # lookat=c(0, zscl/2, 0),
   aperture=0,
