@@ -425,23 +425,16 @@ stop('loaded')
 library(rayrender)
 
 gold <- '#CCAC00'
-metal.col <-  c(gold, 'grey35', '#CC3322')
+metal.col <-  c(gold, 'grey75', '#CC3322')
 mesh.colors <- metal.col
 seg.rad <- .0025
 seg.rad <- .01
-seg.mat1 <- dielectric(color=metal.col[1])
-seg.mat2 <- dielectric(color=metal.col[2])
-seg.mat3 <- dielectric(color=metal.col[3])
+seg.mat1 <- metal(color=metal.col[1])
+seg.mat2 <- metal(color=metal.col[2])
+seg.mat3 <- metal(color=metal.col[3])
 
 zoff <- +.5
 
-map <- matrix(
-  c(
-     0, .1, .01,
-    .5,  1, .05,
-    .1, .2, .05
-  ), 3, byrow=TRUE
-)
 map <- matrix(
   c(
      1.0, 0.9, 0.9,
@@ -449,7 +442,6 @@ map <- matrix(
      0.9, 0.7, 0.9
   ), 3, byrow=TRUE
 )
-
 tris1 <- list(
   matrix(
     c(
@@ -467,95 +459,118 @@ seg2 <- tris_to_seg(tris2, map, material=seg.mat2, radius=seg.rad)
 seg3 <- tris_to_seg(tris3, map, material=seg.mat3, radius=seg.rad)
 
 xyz1 <- tris_to_xyz(tris1, map, c(1, 1, zscl))
-shard1 <- xyz_to_shard(xyz1, depth=.03, bevel=45)
+shard1 <- xyz_to_shard(xyz1, depth=.025, bevel=45)
 obj1 <- shard_to_obj(shard1)
 writeLines(obj1, f1)
 
 # Need to recompute middle error b/c of auto-carryover
 
-errs <- compute_error(map)
-errs[5] <- (map[1] + map[9]) / 2 - map[5]
-errs.df <- mx_to_df(errs, scale=c(1, 1, 0))
-errs.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
-errs.df <- subset(errs.df, z > 0)
-errs.cyl <- dplyr::bind_rows(
-  lapply(
-  seq_len(nrow(errs.df)),
-  function(i) {
-    rad <- .05
-    mat <- diffuse(color='red')
-    ang <- c(-90,0,0)
-    with(
-      errs.df[i,],
-      add_object(
-        cylinder(
-          x, y, z0 + z/2, radius=rad, angle=ang, length=z,
-          material=diffuse(color='red')
-        ),
-        disk(x, y, z0, radius=rad, mat=mat, angle=ang)
-    ) )
-  }
-) )
+errs2 <- errs3 <- compute_error(map)
+errs2[5] <- 0
+errs3[5] <- (map[1] + map[9]) / 2 - map[5]
+errs3[c(2,4,6,8)] <- 0
+
+errs2.df <- mx_to_df(errs2, scale=c(1, 1, 0))
+errs2.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
+errs3.df <- mx_to_df(errs3, scale=c(1, 1, 0))
+errs3.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
+errs_to_cyl <- function(errs.df, mat) {
+  errs.df <- subset(errs.df, z > 0)
+  dplyr::bind_rows(
+    lapply(
+      seq_len(nrow(errs.df)),
+      function(i) {
+        rad <- .05
+        ang <- c(-90,0,0)
+        with(
+          errs.df[i,],
+          add_object(
+            cylinder(
+              x, y, z0 + z/2, radius=rad, angle=ang, length=z,
+              material=mat
+            ),
+            disk(x, y, z0 + z, radius=rad, mat=mat, angle=ang)
+        ) )
+      }
+  ) )
+}
+errs2.cyl <- errs_to_cyl(errs2.df, diffuse(color='yellow'))
+errs3.cyl <- errs_to_cyl(errs3.df, diffuse(color='darkgreen'))
 
 zoff <- .5
 light.narrow <- sphere(
-  y=8, z = 6, x = 2, radius = .2,
-  material = diffuse(lightintensity = 2000, implicit_sample = TRUE)
+  y=8, z = 6, x = 0, radius = .2,
+  material = diffuse(lightintensity = 3000, implicit_sample = TRUE)
 )
 light.old <- sphere(
   y=2, z = 3, x = 0, radius = .2,
   material = diffuse(lightintensity = 500, implicit_sample = TRUE)
 )
+gang <- c(90, 0, 0)
+sobj <- obj_model(filename=f1, material=dielectric('#CCCCCC'))
+x1 <- -1.75
+x2 <- -.5
+x3 <- +.75
+
 scn <- dplyr::bind_rows(
   light.narrow,
   group_objects(
-    obj_model(filename=f1, material=dielectric('#CCCCCC')),
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    sobj, group_angle=gang, group_translate=c(x1, 0, zoff),
     pivot_point=numeric(3)
   ),
   group_objects(
-    errs.cyl,
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    sobj, group_angle=gang, group_translate=c(x2, 0, zoff),
     pivot_point=numeric(3)
   ),
   group_objects(
-    seg1,
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    sobj, group_angle=gang, group_translate=c(x3, 0, zoff),
     pivot_point=numeric(3)
   ),
-  # group_objects(
-  #   seg2,
-  #   group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
-  #   pivot_point=numeric(3)
-  # ),
   group_objects(
-    seg3,
-    group_angle=c(90, 0, 0), group_translate=c(-.5, 0, zoff),
+    seg1, group_angle=gang, group_translate=c(x1, seg.rad/2, zoff),
     pivot_point=numeric(3)
   ),
-  # group_objects(dplyr::bind_rows(cyls), group_translate=c(-.5, 0, -.5)),
+  group_objects(
+    seg2, group_angle=gang, group_translate=c(x2, seg.rad/2, zoff),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    seg3, group_angle=gang, group_translate=c(x3, seg.rad/2, zoff),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    errs2.cyl, group_angle=gang, group_translate=c(x2, seg.rad/2, zoff),
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    errs3.cyl, group_angle=gang, group_translate=c(x3, seg.rad/2, zoff),
+    pivot_point=numeric(3)
+  ),
   # sphere(radius=0.125, material=diffuse(color='green')),
   # sphere(x=1, z=1, radius=0.125, material=diffuse(color='yellow')),
-  xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
+  xz_rect(xwidth=15, zwidth=5, material=diffuse(color='white')),
+  xz_rect(
+    xwidth=15, zwidth=5, y=10, flipped=TRUE, 
+    material=diffuse(color='white', lightintensity=2)
+  )
 )
-rez <- 100
+rez <- 1200
 samp <- rez / 2
 render_scene(
-  scn,
-  width=rez, height=rez, samples=samp,
-  lookfrom=c(0, 4, 1),
-  lookat=c(0, 0.5, 0),
-  # lookat=c(0, 0, 0),
+  scn, height=rez/400*150, width=rez, samples=samp,
+  lookfrom=c(0, 4, .5),
+  lookat=c(0, 0, -.125),
   fov=25,
-  # ortho_dimensions=c(1.5,1.5),
-  # lookat=c(0, zscl/2, 0),
+  # fov=0,
+  # ortho_dimensions=c(4.5,1.5),
   aperture=0,
   camera_up=c(0,1,0),
-  clamp=3
-  # file='~/Downloads/mesh-viz/simple-mesh.png'
+  clamp=3,
+  file='~/Downloads/mesh-viz/simple-mesh-3.png'
   # backgroundimage='~/Downloads/blank.png'
 )
 
+stop()
 df <- mx_to_df(map)
 cyls <- lapply(
   seq_len(nrow(df)),
@@ -597,120 +612,6 @@ render_scene(
   # file='~/Downloads/mesh-viz/test.png'
   # backgroundimage='~/Downloads/blank.png'
 )
-
-
-# - Playing With Glass ---------------------------------------------------------
-
-f <- tempfile()
-map <- matrix(
-  c(
-     0, .1,   0,
-    .5,  1, .05,
-    .1, .2, .05
-  ), 3, byrow=TRUE
-)
-set.seed(1221)
-map <- matrix(runif(25), 5)
-map <- vsq
-seg.rad <- .0125
-seg.mat <- metal(color='gold')
-zoff <- .5
-
-errors <- compute_error(map)
-
-tris0 <- extract_mesh2(errors, .0)
-seg0 <- tris_to_seg(tris0, map, radius=seg.rad, material=seg.mat)
-mesh.obj <- tris_to_obj(tris0, map)
-writeLines(mesh.obj, f)
-
-# tris1 <- extract_mesh2(errors, 5)
-tris1 <- list(matrix(c(1,3,5,1,5,7,7,5,9,9,5,3), 3))
-tris2 <- list(matrix(c(1,3,9), 3))
-xyz1 <- tris_to_xyz(tris1, map, rep(1, 3))
-xyz2 <- tris_to_xyz(tris2, map, rep(1, 3))
-shard1 <- xyz_to_shard(xyz1, depth=.025, bevel=45, flatten=TRUE)
-shard2 <- xyz_to_shard(xyz2, depth=.025, bevel=45, flatten=TRUE)
-
-if(FALSE) {
-  f1 <- tempfile()
-  f2 <- tempfile()
-}
-obj1 <- shard_to_obj(shard1)
-obj2 <- shard_to_obj(shard2)
-writeLines(obj1, f1)
-writeLines(obj2, f2)
-
-map.df <- mx_to_df(map)
-spheres <- lapply(
-  seq_len(nrow(map.df)),
-  function(i)
-    sphere(
-      map.df[i, 'x'], map.df[i, 'z'], map.df[i, 'y'], radius=.025,
-      material=metal()
-) )
-scn <- dplyr::bind_rows(
-  sphere(
-    y=8, z = 4, x = 3, radius = .2,
-    material = diffuse(lightintensity = 200*25, implicit_sample = TRUE)
-  ),
-  group_objects(
-    obj_model(filename=f1, material=dielectric(color='#AAAAFF')),
-    group_angle=c(90, -90, 0), group_translate=c(-.5, -.1, -.5),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    obj_model(filename=f2, material=dielectric(color='#AAAAFF')),
-    group_angle=c(90, -90, 0), group_translate=c(-.5, 0, -.5),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    dplyr::bind_rows(
-      segment(
-        unlist(subset(map.df, x==1& z==1)), unlist(subset(map.df, x==0& z==0)),
-        material=seg.mat, radius=seg.rad
-      ),
-      segment(
-        unlist(subset(map.df, x==1& z==1)), unlist(subset(map.df, x==0& z==1)),
-        material=seg.mat, radius=seg.rad
-      ),
-      segment(
-        unlist(subset(map.df, x==0& z==0)), unlist(subset(map.df, x==0& z==1)),
-        material=seg.mat, radius=seg.rad
-      )
-    ),
-    group_angle=c(0, 0, 0),
-    group_translate=c(-.5, 0, -.5)
-  ),
-  group_objects(
-    dplyr::bind_rows(spheres),
-    group_angle=c(0, 0, 0),
-    group_translate=c(-.5, 0, -.5)
-  ),
-  xz_rect(
-    y=-.15, xwidth=5, zwidth=5, material=diffuse(
-      color='grey50'
-      # color='white', checkercolor='green', checkerperiod=0.25
-    )
-  )
-)
-rez <- 400
-samples <- rez/2
-render_scene(
-  scn,
-  # ambient_light=TRUE,
-  width=rez, height=rez, samples=samples,
-  lookfrom=c(.5, 4, 1),
-  lookat=c(0, 0, 0),
-  aperture=0,
-  fov=20,
-  ortho_dimensions=c(1.25,1.25),
-  clamp=3,
-  file='~/Downloads/mesh-viz/test-2.png',
-  # backgroundimage='~/Downloads/blank.png',
-  camera_up=c(1,0,0)
-)
-
-
 # - Original With Glass --------------------------------------------------------
 
 # This one doesn't correctly do the glass pane, it just starts the dielectric

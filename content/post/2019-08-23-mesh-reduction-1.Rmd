@@ -77,7 +77,17 @@ tolerance:
 If a triangle too coarse for the desired level of fidelity, it is broken up into
 two smaller triangles.  If those triangles are still too coarse, they too are
 broken up.  The approximation error is measured at the middle of the hypotenuse
-of each triangle:
+of each triangle.  Here we show the errors on a simplified 3x3 elevation
+surface:
+
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/simple-mesh-3-abreast-1.png'
+/>
+
+At the most granular level (gold) there is no error as the mesh corresponds
+exactly to the elevation surface.  At the first level of approximation (silver)
+the error is shown as checkered bars emanating from the middle of the
+hypotenuses of the mesh triangles.
 
 <!--
 Show 
