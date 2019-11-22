@@ -52,8 +52,15 @@ keeping the approximation error within certain tolerances.  For example here we
 approximate the beloved `volcano` mesh at three increasingly relaxed tolerance
 levels:
 
+<!--
+Maybe better here would be to have a full resolution version of first level of
+approx on volcano, with glass, and then show the increasing levels with the
+original glass?  Should we use the full mesh of volcano, or the already
+partially reduced one?
+-->
+
 <img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-5.png'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/glass-and-mesh-3-f-merge.png'
 />
 
 If we flatten the elevation component of the meshes and change our viewpoint it
@@ -76,8 +83,12 @@ tolerance:
 
 If a triangle too coarse for the desired level of fidelity, it is broken up into
 two smaller triangles.  If those triangles are still too coarse, they too are
-broken up.  The approximation error is measured at the middle of the hypotenuse
-of each triangle.  Here we show the errors on a simplified 3x3 elevation
+broken up.
+
+In order to decide whether an approximate is faithful enough we measure the
+error between each level of mesh approximation and the surface at the middle of
+the hypotenuse of each triangle.  Here we show the errors on a simplified 3x3
+elevation
 surface:
 
 <img class='aligncenter'
@@ -86,12 +97,24 @@ surface:
 
 At the most granular level (gold) there is no error as the mesh corresponds
 exactly to the elevation surface.  At the first level of approximation (silver)
-the error is shown as checkered bars emanating from the middle of the
-hypotenuses of the mesh triangles.
+the error is shown as checkered cylinders.
+
+Because child triangles are formed from parent ones by splitting the parent at
+the middle of the hypotenuse, and errors are measured at this point, errors from
+different levels of approximation will never overlap.  This allows us to store
+all the errors in a single matrix.
 
 <!--
-Show 
+Show the matrix with the errors?  Also show two more with different water
+levels.
 -->
+
+Suppose we tolerate errors that are below different "water-levels".  In the
+middle case every approximation exceeds the desired threshold so the
+approximated surface will look the same as the original.  In the last case
+though only one approximation is inadequate.  One possible way to interpret this
+data to produce our approximate mesh is to draw the lowest detail triangles 
+
 
 can be broken up 
 replaced

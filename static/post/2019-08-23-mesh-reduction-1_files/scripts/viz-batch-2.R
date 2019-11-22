@@ -46,8 +46,8 @@ xoff <- +.5
 
 scn.base <- dplyr::bind_rows(
   sphere(
-    y=4, z = 4, x = 0, radius = .2,
-    material = diffuse(lightintensity = 1000, implicit_sample = TRUE)
+    y=4, z = 2, x = 1, radius = .2,
+    material = diffuse(lightintensity = 800, implicit_sample = TRUE)
   ),
   group_objects(
     obj_model(f4, material=dielectric(color='#CCCCDD')),
@@ -58,8 +58,8 @@ scn.base <- dplyr::bind_rows(
   xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white')),
   xz_rect(y=5, xwidth=15, zwidth=15, material=diffuse(color='white'), flipped=TRUE)
 )
-rez <- 200
-samp <- rez
+rez <- 400
+samp <- rez/2
 scn.1 <- add_object(
   scn.base,
   group_objects(
@@ -82,29 +82,19 @@ scn.3 <- add_object(
   )
 )
 # scns <- list(scn.1, scn.2, scn.3)
-scns <- list(scn.1)
-lapply(
-  seq_along(scns),
-  function(i) {
-    writeLines(sprintf("Starting frame %d at %s", i, as.character(Sys.time())))
-    render_scene(
-      scns[[i]],
-      width=rez, height=rez, samples=samp,
-      lookfrom=c(0, 4, 2), lookat=c(0, .25, 0), aperture=0, fov=17,
-      clamp=3,
-      file=sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png', i)
-    )
-  }
+scns <- list(scn.3)
+render_scenes(
+  scns,
+  width=rez, height=rez * 1, samples=samp,
+  lookfrom=c(0, 4, 2), lookat=c(-.1, .25, 0), aperture=0, fov=17,
+  clamp=3,
+  filename='~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png'
 )
+
 stop()
 
-a <- png::readPNG(sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png', 1))
-b <- png::readPNG(sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png', 2))
-c <- png::readPNG(sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png', 3))
+png.in <- sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png', 1:3)
+png.out <- '~/Downloads/mesh-viz/glass-and-mesh-3-f-merge.png'
+cbind_pngs(png.in, png.out)
 
-d <- array(numeric(), c(800,800*3,3))
-d[1:800,1:800,1:3] <- a
-d[1:800,801:1600,1:3] <- b
-d[1:800,1601:2400,1:3] <- c
 
-png::writePNG(d, sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-merge.png'))

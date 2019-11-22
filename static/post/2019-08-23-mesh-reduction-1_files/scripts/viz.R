@@ -136,6 +136,10 @@ mesh_to_obj <- function(mesh) {
 # But just remember that rows are 'backward', i.e. increasing rows go down in
 # the matrix, but up in the plots.  Would be good to make all this consistent
 # sometime.
+#
+# We need `map` to get row/col counts, but also to have access to the full
+# height map so whe nwe scale we scale relative to the full heightmap, not the
+# portion of it captured by `tris`.
 
 tris_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
@@ -411,6 +415,38 @@ mesh_to_seg <- function(
 ) {
   xyz_to_seg(mesh_to_xyz(mesh, map, scale), material, radius, angle, translate)
 }
+# Render a list of scenes into files
+
+render_scenes <- function(scene, filename='scene-%d.png', ...) {
+  lapply(
+    seq_along(scene),
+    function(i) {
+      writeLines(sprintf("Starting frame %d at %s", i, as.character(Sys.time())))
+      render_scene(scene=scene[[i]], filename=sprintf(filename, i), ...)
+} ) }
+# Read in pngs, and write them back stitched together side by side
+
+cbind_pngs <- function(input, output) {
+  vetr(character(), character(1L))
+  pngs <- lapply(png::readPNG(input))
+  png.dims <- vapply(pngs, dim, numeric(3))
+  if(length(unique(png.dims[1,])) != 1) stop("different row counts on pngs")
+  if(length(unique(png.dims[3,])) != 1) stop("different chanel counts on pngs")
+
+  cols <- sum(png.dims[2,])
+  colc <- cumsum(png.dims[2,])
+  d <- array(numeric(), c(png.dims[1,1],sum(png.dims[2,]),png.dims[1,3]))
+
+  for(i in seq_along(cols)) d[,1:colc[i],] <- pngs[[i]]
+  png::writePNG(d, output)
+}
+
+
+# - Base Colors ----------------------------------------------------------------
+
+gold <- '#CCAC00'
+metal.col <-  c(gold, 'grey75', '#CC3322')
+mesh.colors <- metal.col
 
 stop('loaded')
 
@@ -418,312 +454,12 @@ stop('loaded')
 # - Recorded  -------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
-# - Test it Out ----------------------------------------------------------------
-
-# seg.0 <- mesh_to_seg(mesh.tri.s, map, radius=seg.rad, material=diffuse(color='red'))
-
-library(rayrender)
-
-gold <- '#CCAC00'
-metal.col <-  c(gold, 'grey75', '#CC3322')
-mesh.colors <- metal.col
-seg.rad <- .0025
-seg.rad <- .01
-seg.mat1 <- metal(color=metal.col[1])
-seg.mat2 <- metal(color=metal.col[2])
-seg.mat3 <- metal(color=metal.col[3])
-
-zoff <- +.5
-
-map <- matrix(
-  c(
-     1.0, 0.9, 0.9,
-     0.0, 0.5, 0.8,
-     0.9, 0.7, 0.9
-  ), 3, byrow=TRUE
-)
-tris1 <- list(
-  matrix(
-    c(
-      1,5,2, 1,4,5, 3,6,5, 3,2,5,
-      7,4,5, 7,8,5, 9,8,5, 9,5,6
-    ),
-    nrow=3
-) )
-tris2 <- list(matrix(c(1,3,5, 1,5,7, 7,5,9, 9,5,3), 3))
-tris3 <- list(matrix(c(1,3,9, 1,7,9), 3))
-zscl <- 1
-
-seg1 <- tris_to_seg(tris1, map, material=seg.mat1, radius=seg.rad, scale=c(1,1,zscl))
-seg2 <- tris_to_seg(tris2, map, material=seg.mat2, radius=seg.rad)
-seg3 <- tris_to_seg(tris3, map, material=seg.mat3, radius=seg.rad)
-
-xyz1 <- tris_to_xyz(tris1, map, c(1, 1, zscl))
-shard1 <- xyz_to_shard(xyz1, depth=.025, bevel=45)
-obj1 <- shard_to_obj(shard1)
-writeLines(obj1, f1)
-
-# Need to recompute middle error b/c of auto-carryover
-
-errs2 <- errs3 <- compute_error(map)
-errs2[5] <- 0
-errs3[5] <- (map[1] + map[9]) / 2 - map[5]
-errs3[c(2,4,6,8)] <- 0
-
-errs2.df <- mx_to_df(errs2, scale=c(1, 1, 0))
-errs2.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
-errs3.df <- mx_to_df(errs3, scale=c(1, 1, 0))
-errs3.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
-errs_to_cyl <- function(errs.df, mat) {
-  errs.df <- subset(errs.df, z > 0)
-  dplyr::bind_rows(
-    lapply(
-      seq_len(nrow(errs.df)),
-      function(i) {
-        rad <- .05
-        ang <- c(-90,0,0)
-        with(
-          errs.df[i,],
-          add_object(
-            cylinder(
-              x, y, z0 + z/2, radius=rad, angle=ang, length=z,
-              material=mat
-            ),
-            disk(x, y, z0 + z, radius=rad, mat=mat, angle=ang)
-        ) )
-      }
-  ) )
-}
-errs2.cyl <- errs_to_cyl(errs2.df, diffuse(color='yellow'))
-errs3.cyl <- errs_to_cyl(errs3.df, diffuse(color='darkgreen'))
-
-zoff <- .5
-light.narrow <- sphere(
-  y=8, z = 6, x = 0, radius = .2,
-  material = diffuse(lightintensity = 3000, implicit_sample = TRUE)
-)
-light.old <- sphere(
-  y=2, z = 3, x = 0, radius = .2,
-  material = diffuse(lightintensity = 500, implicit_sample = TRUE)
-)
-gang <- c(90, 0, 0)
-sobj <- obj_model(filename=f1, material=dielectric('#CCCCCC'))
-x1 <- -1.75
-x2 <- -.5
-x3 <- +.75
-
-scn <- dplyr::bind_rows(
-  light.narrow,
-  group_objects(
-    sobj, group_angle=gang, group_translate=c(x1, 0, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    sobj, group_angle=gang, group_translate=c(x2, 0, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    sobj, group_angle=gang, group_translate=c(x3, 0, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    seg1, group_angle=gang, group_translate=c(x1, seg.rad/2, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    seg2, group_angle=gang, group_translate=c(x2, seg.rad/2, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    seg3, group_angle=gang, group_translate=c(x3, seg.rad/2, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    errs2.cyl, group_angle=gang, group_translate=c(x2, seg.rad/2, zoff),
-    pivot_point=numeric(3)
-  ),
-  group_objects(
-    errs3.cyl, group_angle=gang, group_translate=c(x3, seg.rad/2, zoff),
-    pivot_point=numeric(3)
-  ),
-  # sphere(radius=0.125, material=diffuse(color='green')),
-  # sphere(x=1, z=1, radius=0.125, material=diffuse(color='yellow')),
-  xz_rect(xwidth=15, zwidth=5, material=diffuse(color='white')),
-  xz_rect(
-    xwidth=15, zwidth=5, y=10, flipped=TRUE, 
-    material=diffuse(color='white', lightintensity=2)
-  )
-)
-rez <- 1200
-samp <- rez / 2
-render_scene(
-  scn, height=rez/400*150, width=rez, samples=samp,
-  lookfrom=c(0, 4, .5),
-  lookat=c(0, 0, -.125),
-  fov=25,
-  # fov=0,
-  # ortho_dimensions=c(4.5,1.5),
-  aperture=0,
-  camera_up=c(0,1,0),
-  clamp=3,
-  file='~/Downloads/mesh-viz/simple-mesh-3.png'
-  # backgroundimage='~/Downloads/blank.png'
-)
 
 stop()
-df <- mx_to_df(map)
-cyls <- lapply(
-  seq_len(nrow(df)),
-  function(i) {
-    mat <- dielectric(color='#FFCCCC')
-    with(
-      df[i,],
-      cube(x, z/2, y, xwidth=.3, zwidth=.3, ywidth=z, material=mat)
-      # dplyr::bind_rows(
-      #   cylinder(x, y/2, z, length=y, material=mat, radius=.1),
-      #   disk(x, y, z, material=mat, radius=.1),
-      #   disk(x, 0, z, material=mat, radius=.1, flipped=TRUE)
-      # )
-    )
-  }
-)
-scn <- dplyr::bind_rows(
-  sphere(
-    y=8, z = 0, x = 0, radius = .2,
-    material = diffuse(lightintensity = 1250, implicit_sample = TRUE)
-  ),
-  group_objects(dplyr::bind_rows(cyls), group_translate=c(-.5, 0, -.5)),
-  xz_rect(xwidth=5, zwidth=5, y=-0.0001,
-    material=diffuse(color='white', checkercolor='black', checkerperiod=.25)
-  )
-)
-rez <- 400
-samp <- rez / 2
-render_scene(
-  scn,
-  width=rez, height=rez, samples=samp,
-  lookfrom=c(-4, 4, 2),
-  lookat=c(0, .5, 0),
-  aperture=0,
-  fov=15,
-  ortho_dimensions=c(1.25,1.25),
-  camera_up=c(1,0,0),
-  clamp=3
-  # file='~/Downloads/mesh-viz/test.png'
-  # backgroundimage='~/Downloads/blank.png'
-)
-# - Original With Glass --------------------------------------------------------
-
-# This one doesn't correctly do the glass pane, it just starts the dielectric
-# at the surface and lets it continue
-
-f <- tempfile()
-f2 <- tempfile()
-f3 <- tempfile()
-
-vsq <- matrix(0, 65, 65)
-vsq[1:65, 3:63] <- volcano[1:65,1:61]
-vsq[1:65, 1:2] <- volcano[1:65, 1]
-vsq[1:65, 64:65] <- volcano[1:65, 61]
-
-map <- vsq
-errors <- compute_error(map)
-elmax <- diff(range(map))
-tris0 <- extract_mesh2(errors, elmax/50)
-tris2 <- extract_mesh2(errors, elmax/20)
-tris3 <- extract_mesh2(errors, elmax/3)
-# plot_tri_ids(tris, dim(errors))
-
-# rayrender a mesh in list format
-
-mesh.tri <- mx_to_mesh(vsq)
-mesh.tri.s <- scale_mesh(mesh.tri)
-
-# mesh.obj <- mesh_to_obj(mesh.tri.s)
-mesh.obj <- tris_to_obj(tris0, map)
-writeLines(mesh.obj, f)
-mesh.obj.2 <- tris_to_obj(tris2, map)
-writeLines(mesh.obj.2, f2)
-mesh.obj.3 <- tris_to_obj(tris3, map)
-writeLines(mesh.obj.3, f3)
-
-seg.rad <- .0025
-seg.mat <- metal(color='gold')
-
-zoff <- +.5
-
-scn <- sphere(
-  y=8, z = 4, x = 0, radius = .2,
-  material = diffuse(lightintensity = 2000, implicit_sample = TRUE)
-)
-scn <- add_object(
-  scn,
-  group_objects(
-    # add_object(seg0, obj_model(filename=f, material=diffuse(color='grey50'))),
-    # add_object(seg0, obj_model(filename=f, material=dielectric())),
-    seg0,
-    group_angle=c(90, 90, 0), group_translate=c(-.75, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn,
-  group_objects(
-    #add_object(seg2, obj_model(filename=f2, material=dielectric())),
-    seg2,
-    group_angle=c(90, 90, 0), group_translate=c(+0.5, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn,
-  group_objects(
-    #add_object(seg3, obj_model(filename=f3, material=dielectric())),
-    seg3,
-    group_angle=c(90, 90, 0), group_translate=c(+1.75, 0, zoff),
-    pivot_point=numeric(3)
-) )
-scn <- add_object(
-  scn, xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white'))
-)
-render_scene(
-  scn,
-  # width=400, height=400, samples=400,
-  width=800, height=300, samples=2000,
-  # width=200, height=75, samples=100,
-  lookfrom=c(0, 4, 2),
-  lookat=c(0, 0, 0),
-  aperture=0, fov=0,
-  ortho_dimensions=c(4,1.5),
-  clamp=3,
-  file='~/Downloads/mesh-viz/three-abreast.png'
-  # backgroundimage='~/Downloads/blank.png'
-)
 
 library(rgl)
 par3d(windowRect=c(20,20,400,400))
 mesh.obj.3 <- tris_to_obj(tris3, map)
 writeLines(mesh.obj.3, f3)
 plot3d(readOBJ(f1), col='grey50')
-
-render_scene(
-  bind_rows(
-    sphere(x=0, y=5, z=5, material=diffuse(lightintensity=300)),
-    xz_rect(xwidth=10, zwidth=10, y=-1, material=diffuse(checkercolor='grey10')),
-    cylinder(
-      length=1, x=c(-.5), radius=.125, material=metal(color='red')
-    ),
-    cylinder(
-      length=1, x=c(0), radius=.125, material=metal(color='red'),
-      angle=c(45, 45, 45), order_rotation=c(1, 2, 3)
-    ),
-    cylinder(
-      length=1, x=c(.5), radius=.125, material=diffuse(color='red'),
-      angle=c(45, 45, 45), order_rotation=c(2, 1, 3)
-    ),
-    sphere(
-      x=c(-.5,0,.5), y=0, z=0, radius=.2, material=dielectric(color='green')
-    )
-  ),
-  lookfrom=c(0, 2, 4),
-  width=200, height=200, samples=400
-)
 
