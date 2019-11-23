@@ -3,7 +3,6 @@
 # matrix that has most error on the top left part as that is done last
 # it's shown as plotted, and re-ordered for actual use
 
-library(data.table)
 # map <- matrix(c(
 #   0, 3, 0,
 #   3, 1, 2,
@@ -22,7 +21,8 @@ library(watcher)
 coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
 id.vars <- c('.id', '.line')
 vars <- c(coord.vars, 'errors', 'id', 'i')
-xx <- watch(errors_rtin2, vars)(map)
+errors_watched <- watch(errors_rtin2, vars)
+xx <- errors_watched(map)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
@@ -145,7 +145,12 @@ dat.err[['x']] <- dat.err[['x']] - 1L
 dat.err[['y']] <- dat.err[['y']] - 1L
 
 dat.meta <- melt(as.data.frame(zz.vec[c('i', 'id', id.vars)]), id.vars=id.vars)
-dat.meta <- as.data.table(dat.meta)[, paste0(variable, ': ', value, collapse=', '), .id]
+dat.meta <- stack(
+  lapply(
+    split(dat.meta, dat.meta$.id), 
+    function(x) with(x, paste0(variable, ': ', value, collapse=', '))
+) )
+names(dat.meta)[2] <- '.id'
 dat.meta[['type']] <- 'Coords'
 
 # - Plot -----------------------------------------------------------------------
@@ -163,10 +168,10 @@ stop('about to draw stuff')
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-frames <- 1:3
+frames <- 1:100
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
-  meta=as.data.frame(dat.meta), lines=dat.lines, s3=dat.s3
+  meta=dat.meta, lines=dat.lines, s3=dat.s3
 )
 for(i in frames) {
   cat(sprintf("\rFrame %04d", i))
@@ -194,7 +199,7 @@ for(i in frames) {
       # aes(x=-2.55, y=y*.1, label=code),
       aes(
         x=-(nrow(map)-1)/.7,
-        y=y*(nrow(map)-1)/cwindow*2.1 + (nrow(map)-1) * .1, label=code
+        y=y*(nrow(map)-1)/cwindow*2.1 + (nrow(map)-1) * .25, label=code
       ),
       hjust=0, family='mono', color=d$lines$highlight
     ) +
@@ -214,7 +219,7 @@ for(i in frames) {
       panel.grid=element_blank(),
       text=element_text(size=16)
     ) +
-    ggtitle(sprintf('Frame %04d/%d (%s)', i, max(frames), d$meta$V1)) +
+    ggtitle(sprintf('Frame %04d/%d (%s)', i, max(frames), d$meta$values)) +
     scale_size(limits=c(0, max(xx, na.rm=TRUE)), range=c(0,10)) +
     NULL
   ggsave(
@@ -223,7 +228,6 @@ for(i in frames) {
     width=width/dpi, height=height/dpi, units='in', device='png',
     dpi=dpi
   )
-
 }
 # ffmpeg -framerate 8 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
 #   open out.mp4
