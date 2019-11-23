@@ -46,11 +46,13 @@ xoff <- +.5
 
 scn.base <- dplyr::bind_rows(
   sphere(
-    y=4, z = 2, x = 1, radius = .2,
-    material = diffuse(lightintensity = 800, implicit_sample = TRUE)
+    y=4, z = 2, x = 1, radius = .1,
+    material = diffuse(lightintensity = 3200, implicit_sample = TRUE)
+    # y=4, z = 0, x = 0, radius = .1,
+    # material = diffuse(lightintensity = 2000, implicit_sample = TRUE)
   ),
   group_objects(
-    obj_model(f4, material=dielectric(color='#CCCCDD')),
+    obj_model(f4, material=dielectric(color='#BBBBCC')),
     # obj_model(f4, material=diffuse(color='#CCCCCC')),
     group_angle=c(90, 90, 0), group_translate=c(xoff, 0, zoff),
     pivot_point=numeric(3)
@@ -58,7 +60,7 @@ scn.base <- dplyr::bind_rows(
   xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white')),
   xz_rect(y=5, xwidth=15, zwidth=15, material=diffuse(color='white'), flipped=TRUE)
 )
-rez <- 400
+rez <- 200
 samp <- rez/2
 scn.1 <- add_object(
   scn.base,
@@ -81,13 +83,14 @@ scn.3 <- add_object(
     pivot_point=numeric(3)
   )
 )
-# scns <- list(scn.1, scn.2, scn.3)
-scns <- list(scn.3)
+scns <- list(scn.1, scn.2, scn.3)
+# scns <- list(scn.2)
 render_scenes(
   scns,
   width=rez, height=rez * 1, samples=samp,
   lookfrom=c(0, 4, 2), lookat=c(-.1, .25, 0), aperture=0, fov=17,
   clamp=3,
+  # backgroundimage='~/Downloads/blank.png'
   filename='~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png'
 )
 
