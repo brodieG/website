@@ -49,8 +49,8 @@ some of my newly acquired `rayrender`ing powers for some illustrations.
 
 The basic idea is to approximate a triangle mesh with fewer triangles while
 keeping the approximation error within certain tolerances.  For example here we
-approximate the beloved `volcano` mesh at three increasingly relaxed tolerance
-levels:
+approximate the beloved `volcano` mesh (glass) at three increasingly relaxed
+tolerance levels (gold, silver, and copper meshes):
 
 <!--
 Maybe better here would be to have a full resolution version of first level of
@@ -62,6 +62,10 @@ partially reduced one?
 <img class='aligncenter'
   src='/post/2019-08-23-mesh-reduction-1_files/images/glass-and-mesh-3-f-merge.png'
 />
+
+If you look closely you'll see that even in the higher fidelity approximation
+the wire mesh ends up above or below the glass surface, although on the whole
+the approximation is good.
 
 If we flatten the elevation component of the meshes and change our viewpoint it
 becomes apparent that all the triangles in the approximation are right angled
@@ -86,23 +90,90 @@ two smaller triangles.  If those triangles are still too coarse, they too are
 broken up.
 
 In order to decide whether an approximate is faithful enough we measure the
-error between each level of mesh approximation and the surface at the middle of
-the hypotenuse of each triangle.  Here we show the errors on a simplified 3x3
-elevation
-surface:
+error between each level of mesh approximation at the middle of
+the hypotenuse of each triangle.  For the sake of exposition we will temporarily
+abandon volcano and switch to a simple 3x3 elevation surface, and we will show
+approximations where at each level every triangle is the same size.
 
 <img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/simple-mesh-3-abreast-1.png'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/simple-mesh-s-merge.png'
 />
 
 At the most granular level (gold) there is no error as the mesh corresponds
 exactly to the elevation surface.  At the first level of approximation (silver)
-the error is shown as checkered cylinders.
+error appears around the periphery of the surface as that is where the triangle
+edges skip over surface vertices.  We show these errors as a checkered cylinder.
+At the coarsest level of approximation (copper) we generate additional error on
+the center of the surface and show that too as a checkered cylinder.
 
-Because child triangles are formed from parent ones by splitting the parent at
-the middle of the hypotenuse, and errors are measured at this point, errors from
-different levels of approximation will never overlap.  This allows us to store
-all the errors in a single matrix.
+Errors are measured at the middle of the hypotenuse of the triangles.  This is
+not arbitrary: as we merge triangles together to increase coarseness, the
+vertices that are lost correspond to that point of the parent triangle.  An
+implication is that we never measure errors from different levels of
+approximation at overlapping locations, so we can store the errors in a single
+matrix:
+
+<!--
+Error matrix, just the cylinders
+-->
+
+For clarity the surface was constructed so that all the errors are in the same
+direction and directly visible from our observation point.  In practice the
+errors can occur on either side of the surface, and we would record their
+absolute values.  The corners of the matrix will never have any error as even the coarsest level
+of approximation will have vertices at those locations.
+
+We can now compare our recorded errors to different tolerance levels, and use
+that to decide what triangles to draw.  A possible algorithm is to draw the
+child triangles of any triangle for which its error or the error of any of its
+descendants exceeds the threshold.  Here we represent a possible threshold as
+the "water" level; errors poking above it must be addressed:
+
+<!--
+Error threshold such that worst error in middle and center error trigger.
+
+Image is side by side (left/right):
+
+* Left: error matrix, water level added
+* Right: mesh approximation, gold/silver, gold drawn last
+-->
+
+Looks great.  Unlike with our original `volcano` meshes we are treating the mesh
+color to correspond to a specific level of approximation.  But notice what
+happens if we increase the tolerance level:
+
+<!--
+Error threshold such that only the worst error triggers
+
+Image is side by side (left/right):
+
+* Left: error matrix, water level added
+* Right: mesh approximation, complete mess
+-->
+
+Gah, there are gaps!  This is particularly apparent if we try to draw the
+approximated surface, rotated here so we can see the gap:
+
+<!--
+Glass surface approximated and rotated showing gap
+-->
+
+To resolve this we carry over errors from children triangles to their parents
+and override use the largest of the child errors and the parent error as the
+parent error:
+
+<!--
+Two error matrices:
+
+* Left: original, but with arrows showing errors converging onto parent
+* Right: original, but with parent error adding child error stacked on top of it
+-->
+
+the error is shown as checkered cylinders.  Because child triangles are formed
+from parent ones by splitting the parent at the middle of the hypotenuse, and
+errors are measured at this point, errors from different levels of approximation
+will never overlap.  This allows us to store all the errors in a single matrix.
+We can then compare this error matrix
 
 <!--
 Show the matrix with the errors?  Also show two more with different water
