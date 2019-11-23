@@ -40,8 +40,9 @@ seg2 <- tris_to_seg(tris2, map, material=seg.mat2, radius=seg.rad)
 seg3 <- tris_to_seg(tris3, map, material=seg.mat3, radius=seg.rad)
 
 xyz1 <- tris_to_xyz(tris1, map, c(1, 1, zscl))
-shard1 <- xyz_to_shard(xyz1, depth=.025, bevel=45)
+shard1 <- xyz_to_shard(xyz1, depth=.0125, bevel=45)
 obj1 <- shard_to_obj(shard1)
+f1 <- tempfile()
 writeLines(obj1, f1)
 
 # Need to recompute middle error b/c of auto-carryover
@@ -77,24 +78,20 @@ errs_to_cyl <- function(errs.df, mat) {
 }
 errs2.cyl <- errs_to_cyl(
   errs2.df,
-  diffuse(color=metal.col[2], checkercolor='grey25')
+  diffuse(color='grey50', checkercolor='grey25', checkerperiod=.05)
 )
 errs3.cyl <- errs_to_cyl(
   errs3.df,
-  diffuse(color=metal.col[3], checkercolor='grey75')
+  diffuse(color=metal.col[3], checkercolor='grey75', checkerperiod=.05)
 )
 
 zoff <- .5
 light.narrow <- sphere(
-  y=8, z = 6, x = 0, radius = .2,
-  material = diffuse(lightintensity = 3000, implicit_sample = TRUE)
-)
-light.old <- sphere(
-  y=2, z = 3, x = 0, radius = .2,
-  material = diffuse(lightintensity = 500, implicit_sample = TRUE)
+  y=8, z = 2, x = 1, radius = .1,
+  material = diffuse(lightintensity = 8e3, implicit_sample = TRUE)
 )
 gang <- c(90, 0, 0)
-sobj <- obj_model(filename=f1, material=dielectric('#CCCCDD'))
+sobj <- obj_model(filename=f1, material=dielectric(color='#BBBBCC'))
 x1 <- x2 <- x3 <- -.5
 yoff <- seg.rad/2
 
@@ -107,7 +104,7 @@ scn.base <- dplyr::bind_rows(
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white')),
   xz_rect(
     xwidth=15, zwidth=15, y=10, flipped=TRUE, 
-    material=diffuse(color='white', lightintensity=2)
+    material=diffuse(color='white', lightintensity=1)
   )
 )
 scn.1 <- dplyr::bind_rows(
@@ -140,17 +137,17 @@ scn.3 <- dplyr::bind_rows(
   )
 )
 
-rez <- 200
-samp <- rez / 2
-scns <- list(scn.1)
+rez <- 800
+samp <- rez
+scns <- list(scn.1, scn.2, scn.3)
+# scns <- list(scn.2)
 render_scenes(
-  scns, height=rez/400*150, width=rez, samples=samp,
-  lookfrom=c(0, 4, .5),
-  lookat=c(0, 0, -.125),
-  fov=25,
+  scns, height=rez, width=rez, samples=samp,
+  lookfrom=c(0, 4, 1),
+  lookat=c(0, 0, -.275),
+  fov=21,
   aperture=0,
   camera_up=c(0,1,0),
   clamp=3,
   filename='~/Downloads/mesh-viz/simple-mesh-s-%d.png'
-  # backgroundimage='~/Downloads/blank.png'
 )
