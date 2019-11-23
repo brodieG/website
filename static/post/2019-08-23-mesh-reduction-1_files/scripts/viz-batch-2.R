@@ -100,8 +100,9 @@ render_scenes(
 
 stop()
 
-png.in <- sprintf('~/Downloads/mesh-viz/glass-and-mesh-3-f-%d.png', 1:3)
-png.out <- '~/Downloads/mesh-viz/glass-and-mesh-3-f-merge.png'
+dir <- '~/Downloads/mesh-viz/batch-hirez-4'
+png.in <- sprintf('%s/glass-and-mesh-3-f-%d.png', dir, 1:3)
+png.out <- sprintf('%s/glass-and-mesh-3-f-merge.png', dir)
 cbind_pngs(png.in, png.out)
 
 
