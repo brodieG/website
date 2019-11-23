@@ -428,16 +428,17 @@ render_scenes <- function(scene, filename='scene-%d.png', ...) {
 
 cbind_pngs <- function(input, output) {
   vetr(character(), character(1L))
-  pngs <- lapply(png::readPNG(input))
+  pngs <- lapply(input, png::readPNG)
   png.dims <- vapply(pngs, dim, numeric(3))
   if(length(unique(png.dims[1,])) != 1) stop("different row counts on pngs")
   if(length(unique(png.dims[3,])) != 1) stop("different chanel counts on pngs")
 
   cols <- sum(png.dims[2,])
   colc <- cumsum(png.dims[2,])
-  d <- array(numeric(), c(png.dims[1,1],sum(png.dims[2,]),png.dims[1,3]))
+  colcs <- 1L + c(0L, head(colc, 2L))
+  d <- array(numeric(), c(png.dims[1,1],sum(png.dims[2,]),png.dims[3,1]))
 
-  for(i in seq_along(cols)) d[,1:colc[i],] <- pngs[[i]]
+  for(i in seq_along(colc)) d[,colcs[i]:colc[i],] <- pngs[[i]]
   png::writePNG(d, output)
 }
 
