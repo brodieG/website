@@ -47,7 +47,8 @@ xoff <- +.5
 scn.base <- dplyr::bind_rows(
   sphere(
     y=4, z = 2, x = 1, radius = .1,
-    material = diffuse(lightintensity = 3200, implicit_sample = TRUE)
+    # material = diffuse(lightintensity = 3200, implicit_sample = TRUE)
+    material = diffuse(lightintensity = 1400, implicit_sample = TRUE)
     # y=4, z = 0, x = 0, radius = .1,
     # material = diffuse(lightintensity = 2000, implicit_sample = TRUE)
   ),
@@ -58,10 +59,13 @@ scn.base <- dplyr::bind_rows(
     pivot_point=numeric(3)
   ),
   xz_rect(xwidth=5, zwidth=5, material=diffuse(color='white')),
-  xz_rect(y=5, xwidth=15, zwidth=15, material=diffuse(color='white'), flipped=TRUE)
+  xz_rect(
+    y=5, xwidth=15, zwidth=15,
+    material=diffuse(color='white', lightintensity=2), flipped=TRUE
+  )
 )
 rez <- 200
-samp <- rez/2
+samp <- rez
 scn.1 <- add_object(
   scn.base,
   group_objects(
@@ -83,8 +87,8 @@ scn.3 <- add_object(
     pivot_point=numeric(3)
   )
 )
-scns <- list(scn.1, scn.2, scn.3)
-# scns <- list(scn.2)
+# scns <- list(scn.1, scn.2, scn.3)
+scns <- list(scn.1)
 render_scenes(
   scns,
   width=rez, height=rez * 1, samples=samp,
