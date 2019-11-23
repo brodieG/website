@@ -1,96 +1,96 @@
 # - Initialize -----------------------------------------------------------------
-
-# matrix that has most error on the top left part as that is done last
-# it's shown as plotted, and re-ordered for actual use
-
-# map <- matrix(c(
-#   0, 3, 0,
-#   3, 1, 2,
-#   0, 2, 0), 3)[,3:1]
-eltif <- raster::raster("~/Downloads/dem_01.tif")
-eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
-
-map <- elmat1[1:5, 1:5]
-
-source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
-
-# - Record ---------------------------------------------------------------------
-
-library(watcher)
-coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
-id.vars <- c('.id', '.line')
-vars <- c(coord.vars, 'errors', 'id', 'i')
-errors_watched <- watch(errors_rtin2, vars)
-xx <- errors_watched(map)
-zz.raw <- simplify_data(attr(xx, 'watch.data'))
-library(reshape2)
-
-frame.ids <- zz.raw[['.scalar']][['.id']]
-# frame.ids <- tail(frame.ids, 1)
-scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
-zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
-zz.raw[-1] <- lapply( # assuming df, not necessarily true
-  zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
-)
-
-# - Basic Data -----------------------------------------------------------------
-
-zz.vec <- zz.raw[['.scalar']]
-dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
-dat[['variable']] <- as.character(dat[['variable']])
-var.chrs <- nchar(dat[['variable']])
-dat[['label']] <- substr(dat[['variable']], 1, var.chrs - 1L)
-dat[['var']] <- substr(dat[['variable']], var.chrs, var.chrs)
-dat <- dcast(dat, .id + .line + label ~ var, value.var='value')
-dat[['type']] <- 'Coords'
-dat.s <- dat
-# dat.s <- subset(dat, id %in% 1:40)
-pcolor <- c(
-  a='#66c2a5', b='#fc8d62', c='grey65',
-  m='#8da0cb', lc='#8da0cb88', rc='#8da0cb88'
-)
-dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm', 'lc', 'rc'))
-dat.s1 <- transform(dat.s1, pcolor=pcolor[label])
-dat.s2 <- subset(dat.s, label %in% letters[1:3])
-dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
-dat.s3a <- subset(dat.s, label %in% c('lc', 'rc', 'm'))
-dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='Errors'))
-
-# Data for child to parent arrows; surely there is a better way to do this
-
-dat.s4a <- melt(dat.s3a[1:5], id.vars=c('.id', '.line', 'label'))
-dat.s4b <- dcast(dat.s4a, .id + .line + variable ~ label)
-dat.s4c <- melt(
-  dat.s4b,
-  id.vars=c('.id', '.line', 'variable', 'm')
-)
-names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'type', 'c')
-dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
-dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
-dat.s4[['type']] <- 'Errors'
-
-# Background triangles
-
-dat.s5a <- subset(dat.s2, .line == 52)
-max.id <- max(zz.vec[['.id']])
-dat.s5 <- do.call(
-  rbind,
-  lapply(
-    unique(dat.s5a[['.id']]),
-    function(x) {
-      ids <- which(dat.s5a[['.id']] == x)
-      ids.len <- length(ids)
-      new.ids <- rep(seq(x, max.id, by=1), each=ids.len)
-      res <- dat.s5a[rep_len(ids, length.out=length(new.ids)),,drop=FALSE]
-      res[['.id']] <- new.ids
-      res[['.id.old']] <- rep(x, length(new.ids))
-      res
-    }
-) )
-# background points
-
-dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
+# 
+# # matrix that has most error on the top left part as that is done last
+# # it's shown as plotted, and re-ordered for actual use
+# 
+# # map <- matrix(c(
+# #   0, 3, 0,
+# #   3, 1, 2,
+# #   0, 2, 0), 3)[,3:1]
+# eltif <- raster::raster("~/Downloads/dem_01.tif")
+# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+# elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+# 
+# map <- elmat1[1:5, 1:5]
+# 
+# source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
+# 
+# # - Record ---------------------------------------------------------------------
+# 
+# library(watcher)
+# coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
+# id.vars <- c('.id', '.line')
+# vars <- c(coord.vars, 'errors', 'id', 'i')
+# errors_watched <- watch(errors_rtin2, vars)
+# xx <- errors_watched(map)
+# zz.raw <- simplify_data(attr(xx, 'watch.data'))
+# library(reshape2)
+# 
+# frame.ids <- zz.raw[['.scalar']][['.id']]
+# # frame.ids <- tail(frame.ids, 1)
+# scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
+# zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
+# zz.raw[-1] <- lapply( # assuming df, not necessarily true
+#   zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
+# )
+# 
+# # - Basic Data -----------------------------------------------------------------
+# 
+# zz.vec <- zz.raw[['.scalar']]
+# dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
+# dat[['variable']] <- as.character(dat[['variable']])
+# var.chrs <- nchar(dat[['variable']])
+# dat[['label']] <- substr(dat[['variable']], 1, var.chrs - 1L)
+# dat[['var']] <- substr(dat[['variable']], var.chrs, var.chrs)
+# dat <- dcast(dat, .id + .line + label ~ var, value.var='value')
+# dat[['type']] <- 'Coords'
+# dat.s <- dat
+# # dat.s <- subset(dat, id %in% 1:40)
+# pcolor <- c(
+#   a='#66c2a5', b='#fc8d62', c='grey65',
+#   m='#8da0cb', lc='#8da0cb88', rc='#8da0cb88'
+# )
+# dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm', 'lc', 'rc'))
+# dat.s1 <- transform(dat.s1, pcolor=pcolor[label])
+# dat.s2 <- subset(dat.s, label %in% letters[1:3])
+# dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
+# dat.s3a <- subset(dat.s, label %in% c('lc', 'rc', 'm'))
+# dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='Errors'))
+# 
+# # Data for child to parent arrows; surely there is a better way to do this
+# 
+# dat.s4a <- melt(dat.s3a[1:5], id.vars=c('.id', '.line', 'label'))
+# dat.s4b <- dcast(dat.s4a, .id + .line + variable ~ label)
+# dat.s4c <- melt(
+#   dat.s4b,
+#   id.vars=c('.id', '.line', 'variable', 'm')
+# )
+# names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'type', 'c')
+# dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
+# dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
+# dat.s4[['type']] <- 'Errors'
+# 
+# # Background triangles
+# 
+# dat.s5a <- subset(dat.s2, .line == 52)
+# max.id <- max(zz.vec[['.id']])
+# dat.s5 <- do.call(
+#   rbind,
+#   lapply(
+#     unique(dat.s5a[['.id']]),
+#     function(x) {
+#       ids <- which(dat.s5a[['.id']] == x)
+#       ids.len <- length(ids)
+#       new.ids <- rep(seq(x, max.id, by=1), each=ids.len)
+#       res <- dat.s5a[rep_len(ids, length.out=length(new.ids)),,drop=FALSE]
+#       res[['.id']] <- new.ids
+#       res[['.id.old']] <- rep(x, length(new.ids))
+#       res
+#     }
+# ) )
+# # background points
+# 
+# dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
 
 # - Code -----------------------------------------------------------------------
 
@@ -108,14 +108,12 @@ jump.to <- 5
 #
 # The first two can be translated into window size and offset
 
-stop()
-
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
 code.rez <- vector('list', length(zz.vec$.id))
 
-coff <- 1
-cwindow <- 45
+cwindow <- 54
+coff <- coff / 2
 cbuff <- 4
 cend <- max(zz.vec$.line)
 
@@ -123,11 +121,11 @@ for(i in seq_along(zz.vec$.id)) {
   id <- zz.vec$.id[i]
   line <- zz.vec$.line[i]
 
-  if(line < coff || line > coff + cwindow - cbuff) {
-    coff <- min(c(line - cbuff, cend - cwindow + cbuff))
+  if(line - coff > (cwindow + coff) - cbuff || line < coff) {
+    coff <- min(line - cbuff, cend - cbuff)
   }
   code.rez[[i]] <- data.frame(
-    y=-(seq_along(code) + coff - cwindow / 2),
+    y=-(seq_along(code) - coff) + cwindow / 2,
     .id=rep(i, length(code)),
     code=code,
     highlight=ifelse(seq_along(code) == line, 'red', 'black')
@@ -164,7 +162,6 @@ size <- nrow(map)
 #   sprintf('~/Downloads/mesh-anim-2/gganim-img%04d.svg', 1),
 #   p, width=width/dpi, height=height/dpi, units='in'
 # )
-stop('about to draw stuff')
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
@@ -199,7 +196,7 @@ for(i in frames) {
       # aes(x=-2.55, y=y*.1, label=code),
       aes(
         x=-(nrow(map)-1)/.7,
-        y=y*(nrow(map)-1)/cwindow*2.1 + (nrow(map)-1) * .25, label=code
+        y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .1, label=code
       ),
       hjust=0, family='mono', color=d$lines$highlight
     ) +
@@ -229,6 +226,7 @@ for(i in frames) {
     dpi=dpi
   )
 }
+stop('done plot')
 # ffmpeg -framerate 8 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
 #   open out.mp4
 #
