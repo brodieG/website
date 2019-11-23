@@ -9,34 +9,33 @@ errors_rtin2 <- function(terrain) {
   gridSize <- nrow(terrain)
   tileSize <- gridSize - 1L
 
-  # iterate over all possible triangles,
-  # starting with smallest ones
+  # Iterate over all possible triangles,
   for (i in (nTriangles - 1):0) {
     id <- i + 2L
     mx <- my <- rcx <- rcy <- lcx <- lcy <-
       ax <- ay <- bx <- by <- cx <- cy <- NA
     if (bitwAnd(id, 1L)) {
-      # bottom-right triangle
+      # Bottom-right triangle
       bx <- by <- cx <- tileSize
       ax <- ay <- cy <- 0
     } else {
-      # top-left triangle
+      # Top-left triangle
       ax <- ay <- cy <- tileSize
       bx <- by <- cx <- 0
     }
-    # Find small
+    # Find target triangle
     while ((id <- (id %/% 2)) > 1L) {
       tmpx <- (ax + bx) / 2
       tmpy <- (ay + by) / 2
 
       if (bitwAnd(id, 1L)) {
-        # right sub-triangle
+        # Right sub-triangle
         bx <- ax
         by <- ay
         ax <- cx
         ay <- cy
       } else {
-        # left sub-triangle
+        # Left sub-triangle
         ax <- bx
         ay <- by
         bx <- cx
@@ -49,7 +48,7 @@ errors_rtin2 <- function(terrain) {
     bz <- terrain[bx + 1, by + 1]
     interpolatedHeight <- (az + bz) / 2
 
-    # Error in hypothenuse midpoint
+    # Error at hypotenuse midpoint
     mx <- ((ax + bx) / 2)
     my <- ((ay + by) / 2)
     mz <- terrain[mx + 1, my + 1]
@@ -59,7 +58,7 @@ errors_rtin2 <- function(terrain) {
     )
     errors[mx+1, my+1] <- middleError
 
-    # Propagate left/right child errors
+    # Propagate child errors
     lcError <- rcError <- 0
     if (i < lastLevelIndex) {
       lcx <- (ax + cx) / 2
@@ -73,6 +72,9 @@ errors_rtin2 <- function(terrain) {
       errors[mx+1, my+1], lcError, rcError
     )
   }
+  # Clear and exit
+  mx <- my <- rcx <- rcy <- lcx <- lcy <-
+    ax <- ay <- bx <- by <- cx <- cy <- NA
   errors
 }
 
