@@ -1,18 +1,23 @@
+# - Initialize -----------------------------------------------------------------
+
 # matrix that has most error on the top left part as that is done last
 # it's shown as plotted, and re-ordered for actual use
 
 library(data.table)
-map <- matrix(c(
-  0, 3, 0,
-  3, 1, 2,
-  0, 2, 0), 3)[,3:1]
-# eltif <- raster::raster("~/Downloads/dem_01.tif")
-# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-# elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+# map <- matrix(c(
+#   0, 3, 0,
+#   3, 1, 2,
+#   0, 2, 0), 3)[,3:1]
+eltif <- raster::raster("~/Downloads/dem_01.tif")
+eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
-# map <- elmat1[1:5, 1:5]
+map <- elmat1[1:5, 1:5]
 
-source('../website/static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
+source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
+
+# - Record ---------------------------------------------------------------------
+
 library(watcher)
 coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
 id.vars <- c('.id', '.line')
@@ -28,6 +33,8 @@ zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
 zz.raw[-1] <- lapply( # assuming df, not necessarily true
   zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
 )
+
+# - Basic Data -----------------------------------------------------------------
 
 zz.vec <- zz.raw[['.scalar']]
 dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
@@ -81,27 +88,57 @@ dat.s5 <- do.call(
       res
     }
 ) )
-
 # background points
 
 dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
 
+# - Code -----------------------------------------------------------------------
+
+# code
+
+window.size <- 40
+jump.buff <- 5
+jump.to <- 5
+
+# Variables to track:
+#
+# * Window start line
+# * Window end line
+# * Current line
+#
+# The first two can be translated into window size and offset
+
+stop()
+
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
-dat.lines <- do.call(
-  rbind,
-  lapply(
-    zz.vec$.id,
-    function(i) {
-      line <- zz.vec$.line[zz.vec$.id == i]
-      data.frame(
-        y=(-seq_along(code) + line),
-        .id=rep(i, length(code)),
-        code=code,
-        highlight=ifelse(seq_along(code) == line, 'red', 'black')
-      )
-}) )
+code.rez <- vector('list', length(zz.vec$.id))
+
+coff <- 1
+cwindow <- 45
+cbuff <- 4
+cend <- max(zz.vec$.line)
+
+for(i in seq_along(zz.vec$.id)) {
+  id <- zz.vec$.id[i]
+  line <- zz.vec$.line[i]
+
+  if(line < coff || line > coff + cwindow - cbuff) {
+    coff <- min(c(line - cbuff, cend - cwindow + cbuff))
+  }
+  code.rez[[i]] <- data.frame(
+    y=-(seq_along(code) + coff - cwindow / 2),
+    .id=rep(i, length(code)),
+    code=code,
+    highlight=ifelse(seq_along(code) == line, 'red', 'black')
+  )
+}
+
+dat.lines <- do.call(rbind, code.rez)
 dat.lines[['type']] <- 'Coords'
+
+# - Errors ---------------------------------------------------------------------
+
 dat.err <- zz.raw$errors
 dat.err[['type']] <- 'Errors'
 dat.err[['x']] <- dat.err[['x']] - 1L
@@ -111,21 +148,22 @@ dat.meta <- melt(as.data.frame(zz.vec[c('i', 'id', id.vars)]), id.vars=id.vars)
 dat.meta <- as.data.table(dat.meta)[, paste0(variable, ': ', value, collapse=', '), .id]
 dat.meta[['type']] <- 'Coords'
 
+# - Plot -----------------------------------------------------------------------
+
 dpi <- 72
 width <- 600
 height <- width
 size <- nrow(map)
 
-
-
 # ggsave(
 #   sprintf('~/Downloads/mesh-anim-2/gganim-img%04d.svg', 1),
 #   p, width=width/dpi, height=height/dpi, units='in'
 # )
+stop('about to draw stuff')
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-# frames <- 1:3
+frames <- 1:3
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
   meta=as.data.frame(dat.meta), lines=dat.lines, s3=dat.s3
@@ -154,7 +192,10 @@ for(i in frames) {
     geom_text(
       data=d$lines,
       # aes(x=-2.55, y=y*.1, label=code),
-      aes(x=-(nrow(map)-1)/.7, y=y*.1*(nrow(map)-1)/2, label=code),
+      aes(
+        x=-(nrow(map)-1)/.7,
+        y=y*(nrow(map)-1)/cwindow*2.1 + (nrow(map)-1) * .1, label=code
+      ),
       hjust=0, family='mono', color=d$lines$highlight
     ) +
     guides(color=FALSE) +
@@ -177,7 +218,7 @@ for(i in frames) {
     scale_size(limits=c(0, max(xx, na.rm=TRUE)), range=c(0,10)) +
     NULL
   ggsave(
-    filename=sprintf('~/Downloads/mesh-anim-2/img-%04d.png', i),
+    filename=sprintf('~/Downloads/mesh-anim-4/img-%04d.png', i),
     plot=p,
     width=width/dpi, height=height/dpi, units='in', device='png',
     dpi=dpi
