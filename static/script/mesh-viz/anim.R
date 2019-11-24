@@ -13,7 +13,7 @@
 # 
 # map <- elmat1[1:5, 1:5]
 # 
-# source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
+# source('static/script/mesh-viz/rtin2.R')
 # 
 # # - Record ---------------------------------------------------------------------
 # 

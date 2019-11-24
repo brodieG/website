@@ -1,7 +1,7 @@
 library(vetr)
 
-source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin2.R')
-source('static/post/2019-08-23-mesh-reduction-1_files/scripts/rtin-vec.R')
+source('static/script/mesh-viz/rtin2.R')
+source('static/script/mesh-viz/rtin-vec.R')
 
 # - Plot Helper Tools ----------------------------------------------------------
 

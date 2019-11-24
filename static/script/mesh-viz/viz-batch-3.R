@@ -1,4 +1,4 @@
-# source('static/post/2019-08-23-mesh-reduction-1_files/scripts/viz.R')
+# source('static/script/mesh-viz/viz.R')
 
 # - Test it Out ----------------------------------------------------------------
 
@@ -151,3 +151,10 @@ render_scenes(
   clamp=3,
   filename='~/Downloads/mesh-viz/simple-mesh-s-%d.png'
 )
+stop()
+
+dir <- '~/Downloads/mesh-viz/batch-hirez-4'
+png.in <- sprintf('%s/simple-mesh-s-%d.png', dir, 1:3)
+png.out <- sprintf('%s/simple-mesh-s-merge.png', dir)
+cbind_pngs(png.in, png.out)
+

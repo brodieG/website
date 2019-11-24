@@ -1,4 +1,4 @@
-# source('static/post/2019-08-23-mesh-reduction-1_files/scripts/viz.R')
+# source('static/script/mesh-viz/viz.R')
 
 library('rayrender')
 
