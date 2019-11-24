@@ -122,7 +122,7 @@ for(i in seq_along(zz.vec$.id)) {
   line <- zz.vec$.line[i]
 
   if(line - coff > (cwindow + coff) - cbuff || line < coff) {
-    coff <- min(line - cbuff, cend - cbuff)
+    coff <- min(line - cbuff, cend - cwindow)
   }
   code.rez[[i]] <- data.frame(
     y=-(seq_along(code) - coff) + cwindow / 2,
@@ -165,7 +165,7 @@ size <- nrow(map)
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-frames <- 1:100
+# frames <- 1:100
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
   meta=dat.meta, lines=dat.lines, s3=dat.s3
