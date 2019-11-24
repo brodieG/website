@@ -94,35 +94,21 @@
 
 # - Code -----------------------------------------------------------------------
 
-# code
-
-window.size <- 40
-jump.buff <- 5
-jump.to <- 5
-
-# Variables to track:
-#
-# * Window start line
-# * Window end line
-# * Current line
-#
-# The first two can be translated into window size and offset
-
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
 code <- sub("^ ", "", code)
 code.rez <- vector('list', length(zz.vec$.id))
 
 cwindow <- 54
-coff <- coff / 2
-cbuff <- 4
+coff <- cwindow / 2
+cbuff <- 2
 cend <- max(zz.vec$.line)
 
 for(i in seq_along(zz.vec$.id)) {
   id <- zz.vec$.id[i]
   line <- zz.vec$.line[i]
 
-  if(line - coff > (cwindow + coff) - cbuff || line < coff) {
+  if(line - coff > cwindow - cbuff || line < coff) {
     coff <- min(line - cbuff, cend - cwindow)
   }
   code.rez[[i]] <- data.frame(
@@ -196,7 +182,7 @@ for(i in frames) {
       data=subset(d$lines, highlight=='white'),
       aes(
         x=-(nrow(map)-1)/.71,
-        y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .1, label=code
+        y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .035, label=code
       ),
       hjust=0, family='mono', color=NA, fill='grey20', 
       label.padding = unit(0.15, "lines"),
@@ -206,7 +192,7 @@ for(i in frames) {
       # aes(x=-2.55, y=y*.1, label=code),
       aes(
         x=-(nrow(map)-1)/.71,
-        y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .1, label=code
+        y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .035, label=code
       ),
       hjust=0, family='mono', color=d$lines$highlight
     ) +
@@ -237,34 +223,17 @@ for(i in frames) {
   )
 }
 stop('done plot')
-# ffmpeg -framerate 24 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
+
+# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
 #   open out.mp4
-#
-# To improve animation:
-#
-# * Make 'm' same color as the error dots (e.g. black, maybe with white 'm')
-# * For emphasis show the 'm' on the error side as well?  Does this confuse
-#   error with position semantic?  A little.
-# * Stack the panels vertically.
-# * Change text to black / highlight.
-# * change mx/my to tmpx/tmpy, and Mx/My to mx/my
-#
 
-# dev.new(width=width/dpi, height=height/dpi, dpi=dpi)
-# p + facet_wrap(~.id)
-# stop()
-# library(gganimate)
-# p.anim <- p + transition_manual(.id)
-# # anim_save(
-# #   '~/Downloads/mesh-anim/anim-1.gif',
-# #   nframes=length(zz.vec$.id), p.anim, width=width, height=height
-# # )
-# res <- animate(
-#   p.anim,
-#   nframes = length(zz.vec$.id), device = "png",
-#   renderer = file_renderer(
-#     "~/Downloads/mesh-anim-2/", prefix = "gganim-img", overwrite = TRUE
-#   ),
-#   width=width, height=height
-# )
 
+# remove transparency layers, doesn't work but at least this way consistent
+# profile
+
+dir <- '~/Downloads/mesh-anim-4'
+files <- list.files(dir, full.names=TRUE)
+for(i in files) {
+  fpng <- png::readPNG(i)[,,1:3]
+  png::writePNG(fpng, i)
+}
