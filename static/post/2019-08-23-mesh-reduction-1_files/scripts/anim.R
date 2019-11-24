@@ -110,6 +110,7 @@ jump.to <- 5
 
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
+code <- sub("^ ", "", code)
 code.rez <- vector('list', length(zz.vec$.id))
 
 cwindow <- 54
@@ -128,7 +129,7 @@ for(i in seq_along(zz.vec$.id)) {
     y=-(seq_along(code) - coff) + cwindow / 2,
     .id=rep(i, length(code)),
     code=code,
-    highlight=ifelse(seq_along(code) == line, 'red', 'black')
+    highlight=ifelse(seq_along(code) == line, 'white', 'black')
   )
 }
 
@@ -165,7 +166,7 @@ size <- nrow(map)
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-# frames <- 1:100
+# frames <- 1:10
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
   meta=dat.meta, lines=dat.lines, s3=dat.s3
@@ -191,11 +192,20 @@ for(i in frames) {
       data=d$s3, fill='NA', color='black', shape=21, size=18
     ) +
     geom_text(aes(label=label)) +
+    geom_label(
+      data=subset(d$lines, highlight=='white'),
+      aes(
+        x=-(nrow(map)-1)/.71,
+        y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .1, label=code
+      ),
+      hjust=0, family='mono', color=NA, fill='grey20', 
+      label.padding = unit(0.15, "lines"),
+    ) +
     geom_text(
       data=d$lines,
       # aes(x=-2.55, y=y*.1, label=code),
       aes(
-        x=-(nrow(map)-1)/.7,
+        x=-(nrow(map)-1)/.71,
         y=y*(nrow(map)-1)/cwindow*2.5 + (nrow(map)-1) * .1, label=code
       ),
       hjust=0, family='mono', color=d$lines$highlight
@@ -227,7 +237,7 @@ for(i in frames) {
   )
 }
 stop('done plot')
-# ffmpeg -framerate 8 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
+# ffmpeg -framerate 24 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
 #   open out.mp4
 #
 # To improve animation:
