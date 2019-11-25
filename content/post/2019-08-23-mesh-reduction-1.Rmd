@@ -20,7 +20,7 @@ options(digits=3)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 ```
 
-# Header 1
+# Off Course, of Course
 
 <!-- this needs to become a shortcode -->
 <img
@@ -40,7 +40,7 @@ off-course[^off-course].  Obviously we can do it by porting the code directly,
 but the loop heavy nature of it would doom it.  We could also trivially port it
 to C and interface that into R, but where's the fun in that?
 
-# The Algorithm
+# Right Triangles
 
 You should look at [Agafonkin's notebook][6] or the original [Will Evans et al.
 1997 paper][8] for in-depth details as the point of this post is the translation
@@ -50,7 +50,7 @@ some of my newly acquired `rayrender`ing powers for some illustrations.
 The basic idea is to approximate a triangle mesh with fewer triangles while
 keeping the approximation error within certain tolerances.  For example here we
 approximate the beloved `volcano` mesh (glass) at three increasingly relaxed
-tolerance levels (gold, silver, and copper meshes):
+tolerance levels:
 
 <!--
 Maybe better here would be to have a full resolution version of first level of
@@ -86,8 +86,8 @@ tolerance:
 />
 
 If a triangle too coarse for the desired level of fidelity, it is broken up into
-two smaller triangles.  If those triangles are still too coarse, they too are
-broken up.
+two smaller triangles.  The process is repeated until the approximation error is
+can be tolerated.
 
 In order to decide whether an approximate is faithful enough we measure the
 error between each level of mesh approximation at the middle of
@@ -120,8 +120,8 @@ Error matrix, just the cylinders
 For clarity the surface was constructed so that all the errors are in the same
 direction and directly visible from our observation point.  In practice the
 errors can occur on either side of the surface, and we would record their
-absolute values.  The corners of the matrix will never have any error as even the coarsest level
-of approximation will have vertices at those locations.
+absolute values.  The corners of the matrix will never have any error as even
+the coarsest level of approximation will have vertices at those locations.
 
 We can now compare our recorded errors to different tolerance levels, and use
 that to decide what triangles to draw.  A possible algorithm is to draw the
@@ -160,7 +160,7 @@ Glass surface approximated and rotated showing gap
 
 To resolve this we carry over errors from children triangles to their parents
 and override use the largest of the child errors and the parent error as the
-parent error:
+parent error.  
 
 <!--
 Two error matrices:
@@ -169,63 +169,82 @@ Two error matrices:
 * Right: original, but with parent error adding child error stacked on top of it
 -->
 
-the error is shown as checkered cylinders.  Because child triangles are formed
-from parent ones by splitting the parent at the middle of the hypotenuse, and
-errors are measured at this point, errors from different levels of approximation
-will never overlap.  This allows us to store all the errors in a single matrix.
-We can then compare this error matrix
+This ensure that the mesh has no T intersections and as such is
+continuous:
 
 <!--
-Show the matrix with the errors?  Also show two more with different water
-levels.
+Use same water level as the one that caused the problem before.
+
+Image is side by side (left/right):
+
+* Left: error matrix, water level added
+* Right: mesh approximation, complete mess
 -->
 
-Suppose we tolerate errors that are below different "water-levels".  In the
-middle case every approximation exceeds the desired threshold so the
-approximated surface will look the same as the original.  In the last case
-though only one approximation is inadequate.  One possible way to interpret this
-data to produce our approximate mesh is to draw the lowest detail triangles 
+# Algorithm in Action
 
+We now have a rough idea of the algorithm, but as I learned the hard way this is
+grossly insufficient for those of us that intend to mess with it.  You can see
+the  [full algorithm in the appendix](#r-transliteration-of-original-algorithm)
+or in the [Agafonkin post][6], but the part we want to focus on first is the
+mesh triangle identification.  Here is a simplified version that highlights how
+the triangle vertex coordinates `$(ax,ay)$`, `$(bx,by)$`, and `$(cx,cy)$` are
+computed:
 
-can be broken up 
-replaced
-with the smaller triangles it comprises.  One restriction brought about by this
-hierarchy is that the mesh must be square and `$2^k + 1$` to the side (not
-strictly true).
+```{r eval=FALSE}
+for (i in (nTriangles - 1):0) {
+  id <- i + 2L
+  # ... ommitted setup code ...
+  while ((id <- (id %/% 2)) > 1L) {
+    tmpx <- (ax + bx) / 2
+    tmpy <- (ay + by) / 2
 
-The first step of the algorithm is to compute the error caused by each level of
-approximation.  Subsequently that error can be compared against a tolerance and
-the mesh can be drawn from the triangles that meet it.  In this post we will
-focus on the error computation part.
-
-Error is computed at the middle of the hypotenuse of each triangle:
-
-```{r error-ex}
-## Simplest example of error, 3x3 grid.  Actually, might need a 5x5 grid to show
-## the complexity of the child errors?
+    if (bitwAnd(id, 1L)) {
+      # Right sub-triangle
+      bx <- ax;
+      by <- ay
+      ax <- cx
+      ay <- cy
+    } else {
+      # Left sub-triangle
+      ax <- bx
+      ay <- by
+      bx <- cx
+      by <- cy
+    }
+    cx <- tmpx
+    cy <- tmpy
+  }
+  # ... compute and record errors ...
+}
 ```
 
-There is a complication though.  We can't just break up triangles into smaller
-pieces willy nilly as otherwise we end up with problems.  This is resolved by
-carrying over the error in any given triangle to it's parent triangle to ensure
-that triangles are broken up in a self-consistent way.  I.e., if a triangle is
-broken up, then all it's siblings must be drawn (or something like that anyway)..
+Remarkably this will compute the vertex coordinates of every single triangle at
+every level of approximation in our mesh, from smallest to largest.  I get a
+headache trying to mentally visualize what this code actually does.  Thankfully
+with [`watcher`][9] we can let the computer do the heavy lifting.  This
+is what happens in finding the first triangle in a 5x5 mesh[^min-complex]:
 
-```{r child-ex}
-## Example of what happens if we don't spread the error to parents
+<!--
+Flipbook of 0007-0053.  Do we include the last few bits?
+-->
+
+Thankfully we now have `watcher` available to see what the code does.  
+
+
+
+Jkk
+and while it looks deceptively simple it is
+too complex for me to visualize its execution in my head.  
+
+```{r}
+getwd()
 ```
-
-We can see the algorithm in action:
-
-<!-- Animation here -->
 
 
 # Vectorize The Shit Absolute Shit Out Of This
 
 
-```{r test-plot}
-plot(1:10, 1:10)
-```
 
 # Conclusions
 
@@ -243,12 +262,30 @@ plot(1:10, 1:10)
 * reshape2
 * ggplot2
 
+## R Transliteration of Original Algorithm
+
+This a reasonably close transliteration of the original [Agafonkin][6]
+implementation of the [RTIN error computation algorithm][8].  In addition to the
+conversion to R, I have made some (hopefully) non-semantic changes so that the
+code is easier to instrument.  This only computes the error.
+
+```{r echo=FALSE}
+source(
+  '../../static/script/mesh-viz/rtin2.R', deparseCtrl='all', keep.source=TRUE
+)
+```
+```{r}
+errors_rtin2
+```
 
 ## System Info
 
 [^off-course]: The beauty is I wasn't going anywhere in particular anyway, so
   why not do this.
+[^min-complex]: A 5x5 mesh is the smallest mesh that clearly showcases the
+  complexity of the algorithm.
 
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
 [7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
 [8]: https://www.cs.ubc.ca/~will/papers/rtin.pdf
+[9]: /2019/10/30/visualizing-algorithms/
