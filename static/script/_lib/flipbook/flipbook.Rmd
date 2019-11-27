@@ -1,0 +1,3 @@
+```{r child='../../static/script/flipbook.html'}
+```
+<script type='txt/javascript' src='/script/_lib/flipbook/flipbook.js'></script>
