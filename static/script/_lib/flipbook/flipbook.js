@@ -88,16 +88,18 @@ function BgFlipBook(
   this.endDelay = endDelay;
   this.init = false;
   this.helpActive = false;
-  this.interval = 1 / this.fpsRead() * 1000;
   this.intervalID = 0;
 
   // Initialize HTML els
 
   this.els.frameN.innerHTML = this.imgN;
   this.els.fps.value = this.fpsLast;
+  this.interval = 1 / this.fpsRead() * 1000;
+
   if(!isNaN(parseInt(this.els.frame.value))) {
     this.imgActive = parseInt(this.els.frame.value);
   };
+
   // - Load Images -------------------------------------------------------------
 
   for(i = imgStart; i <= imgEnd; ++i) {
