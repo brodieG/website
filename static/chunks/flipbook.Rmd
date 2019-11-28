@@ -25,15 +25,6 @@ var end_delay = 1; // frames to repeat at end
 var img_dir =      // location of flipbook images
   '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook';
 
-Images must be in `img_dir` and be named in this format:
-
-img-001.png
-
-Failure to set the folder or file names properly will result in errors like
-"NS_ERROR_NOT_AVAILABLE" (firefox).
-
-First file is 001, and its naturalWidth and naturalHeight will set the size of
-the HTML canvas element the images are drawn in.
 
 - To Dos -
 
@@ -105,7 +96,62 @@ your browser does not support HTML Canvas.
 </p>
 </div>
 <script type='text/javascript'>
+/*
+Images must be in `img_dir` and be named in this format:
+
+img-001.png
+
+Failure to set the folder or file names properly will result in errors like
+"NS_ERROR_NOT_AVAILABLE" (firefox).
+
+First file is 001, and its naturalWidth and naturalHeight will set the size of
+the HTML canvas element the images are drawn in.
+
+@param id string to use as the unique id for this flipbook; it must point to a
+  pre-existing div in the DOM that the flipbook will be inserted into.
+@param img_dir string location for images for flipbook
+@param img_start where to start the flipbook
+@param img_end where to end the flipbook, if zero will use all files with
+  numbers greater than img_start
+ */
+
+var bg_flipbook_init = (
+  function() {
+    var flipbook_n = 0;
+    function(id, img_dir, img_start=1, img_end=0) {
+      // check id not already in use
+
+      if(document.getElementById(id) == null) {
+        throw new Error(
+          "flipbook error: could not find target div with id '" + id + "'"
+        );
+      }
+      // Retrieve template and create new DOM elements
+
+      var flip_tpl = document.getElementById('bg-flipbook-storage');
+      if(flip_tpl == null) {
+        throw new Error("flipbook error: could not find flipbook template.");
+      }
+      // Clone the object, update all the ids so they are likely unique, and
+      // into the placeholder position
+
+      flipbook_n++;
+      var flip_new = flip_tpl.cloneNode(true)
+
+
+      var elems = [
+        'images', 'play', 'help', 'step-f', 'step-b', 'fps', 'stop', 'frame-n'
+      ]
+
+
+
+    }
+
+  }
+)()
+
 // - Globals -------------------------------------------------------------------
+
 
 var playing = false;
 var pad = "000";

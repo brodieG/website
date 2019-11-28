@@ -1,274 +1,297 @@
 /*
-Images must be in `img_dir` and be named in this format:
+Instantiate a Flipbook Object
 
-img-001.png
+A flipbook will display images from a directory onto a canvas 2D object.  This
+javascript object relies on a pre-existing flipbook template loaded into the
+document which should be available in the companion 'flipbook.html' file.  The
+user is responsible for injecting that HTML into the same page as this JS.  For
+an example see 'flipbook.Rmd'.
 
-Failure to set the folder or file names properly will result in errors like
+Failure to set the directory or file names properly will result in errors like
 "NS_ERROR_NOT_AVAILABLE" (firefox).
 
-First file is 001, and its naturalWidth and naturalHeight will set the size of
-the HTML canvas element the images are drawn in.
+naturalWidth and naturalHeight of the first image will set the size of the HTML
+canvas element the images are drawn in.
 
-@param id string to use as the unique id for this flipbook; it must point to a
-  pre-existing div in the DOM that the flipbook will be inserted into.
-@param img_dir string location for images for flipbook
-@param img_start where to start the flipbook
-@param img_end where to end the flipbook, if zero will use all files with
-  numbers greater than img_start
- */
+@param targetId string id of pre-existing DIV that will be populated with the
+  flipbook.  The DIV must be empty.
+@param imgDir string location for images for flipbook, the images must be named
+  in format img-0001.png.
+@param imgEnd where to end the flipbook, required because we cannot get a
+  directory listing so don't know how many images there are.
+@param imgStart where to start the flipbook, must be less than imgEnd
+@param fpsInit number the default initial frame rate.
+@param endDelay number how many frames to pause when playing before looping
+  back to start.
+*/
 
-var bg_flipbook_init = (
-  function() {
-    let flipbook_n = 0;
-    function(id, img_dir, img_start=1, img_end=0) {
-      // check id not already in use
+/*---------------------------------------------------------------------------*\
+ * Constructor ***************************************************************|
+\*---------------------------------------------------------------------------*/
 
-      const target = document.getElementById(id)
-      if(target == null) {
-        throw new Error(
-          "flipbook error: could not find target div with id '" + id + "'"
-        );
-      }
-      // Retrieve template and create new DOM elements
+function BgFlipBook(
+  targetId, imgDir, imgEnd, imgStart=1, fpsInit=1, endDelay=0
+) {
+  // - Validate ----------------------------------------------------------------
 
-      const flip_tpl = document.getElementById('bg-flipbook-template');
-      if(flip_tpl == null) {
-        throw new Error("flipbook error: could not find flipbook template.");
-      }
-      // Clone the object, update all the ids so they are likely unique, and
-      // into the placeholder position
+  // Find target and template DOM objects
 
-      const flip_new = flip_tpl.cloneNode(true)
-      const flipbook = flip_new.getElementById('bg-flipbook-flipbook');
-      const imgs = flip_new.getElementById('bg-flipbook-images');
-      const play = flip_new.getElementById('bg-flipbook-play');
-      const help = flip_new.getElementById('bg-flipbook-help');
-      const stepf = flip_new.getElementById('bg-flipbook-step-f');
-      const stepb = flip_new.getElementById('bg-flipbook-step-b');
-      const fps = flip_new.getElementById('bg-flipbook-fps');
-      const frame = flip_new.getElementById('bg-flipbook-frame');
-      const stop = flip_new.getElementById('bg-flipbook-stop');
-      const frame_n = flip_new.getElementById('bg-flipbook-frame-n');
+  const target = document.getElementById(targetId)
+  if(target == null) {
+    throw new Error(
+      "flipbook error: could not find target div with id '" + targetId + "'."
+    );
+  }
+  if(target.childElemCount) {
+    throw new Error("flipbook error: target div is not empty.");
+  }
+  const flipTpl = document.getElementById('bg-flipbook-template');
+  if(flipTpl == null) {
+    throw new Error("flipbook error: could not find flipbook template.");
+  }
+  // - Init --------------------------------------------------------------------
 
-      // clear ids to avoid conflicts with template when we introduce into
-      // template; we already have references above
+  // Clone the object, generate handles for all the sub-elements, and
+  // remove ids to avoid id conflicts with the template when we instert in DOM
 
-      const flip_elems = flip_new.children;
-      for(let i = 0; i < flip_elems.length; ++i) {
-        flip_elemns[i].id = ""
-      }
-      flipbook_n++;
+  const flipNew = flipTpl.cloneNode(true)
 
-      let playing = false;
-      let pad = "000";
-      let img_active = 1;
-      let fps_last = fps_def;
-      let interval;
-      let flipbook_init = false;
-      let flipbook_help_active = false;
+  this.els = {
+    flipbook: flipNew.querySelector('#bg-flipbook-flipbook'),
+    imgs: flipNew.querySelector('#bg-flipbook-images'),
+    play: flipNew.querySelector('#bg-flipbook-play'),
+    help: flipNew.querySelector('#bg-flipbook-help'),
+    stepf: flipNew.querySelector('#bg-flipbook-step-f'),
+    stepb: flipNew.querySelector('#bg-flipbook-step-b'),
+    fps: flipNew.querySelector('#bg-flipbook-fps'),
+    frame: flipNew.querySelector('#bg-flipbook-frame'),
+    stop: flipNew.querySelector('#bg-flipbook-stop'),
+    frameN: flipNew.querySelector('#bg-flipbook-frame-n')
+  }
+  for(let i in this.els) {
+    if(this.els[i] == null) {
+      throw new Error("flipbook error: template missing '", i, "' element.");
+    }
+    this.els[i].id = ""
+  }
+  this.ctx = this.els.flipbook.getContext("2d");
+  if(!this.ctx) {
+    throw new Error("flipbook error: failed getting canvas 2d context");
+  }
+  // Other properties
 
-      frame_n.innerHTML = img_n;
-      fps.value = fps_last;
-      if(!isNaN(parseInt(frame.value))) {img_active = parseInt(frame.value);};
+  this.imgN = imgEnd - imgStart + 1;
+  this.playing = false;
+  this.pad = "000";
+  this.imgActive = 1;
+  this.fpsLast = fpsInit;
+  this.endDelay = endDelay;
+  this.init = false;
+  this.helpActive = false;
+  this.interval = 1 / this.fpsRead() * 1000;
+  this.intervalID = 0;
 
-      // - Load Images ---------------------------------------------------------
+  // Initialize HTML els
 
-      for(i = 0; i <= img_n; i++) {
-        const img = document.createElement("img");
-        const img_n_str = "" + (i + 1);
-        const img_file =
-          pad.substring(0, pad.length - img_n_str.length) + img_n_str;
-        const img_src = img_dir + '/img-' + img_file + '.png'
-        img.src = img_src;
-        imgs.append(img);
-      }
-      // - Insert Into DOM -----------------------------------------------------
+  this.els.frameN.innerHTML = this.imgN;
+  this.els.fps.value = this.fpsLast;
+  if(!isNaN(parseInt(this.els.frame.value))) {
+    this.imgActive = parseInt(this.els.frame.value);
+  };
+  // - Load Images -------------------------------------------------------------
 
-      while(flip_tpl.hasChildNodes()) {
-        target.appendChild(flip_tpl.firstChild);
-      }
-      // - Funs ----------------------------------------------------------------
+  for(i = imgStart; i <= imgEnd; ++i) {
+    const img = document.createElement("img");
+    const imgNStr = "" + i;
+    const imgFile =
+      this.pad.substring(0, this.pad.length - imgNStr.length) + imgNStr;
+    const imgSrc = imgDir + '/img-' + imgFile + '.png'
+    img.src = imgSrc;
+    this.els.imgs.append(img);
+  }
+  // - Insert Into DOM ---------------------------------------------------------
 
-      function fps_read() {
-        let val = parseFloat(fps.value);
-        if(isNaN(val) || val < 0) val = fps_last;
-        fps_last = val;
-        return val;
-      }
-      interval = 1/fps_read() * 1000;
+  while(flipNew.hasChildNodes()) {
+    target.appendChild(flipNew.firstChild);
+  }
+  // - Register Handlers -------------------------------------------------------
 
-      const ctx = flipbook.getContext("2d");
-      let intervalID = 0;
-      if(ctx) {
+  var flip = this;
+  this.els.flipbook.addEventListener("click", function() {flip.stepClick()});
+  this.els.stepf.addEventListener("mouseup", function() {flip.stepF()});
+  this.els.stepb.addEventListener("mouseup", function() {flip.stepB()});
+  this.els.play.addEventListener("mouseup", function() {flip.playAll()});
+  this.els.help.addEventListener("mouseup", function() {flip.drawHelp()});
+  this.els.stop.addEventListener("mouseup", function() {flip.handleStop()});
+  this.els.fps.addEventListener("input", function() {flip.handleInputFPS()});
+  this.els.frame.addEventListener("input", function() {flip.handleInputFrame()});;
+  window.addEventListener("load", function() {flip.handleLoad()});
+}
+/*---------------------------------------------------------------------------*\
+ * Methods *******************************************************************|
+\*---------------------------------------------------------------------------*/
 
-        function draw() {
-          frame.value = img_active;
-          if(!flipbook_init) {
-            flipbook.width = imgs.children[0].naturalWidth;
-            flipbook.height = imgs.children[0].naturalHeight;
-          }
-          ctx.drawImage(
-            imgs.children[img_active - 1], 0, 0, flipbook.width, flipbook.height
-          );
-        }
-        /*
-        Help overlay
-        */
-        function draw_help() {
-          console.log('Draw Help');
-          const font_size = flipbook.width / 25;
-          pause_flip();
-          draw();
-          ctx.fillStyle = 'rgb(0, 0, 0, .7)';
-          ctx.fillRect(0, 0, flipbook.width, flipbook.height)
-          ctx.fillStyle = 'white'
-          ctx.font = font_size + 'px serif';
-          const th = ctx.measureText('M').width * 1.1;
-          const xoff = flipbook.width * .1
-          const yoff = flipbook.height * .1
-          const text = [
-            "This is a flipbook.  You can press '\u25b6' to cycle",
-            "through frames, but it is really intended for you to",
-            "step through them:",
-            "",
-            "* Click in frame to step forward",
-            "* Shift + click in frame to step backwards",
-            "* Or use the controls below"
-          ]
-          /* figure out center point to put the text in */
+BgFlipBook.prototype.draw = function() {
+  this.els.frame.value = this.imgActive;
+  if(!this.init) {
+    this.els.flipbook.width = this.els.imgs.children[0].naturalWidth;
+    this.els.flipbook.height = this.els.imgs.children[0].naturalHeight;
+  }
+  this.ctx.drawImage(
+    this.els.imgs.children[this.imgActive - 1], 0, 0,
+    this.els.flipbook.width, this.els.flipbook.height
+  );
+}
+BgFlipBook.prototype.drawHelp = function() {
+  console.log('Draw Help');
+  const fontSize = this.els.flipbook.width / 25;
+  this.pauseFlip();
+  this.draw();
+  this.ctx.fillStyle = 'rgb(0, 0, 0, .7)';
+  this.ctx.fillRect(0, 0, this.els.flipbook.width, this.els.flipbook.height)
+  this.ctx.fillStyle = 'white'
+  this.ctx.font = fontSize + 'px serif';
+  const th = this.ctx.measureText('M').width * 1.1;
+  const xoff = this.els.flipbook.width * .1
+  const yoff = this.els.flipbook.height * .1
+  const text = [
+    "This is a flipbook.  You can press '\u25b6' to cycle",
+    "through frames, but it is really intended for you to",
+    "step through them:",
+    "",
+    "* Click in frame to step forward",
+    "* Shift + click in frame to step backwards",
+    "* Or use the controls below"
+  ]
+  /* figure out center point to put the text in */
 
-          let text_max_width = 0;
-          for(let i = 0; i < text.length; i++) {
-            if(text_max_width < ctx.measureText(text[i]).width) {
-              text_max_width = ctx.measureText(text[i]).width;
-            }
-          }
-          const text_tot_height = th * text.length;
-          const xstart = (flipbook.width - text_max_width) / 2;
-          const ystart = (flipbook.height - text_tot_height) / 2 + th;
-
-          for(i = 0; i < text.length; i++) {
-            ctx.fillText(text[i], xstart, ystart + th * i);
-          }
-          flipbook_help_active = true;
-        }
-        function pause_flip() {
-          playing = false;
-          console.log('pause clear interval');
-          clearInterval(intervalID);
-        }
-        function step_f_int() {
-          if(img_active == img_n) {img_active = 1} else {img_active += 1;}
-        }
-        function step_b_int() {
-          if(img_active == 1) {img_active = img_n} else {img_active -= 1;}
-        };
-        function change_frame(dir) {
-          console.log('change frame ' + dir + ' help act ' + flipbook_help_active);
-          if(!flipbook_help_active) {
-            if(dir > 0) step_f_int(); else step_b_int();
-            draw();
-          } else if(flipbook_help_active) {
-            help_clear();
-          }
-        }
-        function step(dir) {
-          pause_flip();
-          change_frame(dir);
-        }
-        function step_f() {step(1);}
-        function step_b() {step(-1);}
-        function step_click(e) {
-          pause_flip();
-          if(e.shiftKey) {step_b();} else {step_f();}
-        }
-        // automated stepping, pauses at end
-        function step_auto() {
-          console.log('stepping ', img_active);
-          if(img_active == img_n) {
-            // delay at end
-            pause_flip();
-            setTimeout(
-              function() {
-                console.log('end image');
-                change_frame(1);
-                pause_flip();
-                resume_all();
-              },
-              end_delay * interval
-            );
-          } else {
-            change_frame(1);
-          }
-        }
-        /*
-        Intended to be triggered by the play button
-        */
-        function play_all() {
-          if(playing) {
-            pause_flip();
-            return null;
-          }
-          clearInterval(intervalID);
-          step_f();  // always immediately advance
-          intervalID = setInterval(step_auto, interval);
-          playing = true;
-        }
-        /*
-        Restart when looping
-        */
-        function resume_all() {
-          clearInterval(intervalID);
-          intervalID = setInterval(step_auto, interval);
-          playing = true;
-        }
-        function help_clear() {
-          if(flipbook_help_active) {
-            flipbook_help_active = false;
-            draw();
-          }
-        }
-        // - Handlers ----------------------------------------------------------
-
-        flipbook.addEventListener("click", step_click);
-        stepf.addEventListener("mouseup", step_f);
-        stepb.addEventListener("mouseup", step_b);
-        play.addEventListener("mouseup", play_all);
-        help.addEventListener("mouseup", draw_help);
-        stop.addEventListener("mouseup", function(e) {
-          pause_flip();
-          img_active = 1;
-          draw();
-        });
-        // FPS
-        fps.addEventListener("input", function(e) {
-          interval = 1/fps_read() * 1000;
-          pause_flip();
-          play_all();
-        });
-        // Frame
-        frame.addEventListener("input", function(e) {
-          var frame_val = parseInt(frame.value)
-          if(
-            (isNaN(frame_val) || frame_val < 1 || frame_val >= img_n) ||
-            frame_val == img_active
-          ) {return;}
-          img_active = frame_val;
-          pause_flip();
-          draw();
-        });
-        window.addEventListener("load", 
-          function() {
-            draw();
-            draw_help();
-            flipbook_init=true;
-          }
-        );
-      }
+  let textMaxWidth = 0;
+  for(let i = 0; i < text.length; i++) {
+    if(textMaxWidth < this.ctx.measureText(text[i]).width) {
+      textMaxWidth = this.ctx.measureText(text[i]).width;
     }
   }
-)()
+  const textTotHeight = th * text.length;
+  const xstart = (this.els.flipbook.width - textMaxWidth) / 2;
+  const ystart = (this.els.flipbook.height - textTotHeight) / 2 + th;
 
-// - Globals -------------------------------------------------------------------
+  for(i = 0; i < text.length; i++) {
+    this.ctx.fillText(text[i], xstart, ystart + th * i);
+  }
+  this.helpActive = true;
+}
+BgFlipBook.prototype.pauseFlip = function() {
+  //console.log('pause clear interval');
+  this.playing = false;
+  clearInterval(this.intervalID);
+}
+BgFlipBook.prototype.stepFInt = function() {
+  if(this.imgActive == this.imgN) {
+    this.imgActive = 1
+  } else {
+    this.imgActive += 1;
+  }
+}
+BgFlipBook.prototype.stepBInt = function() {
+  if(this.imgActive == 1) {
+    this.imgActive = this.imgN
+  } else {
+    this.imgActive -= 1;
+  }
+};
+BgFlipBook.prototype.changeFrame = function(dir) {
+  console.log('change frame ' + dir + ' help act ' + this.helpActive);
+  if(!this.helpActive) {
+    if(dir > 0) this.stepFInt(); else this.stepBInt();
+    this.draw();
+  } else if(this.helpActive) {
+    this.helpClear();
+  }
+}
+BgFlipBook.prototype.step = function(dir) {
+  this.pauseFlip();
+  this.changeFrame(dir);
+}
+BgFlipBook.prototype.stepF = function() {this.step(1);}
+BgFlipBook.prototype.stepB = function() {this.step(-1);}
+BgFlipBook.prototype.stepClick = function(e) {
+  this.pauseFlip();
+  if(e.shiftKey) {this.stepB();} else {this.stepF();}
+}
+// automated stepping, pauses at end
+BgFlipBook.prototype.stepAuto = function() {
+  console.log('stepping ', this.imgActive);
+  if(this.imgActive == this.imgN) {
+    // delay at end
+    this.pauseFlip();
+    setTimeout(
+      function() {
+        console.log('end image');
+        this.changeFrame(1);
+        this.pauseFlip();
+        resumeAll();
+      },
+      this.endDelay * this.interval
+    );
+  } else {
+    this.changeFrame(1);
+  }
+}
+BgFlipBook.prototype.playAll = function() {
+  if(this.playing) {
+    this.pauseFlip();
+    return null;
+  }
+  clearInterval(this.intervalID);
+  this.stepF();  // always immediately advance
+  this.intervalID = setInterval(this.stepAuto, this.interval);
+  this.playing = true;
+}
+/*
+Restart when looping
+*/
+BgFlipBook.prototype.resumeAll = function() {
+  clearInterval(this.intervalID);
+  this.intervalID = setInterval(this.stepAuto, this.interval);
+  this.playing = true;
+}
+BgFlipBook.prototype.helpClear = function() {
+  if(this.helpActive) {
+    this.helpActive = false;
+    this.draw();
+  }
+}
+BgFlipBook.prototype.fpsRead = function() {
+  let val = parseFloat(this.els.fps.value);
+  if(isNaN(val) || val < 0) val = this.fpsLast;
+  this.fpsLast = val;
+  return val;
+}
+// - Handler Funs --------------------------------------------------------------
 
+BgFlipBook.prototype.handleStop = function() {
+  this.pauseFlip();
+  this.imgActive = 1;
+  this.draw();
+};
+BgFlipBook.prototype.handleInputFPS = function() {
+  this.interval = 1/this.fpsRead() * 1000;
+  this.pauseFlip();
+  this.playAll();
+};
+BgFlipBook.prototype.handleInputFrame = function() {
+  const frameVal = parseInt(this.els.frame.value)
+  if(
+    (isNaN(frameVal) || frameVal < 1 || frameVal >= this.imgN) ||
+    frameVal == this.imgActive
+  ) {return;}
+  this.imgActive = frameVal;
+  this.pauseFlip();
+  this.draw();
+};
+BgFlipBook.prototype.handleLoad = function() {
+  this.draw();
+  this.drawHelp();
+  this.init=true;
+};
 
