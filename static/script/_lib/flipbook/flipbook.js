@@ -117,7 +117,7 @@ function BgFlipBook(
   // - Register Handlers -------------------------------------------------------
 
   var flip = this;
-  this.els.flipbook.addEventListener("click", function() {flip.stepClick()});
+  this.els.flipbook.addEventListener("click", function(e) {flip.stepClick(e)});
   this.els.stepf.addEventListener("mouseup", function() {flip.stepF()});
   this.els.stepb.addEventListener("mouseup", function() {flip.stepB()});
   this.els.play.addEventListener("mouseup", function() {flip.playAll()});
@@ -186,7 +186,9 @@ BgFlipBook.prototype.pauseFlip = function() {
   clearInterval(this.intervalID);
 }
 BgFlipBook.prototype.stepFInt = function() {
+  console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN);
   if(this.imgActive == this.imgN) {
+    console.log('StepF reset img');
     this.imgActive = 1
   } else {
     this.imgActive += 1;
@@ -224,12 +226,13 @@ BgFlipBook.prototype.stepAuto = function() {
   if(this.imgActive == this.imgN) {
     // delay at end
     this.pauseFlip();
+    var flip = this;
     setTimeout(
       function() {
         console.log('end image');
-        this.changeFrame(1);
-        this.pauseFlip();
-        resumeAll();
+        flip.changeFrame(1);
+        flip.pauseFlip();
+        flip.resumeAll();
       },
       this.endDelay * this.interval
     );
@@ -244,7 +247,9 @@ BgFlipBook.prototype.playAll = function() {
   }
   clearInterval(this.intervalID);
   this.stepF();  // always immediately advance
-  this.intervalID = setInterval(this.stepAuto, this.interval);
+  var flip = this;
+  this.intervalID = setInterval(function() {flip.stepAuto()}, this.interval);
+  console.log('Interval ID set to ' + this.intervalID)
   this.playing = true;
 }
 /*
@@ -252,7 +257,10 @@ Restart when looping
 */
 BgFlipBook.prototype.resumeAll = function() {
   clearInterval(this.intervalID);
-  this.intervalID = setInterval(this.stepAuto, this.interval);
+  var flip = this;
+  console.log('Setting step with int ' + this.interval);
+  this.intervalID = setInterval(function(){flip.stepAuto()}, flip.interval);
+  console.log('Interval ID set to ' + this.intervalID)
   this.playing = true;
 }
 BgFlipBook.prototype.helpClear = function() {
