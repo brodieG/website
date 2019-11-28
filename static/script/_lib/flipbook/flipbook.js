@@ -29,6 +29,7 @@ canvas element the images are drawn in.
  * Constructor ***************************************************************|
 \*---------------------------------------------------------------------------*/
 
+const bgFlipBookDebug = false;
 function BgFlipBook(
   targetId, imgDir, imgEnd, imgStart=1, fpsInit=1, endDelay=0
 ) {
@@ -145,7 +146,7 @@ BgFlipBook.prototype.draw = function() {
   );
 }
 BgFlipBook.prototype.drawHelp = function() {
-  console.log('Draw Help');
+  if(bgFlipBookDebug) {console.log('Draw Help')};
   const fontSize = this.els.flipbook.width / 25;
   this.pauseFlip();
   this.draw();
@@ -183,14 +184,14 @@ BgFlipBook.prototype.drawHelp = function() {
   this.helpActive = true;
 }
 BgFlipBook.prototype.pauseFlip = function() {
-  //console.log('pause clear interval');
+  //if(bgFlipBookDebug) {console.log('pause clear interval')};
   this.playing = false;
   clearInterval(this.intervalID);
 }
 BgFlipBook.prototype.stepFInt = function() {
-  console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN);
+  if(bgFlipBookDebug) {console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN)};
   if(this.imgActive == this.imgN) {
-    console.log('StepF reset img');
+    if(bgFlipBookDebug) {console.log('StepF reset img')};
     this.imgActive = 1
   } else {
     this.imgActive += 1;
@@ -204,7 +205,7 @@ BgFlipBook.prototype.stepBInt = function() {
   }
 };
 BgFlipBook.prototype.changeFrame = function(dir) {
-  console.log('change frame ' + dir + ' help act ' + this.helpActive);
+  if(bgFlipBookDebug) {console.log('change frame ' + dir + ' help act ' + this.helpActive)};
   if(!this.helpActive) {
     if(dir > 0) this.stepFInt(); else this.stepBInt();
     this.draw();
@@ -224,14 +225,14 @@ BgFlipBook.prototype.stepClick = function(e) {
 }
 // automated stepping, pauses at end
 BgFlipBook.prototype.stepAuto = function() {
-  console.log('stepping ', this.imgActive);
+  if(bgFlipBookDebug) {console.log('stepping ', this.imgActive)};
   if(this.imgActive == this.imgN) {
     // delay at end
     this.pauseFlip();
     var flip = this;
     setTimeout(
       function() {
-        console.log('end image');
+        if(bgFlipBookDebug) {console.log('end image')};
         flip.changeFrame(1);
         flip.pauseFlip();
         flip.resumeAll();
@@ -251,7 +252,7 @@ BgFlipBook.prototype.playAll = function() {
   this.stepF();  // always immediately advance
   var flip = this;
   this.intervalID = setInterval(function() {flip.stepAuto()}, this.interval);
-  console.log('Interval ID set to ' + this.intervalID)
+  if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
   this.playing = true;
 }
 /*
@@ -260,9 +261,9 @@ Restart when looping
 BgFlipBook.prototype.resumeAll = function() {
   clearInterval(this.intervalID);
   var flip = this;
-  console.log('Setting step with int ' + this.interval);
+  if(bgFlipBookDebug) {console.log('Setting step with int ' + this.interval)}
   this.intervalID = setInterval(function(){flip.stepAuto()}, flip.interval);
-  console.log('Interval ID set to ' + this.intervalID)
+  if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
   this.playing = true;
 }
 BgFlipBook.prototype.helpClear = function() {
