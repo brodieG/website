@@ -413,14 +413,16 @@ For how we built the 3D animation see:
 
 static/post/2019-07-26-hydra-loose-ends_files/scripts/threed-plot.R
 -->
+<div id='flipbook1'></div>
+```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
+```
 <script type='text/javascript'>
 var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
 var fps_def = 1;
 var img_n = 15;
 var end_delay = 1;
+new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
 </script>
-```{r child='../../static/chunks/flipbook.Rmd'}
-```
 
 You can also view the flipbook [as a video][320] if you prefer.
 

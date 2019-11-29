@@ -223,26 +223,16 @@ In order to get a better sense of what is going on in `rpn` we modified it
 with `explain` and recorded the results for you to step through here:<span
 id=rpn-flipbook></span>
 
-<a name='flipbook'></a>
-```{r eval=FALSE, echo=FALSE}
-source('static/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/explain.R')
-options(explain.delay=readline)
-explain(rpn)(9, 3, '-', 2, 5, '+', '*')
-writeLines(
-  sprintf(
-    "<img id='bg-rpn-%d' class='bg-rpn' src='%s' style='display: none' />",
-    seq_along(files), files
-) )
+<div id='flipbook1'></div>
+```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
 ```
-
 <script type='text/javascript'>
 var img_dir = '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/';
 var fps_def = 3;
 var img_n = 48;
 var end_delay = 5;
+new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
 </script>
-```{r child='../../static/chunks/flipbook.Rmd'}
-```
 
 Part of the reason it is so easy to compute on the language in R is that since
 calls are lists, list manipulation facilities can be used on them.  For example,
