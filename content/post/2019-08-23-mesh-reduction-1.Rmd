@@ -229,17 +229,47 @@ is what happens in finding the first triangle in a 5x5 mesh[^min-complex]:
 Flipbook of 0007-0053.  Do we include the last few bits?
 -->
 
-Thankfully we now have `watcher` available to see what the code does.  
+When the target triangle is found it is shown in yellow.  After that point the
+algorithm computes the location of the midpoint of the hypotenuse, and records
+the error at that point.  Since this is the most granular approximation level
+there is no child error to propagate[^no-child-error].
 
+This process is repeated with changing initial `id` values until eventually the
+entire surface has been tiled with a triangle:
 
+<!--
+Show frames 100, 194, 382, 758
+-->
 
-Jkk
-and while it looks deceptively simple it is
-too complex for me to visualize its execution in my head.  
+At this point something interesting happens.  By its nature the algorithm
+repeats the same calculation but stops at the next largest triangle size.
+Additionally, since we are no longer at the most granular approximation it also
+starts carrying over the child errors.  Here we show the computation on the
+second triangle at the next approximation level[^second-triangle]:
 
-```{r}
-getwd()
-```
+<!--
+Flipbook of frames 803-844
+-->
+
+In the last few frames we can see the error from the children elements (labeled
+`lc` and `rc` for "left child" and "right child") carried over into the current
+target point.  Do note that more errors will be carried over.  A few hundred
+steps later in the process the other set of children that coincide on this
+particular hypotenuse are addressed:
+
+<!--
+Frame 1102
+-->
+
+In this case it the additional child errors are smaller so they do not change
+the outcome, but it is worth noting that each hypotenuse midpoint may add up to
+four child errors.
+
+Here is the entire process:
+
+<!--
+mp4 of entire process
+-->
 
 
 # Vectorize The Shit Absolute Shit Out Of This
@@ -284,6 +314,10 @@ errors_rtin2
   why not do this.
 [^min-complex]: A 5x5 mesh is the smallest mesh that clearly showcases the
   complexity of the algorithm.
+[^no-child-error]: We can split this triangle once again, but at that level
+  every point on the elevation map coincides with a vertex so there is no error.
+[^second-triangle]: The first triangle is not very interesting because the child
+  errors are smaller than the parent error so there is no error to carry over.
 
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
 [7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
