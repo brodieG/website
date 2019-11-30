@@ -8,23 +8,18 @@ user is responsible for injecting that HTML into the same page as this JS.
 
 Suggested usage is something like:
 
-    A flipbook:
-
+    A flipbook goes here:
     <div id='flipbook1'></div>
 
-    Another flipbook:
-
-    <div id='flipbook2'></div>
-
-    ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
+    ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
     ```
     <script type='text/javascript'>
-    var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
-    var fps_def = 1;
-    var img_n = 15;
-    var end_delay = 1;
-    new BgFlipBook('flipbook1', img_dir, 10, 1, fps_def, end_delay);
-    new BgFlipBook('flipbook2', img_dir, 15, 11, fps_def, end_delay);
+    new BgFlipBook({
+      targetId: 'flipbook1',
+      imgDir: '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/',
+      imgStart: 7, imgEnd: 53,  imgPad: "0000",
+      fps: 4, loop: true, loopDelay: 8
+    })
     </script>
 
 The Rmd combines the JS and HTML inclusion.  It seems best to include this code
@@ -37,18 +32,22 @@ Failure to set the directory or file names properly will result in errors like
 naturalWidth and naturalHeight of the first image will set the size of the HTML
 canvas element the images are drawn in.
 
-@param targetId string id of pre-existing DIV that will be populated with the
-  flipbook.  The DIV must be empty.
+Flipbook is configured via a single object with named values.  Here "@param x"
+should be taken to mean "obj.x"
+@param targetId string id of pre-existing DIV that will be populated
+  with the flipbook.  The DIV must be empty.
 @param imgDir string location for images for flipbook, the images must be named
   in format img-001.png (see `pad` as well).
 @param imgEnd where to end the flipbook, required because we cannot get a
   directory listing so don't know how many images there are.
-@param imgStart where to start the flipbook, must be less than imgEnd
-@param fpsInit number the default initial frame rate.
-@param endDelay number how many frames to pause when playing before looping
+@param imgStart positive integer where to start the flipbook, must be less than
+  imgEnd
+@param fps frame rate in frames per second.
+@param loop boolean whether to loop back to beginning when auto-playing.
+@param loopDelay number how many frames to pause when playing before looping
   back to start.
-@param pad string of form "0", "00", "000", etc., of length corresponding to how
-  many digits re used in the image file names.
+@param imgPad string of form "0", "00", "000", etc., of length corresponding to
+  how many digits re used in the image file names.
 @return an instantiated flipboook object, although it serves no real purpose as
   the constructor attaches all the event handlers and nothing else beyond that
   is needed.
@@ -70,7 +69,7 @@ function BgFlipBook(x) {
     targetId: null,
     imgDir: null,
     imgEnd: null,
-    imgStart:1,
+    imgStart: 1,
     imgPad: "000",
     fps: 1,
     loopDelay: 0,
@@ -114,6 +113,9 @@ function BgFlipBook(x) {
     x.imgEnd < 1
   ) {
     throw new Error("flipbook error: 'imgEnd' must be integer > 1.");
+  }
+  if(x.imgEnd < x.imgStart) {
+    throw new Error("flipbook error: 'imgEnd' must be GTE to 'imgStart'.");
   }
   if(typeof(x.fps) != 'number' || x.fps < 1) {
     throw new Error("flipbook error: 'fps' must be numeric > 0.");
