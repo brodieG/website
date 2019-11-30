@@ -59,17 +59,77 @@ canvas element the images are drawn in.
 \*---------------------------------------------------------------------------*/
 
 const bgFlipBookDebug = false;
-function BgFlipBook(
-  targetId, imgDir, imgEnd, imgStart=1, fpsInit=1, endDelay=0, pad="000"
-) {
+function BgFlipBook(x) {
   // - Validate ----------------------------------------------------------------
 
+  if(typeof(x) != 'object') {
+    throw new Error("flipbook error: input is not an object");
+  }
+  // Defaults
+  xDef = {
+    targetId: null,
+    imgDir: null,
+    imgEnd: null,
+    imgStart:1,
+    imgPad: "000",
+    fps: 1,
+    loopDelay: 0,
+    loop: false
+  }
+  for (let k in x) {
+    if (x.hasOwnProperty(k)) {
+      if(typeof(xDef[k]) == 'undefined') {
+        throw new Error(
+          "flipbook error: " + k +" is not a known property"
+        );
+      }
+      xDef[k] = x[k]
+  } }
+  for (let k in xDef) {
+    if (xDef.hasOwnProperty(k)) {
+      if(xDef[k] == null) {
+        throw new Error(
+          "flipbook error: required property " + k +" was no provided"
+        );
+  } } }
+  x = xDef;
+
+  if(typeof(x.targetId) != "string") {
+    throw new Error("flipbook error: 'targetId' is not a string");
+  }
+  if(typeof(x.imgDir) != "string") {
+    throw new Error("flipbook error: 'imgDir' is not a string");
+  }
+  if(typeof(x.imgPad) != "string") {
+    throw new Error("flipbook error: 'imgPad' is not a string");
+  }
+  if(
+    typeof(x.imgStart) != 'number' || !Number.isInteger(x.imgStart) ||
+    x.imgStart < 1
+  ) {
+    throw new Error("flipbook error: 'imgStart' must be integer > 1.");
+  }
+  if(
+    typeof(x.imgEnd) != 'number' || !Number.isInteger(x.imgEnd) ||
+    x.imgEnd < 1
+  ) {
+    throw new Error("flipbook error: 'imgEnd' must be integer > 1.");
+  }
+  if(typeof(x.fps) != 'number' || x.fps < 1) {
+    throw new Error("flipbook error: 'fps' must be numeric > 0.");
+  }
+  if(typeof(x.loopDelay) != 'number' || x.loopDelay < 1) {
+    throw new Error("flipbook error: 'loopDelay' must be numeric > 0.");
+  }
+  if(typeof(x.loop) != 'boolean') {
+    throw new Error("flipbook error: 'loop' must be boolean.");
+  }
   // Find target and template DOM objects
 
-  const target = document.getElementById(targetId)
+  const target = document.getElementById(x.targetId)
   if(target == null) {
     throw new Error(
-      "flipbook error: could not find target div with id '" + targetId + "'."
+      "flipbook error: could not find target div with id '" + x.targetId + "'."
     );
   }
   if(target.childElemCount) {
@@ -97,11 +157,12 @@ function BgFlipBook(
     fps: flipNew.querySelector('#bg-flipbook-fps'),
     frame: flipNew.querySelector('#bg-flipbook-frame'),
     stop: flipNew.querySelector('#bg-flipbook-stop'),
-    frameN: flipNew.querySelector('#bg-flipbook-frame-n')
+    frameN: flipNew.querySelector('#bg-flipbook-frame-n'),
+    loop: flipNew.querySelector('#bg-flipbook-loop')
   }
   for(let i in this.els) {
     if(this.els[i] == null) {
-      throw new Error("flipbook error: template missing '", i, "' element.");
+      throw new Error("flipbook error: template missing '" + i + "' element.");
     }
     this.els[i].id = ""
   }
@@ -111,12 +172,12 @@ function BgFlipBook(
   }
   // Other properties
 
-  this.imgN = imgEnd - imgStart + 1;
+  this.imgN = x.imgEnd - x.imgStart + 1;
   this.playing = false;
-  this.pad = pad;
+  this.imgPad = x.imgPad;
   this.imgActive = 1;
-  this.fpsLast = fpsInit;
-  this.endDelay = endDelay;
+  this.fpsLast = x.fps;
+  this.loopDelay = x.loopDelay;
   this.init = false;
   this.helpActive = false;
   this.intervalID = 0;
@@ -126,19 +187,21 @@ function BgFlipBook(
   this.els.frameN.innerHTML = this.imgN;
   this.els.fps.value = this.fpsLast;
   this.interval = 1 / this.fpsRead() * 1000;
-
+  if(x.loop) {
+    this.els.loop.checked=true;
+  }
   if(!isNaN(parseInt(this.els.frame.value))) {
     this.imgActive = parseInt(this.els.frame.value);
   };
 
   // - Load Images -------------------------------------------------------------
 
-  for(i = imgStart; i <= imgEnd; ++i) {
+  for(i = x.imgStart; i <= x.imgEnd; ++i) {
     const img = document.createElement("img");
     const imgNStr = "" + i;
     const imgFile =
-      this.pad.substring(0, this.pad.length - imgNStr.length) + imgNStr;
-    const imgSrc = imgDir + '/img-' + imgFile + '.png'
+      this.imgPad.substring(0, this.imgPad.length - imgNStr.length) + imgNStr;
+    const imgSrc = x.imgDir + '/img-' + imgFile + '.png'
     img.src = imgSrc;
     this.els.imgs.append(img);
   }
@@ -190,10 +253,6 @@ BgFlipBook.prototype.drawHelp = function() {
   const xoff = this.els.flipbook.width * .1
   const yoff = this.els.flipbook.height * .1
   const text = [
-    "This is a flipbook.  You can press '\u25b6' to cycle",
-    "through frames, but it is really intended for you to",
-    "step through them:",
-    "",
     "* Click in frame to step forward",
     "* Shift + click in frame to step backwards",
     "* Or use the controls below"
@@ -259,18 +318,22 @@ BgFlipBook.prototype.stepClick = function(e) {
 BgFlipBook.prototype.stepAuto = function() {
   if(bgFlipBookDebug) {console.log('stepping ', this.imgActive)};
   if(this.imgActive == this.imgN) {
-    // delay at end
-    this.pauseFlip();
-    var flip = this;
-    setTimeout(
-      function() {
-        if(bgFlipBookDebug) {console.log('end image')};
-        flip.changeFrame(1);
-        flip.pauseFlip();
-        flip.resumeAll();
-      },
-      this.endDelay * this.interval
-    );
+    if(this.els.loop.checked) {
+      // delay at end
+      this.pauseFlip();
+      var flip = this;
+      setTimeout(
+        function() {
+          if(bgFlipBookDebug) {console.log('end image')};
+          flip.changeFrame(1);
+          flip.pauseFlip();
+          flip.resumeAll();
+        },
+        this.loopDelay * this.interval
+      );
+    } else {
+      this.pauseFlip();
+    }
   } else {
     this.changeFrame(1);
   }
