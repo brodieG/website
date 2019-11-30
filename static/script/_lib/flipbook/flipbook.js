@@ -4,8 +4,32 @@ Instantiate a Flipbook Object
 A flipbook will display images from a directory onto a canvas 2D object.  This
 javascript object relies on a pre-existing flipbook template loaded into the
 document which should be available in the companion 'flipbook.html' file.  The
-user is responsible for injecting that HTML into the same page as this JS.  For
-an example see 'flipbook.Rmd'.
+user is responsible for injecting that HTML into the same page as this JS.
+
+Suggested usage is something like:
+
+    A flipbook:
+
+    <div id='flipbook1'></div>
+
+    Another flipbook:
+
+    <div id='flipbook2'></div>
+
+    ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
+    ```
+    <script type='text/javascript'>
+    var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
+    var fps_def = 1;
+    var img_n = 15;
+    var end_delay = 1;
+    new BgFlipBook('flipbook1', img_dir, 10, 1, fps_def, end_delay);
+    new BgFlipBook('flipbook2', img_dir, 15, 11, fps_def, end_delay);
+    </script>
+
+The Rmd combines the JS and HTML inclusion.  It seems best to include this code
+after the target divs, although only the `new BgFlipBook` calls should need
+to happen after they are defined, in theory (failed in practice).
 
 Failure to set the directory or file names properly will result in errors like
 "NS_ERROR_NOT_AVAILABLE" (firefox).
@@ -16,13 +40,18 @@ canvas element the images are drawn in.
 @param targetId string id of pre-existing DIV that will be populated with the
   flipbook.  The DIV must be empty.
 @param imgDir string location for images for flipbook, the images must be named
-  in format img-0001.png.
+  in format img-001.png (see `pad` as well).
 @param imgEnd where to end the flipbook, required because we cannot get a
   directory listing so don't know how many images there are.
 @param imgStart where to start the flipbook, must be less than imgEnd
 @param fpsInit number the default initial frame rate.
 @param endDelay number how many frames to pause when playing before looping
   back to start.
+@param pad string of form "0", "00", "000", etc., of length corresponding to how
+  many digits re used in the image file names.
+@return an instantiated flipboook object, although it serves no real purpose as
+  the constructor attaches all the event handlers and nothing else beyond that
+  is needed.
 */
 
 /*---------------------------------------------------------------------------*\
@@ -31,7 +60,7 @@ canvas element the images are drawn in.
 
 const bgFlipBookDebug = false;
 function BgFlipBook(
-  targetId, imgDir, imgEnd, imgStart=1, fpsInit=1, endDelay=0
+  targetId, imgDir, imgEnd, imgStart=1, fpsInit=1, endDelay=0, pad="000"
 ) {
   // - Validate ----------------------------------------------------------------
 
@@ -58,6 +87,7 @@ function BgFlipBook(
   const flipNew = flipTpl.cloneNode(true)
 
   this.els = {
+    container: flipNew.querySelector('#bg-flipbook-container'),
     flipbook: flipNew.querySelector('#bg-flipbook-flipbook'),
     imgs: flipNew.querySelector('#bg-flipbook-images'),
     play: flipNew.querySelector('#bg-flipbook-play'),
@@ -83,7 +113,7 @@ function BgFlipBook(
 
   this.imgN = imgEnd - imgStart + 1;
   this.playing = false;
-  this.pad = "000";
+  this.pad = pad;
   this.imgActive = 1;
   this.fpsLast = fpsInit;
   this.endDelay = endDelay;
@@ -137,6 +167,8 @@ function BgFlipBook(
 BgFlipBook.prototype.draw = function() {
   this.els.frame.value = this.imgActive;
   if(!this.init) {
+    this.els.container.style.width =
+      this.els.imgs.children[0].naturalWidth + 'px';
     this.els.flipbook.width = this.els.imgs.children[0].naturalWidth;
     this.els.flipbook.height = this.els.imgs.children[0].naturalHeight;
   }
