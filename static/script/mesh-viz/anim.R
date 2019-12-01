@@ -1,97 +1,97 @@
-# # - Initialize -----------------------------------------------------------------
-# 
-# # matrix that has most error on the top left part as that is done last
-# # it's shown as plotted, and re-ordered for actual use
-# 
-# # map <- matrix(c(
-# #   0, 3, 0,
-# #   3, 1, 2,
-# #   0, 2, 0), 3)[,3:1]
-# eltif <- raster::raster("~/Downloads/dem_01.tif")
-# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-# elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
-# 
-# map <- elmat1[1:5, 1:5]
-# 
-# source('static/script/mesh-viz/rtin2.R')
-# 
-# # - Record ---------------------------------------------------------------------
-# 
-# library(watcher)
-# coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
-# id.vars <- c('.id', '.line')
-# vars <- c(coord.vars, 'errors', 'id', 'i')
-# errors_watched <- watch(errors_rtin2, vars)
-# xx <- errors_watched(map)
-# zz.raw <- simplify_data(attr(xx, 'watch.data'))
-# library(reshape2)
-# 
-# frame.ids <- zz.raw[['.scalar']][['.id']]
-# # frame.ids <- tail(frame.ids, 1)
-# scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
-# zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
-# zz.raw[-1] <- lapply( # assuming df, not necessarily true
-#   zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
-# )
-# 
-# # - Basic Data -----------------------------------------------------------------
-# 
-# zz.vec <- zz.raw[['.scalar']]
-# dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
-# dat[['variable']] <- as.character(dat[['variable']])
-# var.chrs <- nchar(dat[['variable']])
-# dat[['label']] <- substr(dat[['variable']], 1, var.chrs - 1L)
-# dat[['var']] <- substr(dat[['variable']], var.chrs, var.chrs)
-# dat <- dcast(dat, .id + .line + label ~ var, value.var='value')
-# dat[['type']] <- 'Coords'
-# dat.s <- dat
-# # dat.s <- subset(dat, id %in% 1:40)
-# pcolor <- c(
-#   a='#66c2a5', b='#fc8d62', c='grey65',
-#   m='#8da0cb', lc='#8da0cb88', rc='#8da0cb88'
-# )
-# dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm', 'lc', 'rc'))
-# dat.s1 <- transform(dat.s1, pcolor=pcolor[label])
-# dat.s2 <- subset(dat.s, label %in% letters[1:3])
-# dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
-# dat.s3a <- subset(dat.s, label %in% c('lc', 'rc', 'm'))
-# dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='Errors'))
-# 
-# # Data for child to parent arrows; surely there is a better way to do this
-# 
-# dat.s4a <- melt(dat.s3a[1:5], id.vars=c('.id', '.line', 'label'))
-# dat.s4b <- dcast(dat.s4a, .id + .line + variable ~ label)
-# dat.s4c <- melt(
-#   dat.s4b,
-#   id.vars=c('.id', '.line', 'variable', 'm')
-# )
-# names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'type', 'c')
-# dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
-# dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
-# dat.s4[['type']] <- 'Errors'
-# 
-# # Background triangles
-# 
-# dat.s5a <- subset(dat.s2, .line == 45)
-# max.id <- max(zz.vec[['.id']])
-# dat.s5 <- do.call(
-#   rbind,
-#   lapply(
-#     unique(dat.s5a[['.id']]),
-#     function(x) {
-#       ids <- which(dat.s5a[['.id']] == x)
-#       ids.len <- length(ids)
-#       new.ids <- rep(seq(x, max.id, by=1), each=ids.len)
-#       res <- dat.s5a[rep_len(ids, length.out=length(new.ids)),,drop=FALSE]
-#       res[['.id']] <- new.ids
-#       res[['.id.old']] <- rep(x, length(new.ids))
-#       res
-#     }
-# ) )
-# # background points
-# 
-# dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
-# 
+# - Initialize -----------------------------------------------------------------
+
+# matrix that has most error on the top left part as that is done last
+# it's shown as plotted, and re-ordered for actual use
+
+# map <- matrix(c(
+#   0, 3, 0,
+#   3, 1, 2,
+#   0, 2, 0), 3)[,3:1]
+eltif <- raster::raster("~/Downloads/dem_01.tif")
+eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+
+map <- elmat1[1:5, 1:5]
+
+source('static/script/mesh-viz/rtin2.R')
+
+# - Record ---------------------------------------------------------------------
+
+library(watcher)
+coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
+id.vars <- c('.id', '.line')
+vars <- c(coord.vars, 'errors', 'id', 'i')
+errors_watched <- watch(errors_rtin2, vars)
+xx <- errors_watched(map)
+zz.raw <- simplify_data(attr(xx, 'watch.data'))
+library(reshape2)
+
+frame.ids <- zz.raw[['.scalar']][['.id']]
+# frame.ids <- tail(frame.ids, 1)
+scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
+zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
+zz.raw[-1] <- lapply( # assuming df, not necessarily true
+  zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
+)
+
+# - Basic Data -----------------------------------------------------------------
+
+zz.vec <- zz.raw[['.scalar']]
+dat <- melt(as.data.frame(zz.vec[c(coord.vars, id.vars)]), id.vars=id.vars)
+dat[['variable']] <- as.character(dat[['variable']])
+var.chrs <- nchar(dat[['variable']])
+dat[['label']] <- substr(dat[['variable']], 1, var.chrs - 1L)
+dat[['var']] <- substr(dat[['variable']], var.chrs, var.chrs)
+dat <- dcast(dat, .id + .line + label ~ var, value.var='value')
+dat[['type']] <- 'Coords'
+dat.s <- dat
+# dat.s <- subset(dat, id %in% 1:40)
+pcolor <- c(
+  a='#66c2a5', b='#fc8d62', c='grey65',
+  m='#8da0cb', lc='#8da0cb88', rc='#8da0cb88'
+)
+dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm', 'lc', 'rc'))
+dat.s1 <- transform(dat.s1, pcolor=pcolor[label])
+dat.s2 <- subset(dat.s, label %in% letters[1:3])
+dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
+dat.s3a <- subset(dat.s, label %in% c('lc', 'rc', 'm'))
+dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='Errors'))
+
+# Data for child to parent arrows; surely there is a better way to do this
+
+dat.s4a <- melt(dat.s3a[1:5], id.vars=c('.id', '.line', 'label'))
+dat.s4b <- dcast(dat.s4a, .id + .line + variable ~ label)
+dat.s4c <- melt(
+  dat.s4b,
+  id.vars=c('.id', '.line', 'variable', 'm')
+)
+names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'type', 'c')
+dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
+dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
+dat.s4[['type']] <- 'Errors'
+
+# Background triangles
+
+dat.s5a <- subset(dat.s2, .line == 45)
+max.id <- max(zz.vec[['.id']])
+dat.s5 <- do.call(
+  rbind,
+  lapply(
+    unique(dat.s5a[['.id']]),
+    function(x) {
+      ids <- which(dat.s5a[['.id']] == x)
+      ids.len <- length(ids)
+      new.ids <- rep(seq(x, max.id, by=1), each=ids.len)
+      res <- dat.s5a[rep_len(ids, length.out=length(new.ids)),,drop=FALSE]
+      res[['.id']] <- new.ids
+      res[['.id.old']] <- rep(x, length(new.ids))
+      res
+    }
+) )
+# background points
+
+dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
+
 # # - Code -----------------------------------------------------------------------
 
 code <- deparse(errors_rtin2, control='all')
@@ -152,7 +152,7 @@ size <- nrow(map)
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-# frames <- 1:100
+frames <- 1:10
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
   meta=dat.meta, lines=dat.lines, s3=dat.s3
@@ -224,16 +224,107 @@ for(i in frames) {
 }
 stop('done plot')
 
-# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
-#   open out.mp4
-
-
 # remove transparency layers, doesn't work but at least this way consistent
 # profile
 
 dir <- '~/Downloads/mesh-anim-4'
-files <- list.files(dir, full.names=TRUE)
+files <- list.files(dir, full.names=TRUE, pattern='img-.*\\.png')
 for(i in files) {
   fpng <- png::readPNG(i)[,,1:3]
   png::writePNG(fpng, i)
 }
+# Add frames at end, 2 second pause at 30fps
+
+new.files <- paste0(dir, sprintf('/img-%04d.png', length(files) + 1:60))
+for(i in new.files) file.copy(tail(files, 1), i)
+
+
+# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
+#   open out.mp4
+#
+# ffmpeg -framerate 30 -pattern_type glob -i '*.png' out.mp4 &&
+#   open out.mp4
+
+# Trying to mess with colors, can't seem to get the right profile.  This seems
+# like the most relevant hit: https://bugzilla.mozilla.org/show_bug.cgi?id=1300170
+# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p \
+#   -color_primaries bt709 -color_trc bt709 -colorspace bt709 out.mp4 
+
+# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out2.mp4 
+
+# Things to do:
+# * Stitch together frames for 2 x 2 full video.
+# * Can we figure out a little marquee for the flipbook
+# * Better step-forward and back buttons for flipbook
+#   https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
+#   U21E4 U21E5
+
+# - Combine Frames -------------------------------------------------------------
+
+# Show frames 100, 194, 382, 758
+
+filenums <- c(100, 194, 382, 758)
+dir <- '~/Downloads/mesh-anim-4'
+files <- paste0(dir, '/img-', sprintf('%04d.png', filenums))
+
+pngs <- lapply(lapply(files, png::readPNG), '[', , 311:586,)
+pngs[1:3] <- lapply(pngs[1:3], '[', ,1:266,)
+pngcols <- vapply(pngs, ncol, 0)
+
+pngres <- array(numeric(), c(600, sum(pngcols), 3))
+pngres[,1:266,] <- pngs[[1]]
+pngres[,1:266 + 266,] <- pngs[[2]]
+pngres[,1:266 + 266*2,] <- pngs[[3]]
+pngres[,1:276 + 266*3,] <- pngs[[4]]
+
+png::writePNG(pngres, '~/Downloads/mesh-anim-4-abreast.png')
+
+# two abreast
+
+filenums <- c(1102)
+dir <- '~/Downloads/mesh-anim-4'
+files <- paste0(dir, '/img-', sprintf('%04d.png', filenums))
+png1 <- png::readPNG(files[1])[,311:586,]
+rle(rowSums(png1[,200,]) == 3)
+newheight <- 313
+pngres <- array(1, c(newheight, 276 + 266, 3))
+pngres[,1:266,] <- png1[1:newheight, 1:266,]
+offset <- newheight - 277 - 5
+pngres[offset:newheight,1:276 + 266,] <- 
+  png1[newheight:(600-5), 1:276,]
+
+# anti-aliasing messes things up, so we have to add the anti-aliased row to
+# the second panel
+
+rle(rowSums(pngres[40,,1:3]) == 3)
+pngres[31, 276+1:256,] <- pngres[31, 10+1:256,]
+png::writePNG(pngres, '~/Downloads/mesh-anim-2-abreast.png')
+
+plot(as.raster(pngres))
+
+dir1 <- '~/Downloads/mesh-anim-4'
+dir2 <- '~/Downloads/mesh-anim-4b'
+files <- list.files(dir1, pattern='img-.*\\.png')
+files <- files[1:10]
+
+for(i in files) {
+  png1 <- png::readPNG(sprintf('%s/%s', dir1, i))[,311:586,]
+  newheight <- 313
+  pngres <- array(1, c(newheight, 276 + 266, 3))
+  pngres[,1:266,] <- png1[1:newheight, 1:266,]
+  offset <- newheight - 277 - 5
+  pngres[offset:newheight,1:276 + 266,] <- png1[newheight:(600-5), 1:276,]
+
+  pngres[31, 276+1:256,] <- pngres[31, 10+1:256,]
+  png::writePNG(pngres, sprintf('%s/%s', dir2, i))
+}
+
+
+# anti-aliasing messes things up, so we have to add the anti-aliased row to
+# the second panel
+
+rle(rowSums(pngres[40,,1:3]) == 3)
+
+plot(as.raster(pngres))
+
+# Two abreast all
