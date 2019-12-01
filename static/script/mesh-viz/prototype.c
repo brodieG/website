@@ -10,6 +10,8 @@ f <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body="
   SEXP errSxp = PROTECT(allocVector(REALSXP, gridSize * gridSize));
   double * terrain = REAL(terr);
   double * errors = REAL(errSxp);
+  errors[0] = errors[gridSize - 1] = errors[gridSize * gridSize - 1] =
+    errors[gridSize * gridSize - gridSize] = 0;
 
   int numSmallestTriangles = tileSize * tileSize;
   // 2 + 4 + 8 + ... 2^k = 2 * 2^k - 2
