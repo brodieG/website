@@ -117,11 +117,11 @@ function BgFlipBook(x) {
   if(x.imgEnd < x.imgStart) {
     throw new Error("flipbook error: 'imgEnd' must be GTE to 'imgStart'.");
   }
-  if(typeof(x.fps) != 'number' || x.fps < 1) {
+  if(typeof(x.fps) != 'number' || x.fps <= 0) {
     throw new Error("flipbook error: 'fps' must be numeric > 0.");
   }
-  if(typeof(x.loopDelay) != 'number' || x.loopDelay < 1) {
-    throw new Error("flipbook error: 'loopDelay' must be numeric > 0.");
+  if(typeof(x.loopDelay) != 'number' || x.loopDelay < 0) {
+    throw new Error("flipbook error: 'loopDelay' must be numeric >= 0.");
   }
   if(typeof(x.loop) != 'boolean') {
     throw new Error("flipbook error: 'loop' must be boolean.");
