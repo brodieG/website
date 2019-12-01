@@ -48,6 +48,10 @@ should be taken to mean "obj.x"
   back to start.
 @param imgPad string of form "0", "00", "000", etc., of length corresponding to
   how many digits re used in the image file names.
+@param helpFillStyle background color for help pop-up box, may need to be
+  adjusted if flipbook contents are mostly dark.
+@param helpTextStyle background color for help pop-up box, may need to be
+  adjusted if flipbook contents are mostly dark.
 @return an instantiated flipboook object, although it serves no real purpose as
   the constructor attaches all the event handlers and nothing else beyond that
   is needed.
@@ -73,7 +77,9 @@ function BgFlipBook(x) {
     imgPad: "000",
     fps: 1,
     loopDelay: 0,
-    loop: false
+    loop: false,
+    helpFillStyle: 'rgb(0, 0, 0, .7)',
+    helpTextStyle: 'white'
   }
   for (let k in x) {
     if (x.hasOwnProperty(k)) {
@@ -101,6 +107,12 @@ function BgFlipBook(x) {
   }
   if(typeof(x.imgPad) != "string") {
     throw new Error("flipbook error: 'imgPad' is not a string");
+  }
+  if(typeof(x.helpFillStyle) != "string") {
+    throw new Error("flipbook error: 'helpFillStyle' is not a string");
+  }
+  if(typeof(x.helpTextStyle) != "string") {
+    throw new Error("flipbook error: 'helpTextStyle' is not a string");
   }
   if(
     typeof(x.imgStart) != 'number' || !Number.isInteger(x.imgStart) ||
@@ -182,6 +194,8 @@ function BgFlipBook(x) {
   this.loopDelay = x.loopDelay;
   this.init = false;
   this.helpActive = false;
+  this.helpFillStyle = x.helpFillStyle;
+  this.helpTextStyle = x.helpTextStyle;
   this.intervalID = 0;
 
   // Initialize HTML els
@@ -247,19 +261,17 @@ BgFlipBook.prototype.drawHelp = function() {
   const fontSize = this.els.flipbook.width / 25;
   this.pauseFlip();
   this.draw();
-  this.ctx.fillStyle = 'rgb(0, 0, 0, .7)';
-  this.ctx.fillRect(0, 0, this.els.flipbook.width, this.els.flipbook.height)
-  this.ctx.fillStyle = 'white'
-  this.ctx.font = fontSize + 'px serif';
-  const th = this.ctx.measureText('M').width * 1.1;
   const xoff = this.els.flipbook.width * .1
   const yoff = this.els.flipbook.height * .1
   const text = [
-    "* Click in frame to step forward",
-    "* Shift + click in frame to step backwards",
-    "* Or use the controls below"
+    "\u{2022} Click in frame to step forward",
+    "\u{2022} Shift + click in frame to step backwards",
+    "\u{2022} Or use the controls below"
   ]
   /* figure out center point to put the text in */
+
+  this.ctx.font = fontSize + 'px serif';
+  const th = this.ctx.measureText('M').width * 1.1;
 
   let textMaxWidth = 0;
   for(let i = 0; i < text.length; i++) {
@@ -271,6 +283,15 @@ BgFlipBook.prototype.drawHelp = function() {
   const xstart = (this.els.flipbook.width - textMaxWidth) / 2;
   const ystart = (this.els.flipbook.height - textTotHeight) / 2 + th;
 
+  /* pre-draw the marquee the text will overlay on */
+
+  const pad = th * .4;
+  this.ctx.fillStyle = this.helpFillStyle;
+  this.ctx.roundRect(
+    xstart - pad, ystart - pad - .8 * th,
+    textMaxWidth + pad * 2, th * text.length + 2 * pad, th / 2
+  ).fill();
+  this.ctx.fillStyle = this.helpTextStyle;
   for(i = 0; i < text.length; i++) {
     this.ctx.fillText(text[i], xstart, ystart + th * i);
   }
@@ -298,7 +319,9 @@ BgFlipBook.prototype.stepBInt = function() {
   }
 };
 BgFlipBook.prototype.changeFrame = function(dir) {
-  if(bgFlipBookDebug) {console.log('change frame ' + dir + ' help act ' + this.helpActive)};
+  if(bgFlipBookDebug) {
+    console.log('change frame ' + dir + ' help act ' + this.helpActive)
+  };
   if(!this.helpActive) {
     if(dir > 0) this.stepFInt(); else this.stepBInt();
     this.draw();
@@ -402,4 +425,21 @@ BgFlipBook.prototype.handleLoad = function() {
   this.drawHelp();
   this.init=true;
 };
+/*---------------------------------------------------------------------------*\
+ * Utils *********************************************************************|
+\*---------------------------------------------------------------------------*/
 
+// Thank you Jhoff and Grumdrig from  https://stackoverflow.com/a/7838871/2725969
+
+CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  this.beginPath();
+  this.moveTo(x+r, y);
+  this.arcTo(x+w, y,   x+w, y+h, r);
+  this.arcTo(x+w, y+h, x,   y+h, r);
+  this.arcTo(x,   y+h, x,   y,   r);
+  this.arcTo(x,   y,   x+w, y,   r);
+  this.closePath();
+  return this;
+}
