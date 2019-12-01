@@ -26,7 +26,7 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
-<div id='feedback-cont'></div>
+<p id='feedback-cont'></p>
 
 # Appendix
 

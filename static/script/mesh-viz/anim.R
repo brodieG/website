@@ -1,4 +1,4 @@
-# - Initialize -----------------------------------------------------------------
+# # - Initialize -----------------------------------------------------------------
 # 
 # # matrix that has most error on the top left part as that is done last
 # # it's shown as plotted, and re-ordered for actual use
@@ -72,7 +72,7 @@
 # 
 # # Background triangles
 # 
-# dat.s5a <- subset(dat.s2, .line == 52)
+# dat.s5a <- subset(dat.s2, .line == 45)
 # max.id <- max(zz.vec[['.id']])
 # dat.s5 <- do.call(
 #   rbind,
@@ -91,8 +91,8 @@
 # # background points
 # 
 # dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
-
-# - Code -----------------------------------------------------------------------
+# 
+# # - Code -----------------------------------------------------------------------
 
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
@@ -152,7 +152,7 @@ size <- nrow(map)
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-# frames <- 1:10
+# frames <- 1:100
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
   meta=dat.meta, lines=dat.lines, s3=dat.s3

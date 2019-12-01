@@ -225,11 +225,9 @@ headache trying to mentally visualize what this code actually does.  Thankfully
 with [`watcher`][9] we can let the computer do the heavy lifting.  This
 is what happens in finding the first triangle in a 5x5 mesh[^min-complex]:
 
-<!--
-Flipbook of 0007-0053.  Do we include the last few bits?
--->
+<div id='flipbook1'></div>
 
-When the target triangle is found it is shown in yellow.  After that point the
+When the target triangle is found it is turns yellow.  After that point the
 algorithm computes the location of the midpoint of the hypotenuse, and records
 the error at that point.  Since this is the most granular approximation level
 there is no child error to propagate[^no-child-error].
@@ -247,9 +245,7 @@ Additionally, since we are no longer at the most granular approximation it also
 starts carrying over the child errors.  Here we show the computation on the
 second triangle at the next approximation level[^second-triangle]:
 
-<!--
-Flipbook of frames 803-844
--->
+<div id='flipbook2'></div>
 
 In the last few frames we can see the error from the children elements (labeled
 `lc` and `rc` for "left child" and "right child") carried over into the current
@@ -309,6 +305,17 @@ errors_rtin2
 ```
 
 ## System Info
+
+```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
+```
+<script type='text/javascript'>
+var img_dir = '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/';
+var fps_def = 4;
+var end_delay = 8;
+new BgFlipBook('flipbook1', img_dir, 53, 7, fps_def, end_delay, "0000");
+new BgFlipBook('flipbook2', img_dir, 844, 803, fps_def, end_delay, "0000");
+</script>
+
 
 [^off-course]: The beauty is I wasn't going anywhere in particular anyway, so
   why not do this.

@@ -227,11 +227,11 @@ id=rpn-flipbook></span>
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
 ```
 <script type='text/javascript'>
-var img_dir = '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/';
-var fps_def = 3;
-var img_n = 48;
-var end_delay = 5;
-new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
+new BgFlipBook({
+  targetId: 'flipbook1',
+  imgDir: '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/',
+  imgEnd: 48, fps: 3, loop: true, loopDelay: 5
+})
 </script>
 
 Part of the reason it is so easy to compute on the language in R is that since

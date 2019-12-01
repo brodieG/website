@@ -417,11 +417,11 @@ static/post/2019-07-26-hydra-loose-ends_files/scripts/threed-plot.R
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
 ```
 <script type='text/javascript'>
-var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
-var fps_def = 1;
-var img_n = 15;
-var end_delay = 1;
-new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
+new BgFlipBook({
+  targetId: 'flipbook1',
+  imgDir: '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/',
+  imgEnd: 15, fps: 1, loop: true, loopDelay: 1
+})
 </script>
 
 You can also view the flipbook [as a video][320] if you prefer.
@@ -1211,7 +1211,7 @@ achieve this, but in many cases it is possible with a little thought and care.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
-<div id='feedback-cont'></div>
+<p id='feedback-cont'></p>
 
 This post is the last post of the [Hydra Chronicles][100] post series.
 
@@ -1605,9 +1605,6 @@ g_slope_C <- function(x, y, group) {
 [^near-statically]: I consider ~3x close given that typically differences
   between statically compiled and interpreted coder are more on the order of
   ~10-100x.
-[^driven-snow]: This is not strictly true as the ordering is done via a calls to
-  `order` and `[`, although for those almost all the computations are done via
-  statically compiled code.
 [^group-order]: With group-ordered data we can detect group transitions any time
   the value of  the group vector changes.  We can use that as a trigger to
   transfer the accumulator value to the result vector and reset it.

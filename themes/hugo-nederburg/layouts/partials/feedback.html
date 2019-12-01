@@ -15,8 +15,9 @@ window.addEventListener(
     var feed_cont = document.getElementById('feedback-cont');
     var feed_data = document.getElementById('feedback-data');
     if(feed_cont != null && feed_data != null) {
-      feed_cont.appendChild(feed_data);
-      feed_data.style.display = 'block';
+      while(feed_data.hasChildNodes()) {
+        feed_cont.appendChild(feed_data.firstChild);
+      }
     }
   }
 );
