@@ -76,6 +76,23 @@ function updatedGeometry(errors, gridSize, tileSize, maxError) {
 
   return indices;
 }
+/*
+```{r}
+writeLines(
+  paste0('terrain = [', paste0(map, collapse=','), ']'),
+  '~/Downloads/map-js.json'
+)
+```
+
+JSON.stringify(Array.from(errors));
+
+// right click, copy object, then
+
+```{r}
+errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
+```
+
+*/
 
 {
   a = performance.now();
