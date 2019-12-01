@@ -305,13 +305,13 @@ plot(as.raster(pngres))
 dir1 <- '~/Downloads/mesh-anim-4'
 dir2 <- '~/Downloads/mesh-anim-4b'
 files <- list.files(dir1, pattern='img-.*\\.png')
-files <- files[1:10]
+files <- files
 
 for(i in files) {
   png1 <- png::readPNG(sprintf('%s/%s', dir1, i))[,311:586,]
   newheight <- 313
-  pngres <- array(1, c(newheight, 276 + 266, 3))
-  pngres[,1:266,] <- png1[1:newheight, 1:266,]
+  pngres <- array(1, c(newheight + 1, 276 + 266, 3))
+  pngres[1:newheight,1:266,] <- png1[1:newheight, 1:266,]
   offset <- newheight - 277 - 5
   pngres[offset:newheight,1:276 + 266,] <- png1[newheight:(600-5), 1:276,]
 
