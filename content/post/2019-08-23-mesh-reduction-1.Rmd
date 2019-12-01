@@ -160,7 +160,7 @@ Glass surface approximated and rotated showing gap
 
 To resolve this we carry over errors from children triangles to their parents
 and override use the largest of the child errors and the parent error as the
-parent error.  
+parent error.
 
 <!--
 Two error matrices:
@@ -235,9 +235,9 @@ there is no child error to propagate[^no-child-error].
 This process is repeated with changing initial `id` values until eventually the
 entire surface has been tiled with a triangle:
 
-<!--
-Show frames 100, 194, 382, 758
--->
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/mesh-anim-4-abreast.png'
+/>
 
 At this point something interesting happens.  By its nature the algorithm
 repeats the same calculation but stops at the next largest triangle size.
@@ -253,9 +253,9 @@ target point.  Do note that more errors will be carried over.  A few hundred
 steps later in the process the other set of children that coincide on this
 particular hypotenuse are addressed:
 
-<!--
-Frame 1102
--->
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/mesh-anim-2-abreast.png'
+/>
 
 In this case it the additional child errors are smaller so they do not change
 the outcome, but it is worth noting that each hypotenuse midpoint may add up to
@@ -263,10 +263,12 @@ four child errors.
 
 Here is the entire process:
 
-<!--
-mp4 of entire process
--->
-
+<video style='display: block; margin: 0 auto;' controls loop>
+<source 
+  src='/post/2019-08-23-mesh-reduction-1_files/images/out.mp4'
+  type="video/mp4"
+/>
+</video>
 
 # Vectorize The Shit Absolute Shit Out Of This
 
@@ -309,11 +311,16 @@ errors_rtin2
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
 ```
 <script type='text/javascript'>
-var img_dir = '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/';
-var fps_def = 4;
-var end_delay = 8;
-new BgFlipBook('flipbook1', img_dir, 53, 7, fps_def, end_delay, "0000");
-new BgFlipBook('flipbook2', img_dir, 844, 803, fps_def, end_delay, "0000");
+const imgDir = '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/';
+const fps = 4;
+new BgFlipBook({
+  targetId: 'flipbook1', imgDir:imgDir, imgStart: 7, imgEnd: 53,
+  imgPad: "0000", fps: fps, loop: false
+})
+new BgFlipBook({
+  targetId: 'flipbook2', imgDir:imgDir, imgStart: 803, imgEnd: 844,
+  imgPad: "0000", fps: fps, loop: false
+})
 </script>
 
 
