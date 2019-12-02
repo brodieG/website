@@ -173,8 +173,8 @@ base_coords <- function(ids.mid, type, nr, nc, mult) {
 
 extract_mesh2 <- function(errors, tol) {
   stopifnot(length(errors) > 1L)
-  nr <- nrow(map)
-  nc <- ncol(map)
+  nr <- nrow(errors)
+  nc <- ncol(errors)
   layers <- floor(min(log2(c(nr, nc))))
   undrawn <- array(TRUE, dim(errors))
   triangles <- vector('list', 2L * layers)
