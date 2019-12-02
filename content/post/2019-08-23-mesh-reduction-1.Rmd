@@ -351,34 +351,39 @@ DO WE NEED A 7 x 7 GRID TO SHOW FULL COMPLEXITY OF PATTERN?
 
 ```{r echo=FALSE}
 source('../../static/script/mesh-viz/viz-lib.R')
-tri.sq <- c(
-   1, 13,  5,
-   1, 13, 21,
-   5, 13, 25,
-  21, 13, 25
-)
-tri.di <- c(
-  01, 13, 03,
-  13, 25, 15,
-  01, 11, 13,
-  13, 25, 23,
-  03, 13, 05,
-  13, 11, 21,
-  05, 13, 15,
-  13, 23, 21
-)
+err <- matrix(0, 5, 5)
+# note diamond/square is backwards here from what we use in viz-lib
+tri.sq <- extract_mesh2(err, 1, 2)
+tri.di <- extract_mesh2(err, 1, 3)
+
 tris <-
   as.data.frame(tris_to_xyz(list(tri.sq, tri.di), matrix(0, 5, 5), c(1,1,1)))
-tris[['type']] <-
-  c(rep('Square', length(tri.sq)), rep('Diamond', length(tri.di)))
-tris[['shape']] <- c(rep(1:4, each=3), rep(5:8, each=6))
-tris[['group']] <- paste0("Shape ", c(rep(1:4, each=3), rep(1:4, each=6)))
+tris[['type']] <- c(
+  rep('Square', length(unlist(tri.sq))), 
+  rep('Diamond', length(unlist(tri.di)))
+)
 tris[['id']] <- rep(seq_len(nrow(tris) / 3), each=3)
+
+# By design the trianble vertices are ordered so the first two vertices define
+# the hypotenuse.  They are also drawn in order but due to the oob business it's
+# not entirely obviousl what the final order is, so compute the angle between
+# hypotenuse and opposite vertex.
+
+xs <- matrix(tris[['x']], 3)
+ys <- matrix(tris[['y']], 3)
+xh <- (xs[2,] + xs[1,]) / 2
+yh <- (ys[2,] + ys[1,]) / 2
+xd <- (xs[3,] - xh)
+yd <- (ys[3,] - yh)
+ph <- xd + yd * 1i
+
+tris[['shape']] <- rep(match(ph, unique(ph)), each=3)
 colors <- c(
   '#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0',
   '#225ea8','#0c2c84'
 )
 tris[['color']] <- colors[c(1:4 * 2 - 1, 1:4 * 2)][tris[['shape']]]
+tris[['color']] <- colors[tris[['shape']]]
 ggplot(tris) +
   geom_polygon(aes(x=x, y=y, group=id, fill=I(color))) +
   facet_wrap(~type) +
@@ -443,6 +448,8 @@ different color.
 
 Maybe this gets merged into the previous plot.
 -->
+
+
 
 
 # Conclusions
