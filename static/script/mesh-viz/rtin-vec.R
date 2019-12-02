@@ -171,7 +171,10 @@ base_coords <- function(ids.mid, type, nr, nc, mult) {
 # happening, if we skip one size then there is no conveyance of the break, the
 # break needs to carry all the way.
 
-extract_mesh2 <- function(errors, tol) {
+# @param debug.lvl extract all triangles at that level, and only that level
+#   (pass along a zero error matrix), ignored if zero
+
+extract_mesh2 <- function(errors, tol, debug.lvl=0) {
   stopifnot(length(errors) > 1L)
   nr <- nrow(errors)
   nc <- ncol(errors)
@@ -210,7 +213,7 @@ extract_mesh2 <- function(errors, tol) {
     # Error, or at edge of plot and we will see no more larger triangles when
     # plot is strictly square and of 2^k + 1.
 
-    ids.err <- errors[ids] > tol
+    ids.err <- errors[ids] > tol | (i  * 2 - 1)== debug.lvl
     ids.pad.err <- ids.pad[ids.err]
 
     # Coords for the bases for each of four triangles that form the tile around
@@ -251,7 +254,7 @@ extract_mesh2 <- function(errors, tol) {
     ids <- rep(ids.r.raw, each=length(ids.c.raw)) +
       rep(ids.c.raw, length(ids.r.raw))
 
-    ids.err <- errors[ids] > tol
+    ids.err <- errors[ids] > tol |  i * 2L == debug.lvl
     base.vert <- base_coords(ids[ids.err], type='d', nr, nc, mult)
     base.vert.mid.id <- .colMeans(base.vert, m=2L, n=length(base.vert)/2L)
     base.vert.undrawn <- undrawn[base.vert.mid.id]
