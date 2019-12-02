@@ -190,8 +190,8 @@ with <code>explain</code> and recorded the results for you to step through here:
 <div id="bg-flipbook-images" style="display: none">
 
 </div>
-<div id="bg-flipbook-container" style="margin: auto; display: block;">
-<canvas id="bg-flipbook-flipbook" style="max-width: 100%; display: block;" title="Click to step forward, shift+click to step backwards.">
+<div id="bg-flipbook-container" style="margin: auto; display: block; max-width: 100%;">
+<canvas id="bg-flipbook-flipbook" style="display: block; max-width: 100%;" title="Click to step forward, shift+click to step backwards.">
 This is an HTML Canvas flipbook that displays key frames of an animation in a
 more controllable manner than in a video player. If you are reading this text
 your browser does not support HTML Canvas.
@@ -215,11 +215,11 @@ inline elements
 />
  
 <input
-  id='bg-flipbook-step-b' type='button' value='&#10703;' style='font-size: 18px;'
+  id='bg-flipbook-step-b' type='button' value='&#x21E4;' style='font-size: 18px;'
   title='Step Backwards'
 />
 <input
-  id='bg-flipbook-step-f' type='button' value='&#10704;' style='font-size: 18px;'
+  id='bg-flipbook-step-f' type='button' value='&#x21E5;' style='font-size: 18px;'
   title='Step Forwards'
 />
  
@@ -248,13 +248,14 @@ FPS:
 </p>
 </div>
 </div>
-</div>
 <script type='text/javascript' src='/script/_lib/flipbook/flipbook.js'></script>
 <script type='text/javascript'>
 new BgFlipBook({
   targetId: 'flipbook1',
   imgDir: '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/',
-  imgEnd: 48, fps: 3, loop: true, loopDelay: 5
+  imgEnd: 48, fps: 3, loop: true, loopDelay: 5,
+  helpFillStyle: 'rgb(255, 255, 255, .7)',
+  helpTextStyle: 'black'
 })
 </script>
 <p>Part of the reason it is so easy to compute on the language in R is that since
@@ -310,7 +311,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7fc5a8becc48&gt;</code></pre>
+&lt;bytecode: 0x7fa14993dab0&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows
