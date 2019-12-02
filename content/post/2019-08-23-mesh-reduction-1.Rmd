@@ -1,10 +1,10 @@
 ---
-title: Mesh Reduction 1
+title: RTIN Mesh Reduction
 author: ~
 date: '2019-08-23'
 slug: mesh-reduction-1
-categories: []
-tags: []
+categories: [R]
+tags: [algorithms,viz]
 image:
   /post/2019-08-23-mesh-reduction-1_files/images/batch-2.png
 imagerect: ~
@@ -15,9 +15,10 @@ contenttype: article
 description: Front page summary
 ---
 
-```{r echo=FALSE}
+```{r echo=FALSE, warning=FALSE}
 options(digits=3)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+library(ggplot2)
 ```
 
 # Off Course, of Course
@@ -29,10 +30,11 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
   class='post-inset-image'
 />
 
-A few months ago a stumbled on Vladimir Agafonkin's fantastic observable
-notebook on the [adaptation of the Right-Triangulated Irregular Networks (RTIN)
-algorithm][6].  The subject matter is interesting and the exposition superb.
-I'll admit I envy the elegance of natively interactive notebooks.
+A few months ago a stumbled on Vladimir Agafonkin's ([@mourner][5]) fantastic
+[observable notebook][6] on adapting the Right-Triangulated Irregular
+Networks (RTIN) algorithm to JavaScript.  The subject matter is interesting and
+the exposition superb.  I'll admit I envy the elegance of natively interactive
+notebooks.
 
 I almost left it at that, but then the irrepressible "but can we do that in R"
 bug in whispered into my ear, once again setting me hopelessly
@@ -42,10 +44,11 @@ to C and interface that into R, but where's the fun in that?
 
 # Right Triangles
 
-You should look at [Agafonkin's notebook][6] or the original [Will Evans et al.
-1997 paper][8] for in-depth details as the point of this post is the translation
-to an R idiomatic implementation.  Notwithstanding I can't resist indulging in
-some of my newly acquired `rayrender`ing powers for some illustrations.
+You should look at [@mourner's][5] [notebook][6] or the original [Will Evans et
+al. 1997 paper][8] for in-depth details as the point of this post is the
+translation to an R idiomatic implementation.  Notwithstanding I can't resist
+indulging in some of my newly acquired `rayrender`ing powers for some
+illustrations.
 
 The basic idea is to approximate a triangle mesh with fewer triangles while
 keeping the approximation error within certain tolerances.  For example here we
@@ -86,7 +89,7 @@ tolerance:
 />
 
 If a triangle too coarse for the desired level of fidelity, it is broken up into
-two smaller triangles.  The process is repeated until the approximation error is
+two smaller triangles.  The process is repeated until the approximation error
 can be tolerated.
 
 In order to decide whether an approximate is faithful enough we measure the
@@ -96,6 +99,7 @@ abandon volcano and switch to a simple 3x3 elevation surface, and we will show
 approximations where at each level every triangle is the same size.
 
 <img class='aligncenter'
+  id=three-by-three
   src='/post/2019-08-23-mesh-reduction-1_files/images/simple-mesh-s-merge.png'
 />
 
@@ -160,7 +164,7 @@ Glass surface approximated and rotated showing gap
 
 To resolve this we carry over errors from children triangles to their parents
 and override use the largest of the child errors and the parent error as the
-parent error.
+parent error.<span id='carry-over-viz'></span>
 
 <!--
 Two error matrices:
@@ -183,75 +187,77 @@ Image is side by side (left/right):
 
 # Algorithm in Action
 
-We now have a rough idea of the algorithm, but as I learned the hard way this is
-grossly insufficient for those of us that intend to mess with it.  You can see
-the  [full algorithm in the appendix](#r-transliteration-of-original-algorithm)
-or in the [Agafonkin post][6], but the part we want to focus on first is the
-mesh triangle identification.  Here is a simplified version that highlights how
-the triangle vertex coordinates `$(ax,ay)$`, `$(bx,by)$`, and `$(cx,cy)$` are
-computed:
+We now have a rough idea of the algorithm.  Unfortunately I learned the hard way
+that "a rough idea" is about as useful when refactoring an algorithm as it is to
+know that a jar of nitroglycerin is "kinda dangerous" when you're tasked with
+transporting it.  In order to safely adapt the algorithm to R we need
+full mastery of the details.  I'm still covered in gouges and bruises from the
+sharp corner cases and the off-by-who-knows-how-many-errors I smacked into.
+
+The outline of the algorithm is as follows:
+
+```{r eval=FALSE}
+for (every triangle in mesh) {
+  while (searching for triangle vertex coordinates) {
+    # ... Compute coordinates of vertices `a`, `b`, and `c` ...
+  }
+  # ... Compute approximation error at midpoint of `a` and `b` ...
+}
+```
+
+The `for` loop iterates as many times as there are triangles in the mesh.  In
+our [3 x 3 grid](#three-by-three) there are six triangles (4 at the first level
+of approximation, and another 2 at the next level).  For each of these
+triangles, the `while` loop identifies the vertex coordinates `$(ax,ay)$`,
+`$(bx,by)$`, and `$(cx,cy)$`.  This allow us to compute the error at the
+midpoint of the hypotenuse.
+
+Let's observe the algorithm find the first triangle to get a sense for how it
+works.  We'll use a 5 x 5 grid this time[^min-complex], and regrettably abandon
+the 3D realm for the sake of clarity.  The visualization is generated with the
+help of [`watcher`][9], and it displays the state of the system _after_ the
+evaluation of the highlighted line:
+
+<div id='flipbook1'></div>
+
+When the `while` loop ends the target triangle has been found, shown in yellow.
+In the following frames the algorithm computes the location of the midpoint `m`
+of the points `a` and `b` (these two always define to the hypotenuse), computes
+the approximation error at that point, and records it in the error matrix.
+
+Since this is the most granular approximation level there are no child errors to
+propagate[^no-child-error] and the algorithm skips over that part.
+
+What happens next is pretty remarkable.  At the top of the loop we're about to
+repeat we have:
 
 ```{r eval=FALSE}
 for (i in (nTriangles - 1):0) {
   id <- i + 2L
-  # ... ommitted setup code ...
-  while ((id <- (id %/% 2)) > 1L) {
-    tmpx <- (ax + bx) / 2
-    tmpy <- (ay + by) / 2
-
-    if (bitwAnd(id, 1L)) {
-      # Right sub-triangle
-      bx <- ax;
-      by <- ay
-      ax <- cx
-      ay <- cy
-    } else {
-      # Left sub-triangle
-      ax <- bx
-      ay <- by
-      bx <- cx
-      by <- cy
-    }
-    cx <- tmpx
-    cy <- tmpy
-  }
-  # ... compute and record errors ...
-}
+  # ... rest of code omitted
 ```
 
-Remarkably this will compute the vertex coordinates of every single triangle at
-every level of approximation in our mesh, from smallest to largest.  I get a
-headache trying to mentally visualize what this code actually does.  Thankfully
-with [`watcher`][9] we can let the computer do the heavy lifting.  This
-is what happens in finding the first triangle in a 5x5 mesh[^min-complex]:
-
-<div id='flipbook1'></div>
-
-When the target triangle is found it is turns yellow.  After that point the
-algorithm computes the location of the midpoint of the hypotenuse, and records
-the error at that point.  Since this is the most granular approximation level
-there is no child error to propagate[^no-child-error].
-
-This process is repeated with changing initial `id` values until eventually the
-entire surface has been tiled with a triangle:
+This innocent-seeming reset of `id` will ensure that the rest of the logic
+will find the next smallest triangle, and the next after that, and so forth:
 
 <img class='aligncenter'
   src='/post/2019-08-23-mesh-reduction-1_files/images/mesh-anim-4-abreast.png'
 />
 
-At this point something interesting happens.  By its nature the algorithm
-repeats the same calculation but stops at the next largest triangle size.
-Additionally, since we are no longer at the most granular approximation it also
-starts carrying over the child errors.  Here we show the computation on the
-second triangle at the next approximation level[^second-triangle]:
+At this point we've tiled the whole surface at the lowest approximation level,
+but we need to repeat the process for the next approximation level.
+"Magically" the smaller initial `id` values lead the `while` loop to exit
+earlier, at the next larger triangle size.  Here is another flipbook showing the
+search for the second triangle at the next approximation level[^second-triangle]:
 
 <div id='flipbook2'></div>
 
 In the last few frames we can see the error from the children elements (labeled
 `lc` and `rc` for "left child" and "right child") carried over into the current
-target point.  Do note that more errors will be carried over.  A few hundred
-steps later in the process the other set of children that coincide on this
-particular hypotenuse are addressed:
+target point.  As we [saw earlier](#carry-over-viz) this ensures there are no
+gaps in our final mesh.  Each error point will have errors carried over from up
+to four neighboring children.  For the above point the error from the remaining
+children is carried over a few hundred steps later:
 
 <img class='aligncenter'
   src='/post/2019-08-23-mesh-reduction-1_files/images/mesh-anim-2-abreast.png'
@@ -263,18 +269,185 @@ four child errors.
 
 Here is the entire process:
 
-<video style='display: block; margin: 0 auto;' controls loop>
-<source 
+<video id=mesh-anim style='display: block; margin: 0 auto;' controls loop>
+<source
   src='/post/2019-08-23-mesh-reduction-1_files/images/out.mp4'
   type="video/mp4"
 />
 </video>
 
-# Vectorize The Shit Absolute Shit Out Of This
+# R's Kryptonite
 
+We essentially transliterated the JavaScript algorithm into R.  While this
+works, it does so slowly.  Compare the timings of our R function, the JavaScript
+version, and finally a [C version](c-version):
+
+```{r echo=FALSE}
+dat <- data.frame(Language=c('R', 'JS', 'C'), Time=c(2500,51,7))
+ggplot(dat) +
+  geom_col(aes(Language, Time)) +
+  geom_text(aes(Language, Time, label=Time), vjust=-.5) +
+  ylab('Time (ms)') +
+  ggtitle('RTIN Error Computation Benchmarks', subtitle='257x257 Grid Size') +
+  scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
+```
+
+Our JavaScript timings are in line with those @mourner reports
+(~20ms)[^js-timings].
+
+I was surprised by how well JS stacks up relative to C.  Certainly a ~7x gap is
+nothing to sneeze at, but I expected it to be bigger given JS is interpreted.
+On the other hand R does terribly.  This is expected as R is not designed to run
+tight loops on scalar values.  We could take some steps to get the loop to run a
+little faster, but not to run fast enough to run real time at scale.
+
+So what are we to do?  Well, as @mdsumner [enthusiastically puts it][7]:
+
+> JavaScript is cool, C++ is cool. But #rstats can vectorize the absolute shit
+> out of this. No loops until triangle realization
+>
+> -- @mdsumner
+
+Indeed, we don't need to watch the [algorithm play out](#mesh-anim) very long to
+see that its elegance comes at the expense of computation.  Finding each
+triangle requires many steps, and they seem unlikely to be friendly to
+microarchitecture optimizations[^branch-predict].
+
+The triangles coordinates do not depend on each other, so it should be possible
+calculate them directly based on the grid size.  We cannot completely vectorize
+the calculation as we need to iteratively carry over errors across approximation
+levels.  Fortunately the level count will be proportional to
+`$\log_2(\sqrt{points})$`, so we only need to explicitly loop a few times.
+
+Before we get too deep into this, I'd like to make it clear that vectorizing the
+algorithm for use in R is interesting, but also _mostly_ useless.  The
+JavaScript version runs plenty fast, and if you must have it in R you can
+trivially transliterate the code [into C](#c-transliteration), which can then be
+accessed from R.  The vectorization version does have some use as it is not
+constrained to `$2^k + 1$` square grids.
+
+So, let's go vectorize the absolute $#!+ out of this.  It'll be easy, they
+said.  It'll be fun.  Right.
+
+# Vectorize The Absolute $#!+ Out Of This
+
+I wish I could tell you that I carefully figured out all the intricacies of the
+algorithm before I set off on my initial vectorization attempt, that I didn't
+waste hours going cross-eyed at triangles poorly drawn on scraps of paper, and
+that I didn't produce algorithms which closer inspection showed to be [laughably
+incorrect][10].  Instead I'll have to be content with telling you that I did get
+this to work eventually.  A victory that had it wasted lives like it wasted my
+time would supplant those of Pyrrhus in the history books[^grandiloquence].
+
+What should have been immediately obvious to me is that we're not just
+generating equal sized triangles.  There are eight different triangle shapes
+arranged in a specific manner.  While I was generally aware of this, I
+underestimated the degrees of freedom in the problem and assumed I could just
+stumble into the right arrangement.  These are the eight different triangle
+shapes as they appear in the second and third levels of the 5 x 5 grid
+[we saw earlier](#flipbook1):
+
+DO WE NEED A 7 x 7 GRID TO SHOW FULL COMPLEXITY OF PATTERN?
+
+```{r echo=FALSE}
+source('../../static/script/mesh-viz/viz-lib.R')
+tri.sq <- c(
+   1, 13,  5,
+   1, 13, 21,
+   5, 13, 25,
+  21, 13, 25
+)
+tri.di <- c(
+  01, 13, 03,
+  13, 25, 15,
+  01, 11, 13,
+  13, 25, 23,
+  03, 13, 05,
+  13, 11, 21,
+  05, 13, 15,
+  13, 23, 21
+)
+tris <-
+  as.data.frame(tris_to_xyz(list(tri.sq, tri.di), matrix(0, 5, 5), c(1,1,1)))
+tris[['type']] <-
+  c(rep('Square', length(tri.sq)), rep('Diamond', length(tri.di)))
+tris[['shape']] <- c(rep(1:4, each=3), rep(5:8, each=6))
+tris[['group']] <- paste0("Shape ", c(rep(1:4, each=3), rep(1:4, each=6)))
+tris[['id']] <- rep(seq_len(nrow(tris) / 3), each=3)
+colors <- c(
+  '#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0',
+  '#225ea8','#0c2c84'
+)
+tris[['color']] <- colors[c(1:4 * 2 - 1, 1:4 * 2)][tris[['shape']]]
+ggplot(tris) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color))) +
+  facet_wrap(~type) +
+  coord_fixed() +
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    axis.ticks.x=element_blank(), axis.ticks.y=element_blank(),
+    # plot.margin=unit(c(.1, .1, .1, (height/2)/dpi), "inches"),
+    panel.grid=element_blank(),
+    text=element_text(size=16)
+  )
+
+```
+
+<!--
+4 x 2 panels
+
+Square
+Diamond
+
+-->
+
+The first set of triangles tessellates in the same pattern throughout any grid.
+The second set has a degree of freedom we need to account for:
+
+<!--
+Two possible arrangements of the diagonal triangles.
+-->
+
+There are probably many ways to go about solving this problem, but I chose to
+focus on the midpoint of the hypotenuses directly.  This simplifies the problem
+a little as then we just need to compute the absolute position of a single point
+per set of four triangles:
+
+<!--
+A square and a diamond, showing the triangles, and showing the centerpoint of
+the hypotenuse in red
+-->
+
+We can then use offsets relative to those absolute coordinates to get the child
+errors to carry over:
+
+<!--
+As above, but adding arrows for errors
+-->
+
+They key is to figure out the pattern of offsets that gives us the correct set
+of absolute coordinates.  The "square" triangles are pretty straightforward as
+they have a regular pattern.  The "diamond" triangles are more challenging as
+their tiling to offsets from "row" to "row" and "column" to "column":
+
+<!--
+Show the midpoints in a 5x5 or 7x7 grid, side by side for each type of point.
+-->
+
+Worse, some of the child points end up out of bounds, so we will need to account
+for those.
+
+<!--
+Midpoints, but with triangles drawn in, and oob triangles highlighted in a
+different color.
+
+Maybe this gets merged into the previous plot.
+-->
 
 
 # Conclusions
+
+Point is to highlight potential techniques for vectorizing R code.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -290,13 +463,20 @@ Here is the entire process:
 * reshape2
 * ggplot2
 * ffmpeg
+* inline
+* Brewer
 
-## R Transliteration of Original Algorithm
+## R Transliteration
 
-This a reasonably close transliteration of the original [Agafonkin][6]
-implementation of the [RTIN error computation algorithm][8].  In addition to the
-conversion to R, I have made some (hopefully) non-semantic changes so that the
-code is easier to instrument.  This only computes the error.
+This a reasonably close transliteration of the original [@mourner][5]
+[implementation][6] of the [RTIN error computation algorithm][8].  In addition
+to the conversion to R, I have made some mostly non-semantic changes so that the
+code is easier to instrument, and so that the corresponding visualization occurs
+more naturally.  In particular, variables are initialized to NA so they won't
+plot until set.  This means the corners of the error matrix remain NA as those
+are not computed.
+
+This only computes the error.  Separate code is required to extract meshes.
 
 ```{r echo=FALSE}
 source(
@@ -306,6 +486,75 @@ source(
 ```{r}
 errors_rtin2
 ```
+
+## C Transliteration
+
+```{r}
+errors_rtin_c <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body="
+  int gridSize = asInteger(grid);
+  int tileSize = gridSize - 1;
+  SEXP errSxp = PROTECT(allocVector(REALSXP, gridSize * gridSize));
+  double * terrain = REAL(terr);
+  double * errors = REAL(errSxp);
+  errors[0] = errors[gridSize - 1] = errors[gridSize * gridSize - 1] =
+    errors[gridSize * gridSize - gridSize] = 0;
+
+  int numSmallestTriangles = tileSize * tileSize;
+  // 2 + 4 + 8 + ... 2^k = 2 * 2^k - 2
+  int numTriangles = numSmallestTriangles * 2 - 2;
+  int lastLevelIndex = numTriangles - numSmallestTriangles;
+
+  // iterate over all possible triangles, starting from the smallest level
+  for (int i = numTriangles - 1; i >= 0; i--) {
+
+    // get triangle coordinates from its index in an implicit binary tree
+    int id = i + 2;
+    int ax = 0, ay = 0, bx = 0, by = 0, cx = 0, cy = 0;
+    if (id & 1) {
+      bx = by = cx = tileSize; // bottom-left triangle
+    } else {
+      ax = ay = cy = tileSize; // top-right triangle
+    }
+    while ((id >>= 1) > 1) {
+      int mx = (ax + bx) >> 1;
+      int my = (ay + by) >> 1;
+
+      if (id & 1) { // left half
+        bx = ax; by = ay;
+        ax = cx; ay = cy;
+      } else { // right half
+        ax = bx; ay = by;
+        bx = cx; by = cy;
+      }
+      cx = mx; cy = my;
+    }
+    // calculate error in the middle of the long edge of the triangle
+    double interpolatedHeight =
+      (terrain[ay * gridSize + ax] + terrain[by * gridSize + bx]) / 2;
+    int middleIndex = ((ay + by) >> 1) * gridSize + ((ax + bx) >> 1);
+    double middleError = abs(interpolatedHeight - terrain[middleIndex]);
+
+    if (i >= lastLevelIndex) { // smallest triangles
+      errors[middleIndex] = middleError;
+
+    } else { // bigger triangles; accumulate error with children
+      double leftChildError =
+        errors[((ay + cy) >> 1) * gridSize + ((ax + cx) >> 1)];
+      double rightChildError =
+        errors[((by + cy) >> 1) * gridSize + ((bx + cx) >> 1)];
+
+      double tmp = errors[middleIndex];
+      tmp = tmp > middleError ? tmp : middleError;
+      tmp = tmp > leftChildError ? tmp : leftChildError;
+      tmp = tmp > rightChildError ? tmp : rightChildError;
+      errors[middleIndex] = tmp;
+    }
+  }
+  UNPROTECT(1);
+  return errSxp;
+")
+```
+
 
 ## System Info
 
@@ -333,8 +582,20 @@ new BgFlipBook({
   every point on the elevation map coincides with a vertex so there is no error.
 [^second-triangle]: The first triangle is not very interesting because the child
   errors are smaller than the parent error so there is no error to carry over.
+[^js-timings]: My processor is clocked at a particularly measly 1.2GHz, so it is
+  plausible that [@mourner ][5] ran his benchmarks on something clocked 2x-3x
+  faster.  It seems also likely this algorithm is CPU limited as most operations
+  do not involve memory access, and the data set is small enough to fit in
+  higher level cache.
+[^branch-predict]: In particular it seems unlikely the `while` loop condition
+  and the `if` statements therein could be easily predicted by a hardware branch
+  predictor, and that's assuming JS code can even be branch predicted.
+[^grandiloquence]: If nothing else I feel I've earned the right not to be
+  embarrassed by misplaced eructations of grandiloquence.
 
+[5]: https://twitter.com/mourner
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
 [7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
 [8]: https://www.cs.ubc.ca/~will/papers/rtin.pdf
 [9]: /2019/10/30/visualizing-algorithms/
+[10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20

@@ -77,6 +77,84 @@ errors_rtin2 <- function(terrain) {
     ax <- ay <- bx <- by <- cx <- cy <- NA
   errors
 }
+# with optims
+errors_rtin3 <- function(terrain) {
+  errors <- array(NA_real_, dim(terrain))
+  nSmallestTriangles <- prod(dim(terrain) - 1L)
+  nTriangles <- nSmallestTriangles * 2 - 2
+  lastLevelIndex <-
+    nTriangles - nSmallestTriangles
+  gridSize <- nrow(terrain)
+  tileSize <- gridSize - 1L
+
+  # Iterate over all possible triangles,
+  for (i in (nTriangles - 1):0) {
+    id <- i + 2L
+    mx <- my <- rcx <- rcy <- lcx <- lcy <-
+      ax <- ay <- bx <- by <- cx <- cy <- NA
+    if (id %% 2L) {
+      # Bottom-right triangle
+      bx <- by <- cx <- tileSize
+      ax <- ay <- cy <- 0
+    } else {
+      # Top-left triangle
+      ax <- ay <- cy <- tileSize
+      bx <- by <- cx <- 0
+    }
+    # Find target triangle
+    while ((id <- (id %/% 2)) > 1L) {
+      tmpx <- (ax + bx) / 2
+      tmpy <- (ay + by) / 2
+
+      if (id %% 2L) {
+        # Right sub-triangle
+        bx <- ax
+        by <- ay
+        ax <- cx
+        ay <- cy
+      } else {
+        # Left sub-triangle
+        ax <- bx
+        ay <- by
+        bx <- cx
+        by <- cy
+      }
+      cx <- tmpx
+      cy <- tmpy
+    }
+    az <- terrain[ax + 1, ay + 1]
+    bz <- terrain[bx + 1, by + 1]
+    interpolatedHeight <- (az + bz) / 2
+
+    # Error at hypotenuse midpoint
+    mx <- ((ax + bx) / 2)
+    my <- ((ay + by) / 2)
+    mz <- terrain[mx + 1, my + 1]
+    middleError <- max(na.rm=TRUE,
+      abs(interpolatedHeight - mz),
+      errors[mx+1, my+1]
+    )
+    errors[mx+1, my+1] <- middleError
+
+    # Propagate child errors
+    lcError <- rcError <- 0
+    if (i < lastLevelIndex) {
+      lcx <- (ax + cx) / 2
+      lcy <- (ay + cy) / 2
+      lcError <- errors[lcx+1, lcy+1]
+      rcx <- (bx + cx) / 2
+      rcy <- (by + cy) / 2
+      rcError <- errors[rcx+1, rcy+1]
+    }
+    errors[mx+1, my+1] <- max(
+      errors[mx+1, my+1], lcError, rcError
+    )
+  }
+  # Clear and exit
+  mx <- my <- rcx <- rcy <- lcx <- lcy <-
+    ax <- ay <- bx <- by <- cx <- cy <- NA
+  errors
+}
 
 # Try a direct implementation; mostly the same except that we need to transpose
 # some of the coordinates
