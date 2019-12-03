@@ -19,6 +19,15 @@ description: Front page summary
 options(digits=3)
 knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 library(ggplot2)
+thm.blnk <- list(
+  theme(
+    axis.text.x=element_blank(), axis.text.y=element_blank(),
+    axis.ticks.x=element_blank(), axis.ticks.y=element_blank(),
+    panel.grid=element_blank()
+  ),
+  ylab(NULL),
+  xlab(NULL)
+)
 ```
 
 # Off Course, of Course
@@ -30,7 +39,7 @@ library(ggplot2)
   class='post-inset-image'
 />
 
-A few months ago a stumbled on Vladimir Agafonkin's ([@mourner][5]) fantastic
+A few months ago a stumbled on Vladimir Agafonkin's ([&commat;mourner][5]) fantastic
 [observable notebook][6] on adapting the Right-Triangulated Irregular
 Networks (RTIN) algorithm to JavaScript.  The subject matter is interesting and
 the exposition superb.  I'll admit I envy the elegance of natively interactive
@@ -44,7 +53,7 @@ to C and interface that into R, but where's the fun in that?
 
 # Right Triangles
 
-You should look at [@mourner's][5] [notebook][6] or the original [Will Evans et
+You should look at [&commat;mourner's][5] [notebook][6] or the original [Will Evans et
 al. 1997 paper][8] for in-depth details as the point of this post is the
 translation to an R idiomatic implementation.  Notwithstanding I can't resist
 indulging in some of my newly acquired `rayrender`ing powers for some
@@ -269,6 +278,10 @@ four child errors.
 
 Here is the entire process:
 
+<div style='background-color: red'>
+Initial 10 frames have bad counter.
+</div>
+
 <video id=mesh-anim style='display: block; margin: 0 auto;' controls loop>
 <source
   src='/post/2019-08-23-mesh-reduction-1_files/images/out.mp4'
@@ -292,8 +305,13 @@ ggplot(dat) +
   scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
 ```
 
-Our JavaScript timings are in line with those @mourner reports
+Our JavaScript timings are in line with those &commat;mourner reports
 (~20ms)[^js-timings].
+<div style='background-color: red'>
+NOTE: on Chrome we're seeing timings start at ~38 and then
+eventually drop to and stay at ~20ms.  The timings here are Firefox.  Mesh
+extraction on Chrome starts at ~11ms and drops to ~1.5-2ms
+</div>
 
 I was surprised by how well JS stacks up relative to C.  Certainly a ~7x gap is
 nothing to sneeze at, but I expected it to be bigger given JS is interpreted.
@@ -339,82 +357,145 @@ incorrect][10].  Instead I'll have to be content with telling you that I did get
 this to work eventually.  A victory that had it wasted lives like it wasted my
 time would supplant those of Pyrrhus in the history books[^grandiloquence].
 
-What should have been immediately obvious to me is that we're not just
-generating equal sized triangles.  There are eight different triangle shapes
-arranged in a specific manner.  While I was generally aware of this, I
-underestimated the degrees of freedom in the problem and assumed I could just
-stumble into the right arrangement.  These are the eight different triangle
-shapes as they appear in the second and third levels of the 5 x 5 grid
-[we saw earlier](#flipbook1):
-
-DO WE NEED A 7 x 7 GRID TO SHOW FULL COMPLEXITY OF PATTERN?
+While I was generally aware that there is more to the problem than generating
+equal sized triangles, I underestimated the degrees of freedom available and
+wasted quite a bit of time going in circles as a result.  There are eight
+different triangle orientations, split into two groups of four.  The groups
+alternate between approximation levels.  Here we show the orientations for the
+2nd and 3rd most granular levels of a 9 x 9 grid[^nine-nine].  The triangles
+are colored by orientation.  For reasons that will become clearer later we call
+the group with diagonal hypotenuses "Square", and the one with
+vertical/horizontal ones "Diamond":<span id='sqr-vs-dia'></span>
 
 ```{r echo=FALSE}
+source('../../static/script/_lib/plot.R')
 source('../../static/script/mesh-viz/viz-lib.R')
-err <- matrix(0, 5, 5)
+source('../../static/script/mesh-viz/rtin-vec.R')
+# source('static/script/mesh-viz/viz-lib.R')
+# source('static/script/mesh-viz/rtin-vec.R')
+err <- matrix(0, 9, 9)
 # note diamond/square is backwards here from what we use in viz-lib
-tri.sq <- extract_mesh2(err, 1, 2)
-tri.di <- extract_mesh2(err, 1, 3)
-
-tris <-
-  as.data.frame(tris_to_xyz(list(tri.sq, tri.di), matrix(0, 5, 5), c(1,1,1)))
-tris[['type']] <- c(
-  rep('Square', length(unlist(tri.sq))), 
-  rep('Diamond', length(unlist(tri.di)))
+tri.di <- extract_mesh2(err, 1, 4)
+tri.sq <- extract_mesh2(err, 1, 3)
+tris <- tris_to_df(list(tri.sq, tri.di), err)
+tris[['type']] <- factor(
+  c(
+    rep('Square', length(unlist(tri.sq))),
+    rep('Diamond', length(unlist(tri.di)))
+  ),
+  levels=c('Square', 'Diamond')
 )
-tris[['id']] <- rep(seq_len(nrow(tris) / 3), each=3)
-
-# By design the trianble vertices are ordered so the first two vertices define
-# the hypotenuse.  They are also drawn in order but due to the oob business it's
-# not entirely obviousl what the final order is, so compute the angle between
-# hypotenuse and opposite vertex.
-
-xs <- matrix(tris[['x']], 3)
-ys <- matrix(tris[['y']], 3)
-xh <- (xs[2,] + xs[1,]) / 2
-yh <- (ys[2,] + ys[1,]) / 2
-xd <- (xs[3,] - xh)
-yd <- (ys[3,] - yh)
-ph <- xd + yd * 1i
-
-tris[['shape']] <- rep(match(ph, unique(ph)), each=3)
-colors <- c(
-  '#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0',
-  '#225ea8','#0c2c84'
-)
-tris[['color']] <- colors[c(1:4 * 2 - 1, 1:4 * 2)][tris[['shape']]]
-tris[['color']] <- colors[tris[['shape']]]
-ggplot(tris) +
+points <- tris_to_df(seq_along(err), err)
+p <- ggplot(tris) +
   geom_polygon(aes(x=x, y=y, group=id, fill=I(color))) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='grey50') +
   facet_wrap(~type) +
   coord_fixed() +
-  theme(
-    axis.text.x=element_blank(), axis.text.y=element_blank(),
-    axis.ticks.x=element_blank(), axis.ticks.y=element_blank(),
-    # plot.margin=unit(c(.1, .1, .1, (height/2)/dpi), "inches"),
-    panel.grid=element_blank(),
-    text=element_text(size=16)
-  )
-
+  thm.blnk
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r square-vs-diamond, echo=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-<!--
-4 x 2 panels
+The "Square" triangulation, the one with vertical and horizontal hypotenuses,
+has just one tiling pattern.  A particular triangle "shape" (a specific color in
+the plot above) must always be arranged in the same way relative to the other
+shapes that share the vertex opposite their hypotenuses.  Any other arrangement
+would prevent us from fully tiling the grid without breaking up triangles.
 
-Square
-Diamond
+On the other hand the "Diamond" triangulation, the one with the diagonal
+hypotenuses, has multiple possible tilings:
 
--->
+```{r echo=FALSE}
+raw1 <- c(03,19,01, 03,19,21, 03,23,21, 03,23,05)
+raw2 <- raw1 + rep(c(2,-2), each=length(raw1)/2)
+rawc1 <- rep(raw1, 2) + rep(0:1 * 4, each=length(raw1))
+rawc2 <- rep(raw2, 2) + rep(0:1 * 4, each=length(raw2))
+rawc3 <- rep(raw1[1:6], 4) + rep(0:3 * 2, each=6)
+f1 <- c(rawc1, rawc2 + 18, rawc1 + 36, rawc2 + 54)
+f2 <- rep(rawc1, 4) + rep(0:3 * 18, each=length(rawc1))
+# f3 <- c(matrix(seq_along(err), nrow(err), byrow=TRUE))[f2]
+f3 <- rep(rawc3, 4) + rep(0:3 * 18, each=length(rawc3))
+tris.f1 <- tris_to_df(f1, err)
+nms <- sprintf( "Faux Square %d", 1:3)
+tris.f1[['type']] <- nms[1]
+tris.f2 <- tris_to_df(f2, err)
+tris.f2[['type']] <- nms[2]
+tris.f3 <- tris_to_df(f3, err)
+tris.f3[['type']] <- nms[3]
+tris.f <- rbind(subset(tris, type=='Square'), tris.f1, tris.f2, tris.f3)
+tris.f[['type']] <- factor(tris.f[['type']], levels=unique(tris.f[['type']]))
 
-The first set of triangles tessellates in the same pattern throughout any grid.
-The second set has a degree of freedom we need to account for:
+p <- ggplot(tris.f) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color))) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='grey50') +
+  facet_wrap(~type, nrow=1) +
+  coord_fixed() +
+  thm.blnk
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r fake-squares, echo=FALSE}
+p
+```
 
-<!--
-Two possible arrangements of the diagonal triangles.
--->
+We show just three alternate tilings, although there are `$2^{16}$`.  All of
+them perfectly cover the grid with equal sized triangles.  "Faux Square 1" is
+even a pretty convincing replica.  Unfortunately only one of them fits exactly
+into the next level of coarseness, "Diamond" [shown previously](#sqr-vs-dia),
+seen here in a green outline:
 
-There are probably many ways to go about solving this problem, but I chose to
-focus on the midpoint of the hypotenuses directly.  This simplifies the problem
+```{r fake-diamonds-outline, echo=FALSE}
+bad.1 <- ids_to_df(c(11,13,15,17) + rep(0:3 * 18, each=4), err)
+bad.2 <- ids_to_df(c(11,13,15,17) + rep(c(0, 36), each=4), err)
+bad.3 <- ids_to_df(c(11,15,31,35) + rep(c(0, 36), each=4), err)
+bad.1[['type']] <- factor(nms[1], levels=levels(tris.f[['type']]))
+bad.2[['type']] <- factor(nms[2], levels=levels(tris.f[['type']]))
+bad.3[['type']] <- factor(nms[3], levels=levels(tris.f[['type']]))
+
+p + geom_polygon(
+  data=subset(tris, type=='Diamond', -type),
+  aes(x, y, group=id), fill=NA, color='green'
+) + geom_point(
+  data=rbind(bad.1, bad.2, bad.3), aes(x, y),
+  fill='blue', color='grey20', shape=21, size=2
+)
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+It is only with "Square" that every edge of the parent approximation level
+completely overlaps with edges of the child.  Every other arrangement has at
+least one parent edge crossing a hypotenuse of a child triangle.  These
+crossings are highlighted with the blue circles.  Ironically, the best looking
+fake is the worst offender.
+
+Herein lies the beauty of [&commat;mourner's][6] implementation; by deriving
+child triangles from splitting the parent ones, we guarantee that the child
+triangles will conform to the parents.  As I learned painfully no such
+guarantees apply when we compute the coordinates directly.  Our
+vectorization will require much care and some contortions.
+
+A further complication is that for each triangle, we need to compute the
+coordinates of its children well so that we may [carry over](#carry-over-viz)
+their errors.
+
+There are likely many ways to go about solving this problem, but I chose to
+focus on the midpoint of the hypotenuses directly rather than on the triangles
+proper.  They lie in patterns we can extrapolate without the need to track all
+the vertices, and we can compute the position of the child hypotenuses as
+relative offsets.  We show the target points in our original "Diamond/Square"
+layers:
+
+```{r diamond-square-hypotenuses}
+h.di <- c()
+```
+
+This simplifies the problem
 a little as then we just need to compute the absolute position of a single point
 per set of four triangles:
 
@@ -475,7 +556,7 @@ Point is to highlight potential techniques for vectorizing R code.
 
 ## R Transliteration
 
-This a reasonably close transliteration of the original [@mourner][5]
+This a reasonably close transliteration of the original [&commat;mourner][5]
 [implementation][6] of the [RTIN error computation algorithm][8].  In addition
 to the conversion to R, I have made some mostly non-semantic changes so that the
 code is easier to instrument, and so that the corresponding visualization occurs
@@ -590,15 +671,17 @@ new BgFlipBook({
 [^second-triangle]: The first triangle is not very interesting because the child
   errors are smaller than the parent error so there is no error to carry over.
 [^js-timings]: My processor is clocked at a particularly measly 1.2GHz, so it is
-  plausible that [@mourner ][5] ran his benchmarks on something clocked 2x-3x
-  faster.  It seems also likely this algorithm is CPU limited as most operations
-  do not involve memory access, and the data set is small enough to fit in
-  higher level cache.
+  plausible that [&commat;mourner][5] ran his benchmarks on something clocked
+  2x-3x faster.  It seems also likely this algorithm is CPU limited as most
+  operations do not involve memory access, and the data set is small enough to
+  fit in higher level cache.
 [^branch-predict]: In particular it seems unlikely the `while` loop condition
   and the `if` statements therein could be easily predicted by a hardware branch
   predictor, and that's assuming JS code can even be branch predicted.
 [^grandiloquence]: If nothing else I feel I've earned the right not to be
   embarrassed by misplaced eructations of grandiloquence.
+[^nine-nine]: Some tiling issues become apparent at this size that are less
+  obvious at smaller sizes.
 
 [5]: https://twitter.com/mourner
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
