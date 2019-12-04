@@ -100,6 +100,7 @@ errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
   performance.now() - a;
 }
 {
+  tol = 5
   a = performance.now();
   coords = updatedGeometry(errors, 257, 256, tol);
   performance.now() - a;
