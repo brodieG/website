@@ -1,3 +1,22 @@
+offset.dg <- aperm(
+  array(
+    c(
+      1L,1L, 0L,0L, 2L,2L, 1L,2L, 0L,1L,
+      1L,1L, 0L,0L, 2L,2L, 1L,0L, 2L,1L,
+      3L,1L, 4L,0L, 2L,2L, 3L,2L, 4L,1L,
+      3L,1L, 4L,0L, 2L,2L, 2L,1L, 3L,0L,
+      1L,3L, 2L,2L, 0L,4L, 1L,4L, 2L,3L,
+      1L,3L, 2L,2L, 0L,4L, 0L,3L, 1L,2L,
+      3L,3L, 2L,2L, 4L,4L, 3L,4L, 2L,3L,
+      3L,3L, 2L,2L, 4L,4L, 3L,2L, 4L,3L
+    ),
+    dim=c(2L, 5L, 8L)
+  ),
+  c(3L, 1L, 2L)
+)
+xx <- do.call(rbind, lapply(asplit(offset.dg,3), as.data.frame))
+xx[['V3']] <- rep(letters[1:5], each=8)
+ggplot(xx) + geom_point(aes(V1, V2, color=V3))
 
 compute_error3 <- function(map) {
   if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
@@ -5,22 +24,6 @@ compute_error3 <- function(map) {
   # offsets are row/col, start at parent and go clockwise, offsets are
   # already multiplied by 2L b/c otherwise we would have fractional offsets
   # for smallest square set.
-  offset.dg <- aperm(
-    array(
-      c(
-        1L,1L, 0L,0L, 2L,2L, 1L,2L, 0L,1L,
-        1L,1L, 0L,0L, 2L,2L, 1L,0L, 2L,0L,
-        3L,1L, 4L,0L, 2L,2L, 3L,2L, 4L,1L,
-        3L,1L, 4L,0L, 2L,2L, 2L,1L, 3L,0L,
-        1L,3L, 2L,0L, 0L,4L, 1L,4L, 2L,3L,
-        1L,3L, 2L,0L, 0L,4L, 0L,3L, 1L,2L,
-        3L,3L, 2L,2L, 4L,4L, 3L,4L, 2L,3L,
-        3L,3L, 2L,2L, 4L,4L, 3L,2L, 4L,2L
-      ),
-      dim=c(2L, 5L, 8L)
-    ),
-    c(3L, 1L, 2L)
-  )
   offset.ax <- aperm(
     array(
       c(
@@ -67,22 +70,22 @@ compute_error3 <- function(map) {
         if(tile.nr < 2L) o <- o[c(1L,2L,5L,6L),,]
         if(tile.nc < 2L) o <- o[seq_len(dim(o)[1L]/2L),,]
       }
-      o.1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
-      o.2 <- o.1 + rep((seq_len(tile.nr) - 1L) * mult, each=length(o.1))
-      o.3 <- o.2 + rep((seq_len(tile.nc) - 1L) * mult, each=length(o.2))
-      olen <- length(o.3)/5L
-      o.id <- seq_len(olen)
+      o1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
+      o2 <- o1 + rep((seq_len(tile.nr) - 1L) * mult, each=length(o1))
+      o3 <- o2 + rep((seq_len(tile.nc) - 1L) * nr, each=length(o2))
+      olen <- length(o3)/5L
+      oid <- seq_len(olen)
 
       err.list <- vector('list', if(i < 2L) 2L else 4L)
       err.list[[1L]] <- abs(
-        map[o.3[o.id]] - (map[o.3[o.id + olen]] + map[o.3[o.id + olen * 2L]])/2
+        map[o3[oid]] - (map[o3[oid + olen]] + map[o3[oid + olen * 2L]])/2
       )
-      err.list[[2L]] <- errors[o.3[o.id]]
+      err.list[[2L]] <- errors[o3[oid]]
       if(i >= 2L || j == 'diag') {
-        err.list[[3L]] <- errors[o.3[o.id + olen * 3L]]
-        err.list[[4L]] <- errors[o.3[o.id + olen * 4L]]
+        err.list[[3L]] <- errors[o3[oid + olen * 3L]]
+        err.list[[4L]] <- errors[o3[oid + olen * 4L]]
       }
-      errors[o.3[o.id]] <- do.call(pmax, err.list)
+      errors[o3[oid]] <- docall(pmax, err.list)
   } }
   errors
 }
