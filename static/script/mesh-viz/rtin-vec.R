@@ -25,6 +25,13 @@ get_child_ids <- function(ids.mid, type, nr, nc, mult) {
   }
   child.ids
 }
+# Get the start/end coords of hypotenuse, and then hypotenuse
+#
+# We need start/end so that we can compute the interpolated Z value to compute
+# error against.  Otherwise we could completely focus on the hypotenuses.  But
+# there is a pattern still.  For square we alternate each "row", for diamond we
+# alternate each column.
+
 compute_error <- function(map) {
   if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
   .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
@@ -59,26 +66,26 @@ compute_error <- function(map) {
       nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
     ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
 
-    # - Square, vertical
+    # - Diamond, vertical
     ids.a.start <- c(ids.raw[-grid.nr,])
     ids.a.mid <- ids.a.start + mult %/% 2L
     ids.a.end <- ids.a.start + mult
     err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
 
-    # - Square, horizontal
+    # - Diamond, horizontal
     ids.b.start <- c(t(ids.raw[,-grid.nc]))
     ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
     ids.b.end <- ids.b.start + (mult * nr)
     err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
 
-    # - Square record errors
+    # - Diamond record errors
     ids.mid <- c(ids.a.mid, ids.b.mid)
     z.err <- pmax(c(err.a, err.b), errors[ids.mid])
     errors[ids.mid] <-
       if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
       else pmax(z.err, errors[ids.mid])
 
-    # - Diagonal: TL to BR
+    # - Square (Diagonal): TL to BR
     ids.a.raw <- ids.raw[
       seq(1L, grid.nr - 1L, 2L), seq(1L, grid.nc - 1L, 2L), drop=FALSE
     ]
@@ -95,7 +102,102 @@ compute_error <- function(map) {
     z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
     err.a <- abs(map[ids.a.mid] - z.mid)
 
-    # - Diagonal: TR to BL
+    # - Square (Diagonal): TR to BL
+    ids.b.start <- c(
+      if(grid.nc>2L) c(ids.raw[seq(2L, grid.nr, 2L), seq(2L, grid.nc-1L, 2L)]),
+      if(grid.nr>2L) c(ids.raw[seq(3L, grid.nr, 2L), seq(1L, grid.nc-1L, 2L)])
+    )
+    ids.b.off <- mult * (nr - 1L)
+    ids.b.end <- ids.b.start + ids.b.off
+    z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
+    ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
+    err.b <- abs(map[ids.b.mid] - z.mid)
+
+    # - Diagonal record errors
+    ids.mid <- c(ids.a.mid, ids.b.mid)
+    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
+    errors[ids.mid] <- .pmax2(z.err, .get_child_err(ids.mid, 'd'))
+  }
+  errors
+}
+# This version tries to work directly from the hypotenuses and find the `a/b`
+# points off of it rather than the other way around.
+compute_error2 <- function(map) {
+  if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
+  .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
+  .get_child_err <- function(ids.mid, type) {
+    child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
+    lapply(child.ids, function(ids) errors[ids])
+  }
+  nr <- nrow(map)
+  nc <- ncol(map)
+  layers <- floor(min(log2(c(nr, nc) - 1L)))
+  errors <- array(0, dim=dim(map))
+
+  # Force tile splits in areas that don't fall in 2^layers squares
+
+  if((r.extra <- (nr - 1L) %% 2L^layers)) {
+    while(r.extra - 2^(floor(log2(r.extra))))
+      r.extra <- r.extra - 2^(floor(log2(r.extra)))
+    errors[nr, seq(r.extra / 2L + 1L, nc, by=r.extra)] <- Inf
+  }
+  if((c.extra <- (nc - 1L) %% 2L^layers)) {
+    while(c.extra - 2^(floor(log2(c.extra))))
+      c.extra <- c.extra - 2^(floor(log2(c.extra)))
+    errors[seq(c.extra / 2L + 1L, nr, by=c.extra), nc] <- Inf
+  }
+  for(i in seq_len(layers)) {
+    mult <- as.integer(2^i)
+    grid.nr <- ((nr - 1L) %/% mult) + 1L
+    grid.nc <- ((nc - 1L) %/% mult) + 1L
+
+    ids.raw <- rep(mult, prod(grid.nr, grid.nc))
+    ids.raw[1L] <- 1L
+    ids.raw[seq_len(grid.nc - 1L) * grid.nr + 1L] <-
+      nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
+    ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
+
+    # - Diamond
+
+    ids.h <- 
+
+    # - Diamond, vertical
+    ids.a.start <- c(ids.raw[-grid.nr,])
+    ids.a.mid <- ids.a.start + mult %/% 2L
+    ids.a.end <- ids.a.start + mult
+    err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
+
+    # - Diamond, horizontal
+    ids.b.start <- c(t(ids.raw[,-grid.nc]))
+    ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
+    ids.b.end <- ids.b.start + (mult * nr)
+    err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
+
+    # - Diamond record errors
+    ids.mid <- c(ids.a.mid, ids.b.mid)
+    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
+    errors[ids.mid] <-
+      if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
+      else pmax(z.err, errors[ids.mid])
+
+    # - Square (Diagonal): TL to BR
+    ids.a.raw <- ids.raw[
+      seq(1L, grid.nr - 1L, 2L), seq(1L, grid.nc - 1L, 2L), drop=FALSE
+    ]
+    ids.a.off <- mult * (nr + 1L)
+    ids.a.start <- c(
+      ids.a.raw,
+      ids.a.raw[
+        if(grid.nr %% 2L) TRUE else -nrow(ids.a.raw),
+        if(grid.nc %% 2L) TRUE else -ncol(ids.a.raw)
+      ] + ids.a.off
+    )
+    ids.a.end <- ids.a.start + ids.a.off
+    ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
+    z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
+    err.a <- abs(map[ids.a.mid] - z.mid)
+
+    # - Square (Diagonal): TR to BL
     ids.b.start <- c(
       if(grid.nc>2L) c(ids.raw[seq(2L, grid.nr, 2L), seq(2L, grid.nc-1L, 2L)]),
       if(grid.nr>2L) c(ids.raw[seq(3L, grid.nr, 2L), seq(1L, grid.nc-1L, 2L)])
@@ -189,7 +291,7 @@ extract_mesh2 <- function(errors, tol, debug.lvl=0) {
     nr.g <- grid.nr * mult + 1L
     nc.g <- grid.nc * mult + 1L
 
-    # - Vertical and Horizontal Bases ("square") -
+    # - Vertical and Horizontal Bases ("diamond?") -
 
     # Index munging to compute midpoints for long edges that are vertical
     # or horizontal
