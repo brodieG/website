@@ -70,16 +70,17 @@ compute_error3 <- function(map) {
       o.1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
       o.2 <- o.1 + rep((seq_len(tile.nr) - 1L) * mult, each=length(o.1))
       o.3 <- o.2 + rep((seq_len(tile.nc) - 1L) * mult, each=length(o.2))
-      o.id <- seq(1L,length.out=length(o.3)/5L, by=5L)
+      olen <- length(o.3)/5L
+      o.id <- seq_len(olen)
 
       err.list <- vector('list', if(i < 2L) 2L else 4L)
       err.list[[1L]] <- abs(
-        map[o.3[o.id]] - (map[o.3[o.id + 1L]] + map[o.3[o.id + 2L]])/2
+        map[o.3[o.id]] - (map[o.3[o.id + olen]] + map[o.3[o.id + olen * 2L]])/2
       )
       err.list[[2L]] <- errors[o.3[o.id]]
       if(i >= 2L || j == 'diag') {
-        err.list[[3L]] <- errors[o.3[o.id + 3L]]
-        err.list[[4L]] <- errors[o.3[o.id + 4L]]
+        err.list[[3L]] <- errors[o.3[o.id + olen * 3L]]
+        err.list[[4L]] <- errors[o.3[o.id + olen * 4L]]
       }
       errors[o.3[o.id]] <- do.call(pmax, err.list)
   } }
