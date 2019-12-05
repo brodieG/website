@@ -31,7 +31,7 @@ offset.ax <- aperm(
 
 xx <- do.call(rbind, lapply(asplit(offset.dg,3), as.data.frame))
 xx[['V3']] <- rep(letters[1:5], each=8)
-ggplot(xx) + geom_point(aes(V1, V2, color=V3))
+ggplot(xx) + geom_point(aes(V1, V2, color=V3, shape=V3), size=2, alpha=.5)
 
 xx <- do.call(rbind, lapply(asplit(offset.ax,3), as.data.frame))
 xx[['V3']] <- rep(letters[1:5], each=4)
@@ -66,7 +66,7 @@ compute_error3 <- function(map) {
 
     for(j in c('axis','diag')) {
       o <- if(j == 'diag') offset.dg else offset.ax
-      if(j == 'diag' && i == length(layers)) o <- o[1:2,,]
+      if(j == 'diag' && i == layers) o <- o[1:2,,]
       odim <- dim(o)
       o <- as.integer(o * mult %/% 2L)
       dim(o) <- odim
@@ -84,9 +84,12 @@ compute_error3 <- function(map) {
       o1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
       o2 <- o1 + rep((seq_len(ctimes) - 1L) * mult, each=length(o1))
       o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * mult, each=length(o2))
+
       reps <- ctimes * rtimes
+      # array(o3, c(odim[1],5,reps))
+      # array(seq_along(o3), c(odim[1],5,reps))
       oid <- seq_len(odim[1]) +
-        rep((seq_len(reps) - 1) * length(o3)/reps, each=reps)
+        rep((seq_len(reps) - 1) * length(o3)/reps, each=odim[1])
 
       err.list <- vector('list', if(i < 2L) 2L else 4L)
       err.list[[1L]] <- abs(
@@ -97,7 +100,9 @@ compute_error3 <- function(map) {
         err.list[[3L]] <- errors[o3[oid + odim[1] * 3L]]
         err.list[[4L]] <- errors[o3[oid + odim[1] * 4L]]
       }
-      errors[o3[oid]] <- do.call(pmax, err.list)
+      err.vals <- do.call(pmax, err.list)
+      err.ord <- order(err.vals)
+      errors[o3[oid][err.ord]] <- err.vals[err.ord]
   } }
   errors
 }
