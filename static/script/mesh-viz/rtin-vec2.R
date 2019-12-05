@@ -82,8 +82,8 @@ compute_error3 <- function(map) {
       rtimes <- tile.nr / onr
 
       o1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
-      o2 <- o1 + rep((seq_len(ctimes) - 1L) * mult, each=length(o1))
-      o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * mult, each=length(o2))
+      o2 <- o1 + rep((seq_len(ctimes) - 1L) * onr, each=length(o1))
+      o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * onc, each=length(o2))
 
       reps <- ctimes * rtimes
       # array(o3, c(odim[1],5,reps))
