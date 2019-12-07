@@ -37,6 +37,49 @@ xx <- do.call(rbind, lapply(asplit(offset.ax,3), as.data.frame))
 xx[['V3']] <- rep(letters[1:5], each=4)
 ggplot(xx) + geom_point(aes(V1, V2, color=V3), alpha=.5)
 
+# split this out to get better sense of timings
+
+co1 <- function(o, nr) c(o[,1L,] + o[,2L,] * nr + 1L)
+co2 <- function(o1, ctimes, onr)
+  o1 + rep((seq_len(ctimes) - 1L) * onr, each=length(o1))
+co3 <- function(o2, rtimes, nr, onc)
+  o2 + matrix(
+    (seq_len(rtimes) - 1L) * nr * onc, nrow=length(o2), ncol=rtimes,
+    byrow=TRUE
+  )
+
+compute_os <- function(o, nr, ctimes, rtimes, onr, onc) {
+  o1 <- co1(o, nr)
+  o2 <- co2(o1, ctimes, onr)
+  o3 <- co3(o2, rtimes, nr, onc)
+  o3
+}
+
+# There are two nasty things about this implementation:
+#
+# * highly repetitive data (including generation of child points for
+#   first level.
+# * Need to sort
+#
+# Ticks: 1423; Iterations: 103; Time Per: 52.48 milliseconds; Time Total: 5.405 seconds; Time Ticks: 1.423
+# 
+#                           milliseconds
+# compute_error3 ------- : 52.48 -  0.00
+#     compute_os ------- : 24.75 -  0.22
+#     |   co3 ---------- : 24.16 -  1.29
+#     |   |   matrix --- : 22.87 - 22.83
+#     |   co2 ---------- :  0.30 -  0.26
+#     order ------------ : 20.58 - 20.32
+#     array ------------ :  3.91 -  3.91
+#     do.call ---------- :  2.21 -  0.00
+#     |   <Anonymous> -- :  2.21 -  2.14
+#     diff ------------- :  0.55 -  0.18
+#     - ---------------- :  0.44 -  0.44
+# 
+# Maybe we can reduce timings by 1/3 by removing the children for the first pass
+# and it might even be possible to remove the duplicate parent calc (although
+# that seems a lot more complicated)
+
 compute_error3 <- function(map) {
   if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
   # offsets are row/col, start at parent and go clockwise, offsets are
@@ -59,6 +102,7 @@ compute_error3 <- function(map) {
   #     c.extra <- c.extra - 2^(floor(log2(c.extra)))
   #   errors[seq(c.extra / 2L + 1L, nr, by=c.extra), nc] <- Inf
   # }
+
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
     tile.nr <- ((nr - 1L) %/% mult) * mult
@@ -81,10 +125,11 @@ compute_error3 <- function(map) {
       ctimes <- tile.nc / onc
       rtimes <- tile.nr / onr
 
-      o1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
-      o2 <- o1 + rep((seq_len(ctimes) - 1L) * onr, each=length(o1))
-      o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * onc, each=length(o2))
+      # o1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
+      # o2 <- o1 + rep((seq_len(ctimes) - 1L) * onr, each=length(o1))
+      # o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * onc, each=length(o2))
 
+      o3 <- compute_os(o, nr, ctimes, rtimes, onr, onc)
       reps <- ctimes * rtimes
       # array(o3, c(odim[1],5,reps))
       # array(seq_along(o3), c(odim[1],5,reps))
@@ -103,6 +148,7 @@ compute_error3 <- function(map) {
       err.vals <- do.call(pmax, err.list)
       err.ord <- order(err.vals)
       errors[o3[oid][err.ord]] <- err.vals[err.ord]
+      # errors[o3[oid]] <- err.vals
   } }
   errors
 }
