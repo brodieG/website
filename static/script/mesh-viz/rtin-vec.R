@@ -122,96 +122,82 @@ compute_error <- function(map) {
 }
 # This version tries to work directly from the hypotenuses and find the `a/b`
 # points off of it rather than the other way around.
+
 compute_error2 <- function(map) {
-  if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
-  .pmax2 <- function(a, b) do.call(pmax, c(list(a, na.rm=TRUE), b))
-  .get_child_err <- function(ids.mid, type) {
-    child.ids <- get_child_ids(ids.mid, type, nr, nc, mult)
-    lapply(child.ids, function(ids) errors[ids])
-  }
+  # - Helper Funs --------------------------------------------------------------
+  .get_child_err <- function(ids.mid, which, type) {
+    if(identical(type, 'axis')) {          # square sides
+      col.off <- c(-1L, 1L, 1L, -1L)
+      row.off <- c(-1L, -1L, 1L, 1L)
+    } else if (identical(type, 'diag')) {  # diagonals
+      col.off <- c(0L, 2L, 0L, -2L)
+      row.off <- c(-2L, 0L, 2L, 0L)
+    } else stop("bad input")
+    offset <- (row.off * mult) %/% 4L + nr * (col.off * mult) %/% 4L
+    lapply(
+      seq_along(offset)[which], function(i) errors[ids.mid + offset[i]]
+  ) }
+  .get_par_err <- function(ids, offsets)
+    abs(map[ids] - (map[ids + offsets[1L]] + map[ids + offsets[2L]]) / 2)
+
   nr <- nrow(map)
   nc <- ncol(map)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   errors <- array(0, dim=dim(map))
 
-  # Force tile splits in areas that don't fall in 2^layers squares
-
-  if((r.extra <- (nr - 1L) %% 2L^layers)) {
-    while(r.extra - 2^(floor(log2(r.extra))))
-      r.extra <- r.extra - 2^(floor(log2(r.extra)))
-    errors[nr, seq(r.extra / 2L + 1L, nc, by=r.extra)] <- Inf
-  }
-  if((c.extra <- (nc - 1L) %% 2L^layers)) {
-    while(c.extra - 2^(floor(log2(c.extra))))
-      c.extra <- c.extra - 2^(floor(log2(c.extra)))
-    errors[seq(c.extra / 2L + 1L, nr, by=c.extra), nc] <- Inf
-  }
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
-    grid.nr <- ((nr - 1L) %/% mult) + 1L
-    grid.nc <- ((nc - 1L) %/% mult) + 1L
+    mhalf <- mult %/% 2L
+    tile.r <- ((nr - 1L) %/% mult)
+    tile.c <- ((nc - 1L) %/% mult)
 
-    ids.raw <- rep(mult, prod(grid.nr, grid.nc))
-    ids.raw[1L] <- 1L
-    ids.raw[seq_len(grid.nc - 1L) * grid.nr + 1L] <-
-      nr * (mult - 1L) + ((nr - 1L) - (grid.nr - 1L) * mult) + 1L
-    ids.raw <- matrix(cumsum(ids.raw), grid.nr, grid.nc)
+    # - Axis (vertical/horizontal) ---------------------------------------------
 
-    # - Diamond
+    # Compute IDs, distinguish b/w inside vs. outside
+    col.v <- seq(1L, length.out=tile.c + 1L, by=mult)
+    col.h <- seq(2L, length.out=tile.c, by=mult)
+    ids.v <- seq(mhalf, nr, mult)
+    ids.h <- seq(nr * mhalf + 1L, nr * mult, by=mult)
+    h.len <- length(ids.h)
+    v.len <- length(col.h)
 
-    ids.h <- 
-
-    # - Diamond, vertical
-    ids.a.start <- c(ids.raw[-grid.nr,])
-    ids.a.mid <- ids.a.start + mult %/% 2L
-    ids.a.end <- ids.a.start + mult
-    err.a <- abs(map[ids.a.mid] - (map[ids.a.start] + map[ids.a.end]) / 2)
-
-    # - Diamond, horizontal
-    ids.b.start <- c(t(ids.raw[,-grid.nc]))
-    ids.b.mid <- ids.b.start + (mult %/% 2L) * nr
-    ids.b.end <- ids.b.start + (mult * nr)
-    err.b <- abs(map[ids.b.mid] - (map[ids.b.start] + map[ids.b.end]) / 2)
-
-    # - Diamond record errors
-    ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
-    errors[ids.mid] <-
-      if(i > 1L) .pmax2(z.err, .get_child_err(ids.mid, 's'))
-      else pmax(z.err, errors[ids.mid])
-
-    # - Square (Diagonal): TL to BR
-    ids.a.raw <- ids.raw[
-      seq(1L, grid.nr - 1L, 2L), seq(1L, grid.nc - 1L, 2L), drop=FALSE
-    ]
-    ids.a.off <- mult * (nr + 1L)
-    ids.a.start <- c(
-      ids.a.raw,
-      ids.a.raw[
-        if(grid.nr %% 2L) TRUE else -nrow(ids.a.raw),
-        if(grid.nc %% 2L) TRUE else -ncol(ids.a.raw)
-      ] + ids.a.off
+    ids <- list(
+      v.out.l=ids.v,
+      v.in=ids.v[-c(1L, v.len)] + rep((col.v - 1L) * nr, each=v.len - 2L),
+      v.out.r=ids.v + (col.v[v.len] - 1L) * nr,
+      h.out.t=ids.h[1L] + (col.v - 1L) * nr,
+      h.in=ids.h[-c(1L, h.len)] + rep((col.h - 1L) * nr, each=h.len - 2L),
+      h.out.b=ids.h[h.len] + (col.v - 1L) * nr
     )
-    ids.a.end <- ids.a.start + ids.a.off
-    ids.a.mid <- (ids.a.start + ids.a.end - 1L) %/% 2L + 1L
-    z.mid <- (map[ids.a.start] + map[ids.a.end]) / 2L
-    err.a <- abs(map[ids.a.mid] - z.mid)
-
-    # - Square (Diagonal): TR to BL
-    ids.b.start <- c(
-      if(grid.nc>2L) c(ids.raw[seq(2L, grid.nr, 2L), seq(2L, grid.nc-1L, 2L)]),
-      if(grid.nr>2L) c(ids.raw[seq(3L, grid.nr, 2L), seq(1L, grid.nc-1L, 2L)])
+    # Errors
+    err.child <- if(i > 1L) {
+      which <- list(2:3, 1:4, c(1L,4L), 3:4, 1:4, 1:2)
+      Map(get_child_err, ids, which, 'axis')
+    } else replicate(6L, list())
+    err.par <- c(
+      Map(get_par_err, ids[1:3], list(c(-mhalf, mhalf))),
+      Map(get_par_err, ids[4:6], list(c(-mhalf * nr, mhalf * nr)))
     )
-    ids.b.off <- mult * (nr - 1L)
-    ids.b.end <- ids.b.start + ids.b.off
-    z.mid <- (map[ids.b.start] + map[ids.b.end]) / 2L
-    ids.b.mid <- (ids.b.start + ids.b.end - 1L) %/% 2L + 1L
-    err.b <- abs(map[ids.b.mid] - z.mid)
+    for(j in seq_along(ids)) {
+      errors[ids[[i]]] <- do.call(
+        pmax, c(list(na.rm=TRUE), err.par[[i]], err.child[[i]])
+    ) }
+    # - Diagonals --------------------------------------------------------------
 
-    # - Diagonal record errors
-    ids.mid <- c(ids.a.mid, ids.b.mid)
-    z.err <- pmax(c(err.a, err.b), errors[ids.mid])
-    errors[ids.mid] <- .pmax2(z.err, .get_child_err(ids.mid, 'd'))
+    ids.raw <- seq(mhalf + nr * mhalf + 1L, nr * (mhalf + 1L), by=mult) +
+      matrix((seq_len(tile.c) - 1L) * mult * nr, tile.r, tile.c, byrow=TRUE)
+    which.nw <- xor((col(ids.raw) %% 2L), (row(ids.raw) %% 2L))
+    ids <- list(nw=ids.raw[which.nw], sw=ids.raw[which.sw])
+
+    err.child <- Map(get_child_err, ids, 1:4, 'diag')
+    err.par <- Map(
+      get_par_err, ids,
+      list(c(1L, -1L) * (nr + hmult), c(1L, -1L) * (nr + hmult))
+    )
+    for(j in seq_along(ids)) {
+      errors[ids[[i]]] <- do.call(
+        pmax, c(list(na.rm=TRUE), err.par[[i]], err.child[[i]])
+    ) }
   }
   errors
 }
