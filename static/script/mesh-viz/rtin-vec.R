@@ -197,7 +197,7 @@ compute_error2 <- function(map) {
     err.child <- Map(.get_child_err, ids, list(1:4), 'diag')
     err.par <- Map(
       .get_par_err, ids,
-      list(c(1L, -1L) * (nr + mhalf), c(1L, -1L) * (nr - mhalf))
+      list((mhalf * nr + mhalf) * c(1L, -1L), (mhalf * nr - mhalf) * c(1L, -1L))
     )
     for(j in seq_along(ids)) {
       errors[ids[[j]]] <- do.call(
