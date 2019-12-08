@@ -154,22 +154,25 @@ compute_error2 <- function(map) {
     # - Axis (vertical/horizontal) ---------------------------------------------
 
     # Compute IDs, distinguish b/w inside vs. outside
-    col.v <- seq(1L, length.out=tile.c + 1L, by=mult)
+    col.vn <- tile.c + 1L
+    col.hn <- tile.c
+    col.v <- seq(1L, length.out=col.vn, by=mult)
     col.h <- seq(2L, length.out=tile.c, by=mult)
     ids.v <- seq(mhalf + 1L, nr, mult)
-    ids.h <- seq(nr * mhalf + 1L, nr * mult, by=mult)
+    ids.h <- seq(nr * mhalf + 1L, nr * (mhalf + 1L), by=mult)
     v.len <- length(ids.v)
     h.len <- length(ids.h)
-
     ids <- list(
       v.out.l=ids.v,
-      v.in=ids.v[-c(1L, v.len)] +
-        rep(seq_len(length(col.v) - 2L) * nr, each=max(c(v.len - 2L, 0L))),
-      v.out.r=ids.v + (col.v[length(col.v)] - 1L) * nr,
-      h.out.t=ids.h[1L] + (seq_len(length(col.h)) - 1L) * nr,
-      h.in=ids.h[-c(1L, h.len)] +
-        rep(seq_len(max(length(col.h) - 2L, 0L)) * nr, each=h.len - 2L),
-      h.out.b=ids.h[h.len] + (seq_len(length(col.h)) - 1L) * nr
+      v.in=ids.v + c(
+        matrix((col.v[-c(1L,col.vn)] - 1L) * nr, v.len, col.vn - 2L, byrow=TRUE)
+      ),
+      v.out.r=ids.v + (col.v[col.vn] - 1L) * nr,
+      h.out.t=ids.h[1L] + (seq_len(col.hn) - 1L) * nr * mult,
+      h.in=ids.h[-c(1L, h.len)] + c(
+        matrix((seq_len(col.hn)-1L) * nr * mult, h.len - 2L, col.hn, byrow=TRUE)
+      ),
+      h.out.b=ids.h[h.len] + (seq_len(col.hn) - 1L) * nr * mult
     )
     # Errors
     err.child <- if(i > 1L) {
@@ -191,7 +194,7 @@ compute_error2 <- function(map) {
     which.sw <- xor((col(ids.raw) %% 2L), (row(ids.raw) %% 2L))
     ids <- list(nw=ids.raw[!which.sw], sw=ids.raw[which.sw])
 
-    err.child <- Map(.get_child_err, ids, 1:4, 'diag')
+    err.child <- Map(.get_child_err, ids, list(1:4), 'diag')
     err.par <- Map(
       .get_par_err, ids,
       list(c(1L, -1L) * (nr + mhalf), c(1L, -1L) * (nr - mhalf))
