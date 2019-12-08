@@ -1,3 +1,12 @@
+# qq <- data.frame(
+#   id=o3[c(oid, oid+cycle, oid+2*cycle)], type=rep(c('a','b','c'), each=length(oid))
+# )
+# qq <- transform(qq, x=((id - 1) %/% 5), y=((id -1) %% 5))
+# ggplot(qq) +
+#   geom_point(aes(x,y,color=type, shape=type), size=3, alpha=.5) + 
+#   facet_wrap(~type)
+
+
 # Offsets are: h midpoint, parenta, parentb, children with variable number of
 # children supported
 
@@ -106,10 +115,21 @@ compute_os2 <- function(o, nr, ctimes, rtimes, onr, onc) {
 #     |   <Anonymous> -- :  0.91 -  0.84
 #     diff ------------- :  0.18 -  0.06
 #
+# > microbenchmark::microbenchmark(compute_error3(map), compute_error(map), f(map, 257L))
+# Unit: milliseconds
+#                 expr       min       lq      mean  median        uq      max
+#  compute_error3(map) 19.010240 20.83107 22.871070 21.2681 22.494988 31.01237
+#   compute_error(map) 12.522519 13.32934 15.493201 13.8249 14.690842 24.31099
+#         f(map, 257L)  6.055984  6.69855  7.047833  6.8176  7.017205 16.43509
+#  neval
+#    100
+#    100
+#    100
+
 
 compute_error3 <- function(map) {
   .get_errs <- function(o3, oid, od, reps) {
-    cycle <- oid[1] * reps
+    cycle <- length(oid)
     err.list <- vector('list', od[3L] - 2L)
     err.list[[1L]] <- abs(
       map[o3[oid]] - (map[o3[oid + cycle]] + map[o3[oid + 2L * cycle]])/2
