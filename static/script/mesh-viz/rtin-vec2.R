@@ -145,9 +145,11 @@ compute_error3 <- function(map) {
       reps <- ctimes * rtimes
       # array(o3, c(od[1],5,reps))
       # array(seq_along(o3), c(od[1],5,reps))
-      oid <- seq_len(od[1]) +
-        rep((seq_len(reps) - 1) * length(o3)/reps, each=od[1])
-
+      oid <- seq_len(od[1L]) + matrix(
+        (seq_len(reps) - 1) * length(o3)/reps,
+        od[1L], reps, byrow=TRUE
+      )
+      dim(oid) <- NULL
       err.list <- vector('list', od[3L] - 2L)
       err.list[[1L]] <- abs(
         map[o3[oid]] - (map[o3[oid + od[1]]] + map[o3[oid + od[1] * 2L]])/2
@@ -156,7 +158,7 @@ compute_error3 <- function(map) {
         err.list[[k + 1L]] <- errors[o3[oid + od[1] * (k + 2L)]]
 
       err.vals <- do.call(pmax, err.list)
-      if(axis) {
+      if(axis && i > 1L) {
         err.ord <- order(err.vals)
         errors[o3[oid][err.ord]] <- err.vals[err.ord]
       } else {
