@@ -64,39 +64,60 @@ co3 <- function(o2, rtimes, nr, onc)
     byrow=TRUE
   )
 
+
 compute_os <- function(o, nr, ctimes, rtimes, onr, onc) {
   o1 <- co1(o, nr)
   o2 <- co2(o1, ctimes, onr)
   o3 <- co3(o2, rtimes, nr, onc)
   o3
 }
+co12 <- function(o, nr) c(o[,1L,] + o[,2L,] * nr + 1L)
+co22 <- function(o1, ctimes, onr)
+  matrix(o1, ctimes, length(o1), byrow=TRUE) +
+    (seq_len(ctimes) - 1L) * onr
+co32 <- function(o2, rtimes, nr, onc)
+  matrix(o2, rtimes, length(o2), byrow=TRUE) +
+    (seq_len(rtimes) - 1L) * nr * onc
+
+compute_os2 <- function(o, nr, ctimes, rtimes, onr, onc) {
+  o1 <- co12(o, nr)
+  o2 <- co22(o1, ctimes, onr)
+  o3 <- co32(o2, rtimes, nr, onc)
+  o3
+}
 
 # There are two nasty things about this implementation:
 #
-# * highly repetitive data (including generation of child points for
-#   first level.
+# * highly repetitive data for square case
 # * Need to sort
 #
-# Ticks: 1423; Iterations: 103; Time Per: 52.48 milliseconds; Time Total: 5.405 seconds; Time Ticks: 1.423
-#
+# Ticks: 3736; Iterations: 162; Time Per: 34.21 milliseconds; Time Total: 5.542 seconds; Time Ticks: 3.736
+# 
 #                           milliseconds
-# compute_error3 ------- : 52.48 -  0.00
-#     compute_os ------- : 24.75 -  0.22
-#     |   co3 ---------- : 24.16 -  1.29
-#     |   |   matrix --- : 22.87 - 22.83
-#     |   co2 ---------- :  0.30 -  0.26
-#     order ------------ : 20.58 - 20.32
-#     array ------------ :  3.91 -  3.91
-#     do.call ---------- :  2.21 -  0.00
-#     |   <Anonymous> -- :  2.21 -  2.14
-#     diff ------------- :  0.55 -  0.18
-#     - ---------------- :  0.44 -  0.44
+# compute_error3 ------- : 34.21 -  0.00
+#     .get_errs -------- : 22.39 - 22.37
+#     compute_os ------- :  5.82 -  0.05
+#     |   co3 ---------- :  5.59 -  0.43
+#     |       matrix --- :  5.15 -  5.15
+#     matrix ----------- :  2.07 -  2.07
+#     order ------------ :  1.53 -  1.51
+#     array ------------ :  1.28 -  1.28
+#     do.call ---------- :  0.93 -  0.03
+#     |   <Anonymous> -- :  0.91 -  0.84
+#     diff ------------- :  0.18 -  0.06
 #
-# Maybe we can reduce timings by 1/3 by removing the children for the first pass
-# and it might even be possible to remove the duplicate parent calc (although
-# that seems a lot more complicated)
 
 compute_error3 <- function(map) {
+  .get_errs <- function(o3, oid, od, reps) {
+    cycle <- oid[1] * reps
+    err.list <- vector('list', od[3L] - 2L)
+    err.list[[1L]] <- abs(
+      map[o3[oid]] - (map[o3[oid + cycle]] + map[o3[oid + 2L * cycle]])/2
+    )
+    for(k in seq_len(length(err.list[-1L])))
+      err.list[[k + 1L]] <- errors[o3[oid + cycle * (k + 2L)]]
+    err.list
+  }
   if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
   # offsets are row/col, start at parent and go clockwise, offsets are
   # already multiplied by 2L b/c otherwise we would have fractional offsets
@@ -141,21 +162,19 @@ compute_error3 <- function(map) {
       # o2 <- o1 + rep((seq_len(ctimes) - 1L) * onr, each=length(o1))
       # o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * onc, each=length(o2))
 
-      o3 <- compute_os(o, nr, ctimes, rtimes, onr, onc)
+      o3 <- compute_os2(o, nr, ctimes, rtimes, onr, onc)
       reps <- ctimes * rtimes
-      # array(o3, c(od[1],5,reps))
+      # array(o3, c(od[1],od[3],reps))
       # array(seq_along(o3), c(od[1],5,reps))
-      oid <- seq_len(od[1L]) + matrix(
-        (seq_len(reps) - 1) * length(o3)/reps,
-        od[1L], reps, byrow=TRUE
-      )
-      dim(oid) <- NULL
-      err.list <- vector('list', od[3L] - 2L)
-      err.list[[1L]] <- abs(
-        map[o3[oid]] - (map[o3[oid + od[1]]] + map[o3[oid + od[1] * 2L]])/2
-      )
-      for(k in seq_len(length(err.list[-1L])))
-        err.list[[k + 1L]] <- errors[o3[oid + od[1] * (k + 2L)]]
+      oid <- seq_len(od[1L] * reps)
+
+      # err.list <- vector('list', od[3L] - 2L)
+      # err.list[[1L]] <- abs(
+      #   map[o3[oid]] - (map[o3[oid + od[1]]] + map[o3[oid + od[1] * 2L]])/2
+      # )
+      # for(k in seq_len(length(err.list[-1L])))
+      #   err.list[[k + 1L]] <- errors[o3[oid + od[1] * (k + 2L)]]
+      err.list <- .get_errs(o3, oid, od, reps)
 
       err.vals <- do.call(pmax, err.list)
       if(axis && i > 1L) {
