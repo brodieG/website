@@ -1,3 +1,6 @@
+# Offsets are: h midpoint, parenta, parentb, children with variable number of
+# children supported
+
 offset.dg <- aperm(
   array(
     c(
@@ -14,6 +17,18 @@ offset.dg <- aperm(
   ),
   c(3L, 1L, 2L)
 )
+offset.dg <- aperm(
+  array(
+    c(
+      1L,1L, 0L,0L, 2L,2L, 1L,2L, 0L,1L, 1L,0L, 2L,1L,
+      3L,1L, 4L,0L, 2L,2L, 3L,2L, 4L,1L, 2L,1L, 3L,0L,
+      1L,3L, 2L,2L, 0L,4L, 1L,4L, 2L,3L, 0L,3L, 1L,2L,
+      3L,3L, 2L,2L, 4L,4L, 3L,4L, 2L,3L, 3L,2L, 4L,3L
+    ),
+    dim=c(2L, 7L, 4L)
+  ),
+  c(3L, 1L, 2L)
+)
 # Smallest size that allows us to define the children with integer
 # values.
 offset.ax <- aperm(
@@ -27,15 +42,16 @@ offset.ax <- aperm(
     dim=c(2L, 5L, 4L)
   ),
   c(3L, 1L, 2L)
-) / 2 # have to do this for cleanliness of code, not to expensive to convert
+)
 
-xx <- do.call(rbind, lapply(asplit(offset.dg,3), as.data.frame))
-xx[['V3']] <- rep(letters[1:5], each=8)
-ggplot(xx) + geom_point(aes(V1, V2, color=V3, shape=V3), size=2, alpha=.5)
 
-xx <- do.call(rbind, lapply(asplit(offset.ax,3), as.data.frame))
-xx[['V3']] <- rep(letters[1:5], each=4)
-ggplot(xx) + geom_point(aes(V1, V2, color=V3), alpha=.5)
+# xx <- do.call(rbind, lapply(asplit(offset.dg,3), as.data.frame))
+# xx[['V3']] <- rep(letters[1:5], each=8)
+# ggplot(xx) + geom_point(aes(V1, V2, color=V3, shape=V3), size=2, alpha=.5)
+#
+# xx <- do.call(rbind, lapply(asplit(offset.ax,3), as.data.frame))
+# xx[['V3']] <- rep(letters[1:5], each=4)
+# ggplot(xx) + geom_point(aes(V1, V2, color=V3), alpha=.5)
 
 # split this out to get better sense of timings
 
@@ -62,7 +78,7 @@ compute_os <- function(o, nr, ctimes, rtimes, onr, onc) {
 # * Need to sort
 #
 # Ticks: 1423; Iterations: 103; Time Per: 52.48 milliseconds; Time Total: 5.405 seconds; Time Ticks: 1.423
-# 
+#
 #                           milliseconds
 # compute_error3 ------- : 52.48 -  0.00
 #     compute_os ------- : 24.75 -  0.22
@@ -75,7 +91,7 @@ compute_os <- function(o, nr, ctimes, rtimes, onr, onc) {
 #     |   <Anonymous> -- :  2.21 -  2.14
 #     diff ------------- :  0.55 -  0.18
 #     - ---------------- :  0.44 -  0.44
-# 
+#
 # Maybe we can reduce timings by 1/3 by removing the children for the first pass
 # and it might even be possible to remove the duplicate parent calc (although
 # that seems a lot more complicated)
@@ -109,17 +125,13 @@ compute_error3 <- function(map) {
     tile.nc <- ((nc - 1L) %/% mult) * mult
 
     for(j in c('axis','diag')) {
-      o <- if(j == 'diag') offset.dg else offset.ax
-      if(j == 'diag' && i == layers) o <- o[1:2,,]
-      odim <- dim(o)
-      o <- as.integer(o * mult %/% 2L)
-      dim(o) <- odim
-      # {
-      #   if(tile.nr < 2L) o <- o[c(1L,2L,5L,6L),,]
-      #   else tile.nr <- tile.nr %/% 2L
-      #   if(tile.nc < 2L) o <- o[seq_len(dim(o)[1L]/2L),,]
-      #   else tile.nc <- tile.nc %/% 2L
-      # }
+      axis <- j == 'axis'
+      o <- if(axis) offset.ax else offset.dg
+      if(!axis && i == layers) o <- o[1L,,,drop=FALSE]
+      if(axis  && i == 1L) o <- o[,,1:3,drop=FALSE]
+
+      od <- dim(o)
+      o <- (o * mult) %/% (if(axis) 4L else 2L)
       onr <- diff(range(o[,1,]))
       onc <- diff(range(o[,2,]))
       ctimes <- tile.nc / onc
@@ -131,24 +143,25 @@ compute_error3 <- function(map) {
 
       o3 <- compute_os(o, nr, ctimes, rtimes, onr, onc)
       reps <- ctimes * rtimes
-      # array(o3, c(odim[1],5,reps))
-      # array(seq_along(o3), c(odim[1],5,reps))
-      oid <- seq_len(odim[1]) +
-        rep((seq_len(reps) - 1) * length(o3)/reps, each=odim[1])
+      # array(o3, c(od[1],5,reps))
+      # array(seq_along(o3), c(od[1],5,reps))
+      oid <- seq_len(od[1]) +
+        rep((seq_len(reps) - 1) * length(o3)/reps, each=od[1])
 
-      err.list <- vector('list', if(i < 2L) 2L else 4L)
+      err.list <- vector('list', od[3L] - 2L)
       err.list[[1L]] <- abs(
-        map[o3[oid]] - (map[o3[oid + odim[1]]] + map[o3[oid + odim[1] * 2L]])/2
+        map[o3[oid]] - (map[o3[oid + od[1]]] + map[o3[oid + od[1] * 2L]])/2
       )
-      err.list[[2L]] <- errors[o3[oid]]
-      if(i >= 2L || j == 'diag') {
-        err.list[[3L]] <- errors[o3[oid + odim[1] * 3L]]
-        err.list[[4L]] <- errors[o3[oid + odim[1] * 4L]]
-      }
+      for(k in seq_len(length(err.list[-1L])))
+        err.list[[k + 1L]] <- errors[o3[oid + od[1] * (k + 2L)]]
+
       err.vals <- do.call(pmax, err.list)
-      err.ord <- order(err.vals)
-      errors[o3[oid][err.ord]] <- err.vals[err.ord]
-      # errors[o3[oid]] <- err.vals
+      if(axis) {
+        err.ord <- order(err.vals)
+        errors[o3[oid][err.ord]] <- err.vals[err.ord]
+      } else {
+        errors[o3[oid]] <- err.vals
+      }
   } }
   errors
 }
