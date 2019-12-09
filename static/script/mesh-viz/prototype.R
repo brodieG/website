@@ -66,8 +66,28 @@ system.time(errors2 <- errors_rtin(map))
 errors <- compute_error(map)
 all.equal(errors, errors2)
 
+set.seed(1221)
+m2 <- map
+m3 <- matrix(round(runif(513*513) * 100, 0), 513)
+m4 <- matrix(round(runif(1025*1025) * 100, 0), 1025)
+m5 <- matrix(round(runif(2049*2049) * 100, 0), 2049)
+m6 <- matrix(round(runif(4097*4097) * 100, 0), 4097)
+m3 <- matrix(round(runif(8193*8193) * 100, 0), 8193)
 
 
+
+mm <- m7
+gc()
+system.time(compute_error(m7))
+gc()
+system.time(compute_error3(m7))
+gc()
+system.time(compute_errorc(m7, nrow(m7)))
+
+bench::mark(
+  compute_error3(m5), compute_error(m4), 
+)
+treeprof::treeprof(compute_error3(m6))
 
 
 ## Messing With Watching Algo
