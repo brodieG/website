@@ -128,37 +128,11 @@ compute_os2 <- function(o, nr, ctimes, rtimes, onr, onc) {
 
 
 compute_error3 <- function(map) {
-  .get_errs <- function(o3, oid, od, reps) {
-    cycle <- length(oid)
-    err.list <- vector('list', od[3L] - 2L)
-    err.list[[1L]] <- abs(
-      map[o3[oid]] - (map[o3[oid + cycle]] + map[o3[oid + 2L * cycle]])/2
-    )
-    for(k in seq_len(length(err.list[-1L])))
-      err.list[[k + 1L]] <- errors[o3[oid + cycle * (k + 2L)]]
-    err.list
-  }
   if(!all(dim(map) %% 2L) || min(dim(map)) <= 2L) stop("invalid map")
-  # offsets are row/col, start at parent and go clockwise, offsets are
-  # already multiplied by 2L b/c otherwise we would have fractional offsets
-  # for smallest square set.
   nr <- nrow(map)
   nc <- ncol(map)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   errors <- array(0, dim=dim(map))
-
-  # # Force tile splits in areas that don't fall in 2^layers squares
-
-  # if((r.extra <- (nr - 1L) %% 2L^layers)) {
-  #   while(r.extra - 2^(floor(log2(r.extra))))
-  #     r.extra <- r.extra - 2^(floor(log2(r.extra)))
-  #   errors[nr, seq(r.extra / 2L + 1L, nc, by=r.extra)] <- Inf
-  # }
-  # if((c.extra <- (nc - 1L) %% 2L^layers)) {
-  #   while(c.extra - 2^(floor(log2(c.extra))))
-  #     c.extra <- c.extra - 2^(floor(log2(c.extra)))
-  #   errors[seq(c.extra / 2L + 1L, nr, by=c.extra), nc] <- Inf
-  # }
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
@@ -177,31 +151,27 @@ compute_error3 <- function(map) {
       onc <- diff(range(o[,2,]))
       ctimes <- tile.nc / onc
       rtimes <- tile.nr / onr
+      o <- c(o[,1L,] + o[,2L,] * nr + 1L)
+      o <- matrix(o, ctimes, length(o), byrow=TRUE) +
+        (seq_len(ctimes) - 1L) * onr
+      o <- matrix(o, rtimes, length(o), byrow=TRUE) +
+        (seq_len(rtimes) - 1L) * nr * onc
 
-      # o1 <- c(o[,1L,] + o[,2L,] * nr + 1L)
-      # o2 <- o1 + rep((seq_len(ctimes) - 1L) * onr, each=length(o1))
-      # o3 <- o2 + rep((seq_len(rtimes) - 1L) * nr * onc, each=length(o2))
-
-      o3 <- compute_os2(o, nr, ctimes, rtimes, onr, onc)
-      reps <- ctimes * rtimes
-      # array(o3, c(od[1],od[3],reps))
-      # array(seq_along(o3), c(od[1],5,reps))
-      oid <- seq_len(od[1L] * reps)
-
-      # err.list <- vector('list', od[3L] - 2L)
-      # err.list[[1L]] <- abs(
-      #   map[o3[oid]] - (map[o3[oid + od[1]]] + map[o3[oid + od[1] * 2L]])/2
-      # )
-      # for(k in seq_len(length(err.list[-1L])))
-      #   err.list[[k + 1L]] <- errors[o3[oid + od[1] * (k + 2L)]]
-      err.list <- .get_errs(o3, oid, od, reps)
+      oid <- seq_len(od[1L] * ctimes * rtimes)
+      cycle <- length(oid)
+      err.list <- vector('list', od[3L] - 2L)
+      err.list[[1L]] <- abs(
+        map[o[oid]] - (map[o[oid + cycle]] + map[o[oid + 2L * cycle]])/2
+      )
+      for(k in seq_len(length(err.list[-1L])))
+        err.list[[k + 1L]] <- errors[o[oid + cycle * (k + 2L)]]
 
       err.vals <- do.call(pmax, err.list)
       if(axis && i > 1L) {
         err.ord <- order(err.vals)
-        errors[o3[oid][err.ord]] <- err.vals[err.ord]
+        errors[o[oid][err.ord]] <- err.vals[err.ord]
       } else {
-        errors[o3[oid]] <- err.vals
+        errors[o[oid]] <- err.vals
       }
   } }
   errors
