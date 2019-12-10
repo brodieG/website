@@ -100,6 +100,13 @@ compute_os2 <- function(o, nr, ctimes, rtimes, onr, onc) {
 # * highly repetitive data for square case
 # * Need to sort
 #
+# Note one possible trick for getting rid of the sort is to split the data into
+# the bottom left triangles, and then the top right triangles.  These two sets
+# are guaranteed not to overlap, so we can apply them sequentially and ensure we
+# get the correct max.  Transforming bottom left to top rigth should be as
+# simple as (prod(dim(map)) + 1L) - id (not 100% , but feels like this should be
+# equivalent to axis symmetry on matrix).
+#
 # Ticks: 3736; Iterations: 162; Time Per: 34.21 milliseconds; Time Total: 5.542 seconds; Time Ticks: 3.736
 # 
 #                           milliseconds
