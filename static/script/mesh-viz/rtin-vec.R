@@ -122,6 +122,9 @@ compute_error <- function(map) {
 }
 # This version tries to work directly from the hypotenuses and find the `a/b`
 # points off of it rather than the other way around.
+#
+# Return value is a list with the error matrix, and also the type of
+# each hypotenuse midpoint associated with that error.
 
 compute_error2 <- function(map) {
   # - Helper Funs --------------------------------------------------------------
@@ -144,6 +147,7 @@ compute_error2 <- function(map) {
   nc <- ncol(map)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   errors <- array(0, dim=dim(map))
+  types <- array(0L, dim=dim(map))
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
@@ -184,6 +188,7 @@ compute_error2 <- function(map) {
       Map(.get_par_err, ids[4:6], list(c(-mhalf * nr, mhalf * nr)))
     )
     for(j in seq_along(ids)) {
+      types[ids[[j]]] <- j
       errors[ids[[j]]] <- do.call(
         pmax, c(list(na.rm=TRUE), err.par[j], err.child[[j]])
     ) }
@@ -200,11 +205,12 @@ compute_error2 <- function(map) {
       list((mhalf * nr + mhalf) * c(1L, -1L), (mhalf * nr - mhalf) * c(1L, -1L))
     )
     for(j in seq_along(ids)) {
+      types[ids[[j]]] <- j + 6L
       errors[ids[[j]]] <- do.call(
         pmax, c(list(na.rm=TRUE), err.par[j], err.child[[j]])
     ) }
   }
-  errors
+  list(errors, types)
 }
 # 1. start from the lowest level out
 # 2. check diag point error, if fail:
