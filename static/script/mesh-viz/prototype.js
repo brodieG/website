@@ -109,7 +109,8 @@ JSON.stringify(Array.from(errors));
 // right click, copy object, then
 
 ```{r}
-json <- '~/Downloads/error-js.json'
+# we compared both 1025 and original map 257 and got exact same results
+json <- '~/Downloads/error-js-1025.json'
 errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
 ```
 
@@ -117,7 +118,7 @@ errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
 
 {
   a = performance.now();
-  errors = comp_errors(ter_4097, 4097, 4096);
+  errors = comp_errors(ter_1025, 1025, 1024);
   performance.now() - a;
 }
 /*
@@ -140,8 +141,8 @@ ter_2049:
 ter_4096:
 7488.19, 7483.48, 7280.48, 7322.34, 7485.29, 7449.80
 
-ter_8196:
- *
+ter_8193:
+29757.15, 29386.23, 29331.4, 28982.32 
 */
 
 

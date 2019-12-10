@@ -67,14 +67,22 @@ errors <- compute_error(map)
 all.equal(errors, errors2)
 
 set.seed(1221)
+m0 <- map[1:65, 1:65]
+m1 <- map[1:129, 1:129]
 m2 <- map
 m3 <- matrix(round(runif(513*513) * 100, 0), 513)
 m4 <- matrix(round(runif(1025*1025) * 100, 0), 1025)
 m5 <- matrix(round(runif(2049*2049) * 100, 0), 2049)
 m6 <- matrix(round(runif(4097*4097) * 100, 0), 4097)
-m3 <- matrix(round(runif(8193*8193) * 100, 0), 8193)
+m7 <- matrix(round(runif(8193*8193) * 100, 0), 8193)
 
-
+stop()
+mm <- m1
+bench::mark(
+  compute_errorc(mm, nrow(mm)), 
+  compute_error(mm), compute_error2(mm), 
+  compute_error3(mm)
+)
 
 mm <- m7
 gc()
