@@ -370,3 +370,81 @@ extract_mesh2 <- function(errors, tol, debug.lvl=0) {
   triangles
 }
 
+
+# shapes
+
+# for each shape
+# x/y offsets for each of the four child triangles, including NAs for missing
+# ordered starting from breakpoint (hypotenuse midpoint) clockwise.  Shapes are
+# in this order:
+#
+# 1. v.left
+# 2. v.mid
+# 3. v.right
+# 4. h.top
+# 5. h.mid
+# 6. h.bot
+# 7. tr->bl
+# 8. tl->br
+
+offsets.ex.tri <- c(
+  0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert left
+  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
+
+  0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert mid
+  0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L, 1L
+
+  0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L,1L,   # vert right
+  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
+
+  0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz top
+  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
+
+  0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz mid
+  0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L
+
+  0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L,  # hrz bot
+  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA,  NA,NA,
+
+  0L,0L,  -1L,1L,   1L,1L,    0L,0L    1L,1L, 1L,-1L,  # diag
+  0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L
+
+  0L,0L,  -1L,1L,   1L,1L,    0L,0L    1L,1L, 1L,-1L,  # diag (same)
+  0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L
+)
+offsets.ex.mid <- c(
+  1L,1L,   1L,-1L,  NA,NA,   NA,NA,    # vert left
+  1L,1L,   1L,-1L, -1L,1L,  -1L,-1L,   # vert mid
+  -1L,1L, -1L,-1L,  NA,NA,   NA,NA,    # vert right
+  -1L,1L,  1L,1L,   NA,NA,   NA,NA,    # hrz top
+   1L,1L,  1L,-1L, -1L,1L,  -1L,-1L,   # hrz mid
+  1L,-1L, -1L,-1L,  NA,NA,   NA,NA,    # hrz bot
+  0L,1L,   1L,0L,   0L,-1L, -1L,0L,    # diag
+  0L,1L,   1L,0L,   0L,-1L, -1L,0L     # diag
+)
+
+extract_mesh3 <- function(dat, tol) {
+
+  # Start with hypmid from top
+  # for error <= tol or last level draw the up to four triangles dictated by type
+  #   Each type needs a ready set of offsets to draw the triangles
+  # for others compute child coordinates and pass on
+  #   Each type needs a ready set of offsets for child hypotenuse midpoints
+  # determine new starting points that become available and next size down
+  #   Add them to the hypmid points
+
+  # We'll have set of ids, and each one is going to return a set of
+  # offset coordinates that will need to be sized to the grid.  Since we have
+  # varying size of points for each, we have two choices:
+  # * Split our data by type; this is unpleasant
+  # * Structure it to repeat, so possibly:
+  # * 1 becomes 11, 12; 2, becomes 21, 22, 23, 24, etc.
+  # * so we'll have a matrix with 4 * 2 + 4 * 4 rows
+  # * need a mechanism to efficiently expand types to type-subtype
+  # * Or maybe much better we just have NA coordinates for the edge ones; these
+  #   should be a small proportion of the total.
+
+
+
+}
+
