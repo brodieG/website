@@ -439,13 +439,15 @@ off.ex.mid <- aperm(
 # back to x/y here
 
 extract_tris <- function(target, parent, nr) {
-  dlt <- target - parent
-  dlt.x <- dlt %% nr
-  dlt.y <- dlt %/% nr
-  res <- rbind(
-    target, parent, target + (dlt.x * nr + dlt.y),
-    target, parent, target - (dlt.x * nr + dlt.y)
-  )
+  tar.x <- (target - 1L) %/% nr
+  tar.y <- (target - 1L) %% nr
+  par.x <- (parent - 1L) %/% nr
+  par.y <- (parent - 1L) %% nr
+  dlt.x <- tar.x - par.x
+  dlt.y <- tar.y - par.y
+
+  res <-
+    rbind(parent, target + (dlt.y * nr + dlt.x), target - (dlt.y * nr + dlt.x))
   dim(res) <- NULL
   res
 }
