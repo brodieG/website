@@ -124,7 +124,8 @@ compute_error <- function(map) {
 # points off of it rather than the other way around.
 #
 # Return value is a list with the error matrix, and also the type of
-# each hypotenuse midpoint associated with that error.
+# each hypotenuse midpoint associated with that error.  The of the index types
+# in the `ids` list is semantic!  Don't change it.
 
 compute_error2 <- function(map) {
   # - Helper Funs --------------------------------------------------------------
@@ -210,7 +211,7 @@ compute_error2 <- function(map) {
         pmax, c(list(na.rm=TRUE), err.par[j], err.child[[j]])
     ) }
   }
-  list(errors, types)
+  list(error=errors, type=types)
 }
 # 1. start from the lowest level out
 # 2. check diag point error, if fail:
@@ -387,44 +388,77 @@ extract_mesh2 <- function(errors, tol, debug.lvl=0) {
 # 7. tr->bl
 # 8. tl->br
 
-offsets.ex.tri <- c(
-  0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert left
-  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
+off.ex.tri <- array(
+  c(
+    0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert left
+    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
 
-  0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert mid
-  0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L, 1L
+    0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert mid
+    0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L, 1L,
 
-  0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L,1L,   # vert right
-  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
+    0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L,1L,   # vert right
+    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
 
-  0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz top
-  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
+    0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz top
+    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
 
-  0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz mid
-  0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L
+    0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz mid
+    0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L,
 
-  0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L,  # hrz bot
-  NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA,  NA,NA,
+    0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L,  # hrz bot
+    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA,  NA,NA,
 
-  0L,0L,  -1L,1L,   1L,1L,    0L,0L    1L,1L, 1L,-1L,  # diag
-  0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L
+    0L,0L,  -1L,1L,   1L,1L,    0L,0L,   1L,1L, 1L,-1L,  # diag
+    0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L,
 
-  0L,0L,  -1L,1L,   1L,1L,    0L,0L    1L,1L, 1L,-1L,  # diag (same)
-  0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L
+    0L,0L,  -1L,1L,   1L,1L,    0L,0L,   1L,1L, 1L,-1L,  # diag (same)
+    0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L
+  ),
+  dim=c(2L, 3L, 8L)
 )
-offsets.ex.mid <- c(
-  1L,1L,   1L,-1L,  NA,NA,   NA,NA,    # vert left
-  1L,1L,   1L,-1L, -1L,1L,  -1L,-1L,   # vert mid
-  -1L,1L, -1L,-1L,  NA,NA,   NA,NA,    # vert right
-  -1L,1L,  1L,1L,   NA,NA,   NA,NA,    # hrz top
-   1L,1L,  1L,-1L, -1L,1L,  -1L,-1L,   # hrz mid
-  1L,-1L, -1L,-1L,  NA,NA,   NA,NA,    # hrz bot
-  0L,1L,   1L,0L,   0L,-1L, -1L,0L,    # diag
-  0L,1L,   1L,0L,   0L,-1L, -1L,0L     # diag
+# Offsets to get children from parent hypotenuse midpoint
+#
+# Alternate x/y coords, permuted so that after collapsing x/y into linear ID we
+# can select any of the eight types of offsets with the row selector
+
+off.ex.mid <- aperm(
+  array(
+    c(
+      1L,1L,   1L,-1L,  NA,NA,   NA,NA,    # vert left
+      1L,1L,   1L,-1L, -1L,1L,  -1L,-1L,   # vert mid
+      -1L,1L, -1L,-1L,  NA,NA,   NA,NA,    # vert right
+      -1L,1L,  1L,1L,   NA,NA,   NA,NA,    # hrz top
+       1L,1L,  1L,-1L, -1L,1L,  -1L,-1L,   # hrz mid
+      1L,-1L, -1L,-1L,  NA,NA,   NA,NA,    # hrz bot
+      0L,1L,   1L,0L,   0L,-1L, -1L,0L,    # diag
+      0L,1L,   1L,0L,   0L,-1L, -1L,0L     # diag
+    ),
+    dim=c(2L, 4L, 8L),
+  ),
+  c(1L, 3L, 2L)
 )
+
+# Maybe we really want to keep coordinates in x/y as we're going to expand
+# back to x/y here
+
+extract_tris <- function(target, parent, nr) {
+  dlt <- target - parent
+  dlt.x <- dlt %% nr
+  dlt.y <- dlt %/% nr
+  res <- rbind(
+    target, parent, target + (dlt.x * nr + dlt.y),
+    target, parent, target - (dlt.x * nr + dlt.y)
+  )
+  dim(res) <- NULL
+  res
+}
 
 extract_mesh3 <- function(dat, tol) {
-
+  vetr(
+    list(error=numeric(), type=integer()) &&
+      identical(dim(.[[1L]]), dim(.[[2L]])),
+    NUM.POS
+  )
   # Start with hypmid from top
   # for error <= tol or last level draw the up to four triangles dictated by type
   #   Each type needs a ready set of offsets to draw the triangles
@@ -443,8 +477,48 @@ extract_mesh3 <- function(dat, tol) {
   # * need a mechanism to efficiently expand types to type-subtype
   # * Or maybe much better we just have NA coordinates for the edge ones; these
   #   should be a small proportion of the total.
+  #
+  # Do we have a problem with duplicate triangles?
+  # Bigger issue is that I don't think we can actually make a decision for all
+  # four triangles (or even two) about the first midpoint that passes.
 
+  # New tack: for each faiing hypmid, return the children associated with the
+  # midhyp.
 
+  errors <- dat[['error']]
+  types <- dat[['type']]
+  nr <- nrow(errors)
+  nc <- ncol(errors)
+  layers <- floor(min(log2(c(nr, nc) - 1L)))
+  tilesq <- as.integer((2L^(layers) + 1L) ^ 2)
+  warning('this wont work for non square')
+  id.dat <- list(
+    target=rep(seq((tilesq - 1L) %/% 2L + 1L, nr * nc, by=tilesq), 2L),
+    parent=c(1L, nr * (nc - 1L) + 1L)
+  )
+  res <- vector('list', 2L * layers + 1L)
+  for(i in seq_len(layers)) {
+    mult <- as.integer(2^(layers - i))
+    off <- (off.ex.mid[1L,,] * mult) + (off.ex.mid[2L,,] * mult * nr)
 
+    # diag first, then axis
+    for(j in 1:2) {
+      ids <- id.dat[[1L]]
+      par <- id.dat[[2L]]
+
+      pass <- errors[ids] <= tol
+      ids.pass <- ids[pass]
+      ids.fail <- ids[!pass]
+
+      res[[i * 2L - (j == 1L)]] <- extract_tris(ids.pass, par[pass], nr)
+
+      fail.types <- types[ids.fail]
+      fail.child <- off[fail.types,] + ids.fail
+      ids.dat <- list(target=fail.child, parent=ids.fail)
+  } }
+  # Any remaining failures must be split to lowest level
+
+  res[[2L * layers + 1L]] <- extract_tris(ids.dat[[1L]], ids.dat[[2L]], nr)
+  res
 }
 
