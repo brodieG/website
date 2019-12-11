@@ -18,15 +18,15 @@ plot_new <- function(
 ) }
 plot_tri_ids <- function(tri, dim, new=TRUE) {
   ids <- rbind(do.call(cbind, tri), NA) - 1L
-  x <- ids %% dim[1]
-  y <- ids %/% dim[1]
+  x <- ids %/% dim[1]
+  y <- ids %% dim[1]
   if(new) plot_new(x, y)
   polygon(x/(dim[1] - 1), y/(dim[2]-1), col='#DDDDDD', border='#444444')
 }
 plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
-  x <- ids %% dim[1]
-  y <- ids %/% dim[1]
+  x <- ids %/% dim[1]
+  y <- ids %% dim[1]
   x0 <- seq_len(dim[1]) - 1L
   y0 <- seq_len(dim[2]) - 1L
   points(
@@ -43,8 +43,8 @@ if(FALSE) {
   points(rescale(which(errors > tol, arr.ind=TRUE)[,2:1] - 1), pch=19, col='red')
 
   plot_ex_geom <- function(raw, errors) {
-    xs <- matrix(raw %% nrow(errors), 3)
-    ys <- matrix(raw %/% ncol(errors), 3)
+    xs <- matrix(raw %/% nrow(errors), 3)
+    ys <- matrix(raw %% ncol(errors), 3)
 
     plot_new(xs, ys)
     polygon(
@@ -124,13 +124,12 @@ mesh_to_obj <- function(mesh) {
 }
 # Return format from extract_mesh2, the vertices are returned in triangle order
 # (i.e. first three are first triangle, next 3 are second triangle, etc.)
-# 
-# row -> y
-# col -> x
 #
-# But just remember that rows are 'backward', i.e. increasing rows go down in
-# the matrix, but up in the plots.  Would be good to make all this consistent
-# sometime.
+# col -> x
+# row -> y
+#
+# Note the above used to be backwards.  Now this way the matrix and the plots
+# are in the same order, though y values still go in opposite direction.
 #
 # We need `map` to get row/col counts, but also to have access to the full
 # height map so whe nwe scale we scale relative to the full heightmap, not the
@@ -144,12 +143,12 @@ ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
     tr <- length(map) - nrow(map) + 1L
     ids <- c(1L, nr, length(map), 1L, tr, length(map))
   }
-  y <- (ids - 1) %% dim(map)[1]
   x <- (ids - 1) %/% dim(map)[1]
+  y <- (ids - 1) %% dim(map)[1]
   z <- map[ids]
 
-  x <- x / (dim(map)[1] - 1) * scale[1]
-  y <- y / (dim(map)[2] - 1) * scale[2]
+  x <- x / (dim(map)[2] - 1) * scale[1]
+  y <- y / (dim(map)[1] - 1) * scale[2]
   z <- if(flatten) numeric(length(z))
        else (z - min(map)) / (diff(range(map))) * scale[3]
   list(x=x, y=y, z=z)
