@@ -452,13 +452,33 @@ extract_tris <- function(target, parent, nr) {
   dim(res) <- NULL
   res
 }
+next_children <- function(target, parent, nr, j) {
+  # tried doing this on delta but failed; strongly suggests we want to go
+  # back to coords
+  tar.x <- (target - 1L) %/% nr
+  tar.y <- (target - 1L) %% nr
+  par.x <- (parent - 1L) %/% nr
+  par.y <- (parent - 1L) %% nr
+  dlt.x <- tar.x - par.x
+  dlt.y <- tar.y - par.y
 
-extract_mesh3 <- function(dat, tol) {
-  vetr(
-    list(error=numeric(), type=integer()) &&
-      identical(dim(.[[1L]]), dim(.[[2L]])),
-    NUM.POS
-  )
+  if(j == 1L) {  # diag
+    res <- c(target - dlt.x * nr, target - dlt.y)
+  } else {       # axis
+    dlt.x <- dlt.x %/% 2L
+    dlt.y <- dlt.y %/% 2L
+    hrz <- dlt.y == 0L
+    res <- matrix(0L, length(dlt.x), 2L)
+
+    res[hrz,1L] <- target[hrz] - (dlt.x[hrz] * nr + dlt.x[hrz])
+    res[hrz,2L] <- target[hrz] - (dlt.x[hrz] * nr - dlt.x[hrz])
+    res[!hrz,1L] <- target[!hrz] - (dlt.y[!hrz] + dlt.y[!hrz] * nr)
+    res[!hrz,2L] <- target[!hrz] - (dlt.y[!hrz] - dlt.y[!hrz] * nr)
+    dim(res) <- NULL
+  }
+  list(target=res, parent=rep(target, 2L))
+}
+extract_mesh3 <- function(errors, tol) {
   # Start with hypmid from top
   # for error <= tol or last level draw the up to four triangles dictated by type
   #   Each type needs a ready set of offsets to draw the triangles
@@ -484,9 +504,11 @@ extract_mesh3 <- function(dat, tol) {
 
   # New tack: for each faiing hypmid, return the children associated with the
   # midhyp.
+  #
+  # New New: set seed with parent and target, if fail find the next two targets
+  # that are most pointing towards the original parent, otherwise extract_tris
+  #
 
-  errors <- dat[['error']]
-  types <- dat[['type']]
   nr <- nrow(errors)
   nc <- ncol(errors)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
@@ -494,12 +516,11 @@ extract_mesh3 <- function(dat, tol) {
   warning('this wont work for non square')
   id.dat <- list(
     target=rep(seq((tilesq - 1L) %/% 2L + 1L, nr * nc, by=tilesq), 2L),
-    parent=c(1L, nr * (nc - 1L) + 1L)
+    parent=c(1L, nr * nc)
   )
   res <- vector('list', 2L * layers + 1L)
   for(i in seq_len(layers)) {
     mult <- as.integer(2^(layers - i))
-    off <- (off.ex.mid[1L,,] * mult) + (off.ex.mid[2L,,] * mult * nr)
 
     # diag first, then axis
     for(j in 1:2) {
@@ -512,13 +533,11 @@ extract_mesh3 <- function(dat, tol) {
 
       res[[i * 2L - (j == 1L)]] <- extract_tris(ids.pass, par[pass], nr)
 
-      fail.types <- types[ids.fail]
-      fail.child <- off[fail.types,] + ids.fail
-      ids.dat <- list(target=fail.child, parent=ids.fail)
+      id.dat <- next_children(ids.fail, par[!pass], nr, j)
   } }
   # Any remaining failures must be split to lowest level
 
-  res[[2L * layers + 1L]] <- extract_tris(ids.dat[[1L]], ids.dat[[2L]], nr)
+  res[[2L * layers + 1L]] <- extract_tris(id.dat[[1L]], id.dat[[2L]], nr)
   res
 }
 
