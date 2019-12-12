@@ -17,7 +17,7 @@ plot_new <- function(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
 plot_tri_ids <- function(tri, dim, new=TRUE) {
-  ids <- rbind(do.call(cbind, tri), NA) - 1L
+  ids <- rbind(matrix(unlist(tri), 3L), NA) - 1L
   x <- ids %/% dim[1]
   y <- ids %% dim[1]
   if(new) plot_new(x, y)
