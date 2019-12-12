@@ -442,8 +442,8 @@ extract_tris <- function(tar, par, nr) {
   dlt.x <- tar[['x']] - par[['x']]
   dlt.y <- tar[['y']] - par[['y']]
 
-  res.x <- rbind(par[['x']], tar[['x']] + dlt.x, tar[['x']] - dlt.x)
-  res.y <- rbind(par[['y']], tar[['y']] - dlt.y, tar[['y']] + dlt.y)
+  res.x <- rbind(par[['x']], tar[['x']] + dlt.y, tar[['x']] - dlt.y)
+  res.y <- rbind(par[['y']], tar[['y']] - dlt.x, tar[['y']] + dlt.x)
   dim(res.x) <- NULL
   dim(res.y) <- NULL
 
@@ -515,7 +515,6 @@ extract_mesh3 <- function(errors, tol) {
   nc <- ncol(errors)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   tilesq <- as.integer((2L^(layers) + 1L) ^ 2)
-  warning('this wont work for non square')
   id.dat <- list(
     tar=list(x=rep(c(nc - 1L) %/% 2L, 2L), y=rep(c(nr - 1L) %/% 2L, 2L)),
     par=list(x=c(0L, nc - 1L), y=c(0L, nr - 1L))
