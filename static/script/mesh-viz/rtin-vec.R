@@ -438,44 +438,47 @@ off.ex.mid <- aperm(
 # Maybe we really want to keep coordinates in x/y as we're going to expand
 # back to x/y here
 
-extract_tris <- function(target, parent, nr) {
-  tar.x <- (target - 1L) %/% nr
-  tar.y <- (target - 1L) %% nr
-  par.x <- (parent - 1L) %/% nr
-  par.y <- (parent - 1L) %% nr
-  dlt.x <- tar.x - par.x
-  dlt.y <- tar.y - par.y
+extract_tris <- function(tar, par, nr) {
+  dlt.x <- tar[['x']] - par[['x']]
+  dlt.y <- tar[['y']] - par[['y']]
 
-  res <-
-    rbind(parent, target + (dlt.y * nr + dlt.x), target - (dlt.y * nr + dlt.x))
-  dim(res) <- NULL
-  res
+  res.x <- rbind(par[['x']], tar[['x']] + dlt.x, tar[['x']] - dlt.x)
+  res.y <- rbind(par[['y']], tar[['y']] - dlt.y, tar[['y']] + dlt.y)
+  dim(res.x) <- NULL
+  dim(res.y) <- NULL
+
+  res.x * nr + res.y + 1L
 }
-next_children <- function(target, parent, nr, j) {
-  # tried doing this on delta but failed; strongly suggests we want to go
-  # back to coords
-  tar.x <- (target - 1L) %/% nr
-  tar.y <- (target - 1L) %% nr
-  par.x <- (parent - 1L) %/% nr
-  par.y <- (parent - 1L) %% nr
-  dlt.x <- tar.x - par.x
-  dlt.y <- tar.y - par.y
+next_children <- function(tar, par, nr, j) {
+  dlt.x <- tar[['x']] - par[['x']]
+  dlt.y <- tar[['y']] - par[['y']]
 
   if(j == 1L) {  # diag
-    res <- c(target - dlt.x * nr, target - dlt.y)
+    tar.res <- list(
+      x=c(tar[['x']] - dlt.x, tar[['x']]),
+      y=c(tar[['y']],         tar[['y']] - dlt.y)
+    )
+    par.res <- lapply(tar, rep, 2L)
   } else {       # axis
-    dlt.x <- dlt.x %/% 2L
-    dlt.y <- dlt.y %/% 2L
+    dlt.x <- dlt.x / 2L
+    dlt.y <- dlt.y / 2L
     hrz <- dlt.y == 0L
-    res <- matrix(0L, length(dlt.x), 2L)
 
-    res[hrz,1L] <- target[hrz] - (dlt.x[hrz] * nr + dlt.x[hrz])
-    res[hrz,2L] <- target[hrz] - (dlt.x[hrz] * nr - dlt.x[hrz])
-    res[!hrz,1L] <- target[!hrz] - (dlt.y[!hrz] + dlt.y[!hrz] * nr)
-    res[!hrz,2L] <- target[!hrz] - (dlt.y[!hrz] - dlt.y[!hrz] * nr)
-    dim(res) <- NULL
+    tar.res <- list(
+      x=c(
+        rep(tar[['x']][hrz] - dlt.x[hrz], 2L),
+        tar[['x']][!hrz] + dlt.y[!hrz], tar[['x']][!hrz] - dlt.y[!hrz]
+      ),
+      y=c(
+        tar[['y']][hrz] - dlt.x[hrz], tar[['y']][hrz] + dlt.x[hrz],
+        rep(tar[['y']][!hrz] - dlt.y[!hrz], 2L)
+    ) )
+    par.res <- list(
+      x=c(rep(tar[['x']][hrz], 2L), rep(tar[['x']][!hrz], 2L)),
+      y=c(rep(tar[['y']][hrz], 2L), rep(tar[['y']][!hrz], 2L))
+    )
   }
-  list(target=res, parent=rep(target, 2L))
+  list(tar=tar.res, par=par.res)
 }
 extract_mesh3 <- function(errors, tol) {
   # Start with hypmid from top
@@ -514,8 +517,8 @@ extract_mesh3 <- function(errors, tol) {
   tilesq <- as.integer((2L^(layers) + 1L) ^ 2)
   warning('this wont work for non square')
   id.dat <- list(
-    target=rep(seq((tilesq - 1L) %/% 2L + 1L, nr * nc, by=tilesq), 2L),
-    parent=c(1L, nr * nc)
+    tar=list(x=rep(c(nc - 1L) %/% 2L, 2L), y=rep(c(nr - 1L) %/% 2L, 2L)),
+    par=list(x=c(0L, nc - 1L), y=c(0L, nr - 1L))
   )
   res <- vector('list', 2L * layers + 1L)
   for(i in seq_len(layers)) {
@@ -523,16 +526,17 @@ extract_mesh3 <- function(errors, tol) {
 
     # diag first, then axis
     for(j in 1:2) {
-      ids <- id.dat[[1L]]
-      par <- id.dat[[2L]]
+      ids <- id.dat[['tar']][['x']] * nr + id.dat[['tar']][['y']] + 1L
 
       pass <- errors[ids] <= tol
-      ids.pass <- ids[pass]
-      ids.fail <- ids[!pass]
+      ids.pass <- lapply(id.dat[['tar']], '[', pass)
+      ids.fail <- lapply(id.dat[['tar']], '[', !pass)
+      par.pass <- lapply(id.dat[['par']], '[', pass)
+      par.fail <- lapply(id.dat[['par']], '[', !pass)
 
-      res[[i * 2L - (j == 1L)]] <- extract_tris(ids.pass, par[pass], nr)
+      res[[i * 2L - (j == 1L)]] <- extract_tris(ids.pass, par.pass, nr)
 
-      id.dat <- next_children(ids.fail, par[!pass], nr, j)
+      id.dat <- next_children(ids.fail, par.fail, nr, j)
   } }
   # Any remaining failures must be split to lowest level
 
