@@ -481,43 +481,13 @@ next_children <- function(tar, par, nr, j) {
   list(tar=tar.res, par=par.res)
 }
 extract_mesh3 <- function(errors, tol) {
-  # Start with hypmid from top
-  # for error <= tol or last level draw the up to four triangles dictated by type
-  #   Each type needs a ready set of offsets to draw the triangles
-  # for others compute child coordinates and pass on
-  #   Each type needs a ready set of offsets for child hypotenuse midpoints
-  # determine new starting points that become available and next size down
-  #   Add them to the hypmid points
-
-  # We'll have set of ids, and each one is going to return a set of
-  # offset coordinates that will need to be sized to the grid.  Since we have
-  # varying size of points for each, we have two choices:
-  # * Split our data by type; this is unpleasant
-  # * Structure it to repeat, so possibly:
-  # * 1 becomes 11, 12; 2, becomes 21, 22, 23, 24, etc.
-  # * so we'll have a matrix with 4 * 2 + 4 * 4 rows
-  # * need a mechanism to efficiently expand types to type-subtype
-  # * Or maybe much better we just have NA coordinates for the edge ones; these
-  #   should be a small proportion of the total.
-  #
-  # Do we have a problem with duplicate triangles?
-  # Bigger issue is that I don't think we can actually make a decision for all
-  # four triangles (or even two) about the first midpoint that passes.
-
-  # New tack: for each faiing hypmid, return the children associated with the
-  # midhyp.
-  #
-  # New New: set seed with parent and target, if fail find the next two targets
-  # that are most pointing towards the original parent, otherwise extract_tris
-  #
-
   nr <- nrow(errors)
   nc <- ncol(errors)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   tilesq <- as.integer((2L^(layers) + 1L) ^ 2)
   id.dat <- list(
     tar=list(x=rep(c(nc - 1L) %/% 2L, 2L), y=rep(c(nr - 1L) %/% 2L, 2L)),
-    par=list(x=c(0L, nc - 1L), y=c(0L, nr - 1L))
+    par=list(x=c(0L, nc - 1L), y=c(nr - 1L, 0L))
   )
   res <- vector('list', 2L * layers + 1L)
   for(i in seq_len(layers)) {
