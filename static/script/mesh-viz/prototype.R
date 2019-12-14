@@ -1,3 +1,7 @@
+source('static/script/mesh-viz/rtin-vec2.R')
+source('static/script/mesh-viz/rtin-vec.R')
+source('static/script/mesh-viz/viz-lib.R')
+
 # File originally from http://tylermw.com/data/dem_01.tif.zip
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
@@ -16,14 +20,53 @@ map <- elmat1[1:13, 1:11]
 # map <- elmat1[-1,]
 map <- elmat1[1:257,1:257]
 system.time(errors <- compute_error(map))
-# tol <- diff(range(map)) / 50
-tol <- diff(range(map))
+system.time(errors <- compute_error3(map))
+
 # debug(extract_mesh2)
-system.time(tris <- extract_mesh2(errors, tol))
+tol <- diff(range(map)) / 50
+
+system.time(trisa <- extract_mesh2(errors, tol))
+system.time(trisb <- extract_mesh3(errors, tol))
 # treeprof::treeprof((tris <- extract_mesh2(errors, tol))
-plot_tri_ids(tris, dim(errors))
+
+plot_tri_ids(trisa, dim(errors))
+plot_tri_ids(trisb, dim(errors))
 plot_points_ids(which(errors > tol), dim(map))
 
+microbenchmark::microbenchmark(
+  {mx[pass,];mx[!pass,]},
+  {lapply(ls, '[', pass); lapply(ls, '[', !pass)}
+)
+microbenchmark::microbenchmark(
+  {wp <- which(pass); mx[wp,];mx[-wp,]},
+  {wp <- which(pass); lapply(ls, '[', wp); lapply(ls, '[', -wp)},
+  !pass, which(pass)
+)
+n <- 100
+arr <- array(numeric(n*4), dim=c(n, 2, 2))
+ls <- matrix(replicate(4, numeric(n), simplify=FALSE), 2, 2)
+pass <- sample(c(TRUE,FALSE), n, rep=TRUE)
+fail <- !pass
+microbenchmark::microbenchmark(
+  a={
+    ap <- arr[pass,,,drop=FALSE]
+    af <- arr[fail,,,drop=FALSE]
+    px <- arr[,1,1]
+    py <- arr[,1,2]
+    tx <- arr[,2,1]
+    ty <- arr[,2,2]
+  },
+  b={
+    lsf <- lsp <- ls
+    lsp[] <- lapply(ls, '[', pass)
+    lsf[] <- lapply(ls, '[', fail);
+    px <- lsp[[1,1]]
+    py <- lsp[[1,2]]
+    tx <- lsp[[2,1]]
+    ty <- lsp[[2,2]]
+  },
+  !pass
+)
 
 # # debugging code
 # writeLines(
@@ -79,8 +122,8 @@ m7 <- matrix(round(runif(8193*8193) * 100, 0), 8193)
 stop()
 mm <- m1
 bench::mark(
-  compute_errorc(mm, nrow(mm)), 
-  compute_error(mm), compute_error2(mm), 
+  compute_errorc(mm, nrow(mm)),
+  compute_error(mm), compute_error2(mm),
   compute_error3(mm)
 )
 
@@ -93,11 +136,37 @@ gc()
 system.time(compute_errorc(m7, nrow(m7)))
 
 bench::mark(
-  compute_error3(m5), compute_error(m4), 
+  compute_error3(m5), compute_error(m4),
 )
 treeprof::treeprof(compute_error3(m6))
 
 
-## Messing With Watching Algo
+# compare 257 extracted mesh with tol == 10, confirmed equal, but
+# now we have issue that at size 1025 JS is one order of magnitude faster
 
-map <- elmat1[1:3, 1:3]
+json <- '~/Downloads/error-js-1025.json'
+errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
+tri.json <- '~/Downloads/rtin-tests/tris-257.json'
+tri.js.257 <- unlist(jsonlite::fromJSON(tri.json))
+tri.js <- tri.js.257[seq_len(min(which(tri.js.257==0) - 1))]
+
+tri.r <- unlist(extract_mesh3(compute_error(m2), 10))
+
+order_by_3s <- function(x) {
+  id <- rep(seq_len(length(x)/3), each=3)
+  xo <- matrix(x[order(x, id, x)], 3)
+  xo[, order(xo[1,])]
+}
+
+all.equal(order_by_3s(tri.r), order_by_3s(tri.js))
+
+## Extract mesh benchmarks
+
+# # compare to those in prototype.js (~90ms)
+# > e4 <- compute_error(m4)
+# > system.time(extract_mesh3(e4, 50))
+#    user  system elapsed
+#   0.302   0.142   0.467
+
+
+

@@ -86,27 +86,27 @@ function updatedGeometry(errors, gridSize, tileSize, maxError) {
 ```{r}
 writeLines(
   paste0('var ter_257 = [', paste0(m2, collapse=','), '];'),
-  '~/Downloads/map-js-257.json'
+  '~/Downloads/rtin-tests/map-js-257.json'
 )
 writeLines(
   paste0('var ter_513 = [', paste0(m3, collapse=','), '];'),
-  '~/Downloads/map-js-513.json'
+  '~/Downloads/rtin-tests/map-js-513.json'
 )
 writeLines(
   paste0('var ter_1025 = [', paste0(m4, collapse=','), '];'),
-  '~/Downloads/map-js-1025.json'
+  '~/Downloads/rtin-tests/map-js-1025.json'
 )
 writeLines(
   paste0('var ter_2049 = [', paste0(m5, collapse=','), '];'),
-  '~/Downloads/map-js-2049.json'
+  '~/Downloads/rtin-tests/map-js-2049.json'
 )
 writeLines(
-  paste0('var ter_4097 = [', paste0(m5, collapse=','), '];'),
-  '~/Downloads/map-js-4097.json'
+  paste0('var ter_4097 = [', paste0(m6, collapse=','), '];'),
+  '~/Downloads/rtin-tests/map-js-4097.json'
 )
 writeLines(
-  paste0('var ter_8193 = [', paste0(m5, collapse=','), '];'),
-  '~/Downloads/map-js-8193.json'
+  paste0('var ter_8193 = [', paste0(m7, collapse=','), '];'),
+  '~/Downloads/rtin-tests/map-js-8193.json'
 )
 ```
 
@@ -118,13 +118,18 @@ JSON.stringify(Array.from(errors));
 # we compared both 1025 and original map 257 and got exact same results
 json <- '~/Downloads/error-js-1025.json'
 errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
+tri.json <- '~/Downloads/rtin-tests/tris-257.json'
+tri.js.257 <- unlist(jsonlite::fromJSON(tri.json))
+min(which(tri.js.257==0))
 ```
 
 */
 
 {
   a = performance.now();
-  errors = comp_errors(ter_1025, 1025, 1024);
+  // errors = comp_errors(ter_1025, 1025, 1024);
+  // errors = comp_errors(ter_257, 257, 256);
+  err_1025 = comp_errors(ter_1025, 1025, 1024);
   performance.now() - a;
 }
 /*
@@ -153,10 +158,21 @@ ter_8193:
 
 
 {
-  tol = 5
+  tol = 50
   a = performance.now();
-  coords = updatedGeometry(errors, 257, 256, tol);
+  //coords = updatedGeometry(errors, 257, 256, tol);
+  // coords = updatedGeometry(errors, 1025, 1024, tol);
+  tri_1025 = updatedGeometry(err_1025, 1025, 1024, 10);
   performance.now() - a;
 }
+/*
+tri_1025, with tol=50:
+90.6, 94.6, 90.1, 98.12, 93.3, 99,1
+*/
+
+
+err_1025 = comp_errors(ter_1025, 1025, 1024);
+tri_1025 = updatedGeometry(err_1025, 1025, 1024, 10);
+tri_257 = updatedGeometry(err_1025, 1025, 1024, 10);
 
 /* Error: Accessing TypedArray data over Xrays is slow, and forbidden in order to encourage performant code. To copy TypedArrays across origin boundaries, consider using Components.utils.cloneInto(). */
