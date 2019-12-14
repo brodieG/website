@@ -450,35 +450,18 @@ extract_tris <- function(tar, par, nr) {
   res.x * nr + res.y + 1L
 }
 next_children <- function(tar, par, nr, j) {
-  dlt.x <- tar[['x']] - par[['x']]
-  dlt.y <- tar[['y']] - par[['y']]
+  ## need to figure out the integer thing here, although not sure that's
+  ## really the drag on things.
+  dlt.x <- (tar[['x']] - par[['x']]) / 2L
+  dlt.y <- (tar[['y']] - par[['y']]) / 2L
 
-  if(j == 1L) {  # diag
-    tar.res <- list(
-      x=c(tar[['x']] - dlt.x, tar[['x']]),
-      y=c(tar[['y']],         tar[['y']] - dlt.y)
-    )
-    par.res <- lapply(tar, rep, 2L)
-  } else {       # axis
-    dlt.x <- dlt.x / 2L
-    dlt.y <- dlt.y / 2L
-    hrz <- dlt.y == 0L
-
-    tar.res <- list(
-      x=c(
-        rep(tar[['x']][hrz] - dlt.x[hrz], 2L),
-        tar[['x']][!hrz] + dlt.y[!hrz], tar[['x']][!hrz] - dlt.y[!hrz]
-      ),
-      y=c(
-        tar[['y']][hrz] - dlt.x[hrz], tar[['y']][hrz] + dlt.x[hrz],
-        rep(tar[['y']][!hrz] - dlt.y[!hrz], 2L)
-    ) )
-    par.res <- list(
-      x=c(rep(tar[['x']][hrz], 2L), rep(tar[['x']][!hrz], 2L)),
-      y=c(rep(tar[['y']][hrz], 2L), rep(tar[['y']][!hrz], 2L))
-    )
-  }
-  list(tar=tar.res, par=par.res)
+  list(
+    tar=list(
+      x=c(tar[['x']] - dlt.x - dlt.y, tar[['x']] - dlt.x + dlt.y),
+      y=c(tar[['y']] + dlt.x - dlt.y, tar[['y']] - dlt.x - dlt.y)
+    ),
+    par=lapply(tar, rep, 2L)
+  )
 }
 extract_mesh3 <- function(errors, tol) {
   nr <- nrow(errors)
