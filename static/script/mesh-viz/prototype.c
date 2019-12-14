@@ -67,7 +67,7 @@ compute_errorc <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body=
   SEXP dim = PROTECT(allocVector(INTSXP, 2));
   INTEGER(dim)[0] = gridSize;
   INTEGER(dim)[1] = gridSize;
-  UNPROTECT(1);
+  UNPROTECT(2);
   return errSxp;
 //}
 ")
