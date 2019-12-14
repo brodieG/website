@@ -438,51 +438,39 @@ off.ex.mid <- aperm(
 # Maybe we really want to keep coordinates in x/y as we're going to expand
 # back to x/y here
 
-extract_tris <- function(ids) {
-  tx <- ids[,'x','tar']
-  ty <- ids[,'y','tar']
-  px <- ids[,'x','par']
-  py <- ids[,'y','par']
+extract_tris <- function(tar, par, nr) {
+  dlt.x <- tar[['x']] - par[['x']]
+  dlt.y <- tar[['y']] - par[['y']]
 
-  dlt.x <- tx - px
-  dlt.y <- ty - py
-
-  res.x <- rbind(px, tx + dlt.y, tx - dlt.y)
-  res.y <- rbind(py, ty - dlt.x, ty + dlt.x)
+  res.x <- rbind(par[['x']], tar[['x']] + dlt.y, tar[['x']] - dlt.y)
+  res.y <- rbind(par[['y']], tar[['y']] - dlt.x, tar[['y']] + dlt.x)
   dim(res.x) <- NULL
   dim(res.y) <- NULL
 
   res.x * nr + res.y + 1L
 }
-next_children <- function(ids) {
-  tx <- ids[,'x','tar']
-  ty <- ids[,'y','tar']
-  dlt.x <- (tx - ids[,'x','par']) / 2L
-  dlt.y <- (ty - ids[,'y','par']) / 2L
-  array(
-    c(
-      tx - dlt.x - dlt.y, tx - dlt.x + dlt.y,
-      ty + dlt.x - dlt.y, ty - dlt.x - dlt.y,
-      tx, tx, ty, ty
+next_children <- function(tar, par, nr, j) {
+  ## need to figure out the integer thing here, although not sure that's
+  ## really the drag on things.
+  dlt.x <- (tar[['x']] - par[['x']]) / 2L
+  dlt.y <- (tar[['y']] - par[['y']]) / 2L
+
+  list(
+    tar=list(
+      x=c(tar[['x']] - dlt.x - dlt.y, tar[['x']] - dlt.x + dlt.y),
+      y=c(tar[['y']] + dlt.x - dlt.y, tar[['y']] - dlt.x - dlt.y)
     ),
-    dim=c(length(tx) * 2L, 2, 2),
-    dimnames=list(NULL, c('x', 'y'), c('tar', 'par'))
+    par=lapply(tar, rep, 2L)
   )
 }
-# tried using list but subsetting ends up slower
-
 extract_mesh3 <- function(errors, tol) {
-  .pass_fail <- function(ids, tol) errors[ids] <= tol
   nr <- nrow(errors)
   nc <- ncol(errors)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   tilesq <- as.integer((2L^(layers) + 1L) ^ 2)
-  id.dat <- array(
-    c(
-      rep(c(nc - 1L) %/% 2L, 2L), rep(c(nr - 1L) %/% 2L, 2L),
-      0L, nc - 1L, nr - 1L, 0L
-    ),
-    dim=c(2, 2, 2), dimnames=list(NULL, c('x', 'y'), c('tar', 'par'))
+  id.dat <- list(
+    tar=list(x=rep(c(nc - 1L) %/% 2L, 2L), y=rep(c(nr - 1L) %/% 2L, 2L)),
+    par=list(x=c(0L, nc - 1L), y=c(nr - 1L, 0L))
   )
   res <- vector('list', 2L * layers + 1L)
   for(i in seq_len(layers)) {
@@ -490,23 +478,21 @@ extract_mesh3 <- function(errors, tol) {
 
     # diag first, then axis
     for(j in 1:2) {
-      ids <- id.dat[,'x','tar'] * nr + id.dat[,'y','tar'] + 1L
+      ids <- id.dat[['tar']][['x']] * nr + id.dat[['tar']][['y']] + 1L
 
-      pass <- .pass_fail(ids, tol)
-      fail <- !pass
-      # writeLines(
-      #   sprintf('i: %d j: %d len: %d pass: %d', i, j, length(ids), sum(pass))
-      # )
-      ids.pass <- id.dat[pass,,,drop=FALSE]
-      ids.fail <- id.dat[fail,,,drop=FALSE]
+      pass <- errors[ids] <= tol
+      ids.pass <- lapply(id.dat[['tar']], '[', pass)
+      ids.fail <- lapply(id.dat[['tar']], '[', !pass)
+      par.pass <- lapply(id.dat[['par']], '[', pass)
+      par.fail <- lapply(id.dat[['par']], '[', !pass)
 
-      res[[i * 2L - (j == 1L)]] <- extract_tris(ids.pass)
+      res[[i * 2L - (j == 1L)]] <- extract_tris(ids.pass, par.pass, nr)
 
-      id.dat <- next_children(ids.fail)
+      id.dat <- next_children(ids.fail, par.fail, nr, j)
   } }
   # Any remaining failures must be split to lowest level
 
-  res[[2L * layers + 1L]] <- extract_tris(id.dat)
+  res[[2L * layers + 1L]] <- extract_tris(id.dat[[1L]], id.dat[[2L]], nr)
   res
 }
 
