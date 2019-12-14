@@ -47,9 +47,15 @@ function comp_errors(terrain, gridSize, tileSize) {
   }
   return errors;
 }
+/*
+ * We initialize a maximal sizse array.
+ *
+ * Return value is 1 indexed for use in R, but also to make it easy to
+ * distinguish the unused part of the array
+ */
 function updatedGeometry(errors, gridSize, tileSize, maxError) {
   let i = 0;
-  const indices = new Float32Array(gridSize * gridSize);
+  const indices = new Float32Array(gridSize * gridSize * 4);
 
   function processTriangle(ax, ay, bx, by, cx, cy) {
     // middle of the long edge
@@ -66,9 +72,9 @@ function updatedGeometry(errors, gridSize, tileSize, maxError) {
 
     } else {
       // add a triangle to the final mesh
-      indices[i++] = ay * gridSize + ax;
-      indices[i++] = by * gridSize + bx;
-      indices[i++] = cy * gridSize + cx;
+      indices[i++] = ay * gridSize + ax + 1;
+      indices[i++] = by * gridSize + bx + 1;
+      indices[i++] = cy * gridSize + cx + 1;
     }
   }
   processTriangle(0, 0, tileSize, tileSize, tileSize, 0);
