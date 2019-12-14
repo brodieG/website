@@ -168,5 +168,87 @@ all.equal(order_by_3s(tri.r), order_by_3s(tri.js))
 #    user  system elapsed
 #   0.302   0.142   0.467
 
+treeprof::treeprof(extract_mesh3(e4, 50))
 
+## Before we try to go to matrix list
+# Ticks: 2915; Iterations: 8; Time Per: 570.5 milliseconds; Time Total: 4.564 seconds; Time Ticks: 2.915
+# 
+#                         milliseconds
+# extract_mesh3 ------ : 570.5 -   0.0
+#     lapply --------- : 206.3 - 206.3
+#     next_children -- : 149.1 -  67.9
+#     |   c ---------- :  42.9 -  42.9
+#     |   lapply ----- :  38.2 -  38.2
+#     extract_tris --- : 135.6 -  61.4
+#     |   rbind ------ :  73.4 -  73.4
+#     .pass_fail ----- :  78.7 -  78.7
+# > microbenchmark::microbenchmark(ww <- extract_mesh3(e4, 50), times=5)
+# Unit: milliseconds
+#                         expr      min       lq     mean   median       uq
+#  ww <- extract_mesh3(e4, 50) 419.5901 430.9858 482.0166 434.1018 559.4842
+#       max neval
+#  565.9209     5
 
+# Performance is very much driven by how many triangles are returned.  For
+# example with m4 and tolerance of 95, ex_mesh3 is at 8ms vs 16ms for the JS
+# thing.
+
+n <- 617252
+m <- 444246
+n <- 6100
+m <- 4400
+id <- replicate(4, sample(n), simplify=FALSE)
+id2 <- lapply(id, `+`, 0)
+x <- logical(n)
+x[sample(n, m)]<-TRUE
+y <- !x
+wx <- which(x)
+wy <- which(y)
+
+f <- function() {
+  lsp3 <- vector('list', 4L)
+  lsf3 <- vector('list', 4L)
+  for(i in seq_len(4L)) {
+    lsp3[[i]] <- id[[i]][x]
+    lsf3[[i]] <- id[[i]][y]
+  }
+  lsf3
+}
+wx <- which(x)
+bench::mark(
+  #a={
+  #  ap <- id2[,x,drop=FALSE]
+  #  af <- id2[,y,drop=FALSE]
+  #  pxa <- ap[1,]
+  #  pya <- ap[2,]
+  #  txa <- af[1,]
+  #  tya <- af[2,]
+  #},
+  #a2={
+  #  lsp3 <- vector('list', 4L)
+  #  lsf3 <- vector('list', 4L)
+  #  id[[1]][wx]
+  #}
+  a0={
+    wx <- which(x)
+    wy <- which(y)
+    lsp <- lapply(id, '[', wx)
+    lsf <- lapply(id, '[', wy)
+  },
+  a={
+    lsp <- lapply(id, '[', wx)
+    lsf <- lapply(id, '[', wy)
+    # pxb <- lsp[[1]] + 1L
+    # pyb <- lsp[[2]] + 2L
+    # txb <- lsf[[1]] + 3L
+    # tyb <- lsf[[2]] + 4L
+  }
+  # b={
+  #   lsp2 <- lapply(id2, '[', x)
+  #   lsf2 <- lapply(id2, '[', y);
+  #   # pxb2 <- lsp2[[1]] + 1
+  #   # pyb2 <- lsp2[[2]] + 2
+  #   # txb2 <- lsf2[[1]] + 3
+  #   # tyb2 <- lsf2[[2]] + 4
+  # }
+)
