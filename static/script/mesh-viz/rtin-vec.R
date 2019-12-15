@@ -452,13 +452,13 @@ extract_tris <- function(id, nr) {
 next_children <- function(id) {
   dx <- (id[['x','d']]) / 2L
   dy <- (id[['y','d']]) / 2L
-  dx_p_dy <- dx + dy
+  ndx_p_dy <- -dx - dy  # -(dx + dy)
   dx_m_dy <- dx - dy
 
-  id[,'d'] <- list(c(-dx_p_dy, -dx_m_dy), c(dx_m_dy, -dx_p_dy))
+  id[,'d'] <- list(c(ndx_p_dy, -dx_m_dy), c(dx_m_dy, ndx_p_dy))
   id[,'a'] <- list(
-    c(id[['x','a']] - dx_p_dy, id[['x','a']] - dx_m_dy),
-    c(id[['y','a']] + dx_m_dy, id[['y','a']] - dx_p_dy)
+    c(id[['x','a']], id[['x','a']]) + id[['x','d']],
+    c(id[['y','a']], id[['y','a']]) + id[['y','d']]
   )
   id
 }
