@@ -111,6 +111,7 @@ writeLines(
 ```
 
 JSON.stringify(Array.from(errors));
+JSON.stringify(Array.from(tri_1025));
 
 // right click, copy object, then
 
@@ -120,6 +121,9 @@ json <- '~/Downloads/error-js-1025.json'
 errors3 <- array(unlist(jsonlite::fromJSON(json)), dim(map))
 tri.json <- '~/Downloads/rtin-tests/tris-257.json'
 tri.js.257 <- unlist(jsonlite::fromJSON(tri.json))
+min(which(tri.js.257==0))
+tri.json.1025 <- '~/Downloads/rtin-tests/tris-1025.json'
+tri.js.1025 <- unlist(jsonlite::fromJSON(tri.json.1025))
 min(which(tri.js.257==0))
 ```
 
@@ -158,16 +162,16 @@ ter_8193:
 
 
 {
-  tol = 50
   a = performance.now();
   //coords = updatedGeometry(errors, 257, 256, tol);
   // coords = updatedGeometry(errors, 1025, 1024, tol);
-  tri_1025 = updatedGeometry(err_1025, 1025, 1024, 10);
+  // tri_1025 = updatedGeometry(err_1025, 1025, 1024, 50);
+  tri_1025 = updatedGeometry(err_1025, 1025, 1024, 95);
   performance.now() - a;
 }
 /*
 tri_1025, with tol=50:
-90.6, 94.6, 90.1, 98.12, 93.3, 99,1
+75.9, 71.0, 68.0, 75.5, 76.8 
 */
 
 
