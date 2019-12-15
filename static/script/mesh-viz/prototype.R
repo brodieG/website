@@ -192,6 +192,15 @@ treeprof::treeprof(extract_mesh3(e4, 50))
 # Performance is very much driven by how many triangles are returned.  For
 # example with m4 and tolerance of 95, ex_mesh3 is at 8ms vs 16ms for the JS
 # thing.
+#
+# Some timings before switching to tracking delta instead of parent
+#
+# > system.time(ww <- extract_mesh3(err4, 50))
+#    user  system elapsed 
+#   0.242   0.110   0.361 
+# > system.time(ww <- extract_mesh3(err4, 50))
+#    user  system elapsed 
+#   0.242   0.110   0.353 
 
 n <- 617252
 m <- 444246
@@ -229,11 +238,20 @@ bench::mark(
   #  lsf3 <- vector('list', 4L)
   #  id[[1]][wx]
   #}
+  a1={
+    lsp <- lapply(id, '[', x)
+    lsf <- lapply(id, '[', y)
+  },
   a0={
     wx <- which(x)
     wy <- which(y)
     lsp <- lapply(id, '[', wx)
     lsf <- lapply(id, '[', wy)
+  },
+  a2={
+    wx <- which(x)
+    lsp <- lapply(id, '[', wx)
+    lsf <- lapply(id, '[', -wx)
   },
   a={
     lsp <- lapply(id, '[', wx)

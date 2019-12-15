@@ -439,26 +439,26 @@ off.ex.mid <- aperm(
 # back to x/y here
 
 extract_tris <- function(id, nr) {
-  dx <- id[['x','tar']] - id[['x','par']]
-  dy <- id[['y','tar']] - id[['y','par']]
+  dx <- id[['x','d']]
+  dy <- id[['y','d']]
 
-  res.x <- rbind(id[['x','par']], id[['x','tar']] + dy, id[['x','tar']] - dy)
-  res.y <- rbind(id[['y','par']], id[['y','tar']] - dx, id[['y','tar']] + dx)
+  res.x <- rbind(id[['x','a']] - dx, id[['x','a']] + dy, id[['x','a']] - dy)
+  res.y <- rbind(id[['y','a']] - dy, id[['y','a']] - dx, id[['y','a']] + dx)
   dim(res.x) <- NULL
   dim(res.y) <- NULL
 
   res.x * nr + res.y + 1L
 }
 next_children <- function(id) {
-  dx <- (id[['x','tar']] - id[['x','par']])/2L
-  dy <- (id[['y','tar']] - id[['y','par']])/2L
+  dx <- (id[['x','d']]) / 2L
+  dy <- (id[['y','d']]) / 2L
   dx_p_dy <- dx + dy
   dx_m_dy <- dx - dy
 
-  id[,'par'] <- lapply(id[,'tar'], rep, 2L)
-  id[,'tar'] <- list(
-      c(id[['x','tar']] - dx_p_dy, id[['x','tar']] - dx_m_dy),
-      c(id[['y','tar']] + dx_m_dy, id[['y','tar']] - dx_p_dy)
+  id[,'d'] <- list(c(-dx_p_dy, -dx_m_dy), c(dx_m_dy, -dx_p_dy))
+  id[,'a'] <- list(
+    c(id[['x','a']] - dx_p_dy, id[['x','a']] - dx_m_dy),
+    c(id[['y','a']] + dx_m_dy, id[['y','a']] - dx_p_dy)
   )
   id
 }
@@ -470,9 +470,10 @@ extract_mesh3 <- function(errors, tol) {
   id.dat <- id.pass <- id.fail <- matrix(
     list(
       rep(c(nc - 1L) %/% 2L, 2L), rep(c(nr - 1L) %/% 2L, 2L),
-      c(0L, nc - 1L), c(nr - 1L, 0L)
+      c((nc - 1L) %/% 2L, -(nr - 1L) %/%2L),
+      c(-(nc - 1L) %/% 2L, (nr - 1L) %/%2L)
     ),
-    2L, 2L, dimnames=list(c('x', 'y'), c('tar', 'par'))
+    2L, 2L, dimnames=list(c('x', 'y'), c('a', 'd'))
   )
   res <- vector('list', 2L * layers + 1L)
   for(i in seq_len(layers)) {
@@ -480,7 +481,7 @@ extract_mesh3 <- function(errors, tol) {
 
     # diag first, then axis
     for(j in 1:2) {
-      ids <- id.dat[['x','tar']] * nr + id.dat[['y','tar']] + 1L
+      ids <- id.dat[['x','a']] * nr + id.dat[['y','a']] + 1L
 
       pass <- errors[ids] <= tol
       wpass <- which(pass)
