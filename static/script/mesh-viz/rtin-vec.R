@@ -123,9 +123,7 @@ compute_error <- function(map) {
 # This version tries to work directly from the hypotenuses and find the `a/b`
 # points off of it rather than the other way around.
 #
-# Return value is a list with the error matrix, and also the type of
-# each hypotenuse midpoint associated with that error.  The of the index types
-# in the `ids` list is semantic!  Don't change it.
+# The order of the index types in the `ids` list is semantic!  Don't change it.
 
 compute_error2 <- function(map) {
   # - Helper Funs --------------------------------------------------------------

@@ -1,3 +1,13 @@
+# - Misc Tools -----------------------------------------------------------------
+
+rep_each <- function(x, each) {
+  if(each) {
+    res <- matrix(x, each, length(x), byrow=TRUE)
+    dim(res) <- NULL
+    res
+  } else x[0]
+}
+
 # - Plot Helper Tools ----------------------------------------------------------
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
