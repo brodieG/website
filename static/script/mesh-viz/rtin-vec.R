@@ -444,8 +444,6 @@ extract_tris <- function(id, nr) {
 
   res.x <- rbind(id[['x','par']], id[['x','tar']] + dy, id[['x','tar']] - dy)
   res.y <- rbind(id[['y','par']], id[['y','tar']] - dx, id[['y','tar']] + dx)
-  dim(res.x) <- NULL
-  dim(res.y) <- NULL
 
   res.x * nr + res.y + 1L
 }

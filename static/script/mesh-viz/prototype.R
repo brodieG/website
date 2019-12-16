@@ -6,19 +6,10 @@ source('static/script/mesh-viz/viz-lib.R')
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
-
-# map <- elmat1[1:5, 1:5]
-# map <- elmat1[1:17, 1:17]
-# map <- elmat1[1:257, 1:257]
-# map <- elmat1[1:5, 1:9]
-# map <- elmat1[1:(2*4+1), 1:(2*3+1)]  # smallest error?
-# map <- elmat1[1:(2*5+1), 1:(2*4+1)]
-map <- elmat1[1:(2*3+1), 1:(2*4+1)]
-# map <- elmat1[1:11, 1:15]
-map <- elmat1[1:13, 1:11]
-# map <- volcano
-# map <- elmat1[-1,]
 map <- elmat1[1:257,1:257]
+
+stop('done loading')
+
 system.time(errors <- compute_error(map))
 system.time(errors <- compute_error3(map))
 
