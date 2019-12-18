@@ -288,7 +288,7 @@ compute_error2a <- function(map) {
     ) }
     # - Diagonals --------------------------------------------------------------
 
-    ids.raw <- seq(mhalf + nr * mhalf + 1L, nr * (mhalf + 1L), by=mult) +
+    ids.raw <- seq(mhalf + nr * mhalf + 1L, length.out=tile.r, by=mult) +
       matrix((seq_len(tile.c) - 1L) * mult * nr, tile.r, tile.c, byrow=TRUE)
     which.sw <- xor((col(ids.raw) %% 2L), (row(ids.raw) %% 2L))
     ids <- list(nw=ids.raw[!which.sw], sw=ids.raw[which.sw])
