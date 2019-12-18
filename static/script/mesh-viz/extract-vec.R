@@ -306,7 +306,7 @@ seed_ids <- function(offset, m, length, hrz) {
   a <- rep(mids, 2L)
   b <- rep(m + offset, 2L * length)
   c <- c(mids - m, mids + m)
-  d <- b + rep(c(-m, m, m, -m), length.out=length * 2L)
+  d <- b + rep(c(m, -m, -m, m), length.out=length * 2L)
 
   matrix(
     if(hrz) list(a, b, c, d) else list(b, a, d, c),
