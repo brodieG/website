@@ -232,6 +232,21 @@ compute_error2a <- function(map) {
   layers <- floor(min(log2(c(nr, nc) - 1L)))
   errors <- array(0, dim=dim(map))
 
+  # Need to add errors at the smallest seam between differnt size adjoining
+  # tiles to make sure the larger ones are broken up.  What's here currently is
+  # too aggressive
+
+  if((r.extra <- (nr - 1L) %% 2L^layers)) {
+    while(r.extra - 2^(floor(log2(r.extra))))
+      r.extra <- r.extra - 2^(floor(log2(r.extra)))
+    errors[nr - r.extra, seq(r.extra + 1L, nc - 1L, by=r.extra)] <- Inf
+  }
+  if((c.extra <- (nc - 1L) %% 2L^layers)) {
+    while(c.extra - 2^(floor(log2(c.extra))))
+      c.extra <- c.extra - 2^(floor(log2(c.extra)))
+    errors[seq(c.extra + 1L, nr - 1L, by=c.extra), nc - c.extra] <- Inf
+  }
+
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
     mhalf <- mult %/% 2L
@@ -269,7 +284,7 @@ compute_error2a <- function(map) {
     )
     for(j in seq_along(ids)) {
       errors[ids[[j]]] <- do.call(
-        pmax, c(list(na.rm=TRUE), err.par[j], err.child[[j]])
+        pmax, c(list(na.rm=TRUE, errors[ids[[j]]]), err.par[j], err.child[[j]])
     ) }
     # - Diagonals --------------------------------------------------------------
 
@@ -285,7 +300,7 @@ compute_error2a <- function(map) {
     )
     for(j in seq_along(ids)) {
       errors[ids[[j]]] <- do.call(
-        pmax, c(list(na.rm=TRUE), err.par[j], err.child[[j]])
+        pmax, c(list(na.rm=TRUE, errors[ids[[j]]]), err.par[j], err.child[[j]])
     ) }
   }
   errors
