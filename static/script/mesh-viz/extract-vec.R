@@ -251,7 +251,6 @@ extract_mesh3 <- function(errors, tol) {
   nr <- nrow(errors)
   nc <- ncol(errors)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
-  tilesq <- as.integer((2L^(layers) + 1L) ^ 2)
   id.dat <- id.pass <- id.fail <- matrix(
     list(
       rep(c(nc - 1L) %/% 2L, 2L), rep(c(nr - 1L) %/% 2L, 2L),
@@ -270,6 +269,85 @@ extract_mesh3 <- function(errors, tol) {
       pass <- errors[ids] <= tol
       wpass <- which(pass)
       wfail <- which(!pass)
+      id.pass[] <- lapply(id.dat, '[', wpass)
+      id.fail[] <- lapply(id.dat, '[', wfail)
+
+      res[[i * 2L - (j == 1L)]] <- extract_tris(id.pass, nr)
+
+      id.dat <- next_children(id.fail)
+  } }
+  # Any remaining failures must be split to lowest level
+
+  res[[2L * layers + 1L]] <- extract_tris(id.dat, nr)
+  res
+}
+# Non square inputs
+#
+# Need to compute all the diagonal tiles that are added at a given size which
+# will be either:
+#
+# 1. All the diagonals that fit at the start
+# 2. Incremental diagonals fit in the margins between previous less granular
+#    layers and the current layer
+#
+# For all of these we'll need the parents.
+#
+# For 1., need all midpoints within the current tile rows/cols.
+# For 2.,
+#
+# * If next row/col can fit one more at more granular resolution, compute
+#   midpoint for those.  If we do both then there is a duplicate midpoint; do we
+#   want to handle that case explicitly?
+# 
+# One overall question
+
+seed_ids <- function(offset, m, length, hrz) {
+  mids <- seq(m, length.out=length, by=m * 2L)
+  a <- rep(mids, 2L)
+  b <- rep(m + offset, 2L * length)
+  c <- c(mids - m, mids + m)
+  d <- b + rep(c(-m, m, m, -m), length.out=length * 2L)
+
+  matrix(
+    if(hrz) list(a, b, c, d) else list(b, a, d, c),
+    2L, 2L, dimnames=list(c('x', 'y'), c('tar', 'par'))
+  )
+}
+
+extract_mesh3a <- function(errors, tol) {
+  nr <- nrow(errors)
+  nc <- ncol(errors)
+  layers <- floor(min(log2(c(nr, nc) - 1L)))
+  res <- vector('list', 2L * layers + 1L)
+  id.dat <- id.pass <- id.fail <- seed_ids(0L, 0L, 0L, FALSE)
+  trow <- tcol <- 0L
+
+  for(i in seq_len(layers)) {
+    # seed initial and additional triangles
+    m <- as.integer(2^(layers - i))
+    trow.p <- trow * 2L
+    tcol.p <- tcol * 2L
+    trow <- ((nr - 1L) %/% (m * 2L))
+    tcol <- ((nc - 1L) %/% (m * 2L))
+    row.ex <- trow.p < trow
+    col.ex <- tcol.p < tcol
+    seed.h <- seed.v <- replicate(4L, integer(), simplify=FALSE)
+    if(i == 1L) {
+      if(trow < tcol) seed.h <- seed_ids(0L, m, tcol, TRUE)
+      else seed.v <- seed_ids(0L, m, trow, FALSE)
+    } else {
+      if(row.ex) seed.h <- seed_ids(trow.p, m, tcol.p + row.ex, TRUE)
+      if(col.ex) seed.v <- seed_ids(tcol.p, m, trow.p, FALSE)
+    }
+    id.dat[] <- Map(c, id.dat, seed.h, seed.v)
+
+    # diag first, then axis
+    for(j in 1:2) {
+      ids <- id.dat[['x','tar']] * nr + id.dat[['y','tar']] + 1L
+      pass <- errors[ids] <= tol
+      wpass <- which(pass)
+      wfail <- which(!pass)
+
       id.pass[] <- lapply(id.dat, '[', wpass)
       id.fail[] <- lapply(id.dat, '[', wfail)
 
