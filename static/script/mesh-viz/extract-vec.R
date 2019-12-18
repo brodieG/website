@@ -336,8 +336,8 @@ extract_mesh3a <- function(errors, tol) {
       if(trow < tcol) seed.h <- seed_ids(0L, m, tcol, TRUE)
       else seed.v <- seed_ids(0L, m, trow, FALSE)
     } else {
-      if(row.ex) seed.h <- seed_ids(trow.p, m, tcol.p + row.ex, TRUE)
-      if(col.ex) seed.v <- seed_ids(tcol.p, m, trow.p, FALSE)
+      if(row.ex) seed.h <- seed_ids(trow.p * m * 2L, m, tcol.p + row.ex, TRUE)
+      if(col.ex) seed.v <- seed_ids(tcol.p * m * 2L, m, trow.p, FALSE)
     }
     id.dat[] <- Map(c, id.dat, seed.h, seed.v)
 
