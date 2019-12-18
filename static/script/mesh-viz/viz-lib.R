@@ -31,7 +31,7 @@ plot_tri_ids <- function(tri, dim, new=TRUE) {
   x <- ids %/% dim[1]
   y <- ids %% dim[1]
   if(new) plot_new(x, y)
-  polygon(x/(dim[1] - 1), y/(dim[2]-1), col='#DDDDDD', border='#444444')
+  polygon(x/(dim[2] - 1), y/(dim[1]-1), col='#DDDDDD', border='#444444')
 }
 plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
