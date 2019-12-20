@@ -37,8 +37,8 @@ plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
   x <- ids %/% dim[1]
   y <- ids %% dim[1]
-  x0 <- seq_len(dim[1]) - 1L
-  y0 <- seq_len(dim[2]) - 1L
+  x0 <- seq_len(dim[2]) - 1L
+  y0 <- seq_len(dim[1]) - 1L
   points(
     rep(x0/max(x0), each=dim[2]), rep(y0/max(y0), dim[1]),
     pch=16, col='black', cex=0.5
