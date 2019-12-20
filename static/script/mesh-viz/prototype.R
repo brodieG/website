@@ -118,18 +118,11 @@ bench::mark(
   compute_error3(mm)
 )
 
-mm <- m7
-gc()
-system.time(compute_error(m7))
-gc()
-system.time(compute_error3(m7))
-gc()
-system.time(compute_errorc(m7, nrow(m7)))
+map2 <- map[1:9, 1:7]
+err <- compute_error2a(map2)
+plot_tri_ids(extract_mesh3a(err, diff(range(map2))/10), dim(err))
 
-bench::mark(
-  compute_error3(m5), compute_error(m4),
-)
-treeprof::treeprof(compute_error3(m6))
+
 
 
 # compare 257 extracted mesh with tol == 10, confirmed equal, but
@@ -243,3 +236,18 @@ bench::mark(
   #   # tyb2 <- lsf2[[2]] + 4
   # }
 )
+
+a <- matrix(0, 1025, 1025)
+i <- sample(length(a), length(a) %/% 2L)
+ix <- (i - 1L) %% 1025L
+iy <- (i - 1L) %/% 1025L
+
+iix <- ix + 1L
+iiy <- iy + 1L
+
+#bench::mark(
+microbenchmark::microbenchmark(
+  a[ix * 1025L + iy + 1L],
+  a[cbind(iix, iiy)]
+)
+

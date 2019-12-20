@@ -209,6 +209,8 @@ compute_error2 <- function(map) {
   errors
 }
 # Works for non-square grids (when we're done with it)
+#
+# Problem child at position 109 / (8, 4)
 
 compute_error2a <- function(map) {
   # - Helper Funs --------------------------------------------------------------
@@ -255,23 +257,29 @@ compute_error2a <- function(map) {
 
     # - Axis (vertical/horizontal) ---------------------------------------------
 
-    # Compute IDs, distinguish b/w inside vs. outside
+    # v in var names designates vertical, h horizontal
     col.vn <- tile.c + 1L
     col.hn <- tile.c
-    col.v <- seq(1L, length.out=col.vn, by=mult)
+    col.v <- seq(1L, length.out=tile.c + 1L, by=mult)
     col.h <- seq(2L, length.out=tile.c, by=mult)
-    ids.v <- seq(mhalf + 1L, nr, mult)
-    ids.h <- seq(nr * mhalf + 1L, nr * (mhalf + 1L), by=mult)
+    ids.v <- seq(mhalf + 1L, tile.r * mult, mult)
+    ids.h <- seq(nr * mhalf + 1L, nr * mhalf + 1L + tile.r * mult, by=mult)
     v.len <- length(ids.v)
     h.len <- length(ids.h)
+
+    # Non-square cases where there is no outside right/bot
+    v.ex <- tile.c * mult * 1.5 + 1 > nc
+    h.ex <- tile.r * mult * 1.5 + 1 > nr
+
+    # Compute IDs, distinguish b/w inside vs. outside
     ids <- list(
       v.out.l=ids.v,
-      v.in=ids.v + rep_each((col.v[-c(1L,col.vn)] - 1L) * nr, v.len),
-      v.out.r=ids.v + (col.v[col.vn] - 1L) * nr,
+      v.in=ids.v + rep_each((col.v[-c(1L,col.vn * v.ex)] - 1L) * nr, v.len),
+      v.out.r=if(v.ex) ids.v + (col.v[col.vn] - 1L) * nr,
       h.out.t=ids.h[1L] + (seq_len(col.hn) - 1L) * nr * mult,
-      h.in=ids.h[-c(1L, h.len)] +
-        rep_each((seq_len(col.hn)-1L) * nr * mult, h.len - 2L),
-      h.out.b=ids.h[h.len] + (seq_len(col.hn) - 1L) * nr * mult
+      h.in=ids.h[-c(1L, h.len * h.ex)] +
+        rep_each((seq_len(col.hn)-1L) * nr * mult, length(ids.h) - 1L - h.ex),
+      h.out.b=if(h.ex) ids.h[h.len] + (seq_len(col.hn) - 1L) * nr * mult
     )
     # Errors
     err.child <- if(i > 1L) {
