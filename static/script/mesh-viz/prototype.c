@@ -67,50 +67,9 @@ compute_errorc <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body=
   SEXP dim = PROTECT(allocVector(INTSXP, 2));
   INTEGER(dim)[0] = gridSize;
   INTEGER(dim)[1] = gridSize;
+  setAttrib(errSxp, R_DimSymbol, dim);
   UNPROTECT(2);
   return errSxp;
 //}
 ")
 
-/*
-function updatedGeometry(errors, gridSize, tileSize, maxError) {
-  let i = 0;
-  const indices = new Float32Array(gridSize * gridSize);
-
-  function processTriangle(ax, ay, bx, by, cx, cy) {
-    // middle of the long edge
-    const mx = (ax + bx) >> 1;
-    const my = (ay + by) >> 1;
-
-    if (
-      Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && 
-        errors[my * gridSize + mx] > maxError
-    ) {
-      // triangle doesn't approximate the surface well enough; split it into two
-      processTriangle(cx, cy, ax, ay, mx, my);
-      processTriangle(bx, by, cx, cy, mx, my);
-
-    } else {
-      // add a triangle to the final mesh
-      indices[i++] = ay * gridSize + ax;
-      indices[i++] = by * gridSize + bx;
-      indices[i++] = cy * gridSize + cx;
-    }
-  }
-  processTriangle(0, 0, tileSize, tileSize, tileSize, 0);
-  processTriangle(tileSize, tileSize, 0, 0, 0, tileSize);
-
-  return indices;
-}
-
-{
-  a = performance.now();
-  errors = comp_errors(terrain, 257, 256);
-  performance.now() - a;
-}
-{
-  a = performance.now();
-  coords = updatedGeometry(errors, 257, 256, tol);
-  performance.now() - a;
-}
-*/
