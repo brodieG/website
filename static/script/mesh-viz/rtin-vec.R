@@ -268,8 +268,8 @@ compute_error2a <- function(map) {
     h.len <- length(ids.h)
 
     # Non-square cases where there is no outside right/bot
-    v.ex <- tile.c * mult * 1.5 + 1 > nc
-    h.ex <- tile.r * mult * 1.5 + 1 > nr
+    v.ex <- tile.c * mult + mhalf + 1 > nc
+    h.ex <- tile.r * mult + mhalf + 1 > nr
 
     # Compute IDs, distinguish b/w inside vs. outside
     ids <- list(
