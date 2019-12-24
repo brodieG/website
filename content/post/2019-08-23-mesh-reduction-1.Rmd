@@ -371,6 +371,7 @@ vertical/horizontal ones "Diamond":<span id='sqr-vs-dia'></span>
 source('../../static/script/_lib/plot.R')
 source('../../static/script/mesh-viz/viz-lib.R')
 source('../../static/script/mesh-viz/rtin-vec.R')
+source('../../static/script/mesh-viz/extract-vec.R')
 # source('static/script/mesh-viz/viz-lib.R')
 # source('static/script/mesh-viz/rtin-vec.R')
 err <- matrix(0, 9, 9)
@@ -411,6 +412,7 @@ On the other hand the "Diamond" triangulation, the one with the diagonal
 hypotenuses, has multiple possible tilings:
 
 ```{r echo=FALSE}
+# should have used the offsets for this, but we hadn't written that yet.
 raw1 <- c(03,19,01, 03,19,21, 03,23,21, 03,23,05)
 raw2 <- raw1 + rep(c(2,-2), each=length(raw1)/2)
 rawc1 <- rep(raw1, 2) + rep(0:1 * 4, each=length(raw1))
@@ -471,20 +473,114 @@ do.call(knitr::opts_chunk$set, old.opt)
 It is only with "Square" that every edge of the parent approximation level
 completely overlaps with edges of the child.  Every other arrangement has at
 least one parent edge crossing a hypotenuse of a child triangle.  These
-crossings are highlighted with the blue circles.  Ironically, the best looking
+crossings are what the blue circles highlight.  Ironically, the best looking
 fake is the worst offender.
 
 Herein lies the beauty of [&commat;mourner's][6] implementation; by deriving
 child triangles from splitting the parent ones, we guarantee that the child
 triangles will conform to the parents.  As I learned painfully no such
-guarantees apply when we compute the coordinates directly.  Our
-vectorization will require much care and some contortions.
+guarantees apply when we compute the coordinates directly.
 
-A further complication is that for each triangle, we need to compute the
-coordinates of its children well so that we may [carry over](#carry-over-viz)
-their errors.
+There are many ways to solve this vectorization problem, but the simplest I
+could come up with was to treat it as a tiling task.  The idea is to define the
+smallest tessellating patterns that extend to the correct layout.  These
+patterns can then be repeated as needed in internally vectorized
+manner[^int-vec].  This is what they look like for our 9 x 9 example:
 
-There are likely many ways to go about solving this problem, but I chose to
+```{r echo=FALSE}
+tris2 <- transform(
+  tris,
+  alpha=ave(
+    seq_along(id), factor(id), FUN=function(i) all(x[i] <= .5 & y[i] <= .5)
+  )
+)
+p <- ggplot(tris2) +
+  geom_polygon(
+    aes(x=x, y=y, group=id, fill=I(color), alpha=alpha)
+  ) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='grey50') +
+  facet_wrap(~type) +
+  scale_alpha_continuous(guide=FALSE) +
+  coord_fixed() +
+  thm.blnk
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r square-vs-diamond-tile, echo=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+Unfortunately this is insufficient.  We must also for each triangle hypotenuse
+midpoint track their children so that we may [carry over](#carry-over-viz) their
+errors.  One nice benefit of the tessellating pattern is that if we define the
+parent-child relationship for the simple tile, we can copy that relationship
+along with the rest of the tile.  In fact, we don't actually care about the
+triangles.  What we actually want are the hypotenuses, their midpoints, and the
+corresponding child hypotenuse midpoints:
+
+```{r echo=FALSE}
+p.dg <- ids_to_df(c(offset.dg[,1,] * 9 + offset.dg[,2,] + 1), matrix(0,9,9))
+p.ax <- ids_to_df(c(offset.ax[,1,] * 9 + offset.ax[,2,] + 1), matrix(0,9,9))
+p.dg[['type']] <- 'Square'
+p.dg[['ptype']] <- 'child'
+p.dg[1:4, 'ptype'] <- 'mid'
+p.dg[5:12, 'ptype'] <- 'ends'
+p.ax[['type']] <- 'Diamond'
+p.ax[['ptype']] <- 'child'
+p.ax[1:4, 'ptype'] <- 'mid'
+p.ax[5:12, 'ptype'] <- 'ends'
+p.all <- rbind(p.dg, p.ax)
+p.all[['grp']] <- (seq_len(nrow(p.all)) - 1L) %% 4L
+
+to_arrows <- function(grp) {
+  res <- grp[-1L,]
+  res[['xend']] <- grp[1L, 'x']
+  res[['yend']] <- grp[1L, 'y']
+  x.diff <- res[['xend']] - res[['x']]
+  y.diff <- res[['yend']] - res[['y']]
+  off <- 5
+  res[['xend']] <- res[['xend']] - x.diff / off
+  res[['x']] <- res[['x']] + x.diff / off
+  res[['yend']] <- res[['yend']] - y.diff / off
+  res[['y']] <- res[['y']] + y.diff / off
+  res
+}
+p.arr <-
+  do.call(rbind, lapply(split(p.all, p.all[c('type', 'grp')]), to_arrows))
+
+p2 <- p +
+  geom_point(data=p.all, aes(x, y, color=ptype)) +
+  geom_segment(
+    data=p.arr,
+    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
+    aes(x, y, xend=xend, yend=yend)
+  )
+p2
+
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r square-vs-diamond-points, echo=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+
+<!--
+Add Child -> Parent arrows.
+
+One question: do we add them to all of them alphaed out?  We presumably also
+want to show the children and parents in different colors.
+
+W
+-->
+
+
+
+solving this problem, but I chose to
 focus on the midpoint of the hypotenuses directly rather than on the triangles
 proper.  They lie in patterns we can extrapolate without the need to track all
 the vertices, and we can compute the position of the child hypotenuses as
@@ -682,6 +778,9 @@ new BgFlipBook({
   embarrassed by misplaced eructations of grandiloquence.
 [^nine-nine]: Some tiling issues become apparent at this size that are less
   obvious at smaller sizes.
+[^int-vec]: Internally vectorized operations loop through elements of a vector
+  with statically compiled code instead of explicit R loops such as `for`,
+  `lapply`.
 
 [5]: https://twitter.com/mourner
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
