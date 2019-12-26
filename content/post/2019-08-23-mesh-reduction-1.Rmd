@@ -371,6 +371,7 @@ vertical/horizontal ones "Diamond":<span id='sqr-vs-dia'></span>
 source('../../static/script/_lib/plot.R')
 source('../../static/script/mesh-viz/viz-lib.R')
 source('../../static/script/mesh-viz/rtin-vec.R')
+source('../../static/script/mesh-viz/rtin-vec2.R')
 source('../../static/script/mesh-viz/extract-vec.R')
 # source('static/script/mesh-viz/viz-lib.R')
 # source('static/script/mesh-viz/rtin-vec.R')
@@ -500,7 +501,7 @@ p <- ggplot(tris2) +
   ) +
   geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='grey50') +
   facet_wrap(~type) +
-  scale_alpha_continuous(guide=FALSE) +
+  scale_alpha_continuous(guide=FALSE, range=c(0.2,1)) +
   coord_fixed() +
   thm.blnk
 pdim <- gtable_dim(ggplotGrob(p))
@@ -517,8 +518,8 @@ midpoint track their children so that we may [carry over](#carry-over-viz) their
 errors.  One nice benefit of the tessellating pattern is that if we define the
 parent-child relationship for the simple tile, we can copy that relationship
 along with the rest of the tile.  In fact, we don't actually care about the
-triangles.  What we actually want are the hypotenuses, their midpoints, and the
-corresponding child hypotenuse midpoints:
+triangles.  What we actually want are the hypotenuses (black), their midpoints
+(lavender), and the corresponding child hypotenuse midpoints (orange):
 
 ```{r echo=FALSE}
 p.dg <- ids_to_df(c(offset.dg[,1,] * 9 + offset.dg[,2,] + 1), matrix(0,9,9))
@@ -535,39 +536,75 @@ p.all <- rbind(p.dg, p.ax)
 p.all[['grp']] <- (seq_len(nrow(p.all)) - 1L) %% 4L
 
 to_arrows <- function(grp) {
-  res <- grp[-1L,]
-  res[['xend']] <- grp[1L, 'x']
-  res[['yend']] <- grp[1L, 'y']
-  x.diff <- res[['xend']] - res[['x']]
-  y.diff <- res[['yend']] - res[['y']]
-  off <- 5
-  res[['xend']] <- res[['xend']] - x.diff / off
-  res[['x']] <- res[['x']] + x.diff / off
-  res[['yend']] <- res[['yend']] - y.diff / off
-  res[['y']] <- res[['y']] + y.diff / off
-  res
+  ends <- grp[2,,drop=FALSE]
+  ends.b <- grp[3,,drop=FALSE]
+  mid <- grp[1L,,drop=FALSE]
+  child <- grp[-(1:3),,drop=FALSE]
+
+  child <- grp[-1L,]
+  child[['xend']] <- mid[, 'x']
+  child[['yend']] <- mid[, 'y']
+  x.diff <- child[['xend']] - child[['x']]
+  y.diff <- child[['yend']] - child[['y']]
+  off.c <- 5
+  child[['xend']] <- child[['xend']] - x.diff / off.c
+  child[['x']] <- child[['x']] + x.diff / off.c
+  child[['yend']] <- child[['yend']] - y.diff / off.c
+  child[['y']] <- child[['y']] + y.diff / off.c
+
+  x.diff <- ends.b[['x']] - ends[['x']]
+  y.diff <- ends.b[['y']] - ends[['y']]
+  off.e <- 30
+  ends[['xend']] <- ends.b[['x']] - x.diff / off.e
+  ends[['x']] <- ends[['x']] + x.diff / off.e
+  ends[['yend']] <- ends.b[['y']] - y.diff / off.e
+  ends[['y']] <- ends[['y']] + y.diff / off.e
+  rbind(ends, child)
 }
 p.arr <-
   do.call(rbind, lapply(split(p.all, p.all[c('type', 'grp')]), to_arrows))
 
-p2 <- p +
-  geom_point(data=p.all, aes(x, y, color=ptype)) +
+p2 <- ggplot(tris2) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='grey50') +
   geom_segment(
-    data=p.arr,
+    data=subset(p.arr, ptype=='child'),
     arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
+    aes(x, y, xend=xend, yend=yend),
+    color='grey50'
+  ) +
+  geom_segment(
+    data=subset(p.arr, ptype=='ends'),
     aes(x, y, xend=xend, yend=yend)
-  )
-p2
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='mid'),
+    aes(x, y, colour=I('grey35'), fill=I('#8da0cb')),
+    shape=21, size=3
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='ends'),
+    aes(x, y, colour=I('grey35'), fill=NA),
+    shape=21, size=2
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='child'),
+    aes(x, y, colour=I('#fc8d62'))
+  ) +
+  facet_wrap(~type) +
+  coord_fixed() +
+  thm.blnk
 
 pdim <- gtable_dim(ggplotGrob(p))
 old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
 do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
 ```
 ```{r square-vs-diamond-points, echo=FALSE}
-p
+p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
+Let's look at this in action with the next grid size, 17 x 17:
 
 <!--
 Add Child -> Parent arrows.
