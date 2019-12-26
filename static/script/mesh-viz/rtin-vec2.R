@@ -167,3 +167,66 @@ compute_error3 <- function(map) {
   } }
   errors
 }
+
+init_offsets <- function(i, j, mult, layers) {
+  axis <- j == 'axis'
+  o.raw <- if(axis) offset.ax else offset.dg
+  if(!axis && i == layers)
+    o.raw <- o.raw[1L,,,drop=F]
+  if(axis && i == 1L)
+    o.raw <- o.raw[,,1:3,drop=F]
+  o.raw <- (o.raw * mult) %/% (if(axis) 4L else 2L)
+  o.raw
+}
+
+# Version of compute_error3 clarified for watching purposes
+
+compute_error3b <- function(map) {
+  nr <- nrow(map)
+  nc <- ncol(map)
+  layers <- floor(min(log2(c(nr, nc) - 1L)))
+  errors <- array(0, dim=dim(map))
+
+  for(i in seq_len(layers)) {
+    mult <- as.integer(2^i)
+    tile.nr <- ((nr - 1L) %/% mult) * mult
+    tile.nc <- ((nc - 1L) %/% mult) * mult
+
+    for(j in c('axis', 'diag')) {
+      o <- o.m <- o.a <- o.b <- err.ids <- NULL
+      o.raw <- init_offsets(i, j, mult, layers)
+      o.nr <- diff(range(o.raw[,1,]))
+      o.nc <- diff(range(o.raw[,2,]))
+      o.dim <- dim(o.raw)
+
+      c.rep <- tile.nc / o.nc
+      r.rep <- tile.nr / o.nr
+      o <- c(o.raw[,1L,] + o.raw[,2L,] * nr + 1L)
+      o <- rep_each(o, c.rep) +
+        (seq_len(c.rep) - 1L) * o.nr
+      o <- rep_each(o, r.rep) +
+        (seq_len(r.rep) - 1L) * nr * o.nc
+
+      oid <- seq_len(o.dim[1L] * c.rep * r.rep)
+      o.len <- length(oid)
+      o.m <- o[oid]
+      o.a <- o[oid + o.len]
+      o.b <- o[oid + 2L * o.len]
+
+      m.est <- (map[o.a] + map[o.b]) / 2
+      errors[o.m] <- abs(map[o.m] - m.est)
+
+      err.n <- o.dim[3L] - 2L
+      err.ids <- err.vals <- vector('list', err.n)
+      err.ids[[1L]] <- o.m
+      for(k in seq_len(err.n - 1L) + 1L)
+        err.ids[[k]] <- o[oid + o.len * (k + 1L)]
+      for(k in seq_len(err.n))
+        err.vals[[k]] <- errors[err.ids[[k]]]
+
+      err.val <- do.call(pmax, err.vals)
+      err.ord <- order(err.val)
+      errors[o.m[err.ord]] <- err.val[err.ord]
+  } }
+  errors
+}
