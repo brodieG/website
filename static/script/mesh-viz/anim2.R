@@ -124,13 +124,27 @@ err.cir <- cbind(
   data.frame(.id=rep(zz.vec$.id, ids.len)),
   ids_to_df(unlist(err.ids), m)
 )
-
-
 # arrows
+
+err.arrows <- do.call(rbind,
+  lapply(
+    seq_along(zz.raw$err.ids),
+    function(i) {
+      x <- zz.raw$err.ids[[i]]
+      if(length(x) > 1 && length(x[[1]]) && sum(lengths(x[-1]) > 0)) {
+        a <- rep(x[[1]], sum(lengths(x[-1]) > 0))
+        data.frame(.id=zz.vec$.id[i], start=unlist(x[-1]), end=a)
+} } ) )
+err.arrows <- with(err.arrows,
+  cbind(
+    .id, ids_to_df(start, m),
+    setNames(ids_to_df(end, m), c('xend','yend','zend'))
+) )
+# compile plot data for use
 
 data <- list(
   o=o, errors=errors, o.m=zz.raw$o.m,
-  o.p=o.p, o.ab=o.ab, err.cir=err.cir
+  o.p=o.p, o.ab=o.ab, err.cir=err.cir, err.arrows=err.arrows
 )
 
 
@@ -143,6 +157,10 @@ library(ggplot2)
 
   p <- ggplot(mapping=aes(x, y)) +
     geom_segment(data=d$o.ab, aes(xend=xend, yend=yend)) +
+    geom_segment(
+      data=d$err.arrows, aes(xend=xend, yend=yend),
+      arrow=arrow(type='closed'), color='grey65'
+    ) +
     geom_point(
       data=d$o, aes(color=I(ptype), fill=I(ptype)),
     ) +
