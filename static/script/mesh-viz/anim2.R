@@ -13,6 +13,7 @@ errors_watched <- watch(compute_error3b, vars)
 m <- map[1:5, 1:5]
 xx <- errors_watched(m)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
+size.max <- max(xx, na.rm=TRUE)
 
 id.vars <- c('.id', '.line')
 zz.vec <- zz.raw[['.scalar']]
@@ -93,8 +94,15 @@ o <- transform(
   j=zz.vec[id.scalar, 'j']
 )
 o <- transform(o, i=ave(.id, .id, FUN=seq_along))
-ptypes <- c('#8da0cb', '#66c2a5', '#66c2a5', rep('#fc8d62', 5))
-o <- transform(o, ptype=ptypes[(i - 1) %/% els + 1])
+ptypes <- c('mid', rep('end', 2), rep('child', 5))
+pcolors <- c('#8da0cb', '#66c2a5', '#66c2a5', rep('#fc8d62', 5))
+psizes <- c(rep(1/3, 3L), rep(1/10, 5)) * size.max
+o <- transform(
+  o,
+  ptype=ptypes[(i - 1) %/% els + 1],
+  pcolor=pcolors[(i - 1) %/% els + 1], 
+  psize=psizes[(i - 1) %/% els + 1]
+)
 
 # Boundary around colored points + hypotenuse
 
@@ -118,12 +126,13 @@ o.ab[['frame']] <- 'Ids'
 
 # Error circle / mappings
 
-err.ids <- lapply(zz.raw$err.ids, unlist)
-ids.len <- lengths(err.ids)
-err.cir <- cbind(
-  data.frame(.id=rep(zz.vec$.id, ids.len)),
-  ids_to_df(unlist(err.ids), m)
-)
+# err.ids <- lapply(zz.raw$err.ids, unlist)
+# ids.len <- lengths(err.ids)
+# err.cir <- cbind(
+#   data.frame(.id=rep(zz.vec$.id, ids.len)),
+#   ids_to_df(unlist(err.ids), m)
+# )
+o.m <- cbind(zz.raw$o.m, ids_to_df(zz.raw$o.m$val, m))
 # arrows
 
 err.arrows <- do.call(rbind,
@@ -138,12 +147,13 @@ err.arrows <- do.call(rbind,
 err.arrows <- with(err.arrows,
   cbind(
     .id, ids_to_df(start, m),
-    setNames(ids_to_df(end, m), c('xend','yend','zend'))
+    setNames(ids_to_df(end, m), c('xend','yend','zend')),
+    frame='Errors'
 ) )
 # compile plot data for use
 
 data <- list(
-  o=o, errors=errors, o.m=zz.raw$o.m,
+  o=o, errors=errors, o.m=o.m,
   o.p=o.p, o.ab=o.ab, err.cir=err.cir, err.arrows=err.arrows
 )
 
@@ -151,32 +161,41 @@ data <- list(
 frames <- 15:50
 library(ggplot2)
 # for(k in frames) {
-  k <- 60
-  cat(sprintf("\rFrame %04d", k))
-  d <- lapply(data, function(x) subset(x, .id == k))
+k <- 60
+cat(sprintf("\rFrame %04d", k))
+d <- lapply(data, function(x) subset(x, .id == k))
 
-  p <- ggplot(mapping=aes(x, y)) +
-    geom_segment(data=d$o.ab, aes(xend=xend, yend=yend)) +
-    geom_segment(
-      data=d$err.arrows, aes(xend=xend, yend=yend),
-      arrow=arrow(type='closed'), color='grey65'
-    ) +
-    geom_point(
-      data=d$o, aes(color=I(ptype), fill=I(ptype)),
-    ) +
-    geom_point(data=d$o.p, shape=21L, fill=NA) +
-    geom_point(data=d$errors, aes(size=val)) +
-    geom_point(data=d$err.cir, shape=21L, fill=NA, size=18) +
-    facet_wrap(~frame) +
-    coord_cartesian(ylim=c(0,1), xlim=c(0,1)) +
-    thm.blnk +
-    NULL
-  p
-  ggsave(
-    filename=sprintf('~/Downloads/mesh-anim-5/img-%04d.png', k),
-    plot=p,
-    width=width/dpi, height=height/dpi, units='in', device='png',
-    dpi=dpi
-  )
+p <- ggplot(mapping=aes(x, y)) +
+  geom_segment(data=d$o.ab, aes(xend=xend, yend=yend)) +
+  geom_segment(
+    data=d$err.arrows, aes(xend=xend, yend=yend),
+    arrow=arrow(type='closed'), color='grey65'
+  ) +
+  geom_point(
+    data=d$o, aes(color=I(pcolor), size=psize),
+  ) +
+  # geom_point(
+  #   data=subset(d$o, ptype %in% c('mid', 'end'), size=size.max/3),
+  #   shape=21L, fill=NA
+  # ) +
+  geom_point(data=d$errors, aes(size=val)) +
+  geom_point(data=d$o.m, shape=21L, fill=NA, size=18) +
+  facet_wrap(~frame) +
+  coord_cartesian(ylim=c(0,1), xlim=c(0,1)) +
+  scale_size(
+    limits=c(0, size.max), range=c(0,10), guide=FALSE
+  ) +
+  thm.blnk +
+  NULL
+p
+
+stop('done plot')
+ggsave(
+  filename=sprintf('~/Downloads/mesh-anim-5/img-%04d.png', k),
+  plot=p,
+  width=width/dpi, height=height/dpi, units='in', device='png',
+  dpi=dpi
+)
 }
 stop('done plot')
+
