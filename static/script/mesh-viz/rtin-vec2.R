@@ -185,7 +185,7 @@ compute_error3b <- function(map) {
   nr <- nrow(map)
   nc <- ncol(map)
   layers <- floor(min(log2(c(nr, nc) - 1L)))
-  errors <- array(0, dim=dim(map))
+  errors <- array(NA_real_, dim=dim(map))
 
   for(i in seq_len(layers)) {
     mult <- as.integer(2^i)
@@ -193,7 +193,9 @@ compute_error3b <- function(map) {
     tile.nc <- ((nc - 1L) %/% mult) * mult
 
     for(j in c('axis', 'diag')) {
-      o <- o.m <- o.a <- o.b <- err.ids <- NULL
+      o <- o.m <- o.a <- o.b <- err.val <- NA
+      err.ids <- NULL
+
       o.raw <- init_offsets(i, j, mult, layers)
       o.nr <- diff(range(o.raw[,1,]))
       o.nc <- diff(range(o.raw[,2,]))
@@ -209,16 +211,17 @@ compute_error3b <- function(map) {
 
       oid <- seq_len(o.dim[1L] * c.rep * r.rep)
       o.len <- length(oid)
-      o.m <- o[oid]
       o.a <- o[oid + o.len]
       o.b <- o[oid + 2L * o.len]
-
-      m.est <- (map[o.a] + map[o.b]) / 2
-      errors[o.m] <- abs(map[o.m] - m.est)
+      o.m <- o[oid]
 
       err.n <- o.dim[3L] - 2L
       err.ids <- err.vals <- vector('list', err.n)
       err.ids[[1L]] <- o.m
+
+      m.est <- (map[o.a] + map[o.b]) / 2
+      errors[o.m] <- abs(map[o.m] - m.est)
+
       for(k in seq_len(err.n - 1L) + 1L)
         err.ids[[k]] <- o[oid + o.len * (k + 1L)]
       for(k in seq_len(err.n))
