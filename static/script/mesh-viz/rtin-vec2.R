@@ -163,67 +163,64 @@ compute_error3 <- function(map) {
   errors
 }
 
-init_offsets <- function(i, j, mult, layers) {
+init_offsets <- function(i, j, n, layers) {
   axis <- j == 'axis'
   o.raw <- if(axis) offset.ax else offset.dg
   if(!axis && i == layers)
     o.raw <- o.raw[1L,,,drop=F]
   if(axis && i == 1L)
     o.raw <- o.raw[,,1:3,drop=F]
-  o.raw <- (o.raw * mult) %/% (if(axis) 4L else 2L)
-  o.raw
+
+  o.raw <- (o.raw * 2^i) %/% (if(axis) 4L else 2L)
+  array(o.raw[,1L,] + o.raw[,2L,] * (n + 1L) + 1L, dim(o.raw)[-2L])
 }
 
 # Version of compute_error3 clarified for watching purposes
 
 compute_error3b <- function(map) {
-  nr <- nrow(map)
-  nc <- ncol(map)
-  layers <- floor(min(log2(c(nr, nc) - 1L)))
+  n <- nrow(map) - 1
+  layers <- log2(n)
   errors <- array(NA_real_, dim=dim(map))
 
   for(i in seq_len(layers)) {
-    mult <- as.integer(2^i)
-    tile.nr <- ((nr - 1L) %/% mult) * mult
-    tile.nc <- ((nc - 1L) %/% mult) * mult
-
     for(j in c('axis', 'diag')) {
-      err.ids <- NULL
-      o <- o.m <- o.a <- o.b <- err.val <- NA
+      # Initialize template tile
+      large.tile <- j == 'diag' && i < layers
+      tile.n <- n / 2^(i + large.tile)
+      seq.r <- (seq_len(tile.n) - 1) * n / tile.n
+      o.raw <- init_offsets(i, j, n, layers)
+      err.n <- ncol(o.raw) - 2
 
-      o.raw <- init_offsets(i, j, mult, layers)
-      o.nr <- diff(range(o.raw[,1,]))
-      o.nc <- diff(range(o.raw[,2,]))
-      o.dim <- dim(o.raw)
-      err.n <- o.dim[3L] - 2L
+      # Tile surface with template
+      o <- o.raw
+      o <- rep(o, each=tile.n) + seq.r
+      o <- rep(o, each=tile.n) + seq.r * (n + 1)
 
-      c.rep <- tile.nc / o.nc
-      r.rep <- tile.nr / o.nr
-      o <- c(o.raw[,1L,] + o.raw[,2L,] * nr + 1L)
-      o <- rep_each(o, c.rep) +
-        (seq_len(c.rep) - 1L) * o.nr
-      o <- rep_each(o, r.rep) +
-        (seq_len(r.rep) - 1L) * nr * o.nc
+      # Select hypotenuse and its midpoint
+      o.i <- seq_len(nrow(o.raw) * tile.n^2)
+      o.len <- length(o.i)
+      o.a <- o[o.i]
+      o.b <- o[o.i + o.len]
+      o.m <- o[o.i + 2 * o.len]
 
-      oid <- seq_len(o.dim[1L] * c.rep * r.rep)
-      o.len <- length(oid)
-      o.a <- o[oid]
-      o.b <- o[oid + o.len]
-      o.m <- o[oid + 2 * o.len]
-
-      err.ids <- err.vals <- vector('list', err.n)
-      err.ids[[1L]] <- o.m
-
+      # Compute errors at midpoint
+      err.i <- err.vals <- vector('list', err.n)
+      err.i[[1L]] <- o.m
       m.est <- (map[o.a] + map[o.b]) / 2
       errors[o.m] <- abs(map[o.m] - m.est)
 
+      # Retrieve child errors
       for(k in seq_len(err.n)) {
-        err.ids[[k]] <- o[oid + o.len * (k + 1L)]
-        err.vals[[k]] <- errors[err.ids[[k]]]
+        err.i[[k]] <- o[o.i + o.len * (k + 1)]
+        err.vals[[k]] <- errors[err.i[[k]]]
       }
+      # Carry over child error
       err.val <- do.call(pmax, err.vals)
       err.ord <- order(err.val)
       errors[o.m[err.ord]] <- err.val[err.ord]
+
+      err.i <- NULL
+      o <- o.m <- o.a <- o.b <- err.val <- NA
   } }
   errors
 }
