@@ -364,8 +364,8 @@ different triangle orientations, split into two groups of four.  The groups
 alternate between approximation levels.  Here we show the orientations for the
 2nd and 3rd most granular levels of a 9 x 9 grid[^nine-nine].  The triangles
 are colored by orientation.  For reasons that will become clearer later we call
-the group with diagonal hypotenuses "Square", and the one with
-vertical/horizontal ones "Diamond":<span id='sqr-vs-dia'></span>
+the group with diagonal hypotenuses "Diagonal", and the one with
+vertical/horizontal ones "Axis":<span id='sqr-vs-dia'></span>
 
 ```{r echo=FALSE}
 source('../../static/script/_lib/plot.R')
@@ -382,10 +382,10 @@ tri.sq <- extract_mesh2(err, 1, 3)
 tris <- tris_to_df(list(tri.sq, tri.di), err)
 tris[['type']] <- factor(
   c(
-    rep('Square', length(unlist(tri.sq))),
-    rep('Diamond', length(unlist(tri.di)))
+    rep('Diagonal', length(unlist(tri.sq))),
+    rep('Axis', length(unlist(tri.di)))
   ),
-  levels=c('Square', 'Diamond')
+  levels=c('Diagonal', 'Axis')
 )
 points <- tris_to_df(seq_along(err), err)
 p <- ggplot(tris) +
@@ -403,13 +403,13 @@ p
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-The "Square" triangulation, the one with vertical and horizontal hypotenuses,
+The "Diagonal" triangulation, the one with vertical and horizontal hypotenuses,
 has just one tiling pattern.  A particular triangle "shape" (a specific color in
 the plot above) must always be arranged in the same way relative to the other
 shapes that share the vertex opposite their hypotenuses.  Any other arrangement
 would prevent us from fully tiling the grid without breaking up triangles.
 
-On the other hand the "Diamond" triangulation, the one with the diagonal
+On the other hand the "Axis" triangulation, the one with the diagonal
 hypotenuses, has multiple possible tilings:
 
 ```{r echo=FALSE}
@@ -424,13 +424,13 @@ f2 <- rep(rawc1, 4) + rep(0:3 * 18, each=length(rawc1))
 # f3 <- c(matrix(seq_along(err), nrow(err), byrow=TRUE))[f2]
 f3 <- rep(rawc3, 4) + rep(0:3 * 18, each=length(rawc3))
 tris.f1 <- tris_to_df(f1, err)
-nms <- sprintf( "Faux Square %d", 1:3)
+nms <- sprintf( "Faux Diagonal %d", 1:3)
 tris.f1[['type']] <- nms[1]
 tris.f2 <- tris_to_df(f2, err)
 tris.f2[['type']] <- nms[2]
 tris.f3 <- tris_to_df(f3, err)
 tris.f3[['type']] <- nms[3]
-tris.f <- rbind(subset(tris, type=='Square'), tris.f1, tris.f2, tris.f3)
+tris.f <- rbind(subset(tris, type=='Diagonal'), tris.f1, tris.f2, tris.f3)
 tris.f[['type']] <- factor(tris.f[['type']], levels=unique(tris.f[['type']]))
 
 p <- ggplot(tris.f) +
@@ -448,9 +448,9 @@ p
 ```
 
 We show just three alternate tilings, although there are `$2^{16}$`.  All of
-them perfectly cover the grid with equal sized triangles.  "Faux Square 1" is
+them perfectly cover the grid with equal sized triangles.  "Faux Diagonal 1" is
 even a pretty convincing replica.  Unfortunately only one of them fits exactly
-into the next level of coarseness, "Diamond" [shown previously](#sqr-vs-dia),
+into the next level of coarseness, "Axis" [shown previously](#sqr-vs-dia),
 seen here in a green outline:
 
 ```{r fake-diamonds-outline, echo=FALSE}
@@ -462,7 +462,7 @@ bad.2[['type']] <- factor(nms[2], levels=levels(tris.f[['type']]))
 bad.3[['type']] <- factor(nms[3], levels=levels(tris.f[['type']]))
 
 p + geom_polygon(
-  data=subset(tris, type=='Diamond', -type),
+  data=subset(tris, type=='Axis', -type),
   aes(x, y, group=id), fill=NA, color='green'
 ) + geom_point(
   data=rbind(bad.1, bad.2, bad.3), aes(x, y),
@@ -471,7 +471,7 @@ p + geom_polygon(
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-It is only with "Square" that every edge of the parent approximation level
+It is only with "Diagonal" that every edge of the parent approximation level
 completely overlaps with edges of the child.  Every other arrangement has at
 least one parent edge crossing a hypotenuse of a child triangle.  These
 crossings are what the blue circles highlight.  Ironically, the best looking
@@ -519,29 +519,31 @@ errors.  One nice benefit of the tessellating pattern is that if we define the
 parent-child relationship for the simple tile, we can copy that relationship
 along with the rest of the tile.  In fact, we don't actually care about the
 triangles.  What we actually want are the hypotenuses (black), their midpoints
-(lavender), and the corresponding child hypotenuse midpoints (orange):
+(<span style='background-color: #8da0cb'>lavender</span>) and endpoints(hollow <span
+style='background-color: #66c2a5'>green</span> ), and the corresponding child
+hypotenuse midpoints (<span style='background-color: #fc8d62'>orange</span>).
+The parent/child relation is shown with the arrows:
 
 ```{r echo=FALSE}
 p.dg <- ids_to_df(c(offset.dg[,1,] * 9 + offset.dg[,2,] + 1), matrix(0,9,9))
 p.ax <- ids_to_df(c(offset.ax[,1,] * 9 + offset.ax[,2,] + 1), matrix(0,9,9))
-p.dg[['type']] <- 'Square'
+p.dg[['type']] <- factor('Diagonal', levels=c('Diagonal', 'Axis'))
 p.dg[['ptype']] <- 'child'
-p.dg[1:4, 'ptype'] <- 'mid'
-p.dg[5:12, 'ptype'] <- 'ends'
-p.ax[['type']] <- 'Diamond'
+p.dg[8:12, 'ptype'] <- 'mid'
+p.dg[1:8, 'ptype'] <- 'ends'
+p.ax[['type']] <- factor('Axis', levels=c('Diagonal', 'Axis'))
 p.ax[['ptype']] <- 'child'
-p.ax[1:4, 'ptype'] <- 'mid'
-p.ax[5:12, 'ptype'] <- 'ends'
+p.ax[9:12, 'ptype'] <- 'mid'
+p.ax[1:8, 'ptype'] <- 'ends'
 p.all <- rbind(p.dg, p.ax)
 p.all[['grp']] <- (seq_len(nrow(p.all)) - 1L) %% 4L
 
 to_arrows <- function(grp) {
-  ends <- grp[2,,drop=FALSE]
-  ends.b <- grp[3,,drop=FALSE]
-  mid <- grp[1L,,drop=FALSE]
-  child <- grp[-(1:3),,drop=FALSE]
+  ends <- grp[1,,drop=FALSE]
+  ends.b <- grp[2,,drop=FALSE]
+  mid <- grp[3L,,drop=FALSE]
 
-  child <- grp[-1L,]
+  child <- grp[-3L,]
   child[['xend']] <- mid[, 'x']
   child[['yend']] <- mid[, 'y']
   x.diff <- child[['xend']] - child[['x']]
@@ -566,7 +568,7 @@ p.arr <-
 
 p2 <- ggplot(tris2) +
   geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='grey50') +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
   geom_segment(
     data=subset(p.arr, ptype=='child'),
     arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
@@ -579,12 +581,12 @@ p2 <- ggplot(tris2) +
   ) +
   geom_point(
     data=subset(p.all, ptype=='mid'),
-    aes(x, y, colour=I('grey35'), fill=I('#8da0cb')),
-    shape=21, size=3
+    aes(x, y, colour=I('#8da0cb')),
+    size=3
   ) +
   geom_point(
     data=subset(p.all, ptype=='ends'),
-    aes(x, y, colour=I('grey35'), fill=NA),
+    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
     shape=21, size=2
   ) +
   geom_point(
@@ -595,7 +597,7 @@ p2 <- ggplot(tris2) +
   coord_fixed() +
   thm.blnk
 
-pdim <- gtable_dim(ggplotGrob(p))
+pdim <- gtable_dim(ggplotGrob(p2))
 old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
 do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
 ```
@@ -604,50 +606,31 @@ p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-Let's look at this in action with the next grid size, 17 x 17:
+Let's look at this in action with the next grid size up for effect.  As we did
+in our [earlier visualization](#mesh-anim) we'll track the coordinates in the
+left panel side (both "Diagonal" and "Axis", alternating), and the computed mesh
+approximation errors in the right hand panel:
 
-<!--
-Add Child -> Parent arrows.
+<video id=mesh-anim-vec style='display: block; margin: 0 auto;' controls loop>
+<source
+  src='/post/2019-08-23-mesh-reduction-1_files/images/out-vec.mp4'
+  type="video/mp4"
+/>
+</video>
 
-One question: do we add them to all of them alphaed out?  We presumably also
-want to show the children and parents in different colors.
+Indeed we can see that for each "layer", we start with a repeatable template
+sized to the layer.  We then fill a column with it, then the rest of the
+surface, and finally we compute errors.  Here is the same thing as a flipbook
+with code so we can see how it's actually done.  We'll focus on the second set
+of layers:
 
-W
--->
+<div id='flipbook-vec'></div>
 
-
-
-solving this problem, but I chose to
-focus on the midpoint of the hypotenuses directly rather than on the triangles
-proper.  They lie in patterns we can extrapolate without the need to track all
-the vertices, and we can compute the position of the child hypotenuses as
-relative offsets.  We show the target points in our original "Diamond/Square"
-layers:
-
-```{r diamond-square-hypotenuses}
-h.di <- c()
-```
-
-This simplifies the problem
-a little as then we just need to compute the absolute position of a single point
-per set of four triangles:
-
-<!--
-A square and a diamond, showing the triangles, and showing the centerpoint of
-the hypotenuse in red
--->
-
-We can then use offsets relative to those absolute coordinates to get the child
-errors to carry over:
-
-<!--
-As above, but adding arrows for errors
--->
 
 They key is to figure out the pattern of offsets that gives us the correct set
-of absolute coordinates.  The "square" triangles are pretty straightforward as
-they have a regular pattern.  The "diamond" triangles are more challenging as
-their tiling to offsets from "row" to "row" and "column" to "column":
+of absolute coordinates.  The "Diagonal" triangles are pretty straightforward as
+they have a regular pattern.  The "Axis" triangles are more challenging as their
+tiling to offsets from "row" to "row" and "column" to "column":
 
 <!--
 Show the midpoints in a 5x5 or 7x7 grid, side by side for each type of point.
@@ -790,6 +773,11 @@ new BgFlipBook({
 })
 new BgFlipBook({
   targetId: 'flipbook2', imgDir:imgDir, imgStart: 803, imgEnd: 844,
+  imgPad: "0000", fps: fps, loop: false
+})
+new BgFlipBook({
+  targetId: 'flipbook-vec', imgDir:imgDir + '../flipbook-vec/',
+  imgStart: 65, imgEnd: 0119,
   imgPad: "0000", fps: fps, loop: false
 })
 </script>
