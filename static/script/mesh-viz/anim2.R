@@ -7,10 +7,11 @@ library(watcher)
 library(reshape2)
 vars <- c(
   'o', 'o.m', 'o.a', 'o.b',  'o.dim', 'errors', 'err.ids', 'c.rep','r.rep',
-  'j'
+  'j', 'child.n'
 )
 errors_watched <- watch(compute_error3b, vars)
-m <- map[1:5, 1:5]
+m <- map[1:9, 1:9]
+m <- map[1:17, 1:17]
 xx <- errors_watched(m)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 size.max <- max(xx, na.rm=TRUE)
@@ -90,7 +91,7 @@ o <- transform(
 )
 id.scalar <- match(o$.id, zz.vec$.id)
 o <- transform(o, j=zz.vec[id.scalar, 'j'], n=ave(.id, .id, FUN=length))
-o <- transform(o, reps=n / child.n)
+o <- transform(o, reps=n / (zz.vec$child.n[id.scalar] + 3L))
 o <- transform(o, i=ave(.id, .id, FUN=seq_along))
 ptypes <- c('mid', rep('end', 2), rep('child', 5))
 pcolors <- c('#8da0cb', '#66c2a5', '#66c2a5', rep('#fc8d62', 5))
@@ -153,11 +154,21 @@ data <- list(
   o=o, errors=errors, o.m=o.m,
   o.p=o.p, o.ab=o.ab, err.cir=err.cir, err.arrows=err.arrows
 )
+# sizes for 9 x 9 / 5 x 5
 
+range.max <- 10
+circle.max <- 18
+arrow.size <- unit(0.25, 'inches')
+
+# sizes for 17 x 17
+
+range.max <- 6
+circle.max <- 8
+arrow.size <- unit(0.09, 'inches')
 
 frames <- seq(10, nrow(zz.vec))
 library(ggplot2)
-k <- 16
+k <- 56
 for(k in frames) {
 cat(sprintf("\rFrame %04d", k))
 d <- lapply(data, function(x) subset(x, .id == k))
@@ -166,25 +177,21 @@ p <- ggplot(mapping=aes(x, y)) +
   geom_segment(data=d$o.ab, aes(xend=xend, yend=yend)) +
   geom_segment(
     data=d$err.arrows, aes(xend=xend, yend=yend),
-    arrow=arrow(type='closed'), color='grey65'
+    arrow=arrow(type='closed', length=arrow.size), color='grey65'
   ) +
   geom_point(
     data=d$o, aes(color=I(pcolor), size=psize),
   ) +
-  # geom_point(
-  #   data=subset(d$o, ptype %in% c('mid', 'end'), size=size.max/3),
-  #   shape=21L, fill=NA
-  # ) +
   geom_point(data=d$errors, aes(size=val)) +
-  geom_point(data=d$o.m, shape=21L, fill=NA, size=18) +
+  geom_point(data=d$o.m, shape=21L, fill=NA, size=circle.max) +
   facet_wrap(~frame) +
   coord_cartesian(ylim=c(0,1), xlim=c(0,1)) +
   scale_size(
-    limits=c(0, size.max), range=c(0,10), guide=FALSE
+    limits=c(0, size.max), range=c(0,range.max), guide=FALSE
   ) +
   thm.blnk +
   NULL
-# p
+p
 # stop('pause')
 ggsave(
   filename=sprintf('~/Downloads/mesh-anim-5/img-%04d.png', k),
