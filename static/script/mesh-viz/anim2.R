@@ -2,9 +2,13 @@ source('static/script/mesh-viz/rtin-vec2.R')
 source('static/script/mesh-viz/rtin-vec.R')
 source('static/script/mesh-viz/extract-vec.R')
 source('static/script/mesh-viz/viz-lib.R')
+source('static/script/_lib/plot.R')
 
+library(grid)
+library(ggplot2)
 library(watcher)
 library(reshape2)
+library(gtable)
 vars <- c(
   'o', 'o.m', 'o.a', 'o.b',  'o.dim', 'errors', 'err.i',
   'j', 'i', 'err.n', 'tile.n'
@@ -75,11 +79,6 @@ code.fin <- transform(do.call(rbind, code.rez), frame='Coords')
 # Urgh, we're probably not going to do this with the faster version.
 
 
-dpi <- 72
-width <- 600
-height <- width
-# dev.new(width=width/dpi, height=height/dpi)
-
 errors <- transform(
   zz.raw$errors, x=(x - 1) / (ncol(m) - 1), y=(y - 1) / (nrow(m) - 1),
   frame='Errors', stringsAsFactors=FALSE
@@ -98,12 +97,15 @@ o <- transform(o, reps=n / ((zz.vec$err.n[id.scalar]) + 2L))
 o <- transform(o, i=ave(.id, .id, FUN=seq_along))
 ptypes <- c(rep('end', 2), 'mid', rep('child', 5))
 pcolors <- c(rep('#66c2a5', 2), '#8da0cb', rep('#fc8d62', 5))
-psizes <- c(rep(1/3, 3L), rep(1/10, 5)) * size.max
+pfills <- pcolors
+pfills[ptypes == 'end'] <- 'grey90'
+psizes <- c(rep(1/6, 2L), 1/3, rep(1/10, 5)) * size.max
 o <- transform(
   o,
   ptype=ptypes[(i - 1) %/% reps + 1],
   pcolor=pcolors[(i - 1) %/% reps + 1],
-  psize=psizes[(i - 1) %/% reps + 1]
+  psize=psizes[(i - 1) %/% reps + 1],
+  pfill=pfills[(i - 1) %/% reps + 1]
 )
 
 # Boundary around colored points + hypotenuse
@@ -125,15 +127,6 @@ o.a <- transform(o.a, i=ave(.id, .id, FUN=seq_along))
 o.b <- transform(o.b, i=ave(.id, .id, FUN=seq_along))
 o.ab <- merge(o.a, o.b, by=c('.id', 'i'), all=TRUE)
 o.ab[['frame']] <- 'Coords'
-
-# Error circle / mappings
-
-# err.i <- lapply(zz.raw$err.i, unlist)
-# ids.len <- lengths(err.i)
-# err.cir <- cbind(
-#   data.frame(.id=rep(zz.vec$.id, ids.len)),
-#   ids_to_df(unlist(err.i), m)
-# )
 o.m <- cbind(zz.raw$o.m, ids_to_df(zz.raw$o.m$val, m))
 # arrows
 
@@ -151,17 +144,19 @@ err.arrows <- with(err.arrows,
     .id, ids_to_df(start, m),
     setNames(ids_to_df(end, m), c('xend','yend','zend'))
 ) )
-arrow.mult <- log2(nrow(m) - 1) * 16
+err.arrows <-
+  transform(err.arrows, diag=ifelse(xend - x & yend - y, sqrt(2), 1))
+arrow.mult <- log2(nrow(m) - 1) * 13
 err.arrows <- transform(
   err.arrows,
-  xend=xend - sign(xend - x) * 1 / arrow.mult,
-  yend=yend - sign(yend - y) * 1 / arrow.mult
+  xend=xend - sign(xend - x) * 1 / (arrow.mult * diag),
+  yend=yend - sign(yend - y) * 1 / (arrow.mult * diag)
 )
 # compile plot data for use
 
 data <- list(
   o=o, errors=errors, o.m=o.m,
-  o.p=o.p, o.ab=o.ab, err.cir=err.cir, err.arrows=err.arrows,
+  o.p=o.p, o.ab=o.ab, err.arrows=err.arrows,
   code=code.fin
 )
 data <- lapply(
@@ -185,29 +180,37 @@ arrow.size <- unit(0.08, 'inches')
 
 # text adjustments
 
-y.shift <- 1.25
+y.shift <- 0.2
 y.mult <- 2.5
 x.shift <- 1.40
+
+dpi <- 72
+width <- 600
+# height <- width
+height <- width / 7 * 4.037974
+# dev.new(width=width/dpi, height=height/dpi)
+
 
 thm.blnk <- list(
   theme(
     axis.text.x=element_blank(), axis.text.y=element_blank(),
     axis.ticks.x=element_blank(), axis.ticks.y=element_blank(),
-    plot.margin=unit(c(.1, 0, .1, (height/2)/dpi + 0.1), "inches"),
+    # plot.margin=unit(c(.1, 0, .1, (height/2)/dpi + 0.1), "inches"),
     panel.grid=element_blank()
   ),
   ylab(NULL),
   xlab(NULL)
 )
-
+bg.point <- ids_to_df(seq_along(m), m)
 frames <- seq_len(nrow(zz.vec))
 library(ggplot2)
-k <- 52
-# for(k in frames) {
+k <- 82
+for(k in frames) {
 cat(sprintf("\rFrame %04d", k))
 d <- lapply(data, function(x) subset(x, .id == k))
 
 p <- ggplot(mapping=aes(x, y)) +
+  geom_point(data=bg.point, color='white', size=.5, shape=3) +
   geom_point(
     data=data.frame(
       x=0, y=0,
@@ -215,38 +218,39 @@ p <- ggplot(mapping=aes(x, y)) +
     ), alpha=0
   ) +
   geom_segment(data=d$o.ab, aes(xend=xend, yend=yend)) +
+  geom_point(data=d$o.m, shape=21L, fill=NA, size=circle.max) +
   geom_segment(
     data=d$err.arrows, aes(xend=xend, yend=yend),
     arrow=arrow(type='closed', length=arrow.size), color='grey65'
   ) +
   geom_point(
-    data=d$o, aes(color=I(pcolor), size=psize),
+    data=d$o, aes(color=I(pcolor), fill=I(pfill), size=psize), shape=21
   ) +
   geom_point(data=d$errors, aes(size=val)) +
-  geom_point(data=d$o.m, shape=21L, fill=NA, size=circle.max) +
   scale_size(
     limits=c(0, size.max), range=c(0,range.max), guide=FALSE
   ) +
-  geom_label(
-    data=subset(d$code, highlight=='white'),
-    aes(
-      x=-x.shift,
-      y=y/cwindow*y.mult + y.shift, label=code
-    ),
-    hjust=0, family='mono', color=NA, fill='grey20',
-    label.padding = unit(0.15, "lines"),
-  ) +
-  geom_text(
-    data=d$code,
-    aes(
-      x=-x.shift,
-      y=y/cwindow*y.mult + y.shift, label=code
-   ),
-    hjust=0, family='mono', color=d$code$highlight
-  ) +
+  # geom_label(
+  #   data=subset(d$code, highlight=='white'),
+  #   aes(
+  #     x=-x.shift,
+  #     y=y/cwindow*y.mult + y.shift, label=code
+  #   ),
+  #   hjust=0, family='mono', color=NA, fill='grey20',
+  #   label.padding = unit(0.15, "lines"),
+  # ) +
+  # geom_text(
+  #   data=d$code,
+  #   aes(
+  #     x=-x.shift,
+  #     y=y/cwindow*y.mult + y.shift, label=code
+  #  ),
+  #   hjust=0, family='mono', color=d$code$highlight
+  # ) +
   coord_fixed(ylim=c(0,1), xlim=c(0,1), clip="off") +
   thm.blnk +
-  facet_wrap(~frame, ncol=1) +
+  facet_wrap(~frame) +
+  # facet_wrap(~frame, ncol=1) +
   ggtitle(
     sprintf(
       paste0(
@@ -259,8 +263,9 @@ p <- ggplot(mapping=aes(x, y)) +
   NULL
 p
 # stop('pause')
+# pdim <- gtable_dim(ggplotGrob(p))
 ggsave(
-  filename=sprintf('~/Downloads/mesh-anim-5/img-%04d.png', k),
+  filename=sprintf('~/Downloads/mesh-anim-5a/img-%04d.png', k),
   plot=p,
   width=width/dpi, height=height/dpi, units='in', device='png',
   dpi=dpi
