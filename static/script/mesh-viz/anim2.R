@@ -89,19 +89,17 @@ o <- transform(
   id=zz.raw$o$val, stringsAsFactors=FALSE
 )
 id.scalar <- match(o$.id, zz.vec$.id)
-o <- transform(
-  o, els=with(zz.vec[id.scalar,], c.rep * r.rep * ifelse(j == 'diag', 4L, 1L)),
-  j=zz.vec[id.scalar, 'j']
-)
+o <- transform(o, j=zz.vec[id.scalar, 'j'], n=ave(.id, .id, FUN=length))
+o <- transform(o, reps=n / child.n)
 o <- transform(o, i=ave(.id, .id, FUN=seq_along))
 ptypes <- c('mid', rep('end', 2), rep('child', 5))
 pcolors <- c('#8da0cb', '#66c2a5', '#66c2a5', rep('#fc8d62', 5))
 psizes <- c(rep(1/3, 3L), rep(1/10, 5)) * size.max
 o <- transform(
   o,
-  ptype=ptypes[(i - 1) %/% els + 1],
-  pcolor=pcolors[(i - 1) %/% els + 1], 
-  psize=psizes[(i - 1) %/% els + 1]
+  ptype=ptypes[(i - 1) %/% reps + 1],
+  pcolor=pcolors[(i - 1) %/% reps + 1],
+  psize=psizes[(i - 1) %/% reps + 1]
 )
 
 # Boundary around colored points + hypotenuse
@@ -147,8 +145,7 @@ err.arrows <- do.call(rbind,
 err.arrows <- with(err.arrows,
   cbind(
     .id, ids_to_df(start, m),
-    setNames(ids_to_df(end, m), c('xend','yend','zend')),
-    frame='Errors'
+    setNames(ids_to_df(end, m), c('xend','yend','zend'))
 ) )
 # compile plot data for use
 
@@ -158,10 +155,10 @@ data <- list(
 )
 
 
-frames <- 15:50
+frames <- seq(10, nrow(zz.vec))
 library(ggplot2)
-# for(k in frames) {
-k <- 60
+k <- 16
+for(k in frames) {
 cat(sprintf("\rFrame %04d", k))
 d <- lapply(data, function(x) subset(x, .id == k))
 
@@ -187,9 +184,8 @@ p <- ggplot(mapping=aes(x, y)) +
   ) +
   thm.blnk +
   NULL
-p
-
-stop('done plot')
+# p
+# stop('pause')
 ggsave(
   filename=sprintf('~/Downloads/mesh-anim-5/img-%04d.png', k),
   plot=p,
