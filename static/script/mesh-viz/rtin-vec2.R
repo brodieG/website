@@ -7,16 +7,16 @@
 #   facet_wrap(~type)
 
 
-# Offsets are: h midpoint, parenta, parentb, children with variable number of
+# Offsets are: parenta, parentb, h midpoint, children with variable number of
 # children supported
 
 offset.dg <- aperm(
   array(
     c(
-      1L,1L, 0L,0L, 2L,2L, 1L,2L, 0L,1L, 1L,0L, 2L,1L,
-      3L,1L, 4L,0L, 2L,2L, 3L,2L, 4L,1L, 2L,1L, 3L,0L,
-      1L,3L, 2L,2L, 0L,4L, 1L,4L, 2L,3L, 0L,3L, 1L,2L,
-      3L,3L, 2L,2L, 4L,4L, 3L,4L, 2L,3L, 3L,2L, 4L,3L
+      0L,0L, 2L,2L, 1L,1L, 1L,2L, 0L,1L, 1L,0L, 2L,1L,
+      4L,0L, 2L,2L, 3L,1L, 3L,2L, 4L,1L, 2L,1L, 3L,0L,
+      2L,2L, 0L,4L, 1L,3L, 1L,4L, 2L,3L, 0L,3L, 1L,2L,
+      2L,2L, 4L,4L, 3L,3L, 3L,4L, 2L,3L, 3L,2L, 4L,3L
     ),
     dim=c(2L, 7L, 4L)
   ),
@@ -27,10 +27,10 @@ offset.dg <- aperm(
 offset.ax <- aperm(
   array(
     c(
-      2L,0L, 0L,0L, 4L,0L, 3L,1L, 1L,1L,
-      4L,2L, 4L,0L, 4L,4L, 3L,3L, 3L,1L,
-      2L,4L, 4L,4L, 0L,4L, 1L,3L, 3L,3L,
-      0L,2L, 0L,4L, 0L,0L, 1L,1L, 1L,3L
+      0L,0L, 4L,0L, 2L,0L, 3L,1L, 1L,1L,
+      4L,0L, 4L,4L, 4L,2L, 3L,3L, 3L,1L,
+      4L,4L, 0L,4L, 2L,4L, 1L,3L, 3L,3L,
+      0L,4L, 0L,0L, 0L,2L, 1L,1L, 1L,3L
     ),
     dim=c(2L, 5L, 4L)
   ),
@@ -84,12 +84,7 @@ compute_os2 <- function(o, nr, ctimes, rtimes, onr, onc) {
 # * highly repetitive data for square case
 # * Need to sort
 #
-# Note one possible trick for getting rid of the sort is to split the data into
-# the bottom left triangles, and then the top right triangles.  These two sets
-# are guaranteed not to overlap, so we can apply them sequentially and ensure we
-# get the correct max.  Transforming bottom left to top rigth should be as
-# simple as (prod(dim(map)) + 1L) - id (not 100% , but feels like this should be
-# equivalent to axis symmetry on matrix).
+# Currently this is not working with new order of offsets. 
 #
 # Ticks: 3736; Iterations: 162; Time Per: 34.21 milliseconds; Time Total: 5.542 seconds; Time Ticks: 3.736
 # 
@@ -200,7 +195,7 @@ compute_error3b <- function(map) {
       o.nr <- diff(range(o.raw[,1,]))
       o.nc <- diff(range(o.raw[,2,]))
       o.dim <- dim(o.raw)
-      child.n <- o.dim[3L] - 3L
+      err.n <- o.dim[3L] - 2L
 
       c.rep <- tile.nc / o.nc
       r.rep <- tile.nr / o.nr
@@ -212,22 +207,20 @@ compute_error3b <- function(map) {
 
       oid <- seq_len(o.dim[1L] * c.rep * r.rep)
       o.len <- length(oid)
-      o.a <- o[oid + o.len]
-      o.b <- o[oid + 2L * o.len]
-      o.m <- o[oid]
+      o.a <- o[oid]
+      o.b <- o[oid + o.len]
+      o.m <- o[oid + 2 * o.len]
 
-      err.ids <- err.vals <-
-        vector('list', child.n + 1L)
+      err.ids <- err.vals <- vector('list', err.n)
       err.ids[[1L]] <- o.m
 
       m.est <- (map[o.a] + map[o.b]) / 2
       errors[o.m] <- abs(map[o.m] - m.est)
 
-      for(k in seq_len(child.n) + 1L)
+      for(k in seq_len(err.n)) {
         err.ids[[k]] <- o[oid + o.len * (k + 1L)]
-      for(k in seq_len(child.n + 1L))
         err.vals[[k]] <- errors[err.ids[[k]]]
-
+      }
       err.val <- do.call(pmax, err.vals)
       err.ord <- order(err.val)
       errors[o.m[err.ord]] <- err.val[err.ord]
