@@ -187,34 +187,33 @@ compute_error3b <- function(map) {
       # Initialize template tile
       large.tile <- j == 'diag' && i < layers
       tile.n <- n / 2^(i + large.tile)
-      seq.r <- (seq_len(tile.n) - 1) * n / tile.n
-      o.raw <- init_offsets(i, j, n, layers)
-      err.n <- ncol(o.raw) - 2
+      o <- init_offsets(i, j, n, layers)
+      o.dim <- dim(o)
 
-      # Tile surface with template
-      o <- o.raw
+      # Tile rest of surface using template
+      seq.r <- (seq_len(tile.n) - 1) * n / tile.n
       o <- rep(o, each=tile.n) + seq.r
       o <- rep(o, each=tile.n) + seq.r * (n + 1)
 
-      # Select hypotenuse and its midpoint
-      o.i <- seq_len(nrow(o.raw) * tile.n^2)
+      # Identify hypotenuse and its midpoint
+      o.i <- seq_len(o.dim[1] * tile.n^2)
       o.len <- length(o.i)
-      o.a <- o[o.i]
-      o.b <- o[o.i + o.len]
       o.m <- o[o.i + 2 * o.len]
+      o.b <- o[o.i + o.len]
+      o.a <- o[o.i]
 
-      # Compute errors at midpoint
-      err.i <- err.vals <- vector('list', err.n)
-      err.i[[1L]] <- o.m
+      # Compute estimate and error at midpoint
       m.est <- (map[o.a] + map[o.b]) / 2
       errors[o.m] <- abs(map[o.m] - m.est)
 
       # Retrieve child errors
+      err.n <- o.dim[2] - 2
+      err.i <- err.vals <- vector('list', err.n)
       for(k in seq_len(err.n)) {
         err.i[[k]] <- o[o.i + o.len * (k + 1)]
         err.vals[[k]] <- errors[err.i[[k]]]
       }
-      # Carry over child error
+      # Carry over child errors
       err.val <- do.call(pmax, err.vals)
       err.ord <- order(err.val)
       errors[o.m[err.ord]] <- err.val[err.ord]
