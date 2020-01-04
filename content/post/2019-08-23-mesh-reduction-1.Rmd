@@ -647,7 +647,7 @@ init_offsets <- function(i, j, n, layers) {
 
 `offset.ax` and `offset.dg` contain x/y coordinates for each of the points in
 the template tile.  `init_offsets` scales those to the appropriate size for the
-layer and collapses them to "linearized" coordinates:
+layer and collapses them to "linearized" coordinates<span id=linearized></span>:
 
 <!-- really shouldn't be doing these inline styles... -->
 <style>
@@ -713,7 +713,7 @@ and children are also preserved.
 
 # Loopy Vectorization?
 
-Hold on a sec, weren't we going to vectorize the $#!t out of this?  What about
+Hold on a sec, weren't we going to vectorize the $#!+ out of this?  What about
 all those for loops?  They are nested three levels deep!  A veritable viper's
 nest of looping control structures.  Did we just turn ourselves around and end
 up with more loops than we started with?  Strictly speaking we did, but what
@@ -740,13 +740,13 @@ ggplot(dat) +
   scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
 ```
 
-Alright, now we're in business.  We're beating neither C nor JavaScript, but
+Now we're in business.  We're beating neither C nor JavaScript, but
 we're in the same conversation, and there is room to do better.  This
 initial vectorized implementation is geared for clarity over speed.  There are
-some simple changes we can make to double the speed, but we have even grander aspirations.
+some simple changes that will double the speed[^double-speed], but we have even
+grander aspirations.
 
-Before we move on though, a quick recap of some vectorization concepts we
-applied here:
+Before we move on, a quick recap of some vectorization concepts we applied here:
 
 1. Identify repeating / parallelizable patterns.
 2. Structure the data in such a way that the repeating patterns can be processed
@@ -754,15 +754,15 @@ applied here:
 3. Allow R-level loops so long as the number of their iterations is small
    relative to those carried out in internally vectorized code.
 
-To achieve bullet two we resorted to carefully structured seed data, and
-repeated it explicitly and implicitly with vector recycling.  We did this both
-for the actual data, as well as for the indices we used to subset the data for
-use in the vectorized operations.
+To achieve 2. we resorted to carefully structured seed data, and
+repeated it either explicitly or implicitly with vector recycling.  We did this
+both for the actual data, as well as for the indices we used to subset the data
+for use in the vectorized operations.
 
-# Indulging in Follies Of Unnecessary Optimization
+# Follies in Optimization
 
 If you've read any of my previous blog posts you probably realize by now that I
-have a bit of a thing &lt;cough&gt;unhealthy obsession&lt;cough&gt; for making
+have a bit of a thing &lt;cough&gt;unhealthy obsession&lt;/cough&gt; for making
 my R code run fast.  I wouldn't put what's coming next into the "premature
 optimization is the root of all evil" category, but rational people will
 justifiable question why anyone would spend as much time as I have trying to
@@ -786,17 +786,19 @@ You'll notice a seemingly odd `order` call.  This is necessary because for the
 single tile and then with the tile repeated to fill a column:
 
 ```{r echo=FALSE}
-p.ax1 <- p.ax
-p.ax2 <- rbind(p.ax1, transform(p.ax1, y=y + .5))
+p.ax1 <- transform(p.ax, sgrp=1)
+p.ax2 <- rbind(transform(p.ax1, sgrp=2), transform(p.ax1, y=y + .5, sgrp=3))
+ax.lvl <- c('Axis Single', 'Axis Column')
 
-p.ax1[['type']] <- factor('Axis Single', levels=c('Axis Single', 'Axis Column')) 
-p.ax2[['type']] <- factor('Axis Column', levels=c('Axis Single', 'Axis Column')) 
+p.ax1[['type']] <- factor('Axis Single', levels=ax.lvl)
+p.ax2[['type']] <- factor('Axis Column', levels=ax.lvl)
 
-p.all <- rbind(p.ax1, p.ax2)
-p.all[['grp']] <- (seq_len(nrow(p.all)) - 1L) %% 4L
+p.all2 <- rbind(p.ax1, p.ax2)
+p.all2[['grp']] <- (seq_len(nrow(p.all2)) - 1L) %% 4L
 
-p.arr <-
-  do.call(rbind, lapply(split(p.all, p.all[c('type', 'grp')]), to_arrows))
+p.arr <- do.call(
+  rbind, lapply(split(p.all2, p.all2[c('grp', 'sgrp')]), to_arrows)
+)
 
 tris3 <- subset(tris2, type == 'Axis')
 tris3[['type']] <- NULL
@@ -804,6 +806,13 @@ tris3[['type']] <- NULL
 p2 <- ggplot(tris3) +
   geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
   geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
+  geom_point(
+    data=data.frame(
+      x=.25, y=.5,
+      type=factor('Axis Column', levels=ax.lvl)
+    ), aes(x=x, y=y),
+    color='green', size=10
+  ) +
   geom_segment(
     data=subset(p.arr, ptype=='child'),
     arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
@@ -815,17 +824,17 @@ p2 <- ggplot(tris3) +
     aes(x, y, xend=xend, yend=yend)
   ) +
   geom_point(
-    data=subset(p.all, ptype=='mid'),
+    data=subset(p.all2, ptype=='mid'),
     aes(x, y, colour=I('#8da0cb')),
     size=3
   ) +
   geom_point(
-    data=subset(p.all, ptype=='ends'),
+    data=subset(p.all2, ptype=='ends'),
     aes(x, y, colour=I('#66c2a5'), fill='grey90'),
     shape=21, size=2
   ) +
   geom_point(
-    data=subset(p.all, ptype=='child'),
+    data=subset(p.all2, ptype=='child'),
     aes(x, y, colour=I('#fc8d62'))
   ) +
   facet_wrap(~type) +
@@ -841,18 +850,142 @@ p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
+<span id='vec-inefficiency'></span>
+The midpoint highlighted in green is at the overlap of two tiles.  There are two
+not-so-great things about this.  The first is that the midpoint estimate and
+errors get computed twice, once for each tile.  The second is that we are
+carrying over errors from children in different tiles, which is what requires us
+to order `err.val` prior to final insertion into the error matrix.  If we didn't
+we risk a lesser error from one tile overwriting a larger error from another.
+This issue afflicts all the non-peripheral midpoints in the "Axis" tile
+arrangement[^not-diag].
 
-<!-- compare to iterations -->
+A potential improvement is to directly compute the midpoint locations.  As we
+can see here they are arranged in patterns that we should be able to compute
+without having to resort to tiling:
+
+```{r echo=FALSE}
+axis <- c(3, 7, 19, 23, 27, 39, 43, 55, 59, 63, 75, 79)
+diag <- c(11, 13, 15, 17) + rep(0:3, each=4) * 2 * 9
+
+p.ax3 <- transform(ids_to_df(axis, err), type='Axis', pcolor='#8da0cb')
+p.dg3 <- transform(ids_to_df(diag, err), type='Diagonal', pcolor='#8da0cb')
+
+p.all <- rbind(p.ax3, p.dg3)
+
+p2 <- ggplot(tris2) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
+  geom_point(data=p.all, aes(x, y), colour='#8da0cb', size=3) +
+  facet_wrap(~type) +
+  coord_fixed() +
+  thm.blnk
+
+pdim <- gtable_dim(ggplotGrob(p2))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r midpoints-2, echo=FALSE}
+p2
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+<!--
+Show the midpoints in a 9x9 grid, side by side for each type of point.
+-->
+
+Furthermore, the children are located at easily pre-computed offsets from the
+midpoints:
+
+```{r echo=FALSE}
+s <- 1/8
+p.ax.c <- rbind(
+  transform(p.ax3, x=x+s, y=y+s),
+  transform(p.ax3, x=x+s, y=y-s),
+  transform(p.ax3, x=x-s, y=y-s),
+  transform(p.ax3, x=x-s, y=y+s)
+)
+p.ax.c <- transform(
+  p.ax.c, pfill=ifelse(x < 0 | y < 0 | x > 1 | y > 1, NA, '#fc8d62')
+)
+p.dg.c <- rbind(
+  transform(p.dg3, y=y+s),
+  transform(p.dg3, y=y-s),
+  transform(p.dg3, x=x+s),
+  transform(p.dg3, x=x-s)
+)
+p.dg.c <- transform(p.dg.c, pfill='#fc8d62')
+
+p2 <- ggplot(tris2) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
+  geom_point(data=p.all, aes(x, y), colour='#8da0cb', size=3) +
+  geom_point(
+    data=rbind(p.ax.c, p.dg.c),
+    aes(x, y, fill=I(pfill)), color='#fc8d62', shape=21
+  ) +
+  facet_wrap(~type) +
+  coord_fixed() +
+  thm.blnk
+
+pdim <- gtable_dim(ggplotGrob(p2))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r midpoints-child-2, echo=FALSE}
+p2
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+<!--
+Add the midpoints, showing oob children as maybe empty dots
+-->
+
+All is not perfect though: "Axis" is again a problem as the peripheral midpoints
+end up generating out-of-bounds children, shown as hollow points above.  This is
+particularly annoying when we are using ["linearized" coordinates](#linearized)
+as it is not trivial to detect whether a child is out-of-bounds or not after
+applying offsets.  We could switch back to x/y coordinates and check whether any
+coordinate is less than zero or greater than the number of rows/columns, but
+that is expensive as it requires full vector scans on every child in addition to
+the extra storage for the coordinates.  Instead we handle the peripheral
+midpoints separately.  In fact, we handle the leftmost, topmost, rightmost, and
+bottommost midpoints each separately.  This makes the code increasingly ugly,
+but also fast.  I'll spare you[^spare-you] yet another animation and skip
+straight to the benchmark:
+
+<!--
+Add link to packaged version in increasingly ugly
+-->
+
+Suck it JavaScript[^suck-it]!  And check out what happens when we start making
+the maps large:
+
+<!--
+Benchmarks by size.
+-->
+
+We even beat C!  At the lower sizes the overhead of the R calls is hold us back,
+but once the maps get large enough the more efficient vectorized R
+implementation takes the lead.
+
+
+
+
+tiles as the midpoints in the "Diagonal"
+tiles are in the inside of the tile, so one simple optimization we could effect
+is to only order errors for "Axis" tiles.  We can even skip the ordering for the
+first layer of "Axis" tiles that doesn't have children, and
+that one is the most expensive.
+
+We can more efficiently h
+
 
 
 They key is to figure out the pattern of offsets that gives us the correct set
 of absolute coordinates.  The "Diagonal" triangles are pretty straightforward as
 they have a regular pattern.  The "Axis" triangles are more challenging as their
 tiling to offsets from "row" to "row" and "column" to "column":
-
-<!--
-Show the midpoints in a 5x5 or 7x7 grid, side by side for each type of point.
--->
 
 Worse, some of the child points end up out of bounds, so we will need to account
 for those.
@@ -1031,16 +1164,26 @@ new BgFlipBook({
  instead of the typical four, and the smallest size "Axis" that does not have
  any children.  The unused variable `layers` is used to identify the corner
  cases in the full version.
-[^linearized] [&commat;mourner's][6] implementation used this approach, and
+[^linearized]: [&commat;mourner's][6] implementation used this approach, and
   since it saves space and may be faster computationally I adopted it.  To
   preserve my sanity I transpose the coordinates in the actual implementation so
   that the matrix representation aligns with the plotted one (i.e. x corresponds
   to columns, y to rows, albeit with y values in the wrong direction).  In other
   words, `x <- (id - 1) %/% nrow(map)`, and `y <- (id - 1) %% nrow(map)`
-[^shift-with-care] But watch out for row shifts that cause column shifts, or
+[^shift-with-care]: But watch out for row shifts that cause column shifts, or
   column shifts that take you out of bounds.
-[^step-count] We're under-counting as the calls used in the vectorized version
+[^step-count]: We're under-counting as the calls used in the vectorized version
   end to be more complex, and we also have `init_offsets` that hides some calls.
+[^double-speed]: As we'll see [later](#vec-inefficiency) the ordering step at
+  the end is only required for "Axis" tiles, and can be skipped for the first
+  layer altogether as in that layer "Axis" tiles have no children (this is also
+  the largest layer so there is a big gain from skipping it).
+[^not-diag]: In the "Diagonal" tiles the midpoints are on the inside of the tile
+  so there is no overlap issue.
+[^spare-you]:  Okay, I'm really sparing myself.  Even with `watcher` putting
+  together the algorithm visualizations is quite the production.
+[^suck-it]: When I say this I'm completely relying on no one else being neurotic
+  enough to try to optimize the JS code further, as I'm sure it could be.
 
 [5]: https://twitter.com/mourner
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
