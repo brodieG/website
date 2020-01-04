@@ -56,6 +56,8 @@ base_coords <- function(ids.mid, type, nr, nc, mult) {
 # happening, if we skip one size then there is no conveyance of the break, the
 # break needs to carry all the way.
 
+# Deprecated
+#
 # @param debug.lvl extract all triangles at that level, and only that level
 #   (pass along a zero error matrix), ignored if zero
 
@@ -155,73 +157,6 @@ extract_mesh2 <- function(errors, tol, debug.lvl=0) {
   }
   triangles
 }
-
-
-# These shape offsets are not in use currently
-# for each shape
-# x/y offsets for each of the four child triangles, including NAs for missing
-# ordered starting from breakpoint (hypotenuse midpoint) clockwise.  Shapes are
-# in this order:
-#
-# 1. v.left
-# 2. v.mid
-# 3. v.right
-# 4. h.top
-# 5. h.mid
-# 6. h.bot
-# 7. tr->bl
-# 8. tl->br
-
-off.ex.tri <- array(
-  c(
-    0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert left
-    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
-
-    0L,0L,   0L,1L,   1L,0L,    0L,0L,  1L,0L, 0L,-1L,  # vert mid
-    0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L, 1L,
-
-    0L,0L,  0L,-1L,  -1L,0L,    0L,0L, -1L,0L, 0L,1L,   # vert right
-    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
-
-    0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz top
-    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA, NA,NA,
-
-    0L,0L,   1L,0L,  -1L,0L,    0L,0L, -1L,0L, -1L,0L,  # hrz mid
-    0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L,
-
-    0L,0L,  -1L,0L,   0L,1L,    0L,0L,  0L,1L,  1L,0L,  # hrz bot
-    NA,NA,   NA,NA,   NA,NA,    NA,NA,  NA,NA,  NA,NA,
-
-    0L,0L,  -1L,1L,   1L,1L,    0L,0L,   1L,1L, 1L,-1L,  # diag
-    0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L,
-
-    0L,0L,  -1L,1L,   1L,1L,    0L,0L,   1L,1L, 1L,-1L,  # diag (same)
-    0L,0L,  1L,-1L, -1L,-1L,    0L,0L, -1L,-1L, -1L,1L
-  ),
-  dim=c(2L, 3L, 8L)
-)
-# Offsets to get children from parent hypotenuse midpoint
-#
-# Alternate x/y coords, permuted so that after collapsing x/y into linear ID we
-# can select any of the eight types of offsets with the row selector
-
-off.ex.mid <- aperm(
-  array(
-    c(
-      1L,1L,   1L,-1L,  NA,NA,   NA,NA,    # vert left
-      1L,1L,   1L,-1L, -1L,1L,  -1L,-1L,   # vert mid
-      -1L,1L, -1L,-1L,  NA,NA,   NA,NA,    # vert right
-      -1L,1L,  1L,1L,   NA,NA,   NA,NA,    # hrz top
-       1L,1L,  1L,-1L, -1L,1L,  -1L,-1L,   # hrz mid
-      1L,-1L, -1L,-1L,  NA,NA,   NA,NA,    # hrz bot
-      0L,1L,   1L,0L,   0L,-1L, -1L,0L,    # diag
-      0L,1L,   1L,0L,   0L,-1L, -1L,0L     # diag
-    ),
-    dim=c(2L, 4L, 8L),
-  ),
-  c(1L, 3L, 2L)
-)
-
 # Maybe we really want to keep coordinates in x/y as we're going to expand
 # back to x/y here
 

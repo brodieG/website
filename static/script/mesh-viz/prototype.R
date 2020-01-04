@@ -1,5 +1,6 @@
 source('static/script/mesh-viz/rtin-vec2.R')
 source('static/script/mesh-viz/rtin-vec.R')
+source('static/script/mesh-viz/extract-vec.R')
 source('static/script/mesh-viz/viz-lib.R')
 
 # File originally from http://tylermw.com/data/dem_01.tif.zip
@@ -118,10 +119,14 @@ bench::mark(
   compute_error3(mm)
 )
 
-map2 <- map[1:9, 1:7]
-err <- compute_error2a(map2)
+map2 <- map[1:17, 1:21]
+map2 <- volcano[1:17,1:31]
+map2 <- t(volcano[1:9,1:31])
+map2 <- volcano
+map2 <- elmat1[1:549,1:505]
+system.time(err <- compute_error2a(map2))
 plot_tri_ids(extract_mesh3a(err, diff(range(map2))/10), dim(err))
-
+system.time(extract_mesh3a(err, diff(range(map2))/10))
 
 
 
@@ -147,12 +152,13 @@ all.equal(order_by_3s(tri.r), order_by_3s(tri.js))
 ## Extract mesh benchmarks
 
 # # compare to those in prototype.js (~90ms)
-# > e4 <- compute_error(m4)
+# > system.time(e4 <- compute_error2a(m4))
 # > system.time(extract_mesh3(e4, 50))
 #    user  system elapsed
 #   0.302   0.142   0.467
 
 treeprof::treeprof(extract_mesh3(e4, 50))
+treeprof::treeprof(t4 <- extract_mesh3a(e4, 50))
 
 ## Before we try to go to matrix list
 # Ticks: 2915; Iterations: 8; Time Per: 570.5 milliseconds; Time Total: 4.564 seconds; Time Ticks: 2.915

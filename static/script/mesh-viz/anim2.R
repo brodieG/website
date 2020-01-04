@@ -203,6 +203,7 @@ thm.blnk <- list(
 )
 bg.point <- ids_to_df(seq_along(m), m)
 frames <- seq_len(nrow(zz.vec))
+dir <- '~/Downloads/mesh-anim-5a/'
 library(ggplot2)
 k <- 82
 for(k in frames) {
@@ -265,12 +266,23 @@ p
 # stop('pause')
 # pdim <- gtable_dim(ggplotGrob(p))
 ggsave(
-  filename=sprintf('~/Downloads/mesh-anim-5a/img-%04d.png', k),
+  filename=sprintf('%s/img-%04d.png', dir, k),
   plot=p,
   width=width/dpi, height=height/dpi, units='in', device='png',
   dpi=dpi
 )
 }
-
 stop('done plot')
+
+# add the last frame to the end repeated twenty times
+
+for(l in k + 1:20) {
+  ggsave(
+    filename=sprintf('%s/img-%04d.png', dir, l),
+    plot=p,
+    width=width/dpi, height=height/dpi, units='in', device='png',
+    dpi=dpi
+  )
+}
+
 

@@ -22,7 +22,8 @@ coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', '
 id.vars <- c('.id', '.line')
 vars <- c(coord.vars, 'errors', 'id', 'i')
 errors_watched <- watch(errors_rtin2, vars)
-xx <- errors_watched(map)
+xx <- errors_watched(m)
+# xx <- errors_watched(map)
 zz.raw <- simplify_data(attr(xx, 'watch.data'))
 library(reshape2)
 
@@ -92,7 +93,7 @@ dat.s5 <- do.call(
 
 dat.s6 <- expand.grid(x=seq_len(nrow(map)) - 1, y=seq_len(ncol(map)) - 1)
 
-# # - Code -----------------------------------------------------------------------
+# - Code -----------------------------------------------------------------------
 
 code <- deparse(errors_rtin2, control='all')
 code[[1]] <- ""
@@ -169,13 +170,13 @@ for(i in frames) {
     ) +
     geom_path(data=d$s2, aes(group=.id), color='white', size=1.5) +
     geom_point(size=8, color=d$s1$pcolor) +
-    geom_segment(
-      data=d$s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
-      arrow=arrow(type='closed'), color='grey65'
-    ) +
     geom_point(data=d$err, aes(y=y, x=x, size=val)) +
     geom_point(
       data=d$s3, fill='NA', color='black', shape=21, size=18
+    ) +
+    geom_segment(
+      data=d$s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
+      arrow=arrow(type='closed'), color='grey65'
     ) +
     geom_text(aes(label=label)) +
     geom_label(
@@ -239,6 +240,9 @@ new.files <- paste0(dir, sprintf('/img-%04d.png', length(files) + 1:60))
 for(i in new.files) file.copy(tail(files, 1), i)
 
 
+# ffmpeg -framerate 10 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
+#   open out.mp4
+#
 # ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp4 &&
 #   open out.mp4
 #
