@@ -257,3 +257,78 @@ microbenchmark::microbenchmark(
   a[cbind(iix, iiy)]
 )
 
+js.times <- stack(
+  list(
+    `257`=c(
+      35.7, 25.96, 23.50, 24.134, 20.66, 20.195, 20.62, 20.29, 19.46, 19.32,
+      19.72, 26.69, 20.14
+    ),
+    `513`=c(104.1, 101.1, 101, 90.2, 92.3, 95.4, 92.82, 94,32, 91.99, 95.4, 94.5),
+    `1025`=c(
+      495.32, 499.19, 485.19, 478.67, 475.19, 479.67, 484.8
+    ),
+    `2049`=c(
+      2235.6, 2223.76, 2193.44, 2185.69, 2188.02, 2179.47, 2195.48, 2260.02
+    ),
+    `4097`=c(
+      7488.19, 7483.48, 7280.48, 7322.34, 7485.29, 7449.80
+    ),
+    `8193`=c(
+      29757.15, 29386.23, 29331.4, 28982.32
+    )
+  )
+)
+js.times <- transform(js.times, values=values/1000)
+reps <- with(js.times, tapply(values, ind, length))
+mats <- list(m0, m1, m2, m3, m4, m5, m6, m7)
+reps <- c(20, 20, reps)
+sizes <- lapply(mats, nrow)
+
+c.times <- lapply(
+  seq_along(mats),
+  function(i) {
+    writeLines(sprintf('\nstarting %s', i))
+    gc()
+    res <- numeric(reps[i])
+    for(j in seq_len(reps[i])) {
+      res[j] <- system.time(compute_errorc(mats[[i]], nrow(mats[[i]])))[3]
+      cat(res[j], "")
+    }
+    res
+  }
+)
+r.times <- lapply(
+  seq_along(mats),
+  function(i) {
+    writeLines(sprintf('\nstarting %s', i))
+    gc()
+    res <- numeric(reps[i])
+    for(j in seq_len(reps[i])) {
+      res[j] <- system.time(rtini_error(mats[[i]]))[3]
+      cat(res[j], "")
+    }
+    res
+  }
+)
+
+times.all <- rbind(
+  cbind(js.times, type='JS'),
+  cbind(stack(setNames(c.times, sizes)), type='C'),
+  cbind(stack(setNames(r.times, sizes)), type='R-vec-2')
+)
+saveRDS(times.all, 'static/data/rtini-data.RDS')
+
+Chrome:
+
+ter_513:
+Chrome:
+
+
+ter_1025:
+Chrome:
+
+ter_2049:
+
+ter_4096:
+
+

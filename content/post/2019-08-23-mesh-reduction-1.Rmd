@@ -894,8 +894,9 @@ do.call(knitr::opts_chunk$set, old.opt)
 Show the midpoints in a 9x9 grid, side by side for each type of point.
 -->
 
-Furthermore, the children are located at easily pre-computed offsets from the
-midpoints:
+Furthermore, the children for each midpoint can be computed by adding or
+subtracting the same fixed number of rows and columns to the midpoint
+coordinates for any given layer:
 
 ```{r echo=FALSE}
 s <- 1/8
@@ -937,22 +938,70 @@ p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-<!--
-Add the midpoints, showing oob children as maybe empty dots
--->
+<div style='background-color: red'>Add arrows to midpoints?</div>
 
 All is not perfect though: "Axis" is again a problem as the peripheral midpoints
-end up generating out-of-bounds children, shown as hollow points above.  This is
-particularly annoying when we are using ["linearized" coordinates](#linearized)
-as it is not trivial to detect whether a child is out-of-bounds or not after
-applying offsets.  We could switch back to x/y coordinates and check whether any
-coordinate is less than zero or greater than the number of rows/columns, but
-that is expensive as it requires full vector scans on every child in addition to
-the extra storage for the coordinates.  Instead we handle the peripheral
-midpoints separately.  In fact, we handle the leftmost, topmost, rightmost, and
-bottommost midpoints each separately.  This makes the code increasingly ugly,
-but also fast.  I'll spare you[^spare-you] yet another animation and skip
-straight to the benchmark:
+end up generating out-of-bounds children, shown as hollow points above.  I won't
+get into the details, but handling the out-of-bounds children requires
+separate treatment for the left/top/right/bottom periphery as well as the
+inner midpoints.  This makes the code [uglier][11], but also faster:
+
+```{r vec-timings-2, echo=FALSE}
+dat <- data.frame(Language=c('R-vec-2', 'JS', 'C'), Time=c(15.11,20.78,6.81))
+ggplot(dat) +
+  geom_col(aes(Language, Time)) +
+  geom_text(aes(Language, Time, label=Time), vjust=-.5) +
+  ylab('Time (ms)') +
+  ggtitle('RTIN Error Computation Benchmarks', subtitle='257x257 Grid Size') +
+  scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
+```
+
+The performance comparison is even more noteworthy at larger grid sizes:
+
+```{r vec-timings-3, echo=FALSE, warning=FALSE}
+library(patchwork)
+times <- readRDS('../../static/data/rtini-data.RDS')
+names(times)[3] <- 'Language'
+
+p1 <- ggplot(
+  times,
+  aes(
+    x=factor(
+      ind, levels=as.character(sort(as.integer(as.character(unique(ind)))))
+    ),
+    y=values, color=Language
+  )
+) +
+  geom_point(position=position_dodge(width=.6), alpha=.5) +
+  ggtitle("Normal Scale") +
+  ylab('Seconds') +
+  xlab('Grid Size') +
+  scale_color_manual(values=c('#66c2a5','#fc8d62','#8da0cb')) +
+  theme(legend.position='bottom') +
+  NULL
+
+p2 <- ggplot(
+  times,
+  aes(
+    x=factor(
+      ind, levels=as.character(sort(as.integer(as.character(unique(ind)))))
+    ),
+    y=values, color=Language
+  )
+) +
+  geom_point(position=position_dodge(width=.6), alpha=.5) +
+  scale_y_log10() +
+  ggtitle("Log Scale") +
+  ylab('Seconds (log10)') +
+  xlab('Grid Size') +
+  scale_color_manual(values=c('#66c2a5','#fc8d62','#8da0cb')) +
+  theme(legend.position='bottom') +
+  NULL
+
+p1 + p2 + plot_layout(guides='collect') +
+  plot_annotation(title='Computation Time vs Grid Size')
+```
+
 
 <!--
 Add link to packaged version in increasingly ugly
@@ -1191,3 +1240,4 @@ new BgFlipBook({
 [8]: https://www.cs.ubc.ca/~will/papers/rtin.pdf
 [9]: /2019/10/30/visualizing-algorithms/
 [10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20
+[11]: https://github.com/brodieG/rtini/blob/v0.1.0/R/error.R#L98
