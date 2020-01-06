@@ -894,11 +894,23 @@ do.call(knitr::opts_chunk$set, old.opt)
 Show the midpoints in a 9x9 grid, side by side for each type of point.
 -->
 
-Furthermore, the children for each midpoint can be computed by adding or
-subtracting the same fixed number of rows and columns to the midpoint
-coordinates for any given layer:
+Furthermore, we can split the midpoints into two groups (A and B below) such
+that all points related to a particularly midpoint can be computed with fixed
+offsets relative to that point:
 
 ```{r echo=FALSE}
+p.ax3.a <- cbind(subset(p.ax3, (x * 4) %% 2 == 0), subtype='A')
+p.ax3.b <- cbind(subset(p.ax3, (x * 4) %% 2 != 0), subtype='B')
+
+sw.x <- with(p.dg3, ((x * 8 - 1) / 2) %% 2 > 0)
+sw.y <- with(p.dg3, ((y * 8 - 1) / 2) %% 2 > 0)
+p.dg3.a <- cbind(subset(p.dg3, xor(sw.x, sw.y)), subtype='A')
+p.dg3.b <- cbind(subset(p.dg3, !xor(sw.x, sw.y)), subtype='B')
+
+ggplot(rbind(p.ax3.a, p.ax3.b, p.dg3.a, p.dg3.b)) +
+  geom_point(aes(x, y, color=I(pcolor))) +
+  facet_grid(subtype ~ type)
+
 s <- 1/8
 p.ax.c <- rbind(
   transform(p.ax3, x=x+s, y=y+s),
@@ -956,7 +968,7 @@ ggplot(dat) +
   scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
 ```
 
-The performance comparison is even more noteworthy at larger grid sizes:
+And something remarkable happens as we increase grid sizes:
 
 ```{r vec-timings-3, echo=FALSE, warning=FALSE}
 library(patchwork)
@@ -977,7 +989,6 @@ p1 <- ggplot(
   ylab('Seconds') +
   xlab('Grid Size') +
   scale_color_manual(values=c('#66c2a5','#fc8d62','#8da0cb')) +
-  theme(legend.position='bottom') +
   NULL
 
 p2 <- ggplot(
@@ -995,39 +1006,26 @@ p2 <- ggplot(
   ylab('Seconds (log10)') +
   xlab('Grid Size') +
   scale_color_manual(values=c('#66c2a5','#fc8d62','#8da0cb')) +
-  theme(legend.position='bottom') +
   NULL
 
 p1 + p2 + plot_layout(guides='collect') +
-  plot_annotation(title='Computation Time vs Grid Size')
+  plot_annotation(title='RTIN Error Computation Benchmarks vs. Grid Size') &
+  theme(legend.position='bottom')
 ```
 
+The R implementation beats both the C and JS implementations by a factor of
+2-3x.  At the lower sizes the overhead of the R calls holds us back, but as the
+overall computations increase by `$N^2$`, the number of R calls only increase by
+`$log(N)$`.
 
-<!--
-Add link to packaged version in increasingly ugly
--->
-
-Suck it JavaScript[^suck-it]!  And check out what happens when we start making
-the maps large:
-
-<!--
-Benchmarks by size.
--->
-
-We even beat C!  At the lower sizes the overhead of the R calls is hold us back,
-but once the maps get large enough the more efficient vectorized R
-implementation takes the lead.
+Another observation is that JS is faster than C at the largest
+grid sizes, even though the C implementation is almost identical to the
+JS one.  You can tell from the logged plot that it appears that JS has some more
+initial overhead, but the scaling rate is slower.  This might be because we use
+64-bit doubles in C so we can interface with R, whereas the JS version uses
+32-bit floats[^c-vs-js].
 
 
-
-
-tiles as the midpoints in the "Diagonal"
-tiles are in the inside of the tile, so one simple optimization we could effect
-is to only order errors for "Axis" tiles.  We can even skip the ordering for the
-first layer of "Axis" tiles that doesn't have children, and
-that one is the most expensive.
-
-We can more efficiently h
 
 
 
@@ -1061,6 +1059,7 @@ Point is to highlight potential techniques for vectorizing R code.
 
 ## Acknowledgments
 
+* patchwork
 * rgl
 * rayrender
 * Agafonkin
@@ -1231,7 +1230,10 @@ new BgFlipBook({
   so there is no overlap issue.
 [^spare-you]:  Okay, I'm really sparing myself.  Even with `watcher` putting
   together the algorithm visualizations is quite the production.
-[^suck-it]: When I say this I'm completely relying on no one else being neurotic
+[^c-vs-js]: Or it could be any other number of things, I'm guessing and can't be
+  bothered testing this with a stand-alone implementation.
+
+When I say this I'm completely relying on no one else being neurotic
   enough to try to optimize the JS code further, as I'm sure it could be.
 
 [5]: https://twitter.com/mourner
