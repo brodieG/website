@@ -37,10 +37,10 @@ plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
   x <- ids %/% dim[1]
   y <- ids %% dim[1]
-  x0 <- seq_len(dim[2]) - 1L
-  y0 <- seq_len(dim[1]) - 1L
+  x0 <- seq_len(dim[1]) - 1L
+  y0 <- seq_len(dim[2]) - 1L
   points(
-    rep(x0/max(x0), each=dim[1]), rep(y0/max(y0), dim[2]),
+    rep(x0/max(x0), each=dim[2]), rep(y0/max(y0), dim[1]),
     pch=16, col='black', cex=0.5
   )
   points(x/max(x0), y/max(y0), pch=16, col=col, cex=cex)
@@ -233,6 +233,23 @@ tris_to_obj <- function(
   f.chr <- paste('f', v.ids[1,], v.ids[2,], v.ids[3,], collapse='\n')
   paste0(c(v.chr, f.chr), collapse='\n')
 }
+# Generate sphere joints at the vertices of the triangles
+
+tris_to_joints <- function(tris, map, material, radius) {
+  coords <- unique(tris_to_df(tris, map))
+  dplyr::bind_rows(
+    lapply(
+      seq_len(nrow(coords)),
+      function(i) {
+        sphere(
+          coords[i,'x'], coords[i,'y'], coords[i,'z'],
+          material=material,
+          radius=radius
+        )
+      }
+) ) }
+
+
 # We call shards a two triangle sandwich with the faces closed off by bevels,
 # which would look kind of like an arrowhead.
 #
