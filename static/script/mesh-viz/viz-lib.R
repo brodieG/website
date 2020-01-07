@@ -1,3 +1,9 @@
+# - Base Colors ----------------------------------------------------------------
+
+gold <- '#CCAC00'
+metal.col <-  c(gold, 'grey75', '#CC3322')
+mesh.colors <- metal.col
+
 # - Misc Tools -----------------------------------------------------------------
 
 rep_each <- function(x, each) {
@@ -12,7 +18,7 @@ rep_each <- function(x, each) {
 
 ## Rescale data to a range from 0 to `range` where `range` in (0,1]
 rescale <- function(x, range=1, center=0.5)
-  if(range <= 0) x else 
+  if(range <= 0) x else
   ((x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))) * range +
    (1 - range) * center
 
