@@ -904,53 +904,121 @@ p.ax3.b <- cbind(subset(p.ax3, (x * 4) %% 2 != 0), subtype='B')
 
 sw.x <- with(p.dg3, ((x * 8 - 1) / 2) %% 2 > 0)
 sw.y <- with(p.dg3, ((y * 8 - 1) / 2) %% 2 > 0)
-p.dg3.a <- cbind(subset(p.dg3, xor(sw.x, sw.y)), subtype='A')
-p.dg3.b <- cbind(subset(p.dg3, !xor(sw.x, sw.y)), subtype='B')
-
-ggplot(rbind(p.ax3.a, p.ax3.b, p.dg3.a, p.dg3.b)) +
-  geom_point(aes(x, y, color=I(pcolor))) +
-  facet_grid(subtype ~ type)
+p.dg3.a <- cbind(subset(p.dg3, !xor(sw.x, sw.y)), subtype='A')
+p.dg3.b <- cbind(subset(p.dg3, xor(sw.x, sw.y)), subtype='B')
 
 s <- 1/8
-p.ax.c <- rbind(
-  transform(p.ax3, x=x+s, y=y+s),
-  transform(p.ax3, x=x+s, y=y-s),
-  transform(p.ax3, x=x-s, y=y-s),
-  transform(p.ax3, x=x-s, y=y+s)
-)
-p.ax.c <- transform(
-  p.ax.c, pfill=ifelse(x < 0 | y < 0 | x > 1 | y > 1, NA, '#fc8d62')
-)
-p.dg.c <- rbind(
-  transform(p.dg3, y=y+s),
-  transform(p.dg3, y=y-s),
-  transform(p.dg3, x=x+s),
-  transform(p.dg3, x=x-s)
-)
-p.dg.c <- transform(p.dg.c, pfill='#fc8d62')
 
-p2 <- ggplot(tris2) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  geom_point(data=p.all, aes(x, y), colour='#8da0cb', size=3) +
-  geom_point(
-    data=rbind(p.ax.c, p.dg.c),
-    aes(x, y, fill=I(pfill)), color='#fc8d62', shape=21
+dat <- rbind(
+  transform(p.ax3.a, ptype='mid'),
+  transform(p.ax3.a, y=y+.25, ptype='end'),
+  transform(p.ax3.a, y=y-.25, ptype='end'),
+  transform(p.ax3.a, x=x+s, y=y+s, ptype='child'),
+  transform(p.ax3.a, x=x+s, y=y-s, ptype='child'),
+  transform(p.ax3.a, x=x-s, y=y-s, ptype='child'),
+  transform(p.ax3.a, x=x-s, y=y+s, ptype='child'),
+
+  transform(p.ax3.b, ptype='mid'),
+  transform(p.ax3.b, x=x+.25, ptype='end'),
+  transform(p.ax3.b, x=x-.25, ptype='end'),
+  transform(p.ax3.b, x=x+s, y=y+s, ptype='child'),
+  transform(p.ax3.b, x=x+s, y=y-s, ptype='child'),
+  transform(p.ax3.b, x=x-s, y=y-s, ptype='child'),
+  transform(p.ax3.b, x=x-s, y=y+s, ptype='child'),
+
+  transform(p.dg3.a, ptype='mid'),
+  transform(p.dg3.a, x=x+s, y=y+s, ptype='end'),
+  transform(p.dg3.a, x=x-s, y=y-s, ptype='end'),
+  transform(p.dg3.a, x=x+s, ptype='child'),
+  transform(p.dg3.a, y=y-s, ptype='child'),
+  transform(p.dg3.a, x=x-s, ptype='child'),
+  transform(p.dg3.a, y=y+s, ptype='child'),
+
+  transform(p.dg3.b, ptype='mid'),
+  transform(p.dg3.b, x=x+s, y=y-s, ptype='end'),
+  transform(p.dg3.b, x=x-s, y=y+s, ptype='end'),
+  transform(p.dg3.b, x=x+s, ptype='child'),
+  transform(p.dg3.b, y=y-s, ptype='child'),
+  transform(p.dg3.b, x=x-s, ptype='child'),
+  transform(p.dg3.b, y=y+s, ptype='child')
+)
+dat$pcolor <- as.character(dat$pcolor)
+dat[dat$ptype == 'child', 'pcolor'] <- '#fc8d62'
+dat[dat$ptype == 'end', 'pcolor'] <- '#66c2a5'
+dat <- transform(dat, pfill=pcolor, stringsAsFactors=FALSE)
+dat[dat$ptype == 'end', 'pfill'] <- 'grey90'
+dat[with(dat, x < 0 | x > 1 | y < 0 | y > 1), 'pfill'] <- 'grey90'
+psizes <- c(mid=3, child=2, mid=2)
+dat$psize <- psizes[dat$ptype]
+dat$id <- c(
+  rep(c(1:6, rep(1:6, 2), rep(1:6, 4)), 2),
+  rep(c(1:8, rep(1:8, 2), rep(1:8, 4)), 2)
+)
+dat.arrow <- do.call(
+  rbind,
+  lapply(
+    with(dat, split(dat, list(id, type, subtype))),
+    function(x) {
+      if(nrow(x)) {
+        mid <- x[1,c('x', 'y')]
+        cbind(
+          x[-(1:3), c('x', 'y', 'type', 'subtype', 'id')],
+          setNames(mid, c('xend', 'yend'))
+        )
+      }
+} ) )
+dat.hyp <- do.call(
+  rbind,
+  lapply(
+    with(dat, split(dat, list(id, type, subtype))),
+    function(x) {
+      if(nrow(x)) {
+        mid <- x[1,c('x', 'y')]
+        cbind(
+          x[2:3, c('x', 'y', 'type', 'subtype')],
+          setNames(mid, c('xend', 'yend'))
+        )
+      }
+} ) )
+dat.arrow <-
+  transform(dat.arrow, diag=ifelse(xend - x & yend - y, sqrt(2), 1))
+arrow.mult <- log2(nrow(err) - 1) * 13
+dat.arrow <- transform(
+  dat.arrow,
+  xend=xend - sign(xend - x) * 1 / (arrow.mult * diag),
+  yend=yend - sign(yend - y) * 1 / (arrow.mult * diag)
+)
+dat.arrow[['pltype']] <- with(dat.arrow,
+  ifelse(x < 0 | y < 0 | x > 1 | y > 1, 3, 1))
+
+p2 <- ggplot(tris2, aes(x, y)) +
+  geom_polygon(aes(group=id, fill=I(color)), alpha=.2) +
+  geom_point(data=points, size=.5, shape=3, color='white') +
+  geom_segment(
+    data=dat.arrow,
+    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
+    aes(xend=xend, yend=yend, linetype=I(pltype)),
+    color='grey50'
   ) +
-  facet_wrap(~type) +
+  geom_segment(
+    data=dat.hyp, aes(xend=xend, yend=yend)
+  ) +
+  geom_point(
+    data=dat, aes(size=I(psize), color=I(pcolor), fill=I(pfill)),
+    shape=21
+  ) +
+  facet_grid(subtype ~ type) +
   coord_fixed() +
   thm.blnk
 
-pdim <- gtable_dim(ggplotGrob(p2))
 old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+pdim <- gtable_dim(ggplotGrob(p2), din=c(old.opt$fig.width, old.opt$fig.width))
 do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
 ```
-```{r midpoints-child-2, echo=FALSE}
+```{r vec2-points-all, echo=FALSE}
 p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
-
-<div style='background-color: red'>Add arrows to midpoints?</div>
 
 All is not perfect though: "Axis" is again a problem as the peripheral midpoints
 end up generating out-of-bounds children, shown as hollow points above.  I won't
@@ -1228,13 +1296,8 @@ new BgFlipBook({
   the largest layer so there is a big gain from skipping it).
 [^not-diag]: In the "Diagonal" tiles the midpoints are on the inside of the tile
   so there is no overlap issue.
-[^spare-you]:  Okay, I'm really sparing myself.  Even with `watcher` putting
-  together the algorithm visualizations is quite the production.
 [^c-vs-js]: Or it could be any other number of things, I'm guessing and can't be
   bothered testing this with a stand-alone implementation.
-
-When I say this I'm completely relying on no one else being neurotic
-  enough to try to optimize the JS code further, as I'm sure it could be.
 
 [5]: https://twitter.com/mourner
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
