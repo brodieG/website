@@ -124,10 +124,28 @@ scale_mesh <- function(mesh, scale=rep(1, 4)) {
 }
 # Convert list-matrix mesh into obj text format
 
-mesh_to_obj <- function(mesh) {
+mesh_to_obj <- function(mesh, center=NULL) {
   # first step is convert to array, drop texture for now
 
   mesh.arr <- array(unlist(mesh[1:3, 1:3]), c(length(mesh[[1]]), 3, 3))
+
+  if(!is.null(center)) {
+    # we need to re-order the faces so their normals all point away from the
+    # center
+
+    a <- mesh.arr[,2,] - mesh.arr[,1,]
+    b <- mesh.arr[,3,] - mesh.arr[,1,]
+
+    norm <- rbind(
+      a[,2] * b[,3] - a[,3] * b[,2],
+      a[,3] * b[,3] - a[,1] * b[,3],
+      a[,1] * b[,2] - a[,2] * b[,1]
+    )
+    xc <- center - t(mesh.arr[,1,])
+    flip <- colSums(xc * norm) > 0
+
+    mesh.arr[flip,2:3,] <- mesh.arr[flip,3:2,]
+  }
   mesh.v <- matrix(aperm(mesh.arr, c(3, 2, 1)), nrow=3)
   v.chr <- paste('v', mesh.v[1,], mesh.v[2,], mesh.v[3,], collapse="\n")
 

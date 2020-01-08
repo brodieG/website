@@ -68,7 +68,7 @@ render_scenes(
 )
 stop('done')
 
-df <- expand.grid(x=seq(0,(2*pi), pi/25), y=seq(0,(2*pi), pi/25))
+df <- expand.grid(x=seq(-pi,pi, pi/25), y=seq(-pi,pi, pi/25))
 df <- transform(
   df, z=sin(2*x + 2 * y) + sin(2*x - 1.5 * y) +
     .2 * sin(10*x + 6 * y) + .3 * sin(10*y)
@@ -85,7 +85,7 @@ x.lo <- min(unlist(mesh[,'x']))
 x.hi <- max(unlist(mesh[,'x']))
 z.lo <- min(unlist(mesh[,'z']))
 z.hi <- max(unlist(mesh[,'z']))
-y.lo <- min(unlist(mesh[,'y'])) - 1
+y.lo <- min(unlist(mesh[,'y'])) - .25
 
 xu <- unlist(mesh[,'x'])
 zu <- unlist(mesh[,'z'])
@@ -151,10 +151,9 @@ samp <- 50
 scns <- list(scn.5)
 render_scenes(
   scns, height=rez, width=rez, samples=samp,
-  lookfrom=c(0, 5, 0),
+  lookfrom=c(0, 3, 3),
   # lookfrom=c(0, 2, 2),
-  lookat=c(pi, 0, pi),
-  fov=50,
+  fov=60,
   aperture=0,
   camera_up=c(0,1,0),
   clamp=3,
