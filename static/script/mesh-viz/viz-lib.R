@@ -122,7 +122,8 @@ scale_mesh <- function(mesh, scale=rep(1, 4)) {
   }
   res
 }
-# Convert list-matrix mesh into obj text format
+# Convert list-matrix mesh into obj text format, relying on list matrix
+# being in counter-clockwise direction outwards
 
 mesh_to_obj <- function(mesh, center=NULL) {
   # first step is convert to array, drop texture for now
@@ -141,7 +142,7 @@ mesh_to_obj <- function(mesh, center=NULL) {
       a[,3] * b[,3] - a[,1] * b[,3],
       a[,1] * b[,2] - a[,2] * b[,1]
     )
-    xc <- center - t(mesh.arr[,1,])
+    xc <- center - t(rowMeans(aperm(mesh.arr, c(1,3,2)), dim=2))
     flip <- colSums(xc * norm) > 0
 
     mesh.arr[flip,2:3,] <- mesh.arr[flip,3:2,]

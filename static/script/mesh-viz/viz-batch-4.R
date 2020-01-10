@@ -77,19 +77,21 @@ library(ggplot2)
 ggplot(df, aes(x=x, y=y, fill=z)) + geom_raster() + scale_fill_viridis_c()
 
 # f <- tempfile()
-mesh <- mesh_tri(transform(df, y=z*.01, z=y, t=0), c(51, 51))
+mesh <- mesh_tri(transform(df, y=z*.1, z=y, t=0), c(51, 51))
 
 # Need to find all the vertices on the edges and generate a border out of them
 
-x.lo <- min(unlist(mesh[,'x']))
-x.hi <- max(unlist(mesh[,'x']))
-z.lo <- min(unlist(mesh[,'z']))
-z.hi <- max(unlist(mesh[,'z']))
-y.lo <- min(unlist(mesh[,'y'])) - .25
 
 xu <- unlist(mesh[,'x'])
 zu <- unlist(mesh[,'z'])
 yu <- unlist(mesh[,'y'])
+
+x.lo <- min(xu)
+x.hi <- max(xu)
+z.lo <- min(zu)
+z.hi <- max(zu)
+y.lo <- -.5
+if(y.lo > min(yu)) stop('need lower y')
 
 vertex_arrange <-function(a, b, y, lo) {
   which.a <- b == lo
@@ -123,42 +125,117 @@ mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo)[,3:1]
 mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo)[,3:1]
 mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo)
 mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo)
-bot <- matrix(
-  list(
-    c(x.lo, x.lo), c(x.lo, x.hi), c(x.hi, x.hi),
-    c(y.lo, y.lo), c(y.lo, y.lo), c(y.lo, y.lo),
-    c(z.lo, z.lo), c(z.hi, z.lo), c(z.hi, z.hi)
-  ), 3
-)
+# bot <- matrix(
+#   list(
+#     c(x.lo, x.lo), c(x.hi, x.hi), c(x.hi, x.lo),
+#     c(y.lo, y.lo), c(y.lo, y.lo), c(y.lo, y.lo),
+#     c(z.lo, z.lo), c(z.lo, z.hi), c(z.hi, z.hi)
+#   ), 3
+# )
 mesh2 <- mesh[,1:3]
-mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi, bot)
+# mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi, bot)
+mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
 mesh3 <- mesh2
 
-obj <- mesh_to_obj(mesh3)
+# obj <- mesh_to_obj(mesh3, c(0, y.lo * .98, 0))
+obj <- mesh_to_obj(mesh3, c(0, -5, 0))
+# obj <- mesh_to_obj(mesh3)
 writeLines(obj, f)
-plot3d(readOBJ(f), color='grey')
+# plot3d(readOBJ(f), color='grey')
 
-objrr <- obj_model(f, material=diffuse(color='#BBBBCC'))
-
-scn.5 <- dplyr::bind_rows(
+mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
+objrr <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.3)
+light.narrow <- sphere(
+  #y=5, z = 2, x = 1, radius = .1,
+  y=5, z = -4, x = 1, radius = .1,
+  material = light(intensity = 5000)
+)
+scn.base <- dplyr::bind_rows(
   light.narrow,
+  # xz_rect(
+  #   xwidth=15, zwidth=15, y=10, flipped=TRUE, 
+  #   material=diffuse(color='white', lightintensity=1)
+  # )
+  xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
+)
+
+scn.4 <- dplyr::bind_rows(
+  scn.base,
+  # xz_rect(xwidth=15, zwidth=15),
+  # sphere(y=5, material=light(intensity=25)),
+  # group_objects(grid, group_angle=c(-90, 0, 0)),
+  # group_objects(grid, group_angle=c(-90, 90, 0)),
+  group_objects(
+    errs2a.cyl, group_angle=gang,
+    pivot_point=numeric(3)
+  ),
+  group_objects(
+    errs3a.cyl, group_angle=gang,
+    pivot_point=numeric(3)
+  ),
   objrr,
   NULL
 )
-rez <- 200
-samp <- 50
+rez <- 400
+samp <- 100
 
-scns <- list(scn.5)
+scns <- list(scn.4)
 render_scenes(
   scns, height=rez, width=rez, samples=samp,
-  lookfrom=c(0, 3, 3),
-  # lookfrom=c(0, 2, 2),
-  fov=60,
+  # lookfrom=c(-4, 2, -4), lookat=c(-2, 0, -2),
+  lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
+  fov=25,
   aperture=0,
   camera_up=c(0,1,0),
   clamp=3,
   backgroundlow=bg, backgroundhigh=bg,
   ambient_light=TRUE,
-  filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-s2c-%d.png'
+  filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-sa3c-%d.png'
 )
+
+rez <- 200
+samp <- 250
+mat.w <- dielectric(color='#FFBBBB')
+ang <- c(0, 0, 0)
+
+scn.base <- dplyr::bind_rows(
+  sphere(material=light(intensity=100), y=5, x=0, z=0),
+  xz_rect(
+    y=-.49, xwidth=15, zwidth=15,
+    material=diffuse(checkercolor='green', checkerperiod=.25)
+  ),
+  cube(material=mat.w, x=.75, angle=ang)
+)
+scn <- group_objects(
+  dplyr::bind_rows(
+    # xz_rect(material=mat.w, y=-.5, flipped=FALSE),
+    xz_rect(material=mat.w, y=.5),
+    xy_rect(material=mat.w, z=-.5, flipped=TRUE),
+    xy_rect(material=mat.w, z=.5),
+    yz_rect(material=mat.w, x=-.5, flipped=TRUE),
+    yz_rect(material=mat.w, x=.5)
+  ),
+  group_translate=c(-.75,0,0),
+  group_angle=ang
+)
+render_scene(
+  dplyr::bind_rows(scn.base, scn),
+  height=rez, width=rez, samples=samp,
+  lookfrom=c(0, 2, 7), 
+  # lookfrom=c(-7, 4, 0), 
+  lookat=c(0, 0, 0),
+  fov=25,
+  aperture=0,
+  camera_up=c(0,1,0),
+  clamp=3,
+  backgroundlow=bg, backgroundhigh=bg,
+  # ambient_light=TRUE,
+  filename='~/Downloads/mesh-viz/small-mesh/cube-1.png'
+)
+
 # unlink(f)
+m1 <- m5001 <- m5101 <- mesh
+m1[] <- lapply(mesh, '[', 1)
+m5001[] <- lapply(mesh, '[', 5001)
+m5101[] <- lapply(mesh, '[', 5101)
+#
