@@ -71,16 +71,17 @@ stop('done')
 n <- 50
 seqv <- seq(-pi,pi, length.out=n + 1)
 df <- expand.grid(x=seqv, y=seqv)
+hz <- 1
 df <- transform(
-  df, z=sin(2*x + 2 * y) + sin(2*x - 1.5 * y) +
-    .2 * sin(10*x + 6 * y) + .3 * sin(10*y)
+  df, z=sin(2*x*hz + 4 * y*hz) + sin(2*x*hz -3 * y*hz) +
+    .2 * sin(10*x*hz + 6 * y* hz)
 )
-# df <- transform(df, z=sin(5*x + 2 * y))
+# df <- transform(df, z=sin(2*x + 4 * y))
 library(ggplot2)
-ggplot(df, aes(x=x, y=y, fill=z)) + geom_raster() + scale_fill_viridis_c()
+ggplot(df, aes(x=x, y=-y, fill=z)) + geom_raster() + scale_fill_viridis_c()
 
 # f <- tempfile()
-mesh <- shadow::mesh_tri(transform(df, y=z*.1, z=y), c(n, n)+1)
+mesh <- shadow::mesh_tri(transform(df, y=z*.05, z=y), c(n, n)+1)
 m1 <- mesh
 m1[] <- lapply(mesh, '[', 1)
 
@@ -94,7 +95,7 @@ x.lo <- min(xu)
 x.hi <- max(xu)
 z.lo <- min(zu)
 z.hi <- max(zu)
-y.lo <- -.5
+y.lo <- -10
 if(y.lo > min(yu)) stop('need lower y')
 
 vertex_arrange <-function(a, b, y, lo) {
@@ -142,19 +143,30 @@ mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
 mesh3 <- mesh2
 
 # obj <- mesh_to_obj(mesh3, c(0, y.lo * .98, 0))
-# obj <- mesh_to_obj(mesh3, c(0, -5, 0))
-obj <- mesh_to_obj(mesh3)
+obj <- mesh_to_obj(mesh3, c(0, -5, 0))
+# obj <- mesh_to_obj(mesh3)
 writeLines(obj, f)
 # par3d(windowRect=c(0, 0, 600, 600))
-plot3d(readOBJ(f), color='grey')
+# plot3d(readOBJ(f), color='grey')
 
 mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
 objrr <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.3)
+
+mult <- 1.3
 light.narrow <- sphere(
-  #y=5, z = 2, x = 1, radius = .1,
-  y=5, z = -4, x = 1, radius = .1,
-  material = light(intensity = 5000)
+  y=8, z = 2, x = 1, radius = .1,
+  material = light(intensity = 5000 * mult)
 )
+light.narrow <- sphere(
+  y=8, z = 0, x = 0, radius = .1,
+  material = light(intensity = 5000 * mult)
+)
+light.narrow <- sphere(
+  y=8, z = 2, x = 1, radius = .5,
+  material = light(intensity = 200 * mult)
+)
+bg1 <- 102 / mult
+bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
 scn.base <- dplyr::bind_rows(
   light.narrow,
   # xz_rect(
@@ -163,7 +175,7 @@ scn.base <- dplyr::bind_rows(
   # )
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 )
-
+gang <- c(90, 0, 0)
 scn.4 <- dplyr::bind_rows(
   scn.base,
   # xz_rect(xwidth=15, zwidth=15),
@@ -183,11 +195,13 @@ scn.4 <- dplyr::bind_rows(
 )
 rez <- 400
 samp <- 100
+# rez <- 400
+# samp <- 200
 
-scns <- list(scn.4)
-render_scenes(
-  scns, height=rez, width=rez, samples=samp,
-  # lookfrom=c(-4, 2, -4), lookat=c(-2, 0, -2),
+file <- next_file('~/Downloads/mesh-viz/small-mesh/simple-mesh-new2-')
+render_scene(
+  scn.4, height=rez, width=rez, samples=samp,
+  # lookfrom=c(2, 1, 2), lookat=c(0, 0, 0),
   lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
   fov=25,
   aperture=0,
@@ -195,7 +209,7 @@ render_scenes(
   clamp=3,
   backgroundlow=bg, backgroundhigh=bg,
   ambient_light=TRUE,
-  filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-sa3c-%d.png'
+  filename=file
 )
 
 rez <- 200
