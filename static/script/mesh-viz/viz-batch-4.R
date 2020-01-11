@@ -68,19 +68,23 @@ render_scenes(
 )
 stop('done')
 
-df <- expand.grid(x=seq(-pi,pi, pi/25), y=seq(-pi,pi, pi/25))
+n <- 50
+seqv <- seq(-pi,pi, length.out=n + 1)
+df <- expand.grid(x=seqv, y=seqv)
 df <- transform(
   df, z=sin(2*x + 2 * y) + sin(2*x - 1.5 * y) +
     .2 * sin(10*x + 6 * y) + .3 * sin(10*y)
 )
+# df <- transform(df, z=sin(5*x + 2 * y))
 library(ggplot2)
 ggplot(df, aes(x=x, y=y, fill=z)) + geom_raster() + scale_fill_viridis_c()
 
 # f <- tempfile()
-mesh <- mesh_tri(transform(df, y=z*.1, z=y, t=0), c(51, 51))
+mesh <- shadow::mesh_tri(transform(df, y=z*.1, z=y), c(n, n)+1)
+m1 <- mesh
+m1[] <- lapply(mesh, '[', 1)
 
 # Need to find all the vertices on the edges and generate a border out of them
-
 
 xu <- unlist(mesh[,'x'])
 zu <- unlist(mesh[,'z'])
@@ -138,10 +142,11 @@ mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
 mesh3 <- mesh2
 
 # obj <- mesh_to_obj(mesh3, c(0, y.lo * .98, 0))
-obj <- mesh_to_obj(mesh3, c(0, -5, 0))
-# obj <- mesh_to_obj(mesh3)
+# obj <- mesh_to_obj(mesh3, c(0, -5, 0))
+obj <- mesh_to_obj(mesh3)
 writeLines(obj, f)
-# plot3d(readOBJ(f), color='grey')
+# par3d(windowRect=c(0, 0, 600, 600))
+plot3d(readOBJ(f), color='grey')
 
 mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
 objrr <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.3)
