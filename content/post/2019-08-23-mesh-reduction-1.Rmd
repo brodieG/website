@@ -276,11 +276,7 @@ In this case it the additional child errors are smaller so they do not change
 the outcome, but it is worth noting that each hypotenuse midpoint may add up to
 four child errors.
 
-Here is the entire process:
-
-<div style='background-color: red'>
-Initial 10 frames have bad counter.
-</div>
+Here is the whole thing at 60fps:
 
 <video id=mesh-anim style='display: block; margin: 0 auto;' controls loop>
 <source
@@ -894,9 +890,12 @@ do.call(knitr::opts_chunk$set, old.opt)
 Show the midpoints in a 9x9 grid, side by side for each type of point.
 -->
 
-Furthermore, we can split the midpoints into two groups (A and B below) such
-that all points related to a particularly midpoint can be computed with fixed
-offsets relative to that point:
+For each layer all the children will be at fixed offsets from the midpoints.
+The hypotenuses orientations vary within a layer, so we can't use fixed offsets
+for them.  However, if we split the midpoints into two groups (A and B below) we
+can use fixed offsets within each group.  For "Diagonal" the groups are
+bottom-left to top-right (A) and top-left to bottom-right (B), and for "Axis"
+vertical (A) and horizontal (B):
 
 ```{r echo=FALSE}
 p.ax3.a <- cbind(subset(p.ax3, (x * 4) %% 2 == 0), subtype='A')
@@ -1021,10 +1020,11 @@ do.call(knitr::opts_chunk$set, old.opt)
 ```
 
 All is not perfect though: "Axis" is again a problem as the peripheral midpoints
-end up generating out-of-bounds children, shown as hollow points above.  I won't
-get into the details, but handling the out-of-bounds children requires
-separate treatment for the left/top/right/bottom periphery as well as the
-inner midpoints.  This makes the code [uglier][11], but also faster:
+end up generating out-of-bounds children, shown as hollow points / dahsed arrows
+above.  I won't get into the details, but handling the out-of-bounds children
+requires separate treatment for the left/top/right/bottom periphery as well as
+the inner midpoints.  We need to handle far more corner cases than with the
+template approach which makes the code much [uglier][11].  It is also faster:
 
 ```{r vec-timings-2, echo=FALSE}
 dat <- data.frame(Language=c('R-vec-2', 'JS', 'C'), Time=c(15.11,20.78,6.81))
@@ -1093,26 +1093,10 @@ initial overhead, but the scaling rate is slower.  This might be because we use
 64-bit doubles in C so we can interface with R, whereas the JS version uses
 32-bit floats[^c-vs-js].
 
+# Too Square
 
-
-
-
-They key is to figure out the pattern of offsets that gives us the correct set
-of absolute coordinates.  The "Diagonal" triangles are pretty straightforward as
-they have a regular pattern.  The "Axis" triangles are more challenging as their
-tiling to offsets from "row" to "row" and "column" to "column":
-
-Worse, some of the child points end up out of bounds, so we will need to account
-for those.
-
-<!--
-Midpoints, but with triangles drawn in, and oob triangles highlighted in a
-different color.
-
-Maybe this gets merged into the previous plot.
--->
-
-
+You might have noticed by now that we've been cutting `volcano` off at the
+knees, and even inventing some of it.
 
 
 # Conclusions
