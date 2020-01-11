@@ -71,10 +71,17 @@ stop('done')
 n <- 50
 seqv <- seq(-pi,pi, length.out=n + 1)
 df <- expand.grid(x=seqv, y=seqv)
-hz <- 2
+hz <- 1
+# df <- transform(
+#   df, z=
+#     1 * sin(2*x*hz + 4 * y*hz) +
+#     .8 * sin(2*x*hz - 3 * y*hz) +
+#     .4 * sin(10*x*hz + 6 * y* hz)
+# )
 df <- transform(
   df, z=
     1 * sin(2*x*hz + 4 * y*hz) +
+    .25 * sin(2*((x + pi)*hz)^2 + 4*(y*hz)^2) +
     .8 * sin(2*x*hz - 3 * y*hz) +
     .4 * sin(10*x*hz + 6 * y* hz)
 )
@@ -203,8 +210,8 @@ samp <- 100
 file <- next_file('~/Downloads/mesh-viz/small-mesh/simple-mesh-new2-')
 render_scene(
   scn.4, height=rez, width=rez, samples=samp,
-  lookfrom=c(2, 1, 2), lookat=c(0, 0, 0),
-  # lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
+  # lookfrom=c(2, 1, 2), lookat=c(0, 0, 0),
+  lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
   fov=25,
   aperture=0,
   camera_up=c(0,1,0),
