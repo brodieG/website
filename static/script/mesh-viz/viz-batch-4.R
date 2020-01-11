@@ -80,10 +80,11 @@ hz <- 1
 # )
 df <- transform(
   df, z=
-    1 * sin(2*x*hz + 4 * y*hz) +
-    .25 * sin(2*((x + pi)*hz)^2 + 4*(y*hz)^2) +
-    .8 * sin(2*x*hz - 3 * y*hz) +
-    .4 * sin(10*x*hz + 6 * y* hz)
+    .5 * sin(2*x*hz + 4 * y*hz) +
+    .125 * sin(2*((x + pi)*hz)^2 + 4*(y*hz)^2) +
+    .125 * sin(3*((x + pi/4)*hz)^2 + 2*((y + pi)*hz)^2) +
+    .3 * sin(2*x*hz - 3 * y*hz) +
+    .2 * sin(10*x*hz + 6 * y* hz)
 )
 # df <- transform(df, z=sin(2*x + 4 * y))
 library(ggplot2)
@@ -159,7 +160,7 @@ writeLines(obj, f)
 # plot3d(readOBJ(f), color='grey')
 
 mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
-objrr <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.3)
+objrr <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.4)
 
 mult <- 1.3
 light.narrow <- sphere(
@@ -202,8 +203,8 @@ scn.4 <- dplyr::bind_rows(
   objrr,
   NULL
 )
-rez <- 400
-samp <- 100
+rez <- 800
+samp <- 300
 # rez <- 400
 # samp <- 200
 
