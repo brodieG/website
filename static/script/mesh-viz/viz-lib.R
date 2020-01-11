@@ -13,6 +13,15 @@ rep_each <- function(x, each) {
     res
   } else x[0]
 }
+# given root of file (including dir), create new incremented file.
+next_file <- function(x) {
+  dir <- dirname(x)
+  f <- basename(x)
+  fl <- list.files(dir, full.names=TRUE, pattern=f)
+  fnum <- max(as.integer(sub(".*?(\\d+)\\.png", "\\1", fl, perl=TRUE)))
+  if(is.na(fnum) || !is.finite(fnum)) stop("file num error")
+  file.path(dir, paste0(f, sprintf("%03d", fnum + 1), ".png", collapse=""))
+}
 
 # - Plot Helper Tools ----------------------------------------------------------
 
