@@ -7,9 +7,11 @@
 #   0, 3, 0,
 #   3, 1, 2,
 #   0, 2, 0), 3)[,3:1]
-eltif <- raster::raster("~/Downloads/dem_01.tif")
-eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
-elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+if(!'eltif' %in% ls()) {
+  eltif <- raster::raster("~/Downloads/dem_01.tif")
+  eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+  elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
+}
 
 map <- elmat1[1:5, 1:5]
 
@@ -17,24 +19,25 @@ source('static/script/mesh-viz/rtin2.R')
 
 # - Record ---------------------------------------------------------------------
 
-library(watcher)
-coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
-id.vars <- c('.id', '.line')
-vars <- c(coord.vars, 'errors', 'id', 'i')
-errors_watched <- watch(errors_rtin2, vars)
-xx <- errors_watched(m)
-# xx <- errors_watched(map)
-zz.raw <- simplify_data(attr(xx, 'watch.data'))
-library(reshape2)
+if(!'errors_watched' %in% ls()) {
+  library(watcher)
+  coord.vars <- do.call(paste0, expand.grid(c('a','b','c','m','lc','rc'), c('x', 'y')))
+  id.vars <- c('.id', '.line')
+  vars <- c(coord.vars, 'errors', 'id', 'i')
+  errors_watched <- watch(errors_rtin2, vars)
+  xx <- errors_watched(map)
+  zz.raw <- simplify_data(attr(xx, 'watch.data'))
+  size.max <- max(xx, na.rm=TRUE)
+  library(reshape2)
 
-frame.ids <- zz.raw[['.scalar']][['.id']]
-# frame.ids <- tail(frame.ids, 1)
-scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
-zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
-zz.raw[-1] <- lapply( # assuming df, not necessarily true
-  zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
-)
-
+  frame.ids <- zz.raw[['.scalar']][['.id']]
+  # frame.ids <- tail(frame.ids, 1)
+  scalar.frames <- zz.raw[['.scalar']][['.id']] %in% frame.ids
+  zz.raw[[1]] <- lapply(zz.raw[[1]], '[', frame.ids)
+  zz.raw[-1] <- lapply( # assuming df, not necessarily true
+    zz.raw[-1], function(x) subset(x, .id %in% frame.ids)
+  )
+}
 # - Basic Data -----------------------------------------------------------------
 
 zz.vec <- zz.raw[['.scalar']]
@@ -48,15 +51,22 @@ dat[['type']] <- 'Coords'
 dat.s <- dat
 # dat.s <- subset(dat, id %in% 1:40)
 pcolor <- c(
-  a='#66c2a5', b='#fc8d62', c='grey65',
-  m='#8da0cb', lc='#8da0cb88', rc='#8da0cb88'
+  a='#66c2a5', b='#66c2a5', c='grey65',
+  # a='#66c2a5', b='#fc8d62', c='grey65',
+  m='#8da0cb', lc='#fc8d62', rc='#fc8d62'
 )
+psizes <- c(a=1/6, b=1/6, c=1/6, m=1/4, lc=1/8, rc=1/8) * size.max * 4
+
 dat.s1 <- subset(dat.s, label %in% c(letters[1:3], 'm', 'lc', 'rc'))
-dat.s1 <- transform(dat.s1, pcolor=pcolor[label])
+dat.s1 <- transform(dat.s1, pcolor=pcolor[label], psize=psizes[label])
 dat.s2 <- subset(dat.s, label %in% letters[1:3])
 dat.s2 <- dat.s2[cumsum(rep(c(3, 1, 1, -2), nrow(dat.s2) / 3)) - 2,]
 dat.s3a <- subset(dat.s, label %in% c('lc', 'rc', 'm'))
+
+# for circles around points, now we don't circle chilren any more
+
 dat.s3 <- rbind(dat.s3a, transform(dat.s3a, type='Errors'))
+dat.s3 <- subset(dat.s3, label == 'm')
 
 # Data for child to parent arrows; surely there is a better way to do this
 
@@ -66,11 +76,18 @@ dat.s4c <- melt(
   dat.s4b,
   id.vars=c('.id', '.line', 'variable', 'm')
 )
-names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'type', 'c')
-dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'type'))
-dat.s4 <- dcast(dat.s4d, .id + .line + type ~ coord + variable)
-dat.s4[['type']] <- 'Errors'
+names(dat.s4c) <- c('.id', '.line', 'coord', 'm', 'ctype', 'c')
+dat.s4d <- melt(dat.s4c, id.vars=c('.id', '.line', 'coord', 'ctype'))
+dat.s4 <- dcast(dat.s4d, .id + .line + ctype ~ coord + variable)
+dat.s4[['ctype']] <- NULL
 
+dat.s4 <- transform(dat.s4, diag=ifelse(x_c - x_m & y_c - y_m, sqrt(2), 1))
+arrow.mult <- log2(nrow(map) - 1) * 3
+dat.s4 <- transform(
+  dat.s4,
+  x_m=x_m - sign(x_m - x_c) * 1 / (arrow.mult * diag),
+  y_m=y_m - sign(y_m - y_c) * 1 / (arrow.mult * diag)
+)
 # Background triangles
 
 dat.s5a <- subset(dat.s2, .line == 45)
@@ -153,7 +170,6 @@ size <- nrow(map)
 library(ggplot2)
 cat('\n')
 frames <- sort(unique(dat.s1$.id))
-frames <- 1:10
 data <- list(
   s1=dat.s1, s5=dat.s5, s2=dat.s2, s4=dat.s4, err=dat.err,
   meta=dat.meta, lines=dat.lines, s3=dat.s3
@@ -169,15 +185,15 @@ for(i in frames) {
       color='yellow', size=0.5
     ) +
     geom_path(data=d$s2, aes(group=.id), color='white', size=1.5) +
-    geom_point(size=8, color=d$s1$pcolor) +
-    geom_point(data=d$err, aes(y=y, x=x, size=val)) +
     geom_point(
       data=d$s3, fill='NA', color='black', shape=21, size=18
     ) +
     geom_segment(
       data=d$s4, aes(x=x_c, y=y_c, xend=x_m, yend=y_m),
-      arrow=arrow(type='closed'), color='grey65'
+      arrow=arrow(type='closed', length=unit(0.25, 'inches')), color='grey65'
     ) +
+    geom_point(aes(size=psize), color=d$s1$pcolor) +
+    geom_point(data=d$err, aes(y=y, x=x, size=val)) +
     geom_text(aes(label=label)) +
     geom_label(
       data=subset(d$lines, highlight=='white'),
@@ -217,7 +233,7 @@ for(i in frames) {
     scale_size(limits=c(0, max(xx, na.rm=TRUE)), range=c(0,10)) +
     NULL
   ggsave(
-    filename=sprintf('~/Downloads/mesh-anim-4/img-%04d.png', i),
+    filename=sprintf('~/Downloads/mesh-anim-4d/img-%04d.png', i),
     plot=p,
     width=width/dpi, height=height/dpi, units='in', device='png',
     dpi=dpi
