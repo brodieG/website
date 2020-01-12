@@ -4,7 +4,7 @@ source('static/script/mesh-viz/viz-batch-init.R')
 
 errs2a.cyl <- errs_to_cyl(
   transform(errs2.df, z0=0, x=x-.5, y=y-.5),
-  diffuse(color='grey50', checkercolor='grey25', checkerperiod=.05)
+  diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
 )
 errs3a.cyl <- errs_to_cyl(
   transform(errs3.df, z0=0, x=x-.5, y=y-.5),
@@ -78,13 +78,19 @@ hz <- 1
 #     .8 * sin(2*x*hz - 3 * y*hz) +
 #     .4 * sin(10*x*hz + 6 * y* hz)
 # )
+t <- 0
+# df <- transform(
+#   df, z=
+#     .125 * sin(2*((x + pi)*hz)^2 + 4*(y*hz)^2) +
+#     .10 * sin(3*((x - pi)*hz)^2 + 2*((y + pi)*hz)^2) +
+#     .125 * sin(3*((x - 2 *pi)*hz)^2 + 6*((y + pi)*hz)^2)
+# )
 df <- transform(
   df, z=
-    .5 * sin(2*x*hz + 4 * y*hz) +
-    .125 * sin(2*((x + pi)*hz)^2 + 4*(y*hz)^2) +
-    .125 * sin(3*((x + pi/4)*hz)^2 + 2*((y + pi)*hz)^2) +
-    .3 * sin(2*x*hz - 3 * y*hz) +
-    .2 * sin(10*x*hz + 6 * y* hz)
+    .3 * sin(2*(x + t)*hz + 4 * (y + t)*hz) +
+    .125 * sin(2*((x + t + pi)*hz)^2 + 4*((y + t)*hz)^2) +
+    .10 * sin(3*((x - pi + t)*hz)^2 + 2*((y + pi + t)*hz)^2) +
+    .125 * sin(3*((x - 2 *pi + t)*hz)^2 + 6*((y + pi + t)*hz)^2)
 )
 # df <- transform(df, z=sin(2*x + 4 * y))
 library(ggplot2)
@@ -159,18 +165,13 @@ writeLines(obj, f)
 # par3d(windowRect=c(0, 0, 600, 600))
 # plot3d(readOBJ(f), color='grey')
 
-mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
-objrr <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.4)
+# mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
+mat.w <- dielectric(color='#E5E5FF', refraction=1.3)
+objrr3 <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.525)
+objrr2 <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.4)
+objrr1 <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.2)
 
 mult <- 1.3
-light.narrow <- sphere(
-  y=8, z = 2, x = 1, radius = .1,
-  material = light(intensity = 5000 * mult)
-)
-light.narrow <- sphere(
-  y=8, z = 0, x = 0, radius = .1,
-  material = light(intensity = 5000 * mult)
-)
 light.narrow <- sphere(
   y=8, z = 2, x = 1, radius = .5,
   material = light(intensity = 200 * mult)
@@ -186,12 +187,8 @@ scn.base <- dplyr::bind_rows(
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 )
 gang <- c(90, 0, 0)
-scn.4 <- dplyr::bind_rows(
+scn.base.2 <- dplyr::bind_rows(
   scn.base,
-  # xz_rect(xwidth=15, zwidth=15),
-  # sphere(y=5, material=light(intensity=25)),
-  # group_objects(grid, group_angle=c(-90, 0, 0)),
-  # group_objects(grid, group_angle=c(-90, 90, 0)),
   group_objects(
     errs2a.cyl, group_angle=gang,
     pivot_point=numeric(3)
@@ -200,26 +197,37 @@ scn.4 <- dplyr::bind_rows(
     errs3a.cyl, group_angle=gang,
     pivot_point=numeric(3)
   ),
-  objrr,
   NULL
 )
-rez <- 800
-samp <- 300
-# rez <- 400
-# samp <- 200
+scn.4a <- dplyr::bind_rows(scn.base.2, objrr1)
+scn.4b <- dplyr::bind_rows(scn.base.2, objrr2)
+scn.4c <- dplyr::bind_rows(scn.base.2, objrr3)
+
+
+# rez <- 800
+# samp <- 300
+rez <- 400
+samp <- 150
+# rez <- 100
+# samp <- 25
 
 file <- next_file('~/Downloads/mesh-viz/small-mesh/simple-mesh-new2-')
+# scns <- list(scn.4a, scn.4b, scn.4c)
+# scns <- list(scn.4b)
 render_scene(
-  scn.4, height=rez, width=rez, samples=samp,
-  # lookfrom=c(2, 1, 2), lookat=c(0, 0, 0),
-  lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
-  fov=25,
+  scn.4b, height=rez, width=rez, samples=samp,
+  lookfrom=c(0, 3, 1.5), lookat=c(0, 0, 0),
+  # lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
+  # fov=25,
+  fov=35,
+  # fov=0, ortho_dimensions=c(1.75,1.75),
   aperture=0,
   camera_up=c(0,1,0),
   clamp=3,
   backgroundlow=bg, backgroundhigh=bg,
   ambient_light=TRUE,
   filename=file
+  # filename='~/Downloads/mesh-viz/small-mesh/water-new4-%d.png'
 )
 
 rez <- 200

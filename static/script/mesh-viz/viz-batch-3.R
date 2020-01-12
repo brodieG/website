@@ -59,15 +59,35 @@ scn.3 <- dplyr::bind_rows(
 # bg1 <- 102
 bg1 <- 120
 bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
+
+light.narrow <- sphere(
+  y=8, z = 2, x = 1, radius = .5,
+  material = light(intensity = 200 * mult)
+)
+bg1 <- 102 / mult
+bg1 <- 102
+bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
+scn.base <- dplyr::bind_rows(
+  light.narrow,
+  # xz_rect(
+  #   xwidth=15, zwidth=15, y=10, flipped=TRUE, 
+  #   material=diffuse(color='white', lightintensity=1)
+  # )
+  xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
+)
+
 rez <- 300
-samp <- 100
-# scns <- list(scn.1, scn.2, scn.3)
-scns <- list(scn.4)
+samp <- 200
+scns <- list(scn.1, scn.2, scn.3)
+# scns <- list(scn.2)
 render_scenes(
   scns, height=rez, width=rez, samples=samp,
-  lookfrom=c(0, 4, 1),
-  lookat=c(0, 0, -.275),
-  fov=21,
+  lookfrom=c(0, 3, 1.5), 
+  # lookfrom=c(0, 4, 1),
+  # lookat=c(0, 0, 0),
+  lookat=c(0, 0, -.5),
+  fov=27,
+  # fov=21,
   aperture=0,
   camera_up=c(0,1,0),
   clamp=3,
