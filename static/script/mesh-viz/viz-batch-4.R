@@ -87,11 +87,25 @@ t <- 0
 # )
 df <- transform(
   df, z=
-    .3 * sin(2*(x + t)*hz + 4 * (y + t)*hz) +
+    .2 * sin(2*(x + t)*hz + 4 * (y + t)*hz) +
     .125 * sin(2*((x + t + pi)*hz)^2 + 4*((y + t)*hz)^2) +
     .10 * sin(3*((x - pi + t)*hz)^2 + 2*((y + pi + t)*hz)^2) +
     .125 * sin(3*((x - 2 *pi + t)*hz)^2 + 6*((y + pi + t)*hz)^2)
 )
+df <- transform(
+  df, z=
+    .5 * sin(2*(x+t)*hz + 4 * (y+t)*hz) +
+    .125 * sin(2*((x+t + 1.5*pi)*hz)^2 + 4*((y+t)*hz)^2) +
+    .125 * sin(3*((x+t - pi/2)*hz)^2 + 2*((y + t + 2*pi)*hz)^2) +
+    .3 * sin(2*(x+t)*hz - 3 * (y+t)*hz)
+  )
+df <- transform(
+  df, z=
+    .5 * sin(2*(x+t)*hz + 4 * (y+t)*hz) +
+    .125 * sin(2*(((x+t) + pi)*hz)^2 + 4*((y+t)*hz)^2) +
+    .125 * sin(3*(((x+t) + pi/4)*hz)^2 + 2*(((y+t) + pi)*hz)^2) +
+    .3 * sin(2*(x+t)*hz - 3 * (y+t)*hz)
+  )
 # df <- transform(df, z=sin(2*x + 4 * y))
 library(ggplot2)
 ggplot(df, aes(x=x, y=-y, fill=z)) + geom_raster() + scale_fill_viridis_c()
@@ -166,7 +180,8 @@ writeLines(obj, f)
 # plot3d(readOBJ(f), color='grey')
 
 # mat.w <- dielectric(color='#F0F0FF', refraction=1.3)
-mat.w <- dielectric(color='#E5E5FF', refraction=1.3)
+# mat.w <- dielectric(color='#E5E5FF', refraction=1.3)
+mat.w <- dielectric(color='#E0F5FF', refraction=1.3)
 objrr3 <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.525)
 objrr2 <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.4)
 objrr1 <- obj_model(f, material=mat.w, scale=rep(1.5/(2*pi), 3), y=.2)
@@ -181,7 +196,7 @@ bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
 scn.base <- dplyr::bind_rows(
   light.narrow,
   # xz_rect(
-  #   xwidth=15, zwidth=15, y=10, flipped=TRUE, 
+  #   xwidth=15, zwidth=15, y=10, flipped=TRUE,
   #   material=diffuse(color='white', lightintensity=1)
   # )
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
@@ -199,14 +214,32 @@ scn.base.2 <- dplyr::bind_rows(
   ),
   NULL
 )
-scn.4a <- dplyr::bind_rows(scn.base.2, objrr1)
-scn.4b <- dplyr::bind_rows(scn.base.2, objrr2)
-scn.4c <- dplyr::bind_rows(scn.base.2, objrr3)
-
+dy2 <- .400
+dy1 <- .200
+dy3 <- .600
+dro <- .10
+dri <- .075
+# mat.d <- diffuse(color='#55CC55')
+mat.d <- diffuse(color='black')
+scn.4a <- dplyr::bind_rows(
+  scn.base.2, objrr1,
+  disk(radius=dro, inner_radius=dri, y=dy1, z=-.5, material=mat.d),
+  disk(radius=dro, inner_radius=dri, y=dy1, x=-.5, material=mat.d),
+  disk(radius=dro, inner_radius=dri, y=dy1, material=mat.d)
+)
+scn.4b <- dplyr::bind_rows(
+  scn.base.2, objrr2,
+  disk(radius=dro, inner_radius=dri, y=dy2, x=-.5, material=mat.d),
+  disk(radius=dro, inner_radius=dri, y=dy2, material=mat.d)
+)
+scn.4c <- dplyr::bind_rows(
+  scn.base.2, objrr3,
+  disk(radius=dro, inner_radius=dri, y=dy3, x=-.5, material=mat.d),
+)
 
 # rez <- 800
 # samp <- 300
-rez <- 400
+rez <- 300
 samp <- 150
 # rez <- 100
 # samp <- 25
@@ -214,8 +247,10 @@ samp <- 150
 file <- next_file('~/Downloads/mesh-viz/small-mesh/simple-mesh-new2-')
 # scns <- list(scn.4a, scn.4b, scn.4c)
 # scns <- list(scn.4b)
-render_scene(
-  scn.4b, height=rez, width=rez, samples=samp,
+# render_scene(
+render_scenes(
+  list(scn.4a, scn.4b, scn.4c),
+  height=rez, width=rez, samples=samp,
   lookfrom=c(0, 3, 1.5), lookat=c(0, 0, 0),
   # lookfrom=c(0, 4, 1), lookat=c(0, 0, 0),
   # fov=25,
@@ -226,12 +261,13 @@ render_scene(
   clamp=3,
   backgroundlow=bg, backgroundhigh=bg,
   ambient_light=TRUE,
-  filename=file
-  # filename='~/Downloads/mesh-viz/small-mesh/water-new4-%d.png'
+  # filename=file
+  filename='~/Downloads/mesh-viz/small-mesh/water-new5-%d.png'
 )
 
 rez <- 200
 samp <- 250
+mat.w <- dielectric(color='#FFBBBB')
 mat.w <- dielectric(color='#FFBBBB')
 ang <- c(0, 0, 0)
 
@@ -258,8 +294,8 @@ scn <- group_objects(
 render_scene(
   dplyr::bind_rows(scn.base, scn),
   height=rez, width=rez, samples=samp,
-  lookfrom=c(0, 2, 7), 
-  # lookfrom=c(-7, 4, 0), 
+  lookfrom=c(0, 2, 7),
+  # lookfrom=c(-7, 4, 0),
   lookat=c(0, 0, 0),
   fov=25,
   aperture=0,
