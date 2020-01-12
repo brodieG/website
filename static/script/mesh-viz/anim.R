@@ -244,15 +244,15 @@ stop('done plot')
 # remove transparency layers, doesn't work but at least this way consistent
 # profile
 
-dir <- '~/Downloads/mesh-anim-4'
+dir <- '~/Downloads/mesh-anim-4d'
 files <- list.files(dir, full.names=TRUE, pattern='img-.*\\.png')
 for(i in files) {
   fpng <- png::readPNG(i)[,,1:3]
   png::writePNG(fpng, i)
 }
-# Add frames at end, 2 second pause at 30fps
+# Add frames at end, 2 second pause at 60fps
 
-new.files <- paste0(dir, sprintf('/img-%04d.png', length(files) + 1:60))
+new.files <- paste0(dir, sprintf('/img-%04d.png', length(files) + 1:120))
 for(i in new.files) file.copy(tail(files, 1), i)
 
 
@@ -273,18 +273,14 @@ for(i in new.files) file.copy(tail(files, 1), i)
 # ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out2.mp4 
 
 # Things to do:
-# * Stitch together frames for 2 x 2 full video.
-# * Can we figure out a little marquee for the flipbook
-# * Better step-forward and back buttons for flipbook
-#   https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
-#   U21E4 U21E5
+# * A play button in marquee
+# * Some cue that the flipbook finished and is restarting
 
 # - Combine Frames -------------------------------------------------------------
 
 # Show frames 100, 194, 382, 758
 
 filenums <- c(100, 194, 382, 758)
-dir <- '~/Downloads/mesh-anim-4'
 files <- paste0(dir, '/img-', sprintf('%04d.png', filenums))
 
 pngs <- lapply(lapply(files, png::readPNG), '[', , 311:586,)
@@ -302,7 +298,7 @@ png::writePNG(pngres, '~/Downloads/mesh-anim-4-abreast.png')
 # two abreast
 
 filenums <- c(1102)
-dir <- '~/Downloads/mesh-anim-4'
+dir <- '~/Downloads/mesh-anim-4d'
 files <- paste0(dir, '/img-', sprintf('%04d.png', filenums))
 png1 <- png::readPNG(files[1])[,311:586,]
 rle(rowSums(png1[,200,]) == 3)
@@ -322,10 +318,10 @@ png::writePNG(pngres, '~/Downloads/mesh-anim-2-abreast.png')
 
 plot(as.raster(pngres))
 
-dir1 <- '~/Downloads/mesh-anim-4'
-dir2 <- '~/Downloads/mesh-anim-4b'
+dir1 <- '~/Downloads/mesh-anim-4d'
+dir2 <- '~/Downloads/mesh-anim-4d-1'
 files <- list.files(dir1, pattern='img-.*\\.png')
-files <- files
+# files <- files[1:50]
 
 for(i in files) {
   png1 <- png::readPNG(sprintf('%s/%s', dir1, i))[,311:586,]
