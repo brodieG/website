@@ -7,6 +7,28 @@
 water_surface <- function(f, n=50, t=0, hz=1) {
   seqv <- seq(-pi,pi, length.out=n + 1)
   df <- expand.grid(x=seqv, y=seqv)
+  # df <- transform(df, z=
+  #   sin(sqrt((x * hz + 12*pi) ^ 2 + (y * hz + 12*pi) ^2)) +
+  #   .6 * sin(sqrt((x * hz * 1/.6 -12*pi) ^ 2 + (y * hz * 1/.6+ 12*pi) ^2)) +
+  #   .1 * sin(sqrt((x * hz * 1/.2 -24*pi) ^ 2 + (y * hz * 1/.2- 24*pi) ^2)) +
+  #   0
+  # )
+  # # The sqrt(x^2+y^2) should be more realistic, but the one we picked just
+  # # ends up looking better...
+  # df <- transform(
+  # df, z=
+  #   .5 * sin(2*(x+t)*hz + 4 * (y+t)*hz) +
+  #   .8 * sin(sqrt(2*(((x+t) + pi)*hz)^2 + 4*((y+t)*hz)^2)) +
+  #   .7 * sin(sqrt(3*(((x+t) + pi/4)*hz)^2 + 2*(((y+t) + pi)*hz)^2)) +
+  #   .3 * sin(2*(x+t)*hz - 3 * (y+t)*hz)
+  # )
+  # df <- transform(
+  # df, z=
+  #   .5 * sin(2*(x+t)*hz + 4 * (y+t)*hz) +
+  #   .4 * sin(sqrt(2*(((x+t) + pi)*hz*2)^2 + 4*((y+t)*hz*2)^2)) +
+  #   .3 * sin(sqrt(3*(((x+t) + 10*pi)*hz*4)^2 + 2*(((y+t) + 20*pi)*hz*4)^2)) +
+  #   .3 * sin(2*(x+t)*hz - 3 * (y+t)*hz)
+  # )
   df <- transform(
     df, z=
       .5 * sin(2*(x+t)*hz + 4 * (y+t)*hz) +
@@ -15,10 +37,13 @@ water_surface <- function(f, n=50, t=0, hz=1) {
       .3 * sin(2*(x+t)*hz - 3 * (y+t)*hz)
     )
   # library(ggplot2)
-  # ggplot(df, aes(x=x, y=-y, fill=z)) + geom_raster() + scale_fill_viridis_c()
-
+  # ggsave(
+  #   '~/Downloads/gg-capt/gg.png',
+  #   ggplot(df, aes(x=x, y=-y, fill=z)) + geom_raster() + scale_fill_viridis_c()
+  # )
   # f <- tempfile()
-  mesh <- shadow::mesh_tri(transform(df, y=z*.05, z=y), c(n, n)+1)
+  # mesh <- shadow::mesh_tri(transform(df, y=z*.05, z=y), c(n, n)+1)
+  mesh <- shadow::mesh_tri(transform(df, y=z*.1, z=y), c(n, n)+1)
   m1 <- mesh
   m1[] <- lapply(mesh, '[', 1)
 
@@ -86,3 +111,21 @@ water_surface <- function(f, n=50, t=0, hz=1) {
   f
 }
 
+if(FALSE) {
+  library(ggplot2)
+  hz <- 1
+  seqv <- seq(-pi,pi, length.out=n + 1)
+  df <- expand.grid(x=seqv, y=seqv)
+  df <- transform(
+  df, z=
+    .5 * sin(2*(x+t)*hz + 4 * (y+t)*hz) +
+    .8 * sin(sqrt(2*(((x+t) + pi)*hz*2)^2 + 4*((y+t)*hz*2)^2)) +
+    .7 * sin(sqrt(3*(((x+t) + pi/4)*hz*4)^2 + 2*(((y+t) + pi)*hz)^2)) +
+    .3 * sin(2*(x+t)*hz - 3 * (y+t)*hz)
+  )
+  ggplot(df, aes(x=x, y=-y, fill=z)) + geom_raster() + scale_fill_viridis_c()
+  ggsave(
+    '~/Downloads/gg-capt/gg.png',
+     p
+  )
+}
