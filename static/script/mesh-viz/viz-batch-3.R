@@ -57,8 +57,6 @@ scn.3 <- dplyr::bind_rows(
 
 
 # bg1 <- 102
-bg1 <- 120
-bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
 
 light.narrow <- sphere(
   y=8, z = 2, x = 1, radius = .5,
@@ -80,21 +78,21 @@ rez <- 300
 samp <- 200
 scns <- list(scn.1, scn.2, scn.3)
 # scns <- list(scn.2)
-render_scenes(
-  scns, height=rez, width=rez, samples=samp,
-  lookfrom=c(0, 3, 1.5), 
-  # lookfrom=c(0, 4, 1),
-  # lookat=c(0, 0, 0),
-  lookat=c(0, 0, -.5),
-  fov=27,
-  # fov=21,
-  aperture=0,
-  camera_up=c(0,1,0),
-  clamp=3,
-  backgroundlow=bg, backgroundhigh=bg,
-  ambient_light=TRUE,
-  filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-s2-%d.png'
-)
+# render_scenes(
+#   scns, height=rez, width=rez, samples=samp,
+#   lookfrom=c(0, 3, 1.5), 
+#   # lookfrom=c(0, 4, 1),
+#   # lookat=c(0, 0, 0),
+#   lookat=c(0, 0, -.5),
+#   fov=27,
+#   # fov=21,
+#   aperture=0,
+#   camera_up=c(0,1,0),
+#   clamp=3,
+#   backgroundlow=bg, backgroundhigh=bg,
+#   ambient_light=TRUE,
+#   filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-s2-%d.png'
+# )
 # Error bars alone
 
 stop()

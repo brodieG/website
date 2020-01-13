@@ -189,7 +189,7 @@ ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   }
   x <- (ids - 1) %/% dim(map)[1]
   y <- (ids - 1) %% dim(map)[1]
-  z <- map[ids]
+  z <- map[c(ids)]
 
   x <- x / (dim(map)[2] - 1) * scale[1]
   y <- y / (dim(map)[1] - 1) * scale[2]

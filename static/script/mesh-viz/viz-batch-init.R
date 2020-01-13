@@ -69,19 +69,18 @@ errs_to_cyl <- function(errs.df, mat) {
       }
   ) )
 }
-errs2.cyl <- errs_to_cyl(
-  errs2.df,
-  diffuse(color='grey50', checkercolor='grey25', checkerperiod=.05)
+errs2a.cyl <- errs_to_cyl(
+  transform(errs2.df, z0=0, x=x-.5, y=y-.5),
+  diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
 )
-errs3.cyl <- errs_to_cyl(
-  errs3.df,
+errs3a.cyl <- errs_to_cyl(
+  transform(errs3.df, z0=0, x=x-.5, y=y-.5),
   diffuse(color=metal.col[3], checkercolor='grey75', checkerperiod=.05)
 )
 zoff <- .5
-light.narrow <- sphere(
-  y=8, z = 2, x = 1, radius = .1,
-  material = light(intensity = 5000)
-)
+# light.narrow <- sphere( y=8, z = 2, x = 1, radius = .1,
+#   material = light(intensity = 5000)
+# )
 scn.base <- dplyr::bind_rows(
   light.narrow,
   # xz_rect(
@@ -90,3 +89,19 @@ scn.base <- dplyr::bind_rows(
   # )
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 )
+mult <- 1.3
+light.narrow <- sphere(
+  y=8, z = 2, x = 1, radius = .5,
+  material = light(intensity = 200 * mult)
+)
+bg1 <- 102 / mult
+bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
+scn.base <- dplyr::bind_rows(
+  light.narrow,
+  # xz_rect(
+  #   xwidth=15, zwidth=15, y=10, flipped=TRUE,
+  #   material=diffuse(color='white', lightintensity=1)
+  # )
+  xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
+)
+
