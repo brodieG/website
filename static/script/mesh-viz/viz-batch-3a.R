@@ -134,7 +134,6 @@ stest <- add_object(
     ),
     group_angle=gang, group_translate=c(x1, 0, zoff)
 ) )
-
 rez <- 300
 samp <- 100
 # scns <- list(scn.a, scn.b, scn.c)
@@ -142,13 +141,13 @@ scns <- list(stest)
 file <- next_file('~/Downloads/mesh-viz/small-mesh/simple-mesh-new2-')
 # render_scene(
 render_scene(
-  stest,
+  scn.a,
   # list(scn.a, scn.b, scn.c),
   filename=file,
   #filename='~/Downloads/mesh-viz/small-mesh/composite-mesh-s2-%d.png'
   height=rez, width=rez, samples=samp,
-  # lookfrom=c(0, 3, 1.5), lookat=c(0, 0, -.5),
-  lookfrom=c(0, 3, -1.5), lookat=c(0, 0, .5),
+  lookfrom=c(0, 3, 1.5), lookat=c(0, 0, -.5),
+  # lookfrom=c(0, 3, -1.5), lookat=c(0, 0, .5),
   # lookfrom=c(0, 4, 1),
   # lookat=c(0, 0, 0),
   fov=27,

@@ -21,10 +21,11 @@ zoff <- +.5
 map <- matrix(
   c(
      1.0, 0.9, 0.9,
-     0.0, 0.5, 0.8,
+     0.25, 0.5, 0.8,
      0.9, 0.7, 0.9
   ), 3, byrow=TRUE
-)
+)[3:1, 3:1]
+
 tris1 <- list(
   matrix(
     c(
@@ -36,7 +37,6 @@ tris1 <- list(
 tris2 <- list(matrix(c(1,3,5, 1,5,7, 7,5,9, 9,5,3), 3))
 tris3 <- list(matrix(c(1,3,9, 1,7,9), 3))
 zscl <- 1
-
 
 # Need to recompute middle error b/c of auto-carryover
 
@@ -70,11 +70,11 @@ errs_to_cyl <- function(errs.df, mat) {
   ) )
 }
 errs2a.cyl <- errs_to_cyl(
-  transform(errs2.df, z0=0, x=x-.5, y=y-.5),
+  transform(errs2.df, z0=z0 - min(z0), x=x-.5, y=y-.5),
   diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
 )
 errs3a.cyl <- errs_to_cyl(
-  transform(errs3.df, z0=0, x=x-.5, y=y-.5),
+  transform(errs3.df, z0=z0 - min(z0), x=x-.5, y=y-.5),
   diffuse(color=metal.col[3], checkercolor='grey75', checkerperiod=.05)
 )
 zoff <- .5
