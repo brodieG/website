@@ -52,9 +52,13 @@ should be taken to mean "obj.x"
   adjusted if flipbook contents are mostly dark.
 @param helpTextStyle background color for help pop-up box, may need to be
   adjusted if flipbook contents are mostly dark.
+@param width string a width string like "100%" or "800px" to use as the CSS
+  'width' value for the container.
 @return an instantiated flipboook object, although it serves no real purpose as
   the constructor attaches all the event handlers and nothing else beyond that
   is needed.
+
+TODO: provide a way to pass CSS for the whole canvas and container div.
 */
 
 /*---------------------------------------------------------------------------*\
@@ -79,7 +83,8 @@ function BgFlipBook(x) {
     loopDelay: 0,
     loop: false,
     helpFillStyle: 'rgb(0, 0, 0, .7)',
-    helpTextStyle: 'white'
+    helpTextStyle: 'white',
+    width: '100%'
   }
   for (let k in x) {
     if (x.hasOwnProperty(k)) {
@@ -137,6 +142,9 @@ function BgFlipBook(x) {
   }
   if(typeof(x.loop) != 'boolean') {
     throw new Error("flipbook error: 'loop' must be boolean.");
+  }
+  if(typeof(x.width) != "string") {
+    throw new Error("flipbook error: 'width' is not a string");
   }
   // Find target and template DOM objects
 
@@ -197,6 +205,7 @@ function BgFlipBook(x) {
   this.helpFillStyle = x.helpFillStyle;
   this.helpTextStyle = x.helpTextStyle;
   this.intervalID = 0;
+  this.width = x.width;
 
   // Initialize HTML els
 
@@ -246,8 +255,9 @@ function BgFlipBook(x) {
 BgFlipBook.prototype.draw = function() {
   this.els.frame.value = this.imgActive;
   if(!this.init) {
-    this.els.container.style.width =
-      this.els.imgs.children[0].naturalWidth + 'px';
+    this.els.container.style.width = this.width;
+    this.els.flipbook.style.width = this.width;
+
     this.els.flipbook.width = this.els.imgs.children[0].naturalWidth;
     this.els.flipbook.height = this.els.imgs.children[0].naturalHeight;
   }
