@@ -12,14 +12,18 @@
 gtable_dim <- function(gtable, din=par()[['din']]) {
   gw <- gtable::gtable_width(gtable)
   gh <- gtable::gtable_height(gtable)
-  wunits <- attr(gw$arg1, 'unit')
-  wknown <- Reduce('+', grid::convertX(gw$arg1[wunits != 'null'], 'inches'))
-  wnull <- Reduce('+', gw$arg1[wunits == 'null'])
 
-  hunits <- attr(gh$arg1, 'unit')
-  hknown <- Reduce('+', grid::convertX(gh$arg1[hunits != 'null'], 'inches'))
-  hnull <- Reduce('+', gh$arg1[hunits == 'null'])
+  wisnull <- grepl('\\d*null$', as.character(gw$arg1))
+  wknown <- Reduce('+', grid::convertX(gw$arg1[!wisnull], 'inches'))
+  wnull <- as.numeric(Reduce('+', gw$arg1[wisnull]))
 
-  null.size <- min(c((din[1] - wknown) / wnull, (din[2] - hknown) / hnull))
+  hisnull <- grepl('\\d*null$', as.character(gh$arg1))
+  hknown <- Reduce('+', grid::convertX(gh$arg1[!hisnull], 'inches'))
+  hnull <- as.numeric(Reduce('+', gh$arg1[hisnull]))
+
+  null.size <- min(
+    c((din[1] - wknown) / wnull,
+    (din[2] - hknown) / hnull)
+  )
   c(wknown + null.size * wnull, hknown + null.size * hnull)
 }
