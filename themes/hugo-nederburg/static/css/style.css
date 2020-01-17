@@ -347,7 +347,6 @@ a img {
 .blog .main,
 .archive .main,
 .search .main {
-  width: 88.89%;
   max-width: 1280px;
 }
 .blog #breadcrumbs,
@@ -367,7 +366,6 @@ a img {
 
 #breadcrumbs {
   margin: 1.5em auto;
-  width: 88.88%;
   max-width: 1280px;
   color: #aaaaaa;
 }
@@ -1071,7 +1069,6 @@ a img {
 /* 600px */
 @media all and (min-width: 37.5em) {
   .entry {
-    width: 88.88%;
     margin: 0 auto;
   }
 
@@ -1327,7 +1324,6 @@ li.pingback:first-child {
 @media all and (min-width: 37.5em) {
   .comments {
     padding: 0 5.55% 3em;
-    width: 88.88%;
     margin: 0 auto;
   }
 
@@ -2557,7 +2553,6 @@ li.pingback:first-child {
 /* 600px */
 @media all and (min-width: 37.5em) {
   #disqus_thread {
-    width: 88.88%;
     margin: 0 auto;
   }
 }

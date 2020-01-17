@@ -16,6 +16,11 @@ Tracks is distributed under the terms of the GNU GPL
 */
 /*===== Variables =====*/
 /* Theme Colors */
+:root {
+  --post-width: 675px;
+  --excerpt-width: 800px;
+}
+
 .site-title, .toggle-navigation i {
   font-size: 1.625em;
   line-height: 1.85;
@@ -267,11 +272,10 @@ th {
 
 /* Images 
  *
- * We've used max-width: 100%; for knitr plots so they will scale down, but this
- * doesn't feel ideal
+ * We've used max-width: 100%; for knitr plots so they will scale down, this is
+ * okay because we're now (1/2020) automatically wrapping stuff in full width
+ * divs.
  */
-
-img { margin: 0 auto; max-width: 100%;}
 
 .alignright,
 .alignleft,
@@ -329,6 +333,56 @@ figure.post-inset-image img {
   object-fit: cover;
 }
 /* End image inset */
+
+/*
+ * Wrapping image sets these should be in the form
+ *
+ * <div><span><img><img></span></div>
+ *
+ * or
+ *
+ * <div><span><figure><img></figure><figure><img></figure></span></div>
+ *
+ * But be carefully about any stray white spaces, either yours or any injected
+ * by pandoc
+ */
+
+div.bgw-wide-window {
+  text-align: center;
+  width: 100vw;
+  position: relative;
+  left: calc(-50vw + 50%);
+}
+div.bgw-wide-window img,
+div.bgw-wide-window figure,
+div.bgw-wide-window div {
+  display: inline-block;
+  margin: 0 auto;
+  max-width: 98%;
+}
+div.bgw-wide-window img,
+div.bgw-wide-window figure{
+  white-space: pre-wrap;
+}
+div.bgw-wide-window pre{
+  margin: 0 auto;
+  text-align: initial;
+}
+/* test and hopefully delete
+div.bgw-wide-window figure {
+  margin: 0;
+}
+*/
+span.bgw-img-wrap-frame {
+  margin: 0 auto;
+  border: 3px red;
+  white-space: pre-wrap;
+  display: inline-block;
+  text-align: center;
+}
+/*
+ * other image stuff
+ */
 
 figure figcaption {
   font-size: 0.8em;
@@ -497,20 +551,18 @@ a img {
   background: white;
 }
 
-.blog .main,
-.archive .main,
-.search .main {
-  width: 88.89%;
-  max-width: 800px;
-}
 .blog #breadcrumbs,
 .archive #breadcrumbs,
 .search #breadcrumbs {
   width: 100%;
 }
 
-.entry {
-  max-width: 800px;
+body.single-post div.main {
+  max-width: var(--post-width);
+}
+body.home div.main {
+  max-width: var(--excerpt-width);
+  width: 88.89%;
 }
 
 .infinite-loader,
@@ -1955,12 +2007,6 @@ body pre + pre:not([class]) code.hljs, body pre + pre.fansi code.hljs {
 body pre + pre:not([class]), body pre + pre.fansi {
   margin-top: -19px;
 }
-.blog .main {
-  max-width: 800px;
-}
-div.post {
-  max-width: 800px;
-}
 div.post.entry {
   padding: 0 2%;
 }
@@ -2202,7 +2248,6 @@ code {
       line-height: 1.2;
     }
     .entry {
-      width: 88.88%;
       margin: 0 auto;
     }
     .entry-container {
