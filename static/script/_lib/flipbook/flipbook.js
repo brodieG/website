@@ -84,7 +84,7 @@ function BgFlipBook(x) {
     loop: false,
     helpFillStyle: 'rgb(0, 0, 0, .7)',
     helpTextStyle: 'white',
-    width: '100%'
+    width: 'auto'
   }
   for (let k in x) {
     if (x.hasOwnProperty(k)) {
