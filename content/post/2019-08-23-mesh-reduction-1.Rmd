@@ -13,12 +13,16 @@ imagemrghz: 0%
 weight: 1
 contenttype: article
 description: Front page summary
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
 
-```{r echo=FALSE, warning=FALSE}
-options(digits=3)
-knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
-library(ggplot2)
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
+```{r echo=FALSE}
+suppressMessages(library(ggplot2))
 thm.blnk <- list(
   theme(
     axis.text.x=element_blank(), axis.text.y=element_blank(),
@@ -224,7 +228,7 @@ the 3D realm for the sake of clarity.  The visualization is generated with the
 help of [`watcher`][9], and it displays the state of the system _after_ the
 evaluation of the highlighted line:
 
-<div id='flipbook1'></div>
+<div id='flipbook1' class='bgw-wide-window'></div>
 
 When the `while` loop ends the target triangle has been found, shown in yellow.
 In the following frames the algorithm computes the location of the midpoint `m`
@@ -256,7 +260,7 @@ but we need to repeat the process for the next approximation level.
 earlier, at the next larger triangle size.  Here is another flipbook showing the
 search for the second triangle at the next approximation level[^second-triangle]:
 
-<div id='flipbook2'></div>
+<div id='flipbook2' class='bgw-wide-window'></div>
 
 In the last few frames we can see the error from the children elements (labeled
 `lc` and `rc` for "left child" and "right child") carried over into the current
