@@ -18,7 +18,7 @@ Suggested usage is something like:
       targetId: 'flipbook1',
       imgDir: '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/',
       imgStart: 7, imgEnd: 53,  imgPad: "0000",
-      fps: 4, loop: true, loopDelay: 8
+      fps: 4, loop: true, loopDelay: 2000
     })
     </script>
 
@@ -44,8 +44,8 @@ should be taken to mean "obj.x"
   imgEnd
 @param fps frame rate in frames per second.
 @param loop boolean whether to loop back to beginning when auto-playing.
-@param loopDelay number how many frames to pause when playing before looping
-  back to start.
+@param loopDelay number how many millisecond to pause for when playing before
+  looping back to start.
 @param imgPad string of form "0", "00", "000", etc., of length corresponding to
   how many digits re used in the image file names.
 @param helpFillStyle background color for help pop-up box, may need to be
@@ -80,7 +80,7 @@ function BgFlipBook(x) {
     imgStart: 1,
     imgPad: "000",
     fps: 1,
-    loopDelay: 2,
+    loopDelay: 1500,
     loop: true,
     helpFillStyle: 'rgb(0, 0, 0, .7)',
     helpTextStyle: 'white',
@@ -416,7 +416,7 @@ BgFlipBook.prototype.stepAuto = function() {
           flip.pauseFlip();
           flip.resumeAll();
         },
-        this.loopDelay * this.interval
+        this.loopDelay
       );
     } else {
       this.pauseFlip();
