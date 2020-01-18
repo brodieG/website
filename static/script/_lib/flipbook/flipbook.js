@@ -206,6 +206,9 @@ function BgFlipBook(x) {
   this.helpTextStyle = x.helpTextStyle;
   this.intervalID = 0;
   this.width = x.width;
+  this.playX = 0;
+  this.playY = 0;
+  this.playR = 0;
 
   // Initialize HTML els
 
@@ -271,12 +274,10 @@ BgFlipBook.prototype.drawHelp = function() {
   const fontSize = this.els.flipbook.width / 25;
   this.pauseFlip();
   this.draw();
-  const xoff = this.els.flipbook.width * .1
-  const yoff = this.els.flipbook.height * .1
   const text = [
-    "\u{2022} Click in frame to step forward",
-    "\u{2022} Shift + click in frame to step backwards",
-    "\u{2022} Or use the controls below"
+    "        \u{2022} Click in frame to step forward",
+    "        \u{2022} Shift + click to step backwards",
+    "        \u{2022} Use the controls below"
   ]
   /* figure out center point to put the text in */
 
@@ -289,22 +290,46 @@ BgFlipBook.prototype.drawHelp = function() {
       textMaxWidth = this.ctx.measureText(text[i]).width;
     }
   }
+  /* not guarnteed to fit b/c pad */
+  const pad = th * .4;
+  const textOff = .3;
+  const textExtra = textOff * textMaxWidth;
+  const totalWidth = textMaxWidth + textExtra + 4 * pad;
   const textTotHeight = th * text.length;
-  const xstart = (this.els.flipbook.width - textMaxWidth) / 2;
+  const xstart = (this.els.flipbook.width - totalWidth) / 2;
   const ystart = (this.els.flipbook.height - textTotHeight) / 2 + th;
+  this.playR = pad * 4;
+  this.playX = xstart + textExtra / 2 + pad;
+  this.playY = ystart + textTotHeight / 2 - 2 * pad;
+
+  /* play button */
+
+  this.ctx.fillStyle = this.helpFillStyle;
+  this.ctx.beginPath();
+  this.ctx.arc(this.playX, this.playY, (textTotHeight / 2 + pad), 0, 2*Math.PI);
+  this.ctx.fill();
+
+  this.ctx.fillStyle = this.helpTextStyle;
+  this.ctx.beginPath();
+  this.ctx.moveTo(this.playX - this.playR / 3, this.playY - this.playR / 2);
+  this.ctx.lineTo(this.playX - this.playR / 3, this.playY + this.playR / 2);
+  this.ctx.lineTo(this.playX + this.playR * 2 / 3, this.playY);
+  this.ctx.fill()
 
   /* pre-draw the marquee the text will overlay on */
 
-  const pad = th * .4;
+  this.ctx.font = fontSize + 'px serif';
   this.ctx.fillStyle = this.helpFillStyle;
   this.ctx.roundRect(
-    xstart - pad, ystart - pad - .8 * th,
-    textMaxWidth + pad * 2, th * text.length + 2 * pad, th / 2
+    xstart + textExtra + 2 * pad, ystart - 3 * pad,
+    textMaxWidth + pad * 2, textTotHeight + 2 * pad, th / 2
   ).fill();
   this.ctx.fillStyle = this.helpTextStyle;
   for(i = 0; i < text.length; i++) {
-    this.ctx.fillText(text[i], xstart, ystart + th * i);
+    this.ctx.fillText(text[i], xstart + textExtra + 3 * pad, ystart + th * i);
   }
+  this.ctx.fillText("OR", xstart + textExtra + 3 * pad, ystart + th);
+
   this.helpActive = true;
 }
 BgFlipBook.prototype.pauseFlip = function() {
@@ -347,7 +372,13 @@ BgFlipBook.prototype.stepF = function() {this.step(1);}
 BgFlipBook.prototype.stepB = function() {this.step(-1);}
 BgFlipBook.prototype.stepClick = function(e) {
   this.pauseFlip();
-  if(e.shiftKey) {this.stepB();} else {this.stepF();}
+  const mouse = getCanvasMousePos(this.els.flipbook, e);
+  const dist = Math.sqrt((mouse.X - this.playX)^2 + (mouse.Y - this.playY)^2);
+  if(this.helpActive && dist <= this.playR) {
+    this.playAll();
+  } else {
+    if(e.shiftKey) {this.stepB();} else {this.stepF();}
+  }
 }
 // automated stepping, pauses at end
 BgFlipBook.prototype.stepAuto = function() {
@@ -452,4 +483,15 @@ CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
   this.arcTo(x,   y,   x+w, y,   r);
   this.closePath();
   return this;
+}
+// Thank you user1693593 https://stackoverflow.com/a/17130415/2725969
+
+function  getCanvasMousePos(canvas, evt) {
+  let rect = canvas.getBoundingClientRect(),
+      scaleX = canvas.width / rect.width,
+      scaleY = canvas.height / rect.height;
+  return {
+    x: (evt.clientX - rect.left) * scaleX,
+    y: (evt.clientY - rect.top) * scaleY
+  }
 }
