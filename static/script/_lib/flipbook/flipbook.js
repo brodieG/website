@@ -80,8 +80,8 @@ function BgFlipBook(x) {
     imgStart: 1,
     imgPad: "000",
     fps: 1,
-    loopDelay: 0,
-    loop: false,
+    loopDelay: 2,
+    loop: true,
     helpFillStyle: 'rgb(0, 0, 0, .7)',
     helpTextStyle: 'white',
     width: 'auto'
@@ -180,7 +180,8 @@ function BgFlipBook(x) {
     frame: flipNew.querySelector('#bg-flipbook-frame'),
     stop: flipNew.querySelector('#bg-flipbook-stop'),
     frameN: flipNew.querySelector('#bg-flipbook-frame-n'),
-    loop: flipNew.querySelector('#bg-flipbook-loop')
+    loop: flipNew.querySelector('#bg-flipbook-loop'),
+    frameSpan: flipNew.querySelector('#bg-flipbook-frame-span')
   }
   for(let i in this.els) {
     if(this.els[i] == null) {
@@ -338,17 +339,37 @@ BgFlipBook.prototype.pauseFlip = function() {
   clearInterval(this.intervalID);
 }
 BgFlipBook.prototype.stepFInt = function() {
-  if(bgFlipBookDebug) {console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN)};
+  if(bgFlipBookDebug) {
+    console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN)
+  };
   if(this.imgActive == this.imgN) {
     if(bgFlipBookDebug) {console.log('StepF reset img')};
-    this.imgActive = 1
+    var oldStyle = this.els.frameSpan.style.backgroundColor;
+    this.els.frameSpan.style.backgroundColor = 'yellow';
+    var flip = this;
+    setTimeout(
+      function() {
+        flip.els.frameSpan.style.backgroundColor=oldStyle;
+      },
+      200
+    );
+    if(this.els.loop.checked) {this.imgActive = 1;}
   } else {
     this.imgActive += 1;
   }
 }
 BgFlipBook.prototype.stepBInt = function() {
   if(this.imgActive == 1) {
-    this.imgActive = this.imgN
+    var oldStyle = this.els.frameSpan.style.backgroundColor;
+    this.els.frameSpan.style.backgroundColor = 'yellow';
+    var flip = this;
+    setTimeout(
+      function() {
+        flip.els.frameSpan.style.backgroundColor=oldStyle;
+      },
+      200
+    );
+    if(this.els.loop.checked) {this.imgActive = this.imgN;}
   } else {
     this.imgActive -= 1;
   }

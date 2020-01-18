@@ -1,5 +1,5 @@
 <!--
-  Flipbook HTML template, intended to be copied for use in actual instantiated 
+  Flipbook HTML template, intended to be copied for use in actual instantiated
   flipbooks
 
   DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
@@ -55,6 +55,7 @@ FPS:
 />
 &nbsp;
 #:
+<span id=bg-flipbook-frame-span>
 <input
   id='bg-flipbook-frame'
   type='text'
@@ -65,9 +66,12 @@ FPS:
 /> / <span id='bg-flipbook-frame-n'></span>
 &nbsp;
 <label title='Loop-play'>
-  <span style='font-size: 1.3em; font-weight: bold;'>&#x293E;</span>:
+  <span
+    id='bg-flipbook-loop-ind'
+    style='font-size: 1.3em; font-weight: bold;'>&#x293E;</span>:
   <input id='bg-flipbook-loop' value=1 type='checkbox' />
 </label>
+</span>
 </p>
 </div>
 </div>
