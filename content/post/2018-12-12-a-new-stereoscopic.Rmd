@@ -13,10 +13,13 @@ description: Step by step implementation of a 3D rendering pipeline, from
   projections, to meshes, to rasterization, using base R only.
 categories: [r]
 tags: [optimization,visualization]
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
-```{r echo=FALSE}
-knitr::opts_chunk$set(comment = "", fig.align='center')
-options(digits=3)
+
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
 
 # Cool, but Not Eye Popping
@@ -76,7 +79,7 @@ plot_new <- function(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
 ```
-```{r, fig.width=6, fig.height=4}
+```{r height-map, fig.width=6, fig.height=4}
 xv <- row(volcano)
 yv <- col(volcano)
 plot_new(xv, yv)
@@ -92,7 +95,7 @@ possible to ray shade elevation maps using base R only.  For the sake of
 exposition I put the code in the [shadow demo package][15], but as far as I'm
 concerned I'm still abiding by the base-R-only pledge.
 
-```{r, fig.width=6, fig.height=4}
+```{r height-map-rs, fig.width=6, fig.height=4}
 library(shadow)
 shadow <- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
 plot_new(xv, yv)
@@ -146,7 +149,7 @@ We need to re-order by Z values to ensure that the nearest points are plotted
 last so they are not occluded by further points. Recall the Z axis is pointed
 directly at you, so points with higher Z values are closer.
 
-```{r, fig.width=6}
+```{r height-points, fig.width=6}
 zord <- order(volc.lr[3,])
 vord <- volc.lr[, zord]   # reorder by Z-values
 x <- vord[1,]
@@ -200,7 +203,7 @@ the original x-y grid.  We can generate a tile mesh by subsetting a contiguous
 portion of our elevation matrix four times, once for each of the four vertices
 of each tile.  This is what it looks like with an illustrative 4 x 4 grid:
 
-```{r echo=FALSE, fig.width=7, fig.height=1.75}
+```{r tile-to-mesh, echo=FALSE, fig.width=8, fig.height=2}
 p.seq <- seq(.1, .9, length.out=4)
 points <- expand.grid(x=p.seq, y=p.seq)
 len <- length(p.seq)
@@ -350,7 +353,7 @@ list-matrix is convenient.  Look how easy it is to display the mesh from raw
 polygons:
 
 <a name='tile-mesh-plot'></a>
-```{r}
+```{r mesh-polygons}
 zord <- order(Reduce('+', mesh.tile[,'z']))
 x <- do.call(rbind, c(mesh.tile[,'x'], list(NA)))[,zord]
 y <- do.call(rbind, c(mesh.tile[,'y'], list(NA)))[,zord]
@@ -394,7 +397,7 @@ tiles are flat.  Triangles on the other hand are guaranteed to be flat, and
 additionally benefit from simple shading algorithms.  So we will turn our tiles
 into triangles:
 
-```{r echo=FALSE}
+```{r triangle-mesh, echo=FALSE}
 par(mai=numeric(4))
 plot.new()
 polygon(
@@ -437,7 +440,7 @@ mesh.tri
 
 Plotted:
 
-```{r}
+```{r triangle-mesh-3d}
 zord3 <- order(Reduce('+', mesh.tri[,'z']))
 x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))[,zord3]
 y <- do.call(rbind, c(mesh.tri[,'y'], list(NA)))[,zord3]
@@ -449,7 +452,7 @@ polygon(rescale(x), rescale(y), col=col)
 And with more realistic colors by shading each facet with the mean of the vertex
 shadows:
 
-```{r}
+```{r triangle-mesh-3d-shadow}
 texture <- gray(Reduce('+', mesh.tri[,'t']) / 3)[zord3]
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=texture, border=texture)
@@ -477,7 +480,7 @@ In the following diagram you are looking along a line parallel to the X axis.
 The Z axis now runs from left to right.  Observers 1, 2, and 3 are all still
 looking at `volcano` along the Z axis:
 
-```{r echo=FALSE, fig.width=7, fig.height=2.33}
+```{r persp, echo=FALSE, fig.width=7, fig.height=2.33}
 rot2 <- rot_x(-20) %*% rot_z(65) %*% rot_x(-90)
 volc.l2 <- rbind(x=c(row(volcano)), y=c(col(volcano)), z=c(volcano))
 volc.lr2 <- rot2 %*% volc.l
@@ -542,7 +545,7 @@ nearest point along the Z axis with the measure `D` as multiples of `ZD`.
 Here is our volcano re-rendered from the perspective of each of observers 1-3
 pictured above:
 
-```{r echo=FALSE, fig.width=7, fig.height=3}
+```{r persp-tryp, echo=FALSE, fig.width=9, fig.height=3.4}
 par(mfrow=c(1,3), mar=c(.5, .25, 2, .25))
 D.vals <- c(2,1,.5)
 for(i in seq_along(D.vals)) {
@@ -567,6 +570,7 @@ for observer 3:
 
 ```{r}
 str(vl)                   # `volcano` in long list format
+```
 ```{r eval=FALSE}
 D <- 0.5                  # Observer 3 is half Z-Depth from volcano
 z.rng <- range(vl[['z']])
@@ -581,7 +585,7 @@ vlp[['z']] <- vlp[['z']] - (z.rng[2] + D * ZD)
 z.factor <- -1 / vlp[['z']]
 vlp[c('x','y')] <- lapply(vlp[c('x','y')], '*', z.factor)
 ```
-```{r echo=FALSE, eval=FALSE}
+```{r persp3d-full, echo=FALSE, eval=FALSE}
 ## just to confirm above works
 vlp2 <- sapply(vlp, '[', order(vlp[['z']]), simplify=FALSE)
 plot.new()
@@ -596,7 +600,7 @@ into a triangle mesh.  This time we use `shadow::mesh_tri`, which is a wrapper
 around the calculations described in the [Mesh section](#meshes):
 <a name='mesh-tri-persp'></a>
 
-```{r}
+```{r mesh-tri-persp-2}
 mesh.tri <- mesh_tri(vlp, dim(volcano), order=TRUE)
 mesh.tri
 x <- do.call(rbind, c(mesh.tri[,'x'], list(NA)))
@@ -750,7 +754,7 @@ desired structure.
 
 This is what bounding boxes look like:
 
-```{r}
+```{r rect-bound}
 minmax <- unname(c(mins, maxs))
 xs <- range(unlist(minmax[c(1,3)]))
 ys <- range(unlist(minmax[c(2,4)]))
@@ -873,7 +877,7 @@ writeLines(
 
 And visualized in two dimensions:
 
-```{r echo=FALSE, fig.height=2.5}
+```{r rast-illust, echo=FALSE, fig.height=2.5}
 col <- c('#0000FF', '#00DD00', '#CCCC00')
 par(mfrow=c(1,3), mar=c(4, 4, 4, 0), pty='s')
 for(i in unique(bb.id)) {
@@ -974,7 +978,7 @@ eliminating the duplicates.
 Finally, we can plot our matrix as a raster, but due to different conventions
 about which directions the dimensions run in we need to flip our matrix:
 
-```{r}
+```{r raster-plot}
 flip <- function(x) t(x)[rev(seq_len(ncol(x))),]
 par(mai=numeric(4))
 plot(as.raster(flip(p.raster)))
@@ -1036,7 +1040,7 @@ str(bc)
 Of the five points `str` shows, only point 3 will be kept as it is the only one
 with positive barycentric coordinates for each vertex.
 
-```{r}
+```{r trim-pixel}
 ## determine which points are inbounds and generate raster matrix
 inbounds <- Reduce('&', lapply(bc, '>=', 0))
 
@@ -1069,7 +1073,7 @@ previously mentioned [blogpost][5].
 Since we have the barycentric coordinates, all we have to do is compute weighted
 average colors for each pixel:
 
-```{r}
+```{r bary-shading}
 bc.in <- lapply(bc, '[', inbounds)
 t.in <- lapply(mesh.all[, 't'], '[', inbounds)
 t.shaded <- Reduce('+', Map('*', t.in, bc.in))
@@ -1354,7 +1358,7 @@ sessionInfo()
 With some work I was able to roughly recreate our own [tile
 mesh](#tile-mesh-plot):
 
-```{r}
+```{r base-persp-best}
 par(mai=numeric(4))
 persp(
   x=seq_len(nrow(volcano)), y=seq_len(ncol(volcano)), z=volcano,
@@ -1387,7 +1391,7 @@ specific purpose I had in mind.
 
 As far as I was able to get with `persp` is this:
 
-```{r}
+```{r base-persp}
 par(mai=numeric(4))
 tile.col <- Reduce('+', mesh.tile[,'t']) / 4
 persp(

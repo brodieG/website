@@ -13,12 +13,21 @@ description: List data structures can be more efficient than their matrix and
   vertex colors.
 categories: [optimization]
 tags: [rstats]
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
 
 
 
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
 <div style="display: none;">
-<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png" width="672" /></p>
+<div class="bgw-wide-window">
+<img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png" width="649.92" style="display: block; margin: auto;" />
+</div>
 </div>
 <div id="tldr" class="section level1">
 <h1>TL;DR</h1>
@@ -56,9 +65,9 @@ M &lt;- cbind(runif(n), runif(n), runif(n), runif(n))
 D &lt;- as.data.frame(M)
 microbenchmark(M[,1:2], D[,1:2], times=25)</code></pre>
 <pre><code>Unit: microseconds
-     expr min     lq   mean median     uq  max neval
- M[, 1:2] 565 1651.1 2087.9 1844.2 2213.0 9322    25
- D[, 1:2]  16   23.5   49.2   42.1   71.6  105    25</code></pre>
+     expr   min   lq   mean median     uq    max neval
+ M[, 1:2] 859.7 1667 1914.1 1758.5 1851.9 8647.2    25
+ D[, 1:2]  14.1   16   38.3   37.1   60.7   73.5    25</code></pre>
 <p>The data frame subset is much faster because R treats data frame columns as
 independent objects, so referencing an entire column does not require a copy.
 But data frames have big performance problems of their own. Let’s see what
@@ -66,16 +75,16 @@ happens if we select columns <strong>and</strong> rows:</p>
 <pre class="r"><code>idx &lt;- sample(seq_len(nrow(M)), n/2)
 microbenchmark(M[idx,1:2], D[idx,1:2], times=25)</code></pre>
 <pre><code>Unit: microseconds
-        expr   min    lq  mean median    uq   max neval
- M[idx, 1:2]   619  1263  1666   1600  1764  3246    25
- D[idx, 1:2] 10064 10601 11429  11080 11927 14299    25</code></pre>
+        expr  min   lq mean median   uq  max neval
+ M[idx, 1:2]  803  897 1056   1133 1168 1341    25
+ D[idx, 1:2] 8000 8232 8489   8437 8691 9557    25</code></pre>
 <p>And its even worse if we have duplicate row indices:</p>
 <pre class="r"><code>idx2 &lt;- c(idx, idx[1])
 microbenchmark(M[idx2,1:2], D[idx2,1:2], times=25)</code></pre>
 <pre><code>Unit: microseconds
          expr   min    lq  mean median    uq   max neval
- M[idx2, 1:2]   615  1407  1645   1509  1922  2492    25
- D[idx2, 1:2] 31205 35578 43288  42699 47804 67112    25</code></pre>
+ M[idx2, 1:2]   525   887  1051   1137  1231  1413    25
+ D[idx2, 1:2] 24513 25235 26531  25646 26616 40893    25</code></pre>
 <p>Data frames have row names that are required to be unique and most of the row
 subsetting overhead comes from managing them.</p>
 </div>
@@ -94,8 +103,8 @@ str(L)</code></pre>
 <pre class="r"><code>sub.L &lt;- lapply(L[1:2], &#39;[&#39;, idx)
 str(sub.L)</code></pre>
 <pre><code>List of 2
- $ V1: num [1:50000] 0.997 0.43 0.945 0.798 0.252 ...
- $ V2: num [1:50000] 0.539 0.287 0.567 0.848 0.56 ...</code></pre>
+ $ V1: num [1:50000] 0.178 0.326 0.179 0.349 0.587 ...
+ $ V2: num [1:50000] 0.5577 0.5571 0.4757 0.0805 0.9059 ...</code></pre>
 <pre class="r"><code>col_eq(sub.L, D[idx,1:2])  # col_eq compares values column by column</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>This results in the same elements selected as with data frame or matrix
@@ -105,17 +114,17 @@ objects in the <a href="#col_eq">appendix</a>.</p>
 comparable to matrix subsetting in speed:</p>
 <pre class="r"><code>microbenchmark(lapply(L[1:2], &#39;[&#39;, idx), M[idx,1:2], D[idx,1:2], times=25)</code></pre>
 <pre><code>Unit: microseconds
-                     expr  min    lq  mean median    uq   max neval
- lapply(L[1:2], &quot;[&quot;, idx)  781  1338  1725   1686  2101  3006    25
-              M[idx, 1:2] 1101  1230  1801   1450  2263  4607    25
-              D[idx, 1:2] 8809 10720 12673  12826 13467 20697    25</code></pre>
+                     expr  min   lq mean median   uq  max neval
+ lapply(L[1:2], &quot;[&quot;, idx)  562  926 1276    984 1093 8135    25
+              M[idx, 1:2]  505  909 1074   1155 1207 1341    25
+              D[idx, 1:2] 7849 8190 8504   8482 8756 9203    25</code></pre>
 <p>And if we only index columns then the list is even faster than the data frame:</p>
 <pre class="r"><code>microbenchmark(L[1:2], M[,1:2], D[,1:2], times=25)</code></pre>
 <pre><code>Unit: nanoseconds
      expr     min      lq    mean  median      uq     max neval
-   L[1:2]     667     913    2538    1081    3738    8456    25
- M[, 1:2] 1558695 1742878 1975152 1868145 2075127 3037454    25
- D[, 1:2]   13966   15120   32273   18562   50256   76023    25</code></pre>
+   L[1:2]     769    1114    2341    1629    2709    7726    25
+ M[, 1:2] 1606296 1685511 1747584 1749358 1808227 1929302    25
+ D[, 1:2]   14477   16243   35943   40279   47894   68599    25</code></pre>
 </div>
 </div>
 <div id="patterns-in-list-based-analysis" class="section level1">
@@ -143,9 +152,9 @@ multiply every column by two we can use:</p>
   List=    lapply(L, &#39;*&#39;, 2)
 )</code></pre>
 <pre><code>Unit: microseconds
-   expr min   lq mean median   uq   max neval
- Matrix 968 2350 3380   2517 2832 17960    25
-   List 459  924 2001   2366 2530  3622    25</code></pre>
+   expr min   lq mean median   uq  max neval
+ Matrix 604  645 1582   1955 2057 2135    25
+   List 489 1961 2334   2004 2037 9735    25</code></pre>
 <p>This will work for any binary function. For unary functions we just omit the
 additional argument:</p>
 <pre class="r"><code>lapply(L, sqrt)</code></pre>
@@ -157,11 +166,11 @@ additional argument:</p>
   List_min=    lapply(L, min)
 )</code></pre>
 <pre><code>Unit: microseconds
-       expr  min   lq  mean median    uq   max neval
- Matrix_sum  544  551  1151    561   566 15209    25
-   List_sum  527  536   595    563   612   848    25
- Matrix_min 6148 8016 10207  10166 10869 18238    25
-   List_min  972  988  1100   1028  1170  1629    25</code></pre>
+       expr  min   lq mean median   uq   max neval
+ Matrix_sum  468  515  524    520  540   590    25
+   List_sum  480  511  525    531  544   559    25
+ Matrix_min 5267 8112 8977   8641 9031 16112    25
+   List_min  847  925  953    960 1000  1047    25</code></pre>
 <p>In the matrix case we have the special <code>colSums</code> function that does all the
 calculations in internal C code. Despite that it is no faster than the list
 approach. And for operations without special column functions such as finding
@@ -176,10 +185,10 @@ microbenchmark(times=25,
   Matrix= t(t(M) * vec),
   List=   Map(&#39;*&#39;, L, vec)
 )</code></pre>
-<pre><code>Unit: microseconds
+<pre><code>Unit: milliseconds
    expr  min   lq mean median   uq   max neval
- Matrix 3288 6794 7534   7178 8130 16447    25
-   List  835 1128 2674   2912 3000 11654    25</code></pre>
+ Matrix 2.86 3.25 5.60   6.15 6.48 11.38    25
+   List 1.09 1.37 2.79   2.67 2.85  9.75    25</code></pre>
 <pre class="r"><code>col_eq(t(t(M) * vec), Map(&#39;*&#39;, L, vec))</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p><code>Map</code> is a close cousin of <code>mapply</code>. It calls its first argument, in this case
@@ -195,10 +204,10 @@ for(i in seq_along(L)) result[[i]] &lt;- f(L[[i]], vec[[i]])</code></pre>
   Matrix=  M %*% diag(vec),
   List=    Map(&#39;*&#39;, L, vec)
 )</code></pre>
-<pre><code>Unit: microseconds
-   expr  min   lq mean median   uq   max neval
- Matrix 2992 4329 5257   4378 4867 13458    25
-   List  812 2211 3067   3011 3090 11760    25</code></pre>
+<pre><code>Unit: milliseconds
+   expr  min   lq mean median   uq  max neval
+ Matrix 2.18 2.66 3.76   3.81 4.09 10.3    25
+   List 1.20 2.70 2.87   2.87 2.93  9.9    25</code></pre>
 <pre class="r"><code>col_eq(M %*% diag(vec), Map(&#39;*&#39;, L, vec))</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>But even that is slower than the list approach, with the additional infirmities
@@ -212,8 +221,8 @@ square of our data might be:</p>
 )</code></pre>
 <pre><code>Unit: microseconds
    expr min   lq mean median   uq   max neval
- Matrix 964 2311 3065   2449 2645 11396    25
-   List 486 1058 2178   2502 2743  3477    25</code></pre>
+ Matrix 429 1995 2178   2082 2139 10117    25
+   List 509 1039 1996   2065 2138  9254    25</code></pre>
 <pre class="r"><code>col_eq(M * M, Map(&#39;*&#39;, L, L))</code></pre>
 <pre><code>[1] TRUE</code></pre>
 </div>
@@ -228,8 +237,8 @@ into one:</p>
 )</code></pre>
 <pre><code>Unit: microseconds
    expr  min   lq mean median   uq   max neval
- Matrix 1701 2510 2902   2944 3161  4288    25
-   List  713 1437 2169   1694 1986 14609    25</code></pre>
+ Matrix 1300 2211 2301   2329 2757  2961    25
+   List  500 1203 1710   1314 1598 11647    25</code></pre>
 <pre class="r"><code>col_eq(rowSums(M), Reduce(&#39;+&#39;, L))</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>Much to my surprise <code>Reduce</code> is substantially faster, despite explicitly looping
@@ -275,9 +284,9 @@ use <code>...</code> parameters:</p>
   Matrix= pmin(M[,1],M[,2],M[,3],M[,4])
 )</code></pre>
 <pre><code>Unit: milliseconds
-   expr  min   lq mean median   uq  max neval
-   List 2.90 3.23 3.80   3.30 3.36 13.5    25
- Matrix 5.52 7.32 8.05   7.51 7.88 19.5    25</code></pre>
+   expr  min   lq mean median   uq   max neval
+   List 2.91 3.00 3.91   3.05 3.19 13.59    25
+ Matrix 4.67 6.78 6.86   6.91 7.03  9.43    25</code></pre>
 <p>The expression is both easier to type, and faster!</p>
 <p>There are a couple of “gotchas” with <code>do.call</code>, particularly if you try
 to pass quoted language as part of the argument list (e.g. <code>quote(a + b)</code>). If
@@ -306,22 +315,22 @@ tri.A[1:2,,]</code></pre>
 
       vertex
           v1    v2    v3
-  [1,] 0.982 0.411 0.936
-  [2,] 0.798 0.675 0.345
+  [1,] 0.322 0.119 0.965
+  [2,] 0.130 0.540 0.643
 
 , , dim = y
 
       vertex
           v1    v2    v3
-  [1,] 0.561 0.156 0.782
-  [2,] 0.188 0.572 0.854
+  [1,] 0.989 0.400 0.346
+  [2,] 0.935 0.338 0.754
 
 , , dim = z
 
       vertex
           v1    v2    v3
-  [1,] 0.435 0.361 0.892
-  [2,] 0.146 0.109 0.922</code></pre>
+  [1,] 0.551 0.260 0.560
+  [2,] 0.232 0.543 0.564</code></pre>
 <p>How do we do this with lists? Well, it turns out that you can make
 list-matrices and list-arrays. First we need to manipulate our data little as
 we created it originally for use with an array:</p>
@@ -344,23 +353,23 @@ vertex x              y              z
 come across one previously, the list matrix and 3D array are essentially
 equivalent:</p>
 <pre class="r"><code>head(tri.A[,&#39;v1&#39;,&#39;x&#39;])</code></pre>
-<pre><code>[1] 0.9825 0.7980 0.5111 0.0385 0.6194 0.1001</code></pre>
+<pre><code>[1] 0.322 0.130 0.587 0.785 0.967 0.448</code></pre>
 <pre class="r"><code>head(tri.L[[&#39;v1&#39;,&#39;x&#39;]])</code></pre>
-<pre><code>[1] 0.9825 0.7980 0.5111 0.0385 0.6194 0.1001</code></pre>
+<pre><code>[1] 0.322 0.130 0.587 0.785 0.967 0.448</code></pre>
 <p>An example operation might be to find the mean value of each coordinate for each
 vertex:</p>
 <pre class="r"><code>colMeans(tri.A)</code></pre>
 <pre><code>      dim
-vertex     x     y   z
-    v1 0.499 0.501 0.5
-    v2 0.500 0.500 0.5
-    v3 0.500 0.500 0.5</code></pre>
+vertex   x     y     z
+    v1 0.5 0.500 0.500
+    v2 0.5 0.499 0.500
+    v3 0.5 0.500 0.501</code></pre>
 <pre class="r"><code>apply(tri.L, 1:2, do.call, what=mean)</code></pre>
 <pre><code>      dim
-vertex     x     y   z
-    v1 0.499 0.501 0.5
-    v2 0.500 0.500 0.5
-    v3 0.500 0.500 0.5</code></pre>
+vertex   x     y     z
+    v1 0.5 0.500 0.500
+    v2 0.5 0.499 0.500
+    v3 0.5 0.500 0.501</code></pre>
 <p><code>apply</code> with the second argument set to <code>1:2</code> is equivalent to:</p>
 <pre class="r"><code>MARGIN &lt;- 1:2
 result &lt;- vector(&#39;list&#39;, prod(dim(tri.L)[MARGIN]))
@@ -384,11 +393,15 @@ point.</p>
 <p>We show here three different points (red crosses) with the barycentric
 coordinates associated with each vertex. The size of the vertex helps visualize
 the “weights”:</p>
-<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/unnamed-chunk-30-1.png" width="672" style="display: block; margin: auto;" /></p>
+<div class="bgw-wide-window">
+<img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/bary-pos-1.png" width="649.92" style="display: block; margin: auto;" />
+</div>
 <p>This is useful if we want to interpolate values from the vertices to points in
 the triangle. Here we interpolate a color for a point in a triangle from the
 colors of the vertices of that triangle:</p>
-<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/unnamed-chunk-31-1.png" width="672" style="display: block; margin: auto;" /></p>
+<div class="bgw-wide-window">
+<img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/bary-pos-col-1.png" width="649.92" style="display: block; margin: auto;" />
+</div>
 <p><a name='bary_formula'></a>The formula for converting cartesian coordinates <a href="https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Barycentric_coordinates_on_triangles">to Barycentric</a> is:</p>
 <p><span class="math display">\[\lambda_1 = \frac{(y_2 - y_3)(x - x_3) + (x_3 - x_2)(y - y_3)}{(y_2 - y_3)(x_1 - x_3) + (x_3 - x_2)(y_1 - y_3)}\\
 \lambda_2 = \frac{(y_3 - y_1)(x - x_3) + (x_1 - x_3)(y - y_3)}{(y_2 - y_3)(x_1 - x_3) + (x_3 - x_2)(y_1 - y_3)}\\
@@ -489,7 +502,9 @@ coordinate-weighted color channel values for each point:</p>
 <a href="#plot_shaded"><code>plot_shaded</code></a>):</p>
 <pre class="r"><code>color.L &lt;- v_shade_L(point.L, vertex.L)
 plot_shaded(point.L, do.call(rgb, color.L))</code></pre>
-<p><img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png" width="480" style="display: block; margin: auto;" /></p>
+<div class="bgw-wide-window">
+<img src="/post/2018-11-15-is-your-matrix-running-slow-try-lists_files/figure-html/interp-list-1.png" width="480" style="display: block; margin: auto;" />
+</div>
 <p>The corresponding function in array format looks very similar to the list one:</p>
 <pre class="r"><code>v_shade_A &lt;- function(p, v) {
   ## 1) compute barycentric coords
@@ -528,35 +543,35 @@ col_eq(color.L, color.A)</code></pre>
 )</code></pre>
 <pre><code>Unit: milliseconds
                          expr  min   lq mean median   uq   max neval
- v_shade_L(point.L, vertex.L) 12.8 15.8 19.4   18.6 22.2  30.7    25
- v_shade_A(point.A, vertex.A) 58.2 68.2 76.5   71.9 80.1 156.2    25</code></pre>
+ v_shade_L(point.L, vertex.L) 10.8 12.9 15.1   13.6 17.8  25.3    25
+ v_shade_A(point.A, vertex.A) 50.2 63.8 70.8   68.5 72.4 120.7    25</code></pre>
 <p>We can get a better sense of where the speed differences are coming from by
 looking at the profile data using <a href="https://github.com/brodieG/treeprof"><code>treeprof</code></a>:</p>
 <pre class="r"><code>treeprof(v_shade_L(point.L, vertex.L))</code></pre>
-<pre><code>Ticks: 877; Iterations: 46; Time Per: 22.30 milliseconds; Time Total: 1.026 seconds; Time Ticks: 0.877
+<pre><code>Ticks: 728; Iterations: 51; Time Per: 18.63 milliseconds; Time Total: 950.3 milliseconds; Time Ticks: 0.728
 
-                                  milliseconds
-v_shade_L -------------------- : 22.30 -  0.00
-    bary_L ------------------- : 11.77 - 11.77
-    apply -------------------- :  6.69 -  0.00
-    |   FUN ------------------ :  6.69 -  0.00
-    |       mapply ----------- :  6.69 -  0.00
-    |           &lt;Anonymous&gt; -- :  6.69 -  6.69
-    lapply ------------------- :  3.84 -  0.00
-        FUN ------------------ :  3.84 -  0.00
-            f ---------------- :  3.84 -  3.84</code></pre>
+                                 milliseconds
+v_shade_L -------------------- : 18.63 - 0.00
+    bary_L ------------------- :  9.16 - 9.16
+    apply -------------------- :  5.63 - 0.00
+    |   FUN ------------------ :  5.63 - 0.00
+    |       mapply ----------- :  5.63 - 0.00
+    |           &lt;Anonymous&gt; -- :  5.63 - 5.63
+    lapply ------------------- :  3.84 - 0.00
+        FUN ------------------ :  3.84 - 0.00
+            f ---------------- :  3.84 - 3.84</code></pre>
 <pre class="r"><code>treeprof(v_shade_A(point.A, vertex.A))</code></pre>
-<pre><code>Ticks: 936; Iterations: 12; Time Per: 95.83 milliseconds; Time Total: 1.150 seconds; Time Ticks: 0.936
+<pre><code>Ticks: 803; Iterations: 14; Time Per: 73.46 milliseconds; Time Total: 1.028 seconds; Time Ticks: 0.803
 
                                     milliseconds
-v_shade_A ---------------------- : 95.83 -  0.00
-    bary_A --------------------- : 60.92 - 60.10
-    |   cbind ------------------ :  0.82 -  0.82
-    rowSums -------------------- : 26.00 - 10.65
-    |   is.data.frame ---------- : 15.36 -  0.00
-    |       aperm -------------- : 15.36 -  0.10
-    |           aperm.default -- : 15.25 - 15.25
-    array ---------------------- :  8.91 -  8.91</code></pre>
+v_shade_A ---------------------- : 73.46 -  0.00
+    bary_A --------------------- : 48.58 - 48.12
+    |   cbind ------------------ :  0.46 -  0.46
+    rowSums -------------------- : 18.66 -  7.59
+    |   is.data.frame ---------- : 11.07 -  0.00
+    |       aperm -------------- : 11.07 -  0.37
+    |           aperm.default -- : 10.70 - 10.70
+    array ---------------------- :  6.22 -  6.22</code></pre>
 <p>Most of the time difference is in the <a href="#bary_l"><code>bary_L</code></a> vs <a href="#bary_a"><code>bary_A</code></a>
 functions that compute the barycentric coordinates. You can also tell that
 because almost all the time in the <code>bary_*</code> functions is “self” time (the second
@@ -585,13 +600,13 @@ can be awkward with matrices.</p>
 <div id="session-info" class="section level2">
 <h2>Session Info</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 3.5.2 (2018-12-20)
+<pre><code>R version 3.6.2 (2019-12-12)
 Platform: x86_64-apple-darwin15.6.0 (64-bit)
-Running under: macOS High Sierra 10.13.6
+Running under: macOS Mojave 10.14.6
 
 Matrix products: default
-BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
-LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
 
 locale:
 [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
@@ -600,18 +615,17 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] treeprof_0.2.3       microbenchmark_1.4-4
+[1] treeprof_0.2.3       microbenchmark_1.4-6
 
 loaded via a namespace (and not attached):
- [1] Rcpp_1.0.0        bookdown_0.7      later_0.7.3      
- [4] digest_0.6.18     rprojroot_1.3-2   mime_0.5         
- [7] R6_2.3.0          xtable_1.8-2      backports_1.1.2  
-[10] magrittr_1.5      evaluate_0.10.1   blogdown_0.8     
-[13] stringi_1.2.3     promises_1.0.1    data.table_1.11.4
-[16] rmarkdown_1.10    tools_3.5.2       stringr_1.3.1    
-[19] shiny_1.1.0       httpuv_1.4.4.1    xfun_0.3         
-[22] yaml_2.2.0        compiler_3.5.2    htmltools_0.3.6  
-[25] knitr_1.20       </code></pre>
+ [1] Rcpp_1.0.1        bookdown_0.10     fansi_0.4.1      
+ [4] later_0.8.0       digest_0.6.20     mime_0.7         
+ [7] R6_2.4.0          xtable_1.8-4      magrittr_1.5     
+[10] evaluate_0.14     blogdown_0.12     stringi_1.4.3    
+[13] promises_1.0.1    data.table_1.12.2 rmarkdown_1.12   
+[16] tools_3.6.2       stringr_1.4.0     shiny_1.3.2      
+[19] httpuv_1.5.1      xfun_0.8          yaml_2.2.0       
+[22] compiler_3.6.2    htmltools_0.3.6   knitr_1.23       </code></pre>
 </div>
 <div id="column-equality" class="section level2">
 <h2>Column Equality</h2>

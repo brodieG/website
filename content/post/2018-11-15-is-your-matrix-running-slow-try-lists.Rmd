@@ -13,15 +13,18 @@ description: List data structures can be more efficient than their matrix and
   vertex colors.
 categories: [optimization]
 tags: [rstats]
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
 
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
+
 ```{r echo=FALSE}
-options(digits=3)
 library(microbenchmark)
 library(treeprof)
-knitr::opts_chunk$set(
-  comment = ""
-)
 ```
 ```{r col-eq, echo=FALSE}
 col_eq <- function(x, y) {
@@ -581,7 +584,7 @@ We show here three different points (red crosses) with the barycentric
 coordinates associated with each vertex.  The size of the vertex helps visualize
 the "weights":
 
-```{r echo=FALSE, fig.width=7, fig.height=2.5, fig.align='center'}
+```{r bary-pos, echo=FALSE, fig.height=2.25}
 plot_par()
 plot_bary(p1, vinit)
 plot_bary(p2, vinit)
@@ -592,7 +595,7 @@ This is useful if we want to interpolate values from the vertices to points in
 the triangle.  Here we interpolate a color for a point in a triangle from the
 colors of the vertices of that triangle:
 
-```{r echo=FALSE, fig.width=7, fig.height=2.5, fig.align='center'}
+```{r bary-pos-col, echo=FALSE, fig.height=2.25}
 plot_par()
 plot_bary2(p1, vinit)
 plot_bary2(p2, vinit)

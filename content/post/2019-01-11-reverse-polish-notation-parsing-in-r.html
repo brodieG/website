@@ -181,7 +181,7 @@ with <code>explain</code> and recorded the results for you to step through here:
 
 </div>
 <!--
-  Flipbook HTML template, intended to be copied for use in actual instantiated 
+  Flipbook HTML template, intended to be copied for use in actual instantiated
   flipbooks
 
   DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
@@ -190,7 +190,7 @@ with <code>explain</code> and recorded the results for you to step through here:
 <div id="bg-flipbook-images" style="display: none">
 
 </div>
-<div id="bg-flipbook-container" style="margin: auto; display: block; max-width: 100%;">
+<div id="bg-flipbook-container" style="margin: auto; display: inline-block; max-width: 98%;">
 <canvas id="bg-flipbook-flipbook" style="display: block; max-width: 100%;" title="Click to step forward, shift+click to step backwards.">
 This is an HTML Canvas flipbook that displays key frames of an animation in a
 more controllable manner than in a video player. If you are reading this text
@@ -200,7 +200,7 @@ your browser does not support HTML Canvas.
 We have to use a P block here as otherwise pandoc adds a P block for the
 inline elements
 -->
-<p style="margin-top: 5px; margin-bottom: 25px;">
+<p style="margin-top: 5px; margin-bottom: 0px; text-align: initial;">
 <input
   id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
   title='Display help overlay'
@@ -230,6 +230,7 @@ FPS:
   line-height: 1; padding: 0;'
   title='Set Playback Rate' value=3
 />
+<span id="bg-flipbook-frame-span">
  
 #:
 <input
@@ -242,9 +243,10 @@ FPS:
 /> / <span id="bg-flipbook-frame-n"></span>
  
 <label title='Loop-play'>
-<span style="font-size: 1.3em; font-weight: bold;">⤾</span>:
+<span id="bg-flipbook-loop-ind" style="font-size: 1.3em; font-weight: bold;">⤾</span>:
 <input id='bg-flipbook-loop' value=1 type='checkbox' />
 </label>
+</span>
 </p>
 </div>
 </div>
@@ -253,7 +255,7 @@ FPS:
 new BgFlipBook({
   targetId: 'flipbook1',
   imgDir: '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/',
-  imgEnd: 48, fps: 3, loop: true, loopDelay: 5,
+  imgEnd: 48, fps: 3, loop: true,
   helpFillStyle: 'rgb(255, 255, 255, .7)',
   helpTextStyle: 'black'
 })
@@ -311,7 +313,7 @@ them:</p>
     quote(.res)                                # return temporary value
   )
 }
-&lt;bytecode: 0x7fa14993dab0&gt;</code></pre>
+&lt;bytecode: 0x7fa5356a85c8&gt;</code></pre>
 <p>In R curly braces (<code>{}</code>), parentheses (<code>()</code>), and assignments (<code>&lt;-</code>) are all
 calls themselves that like operators are displayed specially when deparsed.
 This is also true of control flow elements like <code>if</code> and <code>while</code>. This allows

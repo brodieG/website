@@ -140,40 +140,37 @@ We can now compare our recorded errors to different tolerance levels, and use
 that to decide what triangles to draw.  A possible algorithm is to draw the
 child triangles of any triangle for which its error or the error of any of its
 descendants exceeds the threshold.  Here we represent a possible threshold as
-the "water" level; errors poking above it must be addressed:
+the "water" level; errors visible above it must be addressed:
 
-<!--
-Error threshold such that worst error in middle and center error trigger.
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/waterlev1.png'
+/>
 
-Image is side by side (left/right):
+For each of the three errors that exceeds our threshold we split the
+corresponding triangle at its hypotenuse midpoint to create a vertex at the
+problematic point and remove the error.  This requires us to draw the highest
+detail triangles for the bottom right part of the surface (gold), but lets us
+use the first level of approximation for the top left.
 
-* Left: error matrix, water level added
-* Right: mesh approximation, gold/silver, gold drawn last
--->
+As we increase our tolerance we can extend the approximation to the bottom of
+the surface:
 
-Looks great.  Unlike with our original `volcano` meshes we are treating the mesh
-color to correspond to a specific level of approximation.  But notice what
-happens if we increase the tolerance level:
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/waterlev2.png'
+/>
 
-<!--
-Error threshold such that only the worst error triggers
+But if we further increase our tolerance we run into problems:
 
-Image is side by side (left/right):
+<img class='aligncenter'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/waterlev3.png'
+/>
 
-* Left: error matrix, water level added
-* Right: mesh approximation, complete mess
--->
+Even though we are willing to tolerate the error from using the highest level of
+approximation for the top left part of the surface, doing so introduces a gap in
+our surface.  One solution to this is to ensure that the error at any given
+point is the greater of the actual error, or the errors associated with its
+children.  <span id='carry-over-viz'></span>
 
-Gah, there are gaps!  This is particularly apparent if we try to draw the
-approximated surface, rotated here so we can see the gap:
-
-<!--
-Glass surface approximated and rotated showing gap
--->
-
-To resolve this we carry over errors from children triangles to their parents
-and override use the largest of the child errors and the parent error as the
-parent error.<span id='carry-over-viz'></span>
 
 <!--
 Two error matrices:

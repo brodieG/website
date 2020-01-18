@@ -53,9 +53,13 @@ off-the-rails this whole thing has gone[^plight].
 Let's skip back to the care-free, hydra-less days when I should have known
 better:
 
-```{r echo=FALSE}
-blogdown::shortcode("tweet", "1106231241488154626")
-```
+> A great example of #FOSS at work: #rdatatable team's contributes their radix
+> sort to #rstats.  ~50x faster ordering in this e.g.
+>
+> This type of improvement on such a fundamental operation is invaluable (**more
+> on this next week**).  Thank you @MattDowle @arun_sriniv
+>
+> -- [BrodieGaslam][300]
 
 "More on this next week"... &#x1f923;&#x1f923;&#x1f923;.  Aaaah, what a fool.
 That was almost three months ago.  The key observations back then were that:
@@ -1872,3 +1876,4 @@ Links less than 200 reserved for use above -->
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html
 [204]: https://cloud.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
 [205]: https://cran.r-project.org/web/packages/inline/index.html
+[300]: https://twitter.com/BrodieGaslam/status/1106231241488154626?s=20

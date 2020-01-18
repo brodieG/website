@@ -15,12 +15,12 @@ weight: 1
 contenttype: article
 description: How to record algorithms in action and use the resulting data to
   visualize them.
-
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
-
-```{r echo=FALSE}
-options(digits=2)
-knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
 
 # If Only We Could See Code In Action
@@ -147,15 +147,14 @@ If you would rather mine bitcoin[^bitcoin] with your CPU cycles we can settle
 for a 2D flipbook.  From a pedagogical standpoint this is probably a more
 effective visualization, if a bit flat in comparison:
 
-<div id='flipbook1'></div>
-
+<div id='flipbook1' class=bgw-wide-window></div>
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
 ```
 <script type='text/javascript'>
 new BgFlipBook({
   targetId: 'flipbook1',
   imgDir: "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/",
-  imgEnd: 75,  fps: 4, loop: true, loopDelay: 8
+  imgEnd: 75,  fps: 4, loop: true
 })
 </script>
 

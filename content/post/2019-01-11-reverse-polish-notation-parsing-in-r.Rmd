@@ -230,7 +230,7 @@ id=rpn-flipbook></span>
 new BgFlipBook({
   targetId: 'flipbook1',
   imgDir: '/post/2019-01-11-reverse-polish-notation-parsing-in-r_files/flipbook/',
-  imgEnd: 48, fps: 3, loop: true, loopDelay: 5,
+  imgEnd: 48, fps: 3, loop: true,
   helpFillStyle: 'rgb(255, 255, 255, .7)',
   helpTextStyle: 'black'
 })
