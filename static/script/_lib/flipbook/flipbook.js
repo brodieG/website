@@ -210,6 +210,10 @@ function BgFlipBook(x) {
   this.playX = 0;
   this.playY = 0;
   this.playR = 0;
+  this.playSymbMult = 0;
+  this.playSymbMultMax = 15;
+  this.playAnim = 0;   // 0: off, 1: expand, 2: contract
+  this.playIntervalId = 0;
 
   // Initialize HTML els
 
@@ -243,10 +247,13 @@ function BgFlipBook(x) {
 
   var flip = this;
   this.els.flipbook.addEventListener("click", function(e) {flip.stepClick(e)});
+  this.els.flipbook.addEventListener(
+    "mousemove", function(e) {flip.handleHover(e)}
+  );
   this.els.stepf.addEventListener("mouseup", function() {flip.stepF()});
   this.els.stepb.addEventListener("mouseup", function() {flip.stepB()});
   this.els.play.addEventListener("mouseup", function() {flip.playAll()});
-  this.els.help.addEventListener("mouseup", function() {flip.drawHelp()});
+  this.els.help.addEventListener("mouseup", function() {flip.drawHelp0()});
   this.els.stop.addEventListener("mouseup", function() {flip.handleStop()});
   this.els.fps.addEventListener("input", function() {flip.handleInputFPS()});
   this.els.frame.addEventListener("input", function() {flip.handleInputFrame()});;
@@ -270,19 +277,24 @@ BgFlipBook.prototype.draw = function() {
     this.els.flipbook.width, this.els.flipbook.height
   );
 }
+BgFlipBook.prototype.drawHelp0 = function() {
+  this.playSymbMult = 0;
+  this.drawHelp()
+}
 BgFlipBook.prototype.drawHelp = function() {
-  if(bgFlipBookDebug) {console.log('Draw Help')};
-  const fontSize = this.els.flipbook.width / 25;
+  if(bgFlipBookDebug) {console.log('Draw Help ' + this.playSymbMult)};
+  const fontSize = this.els.flipbook.width / 28;
   this.pauseFlip();
   this.draw();
   const text = [
-    "        \u{2022} Click in frame to step forward",
-    "        \u{2022} Shift + click to step backwards",
-    "        \u{2022} Use the controls below"
+    "          \u{2022} Click in frame to step forward",
+    "          \u{2022} Shift + click to step backwards",
+    "          \u{2022} Use the controls below"
   ]
   /* figure out center point to put the text in */
 
-  this.ctx.font = fontSize + 'px serif';
+  this.ctx.font = fontSize + 'px Lato, sans-serif';
+  // this.ctx.font = fontSize + 'px sans-serif';
   const th = this.ctx.measureText('M').width * 1.1;
 
   let textMaxWidth = 0;
@@ -299,27 +311,31 @@ BgFlipBook.prototype.drawHelp = function() {
   const textTotHeight = th * text.length;
   const xstart = (this.els.flipbook.width - totalWidth) / 2;
   const ystart = (this.els.flipbook.height - textTotHeight) / 2 + th;
-  this.playR = pad * 4;
   this.playX = xstart + textExtra / 2 + pad;
   this.playY = ystart + textTotHeight / 2 - 2 * pad;
+  this.playR = (textTotHeight / 2 + pad)
 
   /* play button */
 
   this.ctx.fillStyle = this.helpFillStyle;
   this.ctx.beginPath();
-  this.ctx.arc(this.playX, this.playY, (textTotHeight / 2 + pad), 0, 2*Math.PI);
+  this.ctx.arc(this.playX, this.playY, this.playR, 0, 2*Math.PI);
   this.ctx.fill();
 
+  /* Play  Offset */
+
   this.ctx.fillStyle = this.helpTextStyle;
+  let playMult = 1 + (this.playButtonMult()) * .3;
+  if(bgFlipBookDebug) {console.log('play mult ' + playMult)};
+  playRin = pad * 4 * playMult;
   this.ctx.beginPath();
-  this.ctx.moveTo(this.playX - this.playR / 3, this.playY - this.playR / 2);
-  this.ctx.lineTo(this.playX - this.playR / 3, this.playY + this.playR / 2);
-  this.ctx.lineTo(this.playX + this.playR * 2 / 3, this.playY);
+  this.ctx.moveTo(this.playX - playRin / 3, this.playY - playRin / 2);
+  this.ctx.lineTo(this.playX - playRin / 3, this.playY + playRin / 2);
+  this.ctx.lineTo(this.playX + playRin * 2 / 3, this.playY);
   this.ctx.fill()
 
   /* pre-draw the marquee the text will overlay on */
 
-  this.ctx.font = fontSize + 'px serif';
   this.ctx.fillStyle = this.helpFillStyle;
   this.ctx.roundRect(
     xstart + textExtra + 2 * pad, ystart - 3 * pad,
@@ -393,11 +409,8 @@ BgFlipBook.prototype.stepF = function() {this.step(1);}
 BgFlipBook.prototype.stepB = function() {this.step(-1);}
 BgFlipBook.prototype.stepClick = function(e) {
   this.pauseFlip();
-  const mouse = getCanvasMousePos(this.els.flipbook, e);
-  const dist = Math.sqrt((mouse.X - this.playX)^2 + (mouse.Y - this.playY)^2);
-  if(this.helpActive && dist <= this.playR) {
-    this.playAll();
-  } else {
+  if(this.inPlay(e)) {this.playAll();}
+  else {
     if(e.shiftKey) {this.stepB();} else {this.stepF();}
   }
 }
@@ -484,9 +497,77 @@ BgFlipBook.prototype.handleInputFrame = function() {
 };
 BgFlipBook.prototype.handleLoad = function() {
   this.draw();
-  this.drawHelp();
+  this.drawHelp0();
   this.init=true;
 };
+BgFlipBook.prototype.handleHover = function(e) {
+  if(bgFlipBookDebug) {console.log('enter hover');}
+  if(this.helpActive) {
+    var flip = this;
+    if(this.inPlay(e) && this.playAnim != 1) {
+      clearInterval(this.playIntervalId);
+      this.playAnim = 1;
+      if(bgFlipBookDebug) {console.log('in play expand');}
+      this.playIntervalId = setInterval(
+        function() {
+          flip.playSymbMult = flip.playSymbMult + 1;
+          if(flip.playSymbMult > flip.playSymbMultMax) {
+            clearInterval(flip.playIntervalId);
+            flip.playSymbMult = flip.playSymbMultMax;
+            flip.playAnim = 0;
+          } else {flip.drawHelp();}
+        }, 15
+      );
+    } else if(!this.inPlay(e) && this.playAnim != 2) {
+      clearInterval(this.playIntervalId);
+      this.playAnim = 2;
+      if(bgFlipBookDebug) {console.log('not in play contract');}
+      this.playIntervalId = setInterval(
+        function() {
+          flip.playSymbMult = flip.playSymbMult - 1;
+          if(flip.playSymbMult < 0) {
+            clearInterval(flip.playIntervalId);
+            flip.playSymbMult = 0;
+            flip.playAnim = 0;
+          } else {flip.drawHelp();}
+        }, 15
+      );
+    }
+  }
+}
+// Did an event happen with mouse inside play button help panel?
+
+BgFlipBook.prototype.inPlay = function(e) {
+  const mouse = this.getMousePos(e);
+  const dist = Math.sqrt(
+    Math.pow(mouse.x - this.playX, 2) +
+    Math.pow(mouse.y - this.playY, 2)
+  );
+  const inPlay = this.helpActive && dist <= this.playR;
+
+  if(bgFlipBookDebug) {console.log('In play: ' + inPlay)};
+  return inPlay;
+}
+// Thank you user1693593 https://stackoverflow.com/a/17130415/2725969
+
+BgFlipBook.prototype.getMousePos = function(e) {
+  var canvas = this.els.flipbook;
+  let rect = canvas.getBoundingClientRect(),
+      scaleX = canvas.width / rect.width,
+      scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  }
+}
+BgFlipBook.prototype.playButtonMult = function() {
+  const frac = Math.min(
+    Math.max(this.playSymbMult / this.playSymbMultMax, 0), 1
+  );
+  const m = (1 - Math.cos((frac* Math.PI))) / 2;
+  return m;
+}
+
 /*---------------------------------------------------------------------------*\
  * Utils *********************************************************************|
 \*---------------------------------------------------------------------------*/
@@ -505,14 +586,5 @@ CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
   this.closePath();
   return this;
 }
-// Thank you user1693593 https://stackoverflow.com/a/17130415/2725969
 
-function  getCanvasMousePos(canvas, evt) {
-  let rect = canvas.getBoundingClientRect(),
-      scaleX = canvas.width / rect.width,
-      scaleY = canvas.height / rect.height;
-  return {
-    x: (evt.clientX - rect.left) * scaleX,
-    y: (evt.clientY - rect.top) * scaleY
-  }
-}
+
