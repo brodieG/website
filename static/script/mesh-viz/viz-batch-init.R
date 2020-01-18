@@ -10,11 +10,23 @@ library(vetr)
 
 library(rayrender)
 
+# segment characteristics
+
 seg.rad <- .0025
 seg.rad <- .01
 seg.mat1 <- metal(color=metal.col[1])
 seg.mat2 <- metal(color=metal.col[2])
 seg.mat3 <- metal(color=metal.col[3])
+
+# disk characteristics
+
+dro <- .09
+dri <- .07
+# mat.d <- diffuse(color='grey10')
+mat.d <- metal(color='grey35')
+d1 <- disk(radius=dro, inner_radius=dri, y=0, x=.5, material=mat.d)
+d2 <- disk(radius=dro, inner_radius=dri, y=0, material=mat.d)
+d3 <- disk(radius=dro, inner_radius=dri, y=0, z=.5, material=mat.d)
 
 zoff <- +.5
 
@@ -69,6 +81,7 @@ errs_to_cyl <- function(errs.df, mat) {
       }
   ) )
 }
+# these are between the approx mesh and surface
 errs2a.cyl <- errs_to_cyl(
   transform(errs2.df, z0=z0 - min(z0), x=x-.5, y=y-.5),
   diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
@@ -77,18 +90,16 @@ errs3a.cyl <- errs_to_cyl(
   transform(errs3.df, z0=z0 - min(z0), x=x-.5, y=y-.5),
   diffuse(color=metal.col[3], checkercolor='grey75', checkerperiod=.05)
 )
-zoff <- .5
-# light.narrow <- sphere( y=8, z = 2, x = 1, radius = .1,
-#   material = light(intensity = 5000)
-# )
-scn.base <- dplyr::bind_rows(
-  light.narrow,
-  # xz_rect(
-  #   xwidth=15, zwidth=15, y=10, flipped=TRUE, 
-  #   material=diffuse(color='white', lightintensity=1)
-  # )
-  xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
+# these start on the ground
+errs2b.cyl <- errs_to_cyl(
+  transform(errs2.df, z0=0, x=x-.5, y=y-.5),
+  diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
 )
+errs3b.cyl <- errs_to_cyl(
+  transform(errs3.df, z0=0, x=x-.5, y=y-.5),
+  diffuse(color=metal.col[3], checkercolor='grey75', checkerperiod=.05)
+)
+zoff <- .5
 mult <- 1.3
 light.narrow <- sphere(
   y=8, z = 2, x = 1, radius = .5,

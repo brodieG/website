@@ -80,30 +80,29 @@ scn.base <- dplyr::bind_rows(
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 )
 
-rez <- 300
-samp <- 10
+rez <- 600
+samp <- 400
 scns <- list(scn.1, scn.2, scn.3)
 # scns <- list(scn.2)
 render_scenes(
   scns, height=rez, width=rez, samples=samp,
-  lookfrom=c(0, 3, 1.5), lookat=c(0, 0, -.35),
+  lookfrom=c(0, 3, 1.5), lookat=c(0, 0, -.35), fov=27,
   # lookfrom=c(0, 1, 1.5), lookat=c(0, .5, 0),
   # lookfrom=c(0, 4, 1),
-  fov=27,
   # fov=60,
   aperture=0,
   camera_up=c(0,1,0),
   clamp=3,
   backgroundlow=bg, backgroundhigh=bg,
   ambient_light=TRUE,
-  filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-s3-%d.png'
+  filename='~/Downloads/mesh-viz/small-mesh/simple-mesh-fin-%d.png'
 )
 # Error bars alone
 
-stop()
-
-dir <- '~/Downloads/mesh-viz/batch-hirez-4'
-png.in <- sprintf('%s/simple-mesh-s-%d.png', dir, 1:3)
-png.out <- sprintf('%s/simple-mesh-s-merge.png', dir)
-cbind_pngs(png.in, png.out)
+#stop()
+#
+#dir <- '~/Downloads/mesh-viz/batch-hirez-4'
+#png.in <- sprintf('%s/simple-mesh-s-%d.png', dir, 1:3)
+#png.out <- sprintf('%s/simple-mesh-s-merge.png', dir)
+#cbind_pngs(png.in, png.out)
 
