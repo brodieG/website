@@ -37,16 +37,17 @@ make_layers <- function(
 }
 light.wide <- sphere(
   y=8, z = 0, x = 0, radius = 2,
-  material = lambertian(lightintensity = 16, implicit_sample = TRUE)
+  material = light(intensity = 16)
 )
 light.medium <- sphere(
   y=8, z = 0, x = 0, radius = .25,
-  material = lambertian(lightintensity = 500, implicit_sample = TRUE)
+  material = light(intensity = 500)
 )
 light.narrow <- sphere(
-  y=8, z = 4, x = 0, radius = .2,
-  material = lambertian(lightintensity = 2000, implicit_sample = TRUE)
+  y=8, z = 4, x = 0, radius = .2, material = light(intensity=2000)
 )
+map <- vsq
+errors <- rtini::rtini_error(map)
 
 # offset 3 stack
 
@@ -55,36 +56,45 @@ err.frac <- elmax/c(30,15,3)
 gold <- '#CCAC00'
 metal.col <-  c(gold, 'grey35', '#CC3322')
 mesh.colors <- metal.col
-floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+floor <- xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 objs <- make_layers(
   errors, err.frac, mesh.colors, radius=seg.rad*c(2,.85,.35),  10, 0, 
   material=lambertian
 )
 scene <- dplyr::bind_rows(objs, list(light.wide, floor))
 
+rez <- 200
+samp <- 50
+
 render_scene(
-  scene, width=width, height=width, samples=samples,
+  scene, width=rez, height=rez, samples=samp,
   # lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0,
   # fov=0, ortho_dimensions=c(1.25,1.25), camera_up=c(1,0,0),
   # lookfrom=c(.375, 2, .375), lookat=c(.375, 0, .375), aperture=0,
-  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0,
-  fov=0, ortho_dimensions=c(1.25,1.25), camera_up=c(1,0,0),
-  clamp=3, file='~/Downloads/mesh-viz/batch-1.png'
-)
-# full 8 stack
-
-err.frac.8 <- rev(elmax/2^(0:7))
-mesh.colors <- gold
-floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
-objs <- make_layers(errors, err.frac.8, mesh.colors, radius=seg.rad, 3, 0)
-scene <- dplyr::bind_rows(objs, list(light.wide, floor))
-
-render_scene(
-  scene, width=width, height=width, samples=samples,
-  lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
+  lookfrom=c(0, 5, 0), lookat=c(0, 0, 0), aperture=0,
+  fov=0, 
+  ortho_dimensions=c(1.25,1.25), 
+  # ortho_dimensions=c(10,10), 
   camera_up=c(1,0,0),
-  clamp=3, file='~/Downloads/mesh-viz/batch-2.png'
+  clamp=3, 
+  ambient=TRUE,
+  backgroundlow=bg, backgroundhigh=bg,
+  #file='~/Downloads/mesh-viz/batch-1.png'
 )
+# # full 8 stack
+# 
+# err.frac.8 <- rev(elmax/2^(0:7))
+# mesh.colors <- gold
+# floor <- xz_rect(xwidth=5, zwidth=5, material=lambertian(color='white'))
+# objs <- make_layers(errors, err.frac.8, mesh.colors, radius=seg.rad, 3, 0)
+# scene <- dplyr::bind_rows(objs, list(light.wide, floor))
+# 
+# render_scene(
+#   scene, width=width, height=width, samples=samples,
+#   lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=34.5,
+#   camera_up=c(1,0,0),
+#   clamp=3, file='~/Downloads/mesh-viz/batch-2.png'
+# )
 # # viridis 8 stack
 # 
 # mesh.colors <- substr(viridisLite::viridis(length(err.frac.8)), 1, 7)

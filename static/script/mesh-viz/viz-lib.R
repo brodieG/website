@@ -483,23 +483,6 @@ render_scenes <- function(scene, filename='scene-%d.png', ...) {
       writeLines(sprintf("Starting frame %d at %s", i, as.character(Sys.time())))
       render_scene(scene=scene[[i]], filename=sprintf(filename, i), ...)
 } ) }
-# Read in pngs, and write them back stitched together side by side
-
-cbind_pngs <- function(input, output) {
-  vetr(character(), character(1L))
-  pngs <- lapply(input, png::readPNG)
-  png.dims <- vapply(pngs, dim, numeric(3))
-  if(length(unique(png.dims[1,])) != 1) stop("different row counts on pngs")
-  if(length(unique(png.dims[3,])) != 1) stop("different chanel counts on pngs")
-
-  cols <- sum(png.dims[2,])
-  colc <- cumsum(png.dims[2,])
-  colcs <- 1L + c(0L, head(colc, 2L))
-  d <- array(numeric(), c(png.dims[1,1],sum(png.dims[2,]),png.dims[3,1]))
-
-  for(i in seq_along(colc)) d[,colcs[i]:colc[i],] <- pngs[[i]]
-  png::writePNG(d, output)
-}
 # Convert triangles to x/y coordinates with colors
 #
 # Intended specifically for illustrating the tiling of the triangles
@@ -540,3 +523,43 @@ tris_to_df <- function(tris, map) {
 ids_to_df <- function(ids, map) {
   as.data.frame(ids_to_xyz(ids, map, c(1,1,1)))
 }
+# - PNG stuff ------------------------------------------------------------------
+
+# Read in pngs, and write them back stitched together side by side
+
+cbind_pngs <- function(input, output) {
+  vetr(character(), character(1L))
+  pngs <- lapply(input, png::readPNG)
+  png.dims <- vapply(pngs, dim, numeric(3))
+  if(length(unique(png.dims[1,])) != 1) stop("different row counts on pngs")
+  if(length(unique(png.dims[3,])) != 1) stop("different chanel counts on pngs")
+
+  cols <- sum(png.dims[2,])
+  colc <- cumsum(png.dims[2,])
+  colcs <- 1L + c(0L, head(colc, 2L))
+  d <- array(numeric(), c(png.dims[1,1],sum(png.dims[2,]),png.dims[3,1]))
+
+  for(i in seq_along(colc)) d[,colcs[i]:colc[i],] <- pngs[[i]]
+  png::writePNG(d, output)
+}
+# trim white or near white rows (for raster image rows are the x coordinatese of
+# the arrays)
+
+trim_png_row <- function(pngs, tol=2) {
+  vetr(list(), INT.1 && all_bw(., 0, 255))
+  tol <- tol / 255
+  dims <- sapply(pngs, dim)
+  if(!is.matrix(dims)) stop("unequal dims")
+  if(length(unique(dims[1,])) > 1 || length(unique(dims[2,])) > 1)
+    stop("unequal dim2")
+
+  pngsum <- rowSums(sapply(pngs, function(x) rowSums(x < 1 - tol))) == 0
+  a <- min(which(!pngsum))
+  b <- min(which(!rev(pngsum)))
+
+  a.not <- seq_len(a - 1L)
+  b.not <- seq_len(b - 1L) + length(pngsum) - b + 1
+
+  lapply(pngs, function(x) x[-c(a.not, b.not),,])
+}
+

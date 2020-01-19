@@ -157,10 +157,25 @@ the hypotenuse of each triangle.  For the sake of exposition we will temporarily
 abandon volcano and switch to a simple 3x3 elevation surface, and we will show
 approximations where at each level every triangle is the same size.
 
-<img class='aligncenter'
-  id=three-by-three
-  src='/post/2019-08-23-mesh-reduction-1_files/images/simple-mesh-s-merge.png'
-/>
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/simple-mesh-fin-1.png
+  style='max-width: 300px;'
+/><figcaption
+>Full Detail</figcaption></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/simple-mesh-fin-2.png
+  style='max-width: 300px;'
+/><figcaption
+>Level 1 Approx</figcaption></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/simple-mesh-fin-3.png
+  style='max-width: 300px;'
+/><figcaption
+>Level 2 Approx</figcaption></figure></span></div>
+```
 
 At the most granular level (gold) there is no error as the mesh corresponds
 exactly to the elevation surface.  At the first level of approximation (silver)
@@ -176,9 +191,20 @@ implication is that we never measure errors from different levels of
 approximation at overlapping locations, so we can store the errors in a single
 matrix:
 
-<!--
-Error matrix, just the cylinders
--->
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-simple.png
+  style='max-width: 400px;'
+/><figcaption
+>3 x 3 Simple Surface Errors</figcaption></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-volc.png
+  style='max-width: 400px;'
+/><figcaption
+>65 x 65 Volcano Errors</figcaption></figure></span></div>
+```
 
 For clarity the surface was constructed so that all the errors are in the same
 direction and directly visible from our observation point.  In practice the
@@ -186,15 +212,26 @@ errors can occur on either side of the surface, and we would record their
 absolute values.  The corners of the matrix will never have any error as even
 the coarsest level of approximation will have vertices at those locations.
 
+# Surface Extraction
+
 We can now compare our recorded errors to different tolerance levels, and use
 that to decide what triangles to draw.  A possible algorithm is to draw the
 child triangles of any triangle for which its error or the error of any of its
 descendants exceeds the threshold.  Here we represent a possible threshold as
 the "water" level; errors visible above it must be addressed:
 
-<img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/waterlev1.png'
-/>
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-1.png
+  style='max-width: 300px;'
+/></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-1.png
+  style='max-width: 300px;'
+/></figure></span></div>
+```
 
 For each of the three errors that exceeds our threshold we split the
 corresponding triangle at its hypotenuse midpoint to create a vertex at the
@@ -205,15 +242,33 @@ use the first level of approximation for the top left.
 As we increase our tolerance we can extend the approximation to the bottom of
 the surface:
 
-<img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/waterlev2.png'
-/>
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-2.png
+  style='max-width: 300px;'
+/></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-2.png
+  style='max-width: 300px;'
+/></figure></span></div>
+```
 
 But if we further increase our tolerance we run into problems:
 
-<img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/waterlev3.png'
-/>
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-3.png
+  style='max-width: 300px;'
+/></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-3.png
+  style='max-width: 300px;'
+/></figure></span></div>
+```
 
 Even though we are willing to tolerate the error from using the highest level of
 approximation for the top left part of the surface, doing so introduces a gap in
@@ -221,16 +276,36 @@ our surface.  One solution to this is to ensure that the error at any given
 point is the greater of the actual error, or the errors associated with its
 children.  <span id='carry-over-viz'></span>
 
-
-<!--
-Two error matrices:
-
-* Left: original, but with arrows showing errors converging onto parent
-* Right: original, but with parent error adding child error stacked on top of it
--->
+```{=html}
+<br />
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-carry-1.png
+  style='max-width: 300px;'
+/></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-carry-2.png
+  style='max-width: 300px;'
+/></figure></span></div>
+<br />
+```
 
 This ensure that the mesh has no T intersections and as such is
 continuous:
+
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-4.png
+  style='max-width: 300px;'
+/></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-4.png
+  style='max-width: 300px;'
+/></figure></span></div>
+```
 
 <!--
 Use same water level as the one that caused the problem before.
@@ -411,6 +486,7 @@ Point is to highlight potential techniques for vectorizing R code.
 * ffmpeg
 * inline
 * Brewer
+* dplyr for bind_rows
 
 ## R Transliteration
 
@@ -515,11 +591,6 @@ new BgFlipBook({
 })
 new BgFlipBook({
   targetId: 'flipbook2', imgDir:imgDir, imgStart: 803, imgEnd: 844,
-  imgPad: "0000", fps: fps, loop: false
-})
-new BgFlipBook({
-  targetId: 'flipbook-vec', imgDir:imgDir + '../flipbook-vec/',
-  imgStart: 65, imgEnd: 0119,
   imgPad: "0000", fps: fps, loop: false
 })
 </script>

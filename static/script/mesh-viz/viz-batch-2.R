@@ -1,3 +1,4 @@
+source('static/script/mesh-viz/viz-batch-init.R')
 library('rayrender')
 library('vetr')
 source('viz-lib.R')

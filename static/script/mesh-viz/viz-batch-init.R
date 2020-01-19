@@ -31,6 +31,7 @@ dro <- .09
 dri <- .07
 # mat.d <- diffuse(color='grey10')
 mat.d <- metal(color='grey35')
+dot.mat <- diffuse(color='grey15')
 d1 <- disk(radius=dro, inner_radius=dri, y=0, x=.5, material=mat.d)
 d2 <- disk(radius=dro, inner_radius=dri, y=0, material=mat.d)
 d3 <- disk(radius=dro, inner_radius=dri, y=0, z=.5, material=mat.d)
@@ -59,22 +60,20 @@ zscl <- 1
 
 # Need to recompute middle error b/c of auto-carryover
 
-errs2 <- errs3 <- compute_error(map)
+errs1 <- errs2 <- errs3 <- rtini::rtini_error(map, carry.child=FALSE)
 errs2[5] <- 0
-errs3[5] <- (map[1] + map[9]) / 2 - map[5]
 errs3[c(2,4,6,8)] <- 0
 
 errs2.df <- mx_to_df(errs2, scale=c(1, 1, 0))
 errs2.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
 errs3.df <- mx_to_df(errs3, scale=c(1, 1, 0))
 errs3.df[['z0']] <- mx_to_df(map, scale=c(1, 1, 0))[['z']]
-errs_to_cyl <- function(errs.df, mat) {
+errs_to_cyl <- function(errs.df, mat, rad=.05) {
   errs.df <- subset(errs.df, z > 0)
   dplyr::bind_rows(
     lapply(
       seq_len(nrow(errs.df)),
       function(i) {
-        rad <- .05
         ang <- c(-90,0,0)
         with(
           errs.df[i,],
@@ -89,9 +88,12 @@ errs_to_cyl <- function(errs.df, mat) {
   ) )
 }
 # these are between the approx mesh and surface
-errs2a.cyl <- errs_to_cyl(
-  transform(errs2.df, z0=z0 - min(z0), x=x-.5, y=y-.5),
+
+silv.mat <-
   diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
+
+errs2a.cyl <- errs_to_cyl(
+  transform(errs2.df, z0=z0 - min(z0), x=x-.5, y=y-.5), silv.mat
 )
 errs3a.cyl <- errs_to_cyl(
   transform(errs3.df, z0=z0 - min(z0), x=x-.5, y=y-.5),
@@ -99,13 +101,13 @@ errs3a.cyl <- errs_to_cyl(
 )
 # these start on the ground
 errs2b.cyl <- errs_to_cyl(
-  transform(errs2.df, z0=0, x=x-.5, y=y-.5),
-  diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
+  transform(errs2.df, z0=0, x=x-.5, y=y-.5), silv.mat
 )
 errs3b.cyl <- errs_to_cyl(
   transform(errs3.df, z0=0, x=x-.5, y=y-.5),
   diffuse(color=metal.col[3], checkercolor='grey75', checkerperiod=.05)
 )
+
 zoff <- .5
 mult <- 1.3
 light.narrow <- sphere(
@@ -116,10 +118,22 @@ bg1 <- 102 / mult
 bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
 scn.base <- dplyr::bind_rows(
   light.narrow,
-  # xz_rect(
-  #   xwidth=15, zwidth=15, y=10, flipped=TRUE,
-  #   material=diffuse(color='white', lightintensity=1)
-  # )
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 )
+# coords should be from `which(..., arr.ind=TRUE)` so we only
+# do those with no error
+
+base_points <- function(coords, n, rad, mat, offset=1e-3) {
+  coords <- ((coords - 1) / (n - 1) - .5)
+  dplyr::bind_rows(
+    lapply(
+      seq_len(nrow(coords)),
+      function(i)
+      disk(
+        x=coords[i,2], z=-coords[i,1], y=offset, mat=mat, radius=rad
+        # inner_radius=rad/2
+      )
+    )
+  )
+}
 

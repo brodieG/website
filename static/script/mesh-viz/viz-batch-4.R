@@ -45,10 +45,12 @@ source('static/script/mesh-viz/viz-batch-init.R')
 # f1 <- tempfile()
 # f2 <- tempfile()
 # f3 <- tempfile()
+f4 <- tempfile()
 
 water_surface(f1, 150)
 water_surface(f2, 150, t=pi/10)
 water_surface(f3, 150, t=pi/5)
+water_surface(f4, 150, t=pi/5 + pi/10)
 
 # par3d(windowRect=c(0, 0, 600, 600))
 # plot3d(readOBJ(f), color='grey')
@@ -57,15 +59,23 @@ water_surface(f3, 150, t=pi/5)
 # mat.w <- dielectric(color='#E5E5FF', refraction=1.3)
 mat.w <- dielectric(color='#E0F5FF', refraction=1.3)
 dy1 <- .15
-dy2 <- .4
+dy2 <- .275
 dy3 <- .525
+dy4 <- .525
+objrr4 <- obj_model(f4, material=mat.w, scale=rep(1.21/(2*pi), 3), y=dy3)
 objrr3 <- obj_model(f3, material=mat.w, scale=rep(1.21/(2*pi), 3), y=dy3)
 objrr2 <- obj_model(f2, material=mat.w, scale=rep(1.21/(2*pi), 3), y=dy2)
 objrr1 <- obj_model(f1, material=mat.w, scale=rep(1.21/(2*pi), 3), y=dy1)
 
+rad <- .05
+dots <- base_points(
+  which(errs1 == 0, arr.ind=TRUE), n=nrow(errs1), mat=dot.mat, rad=rad/3
+)
+
 gang <- c(90, 0, 0)
 scn.base.2 <- dplyr::bind_rows(
   scn.base,
+  # dots,
   group_objects(
     errs2b.cyl, group_angle=gang,
     pivot_point=numeric(3), 
@@ -96,13 +106,20 @@ scn.4c <- dplyr::bind_rows(
   scn.base.2, objrr3,
   group_objects(d1, group_translate=c(0,dyy3,0)),
 )
+scn.4d <- dplyr::bind_rows(
+  scn.base.2, objrr4,
+  group_objects(d1, group_translate=c(0,dyy3,0)),
+  group_objects(d2, group_translate=c(0,dyy3,0)),
+  cylinder(y=.45 + .25/2, length=.25, radius=0.05, material=silv.mat),
+  disk(y=.7, radius=0.05, material=silv.mat)
+)
 
 # rez <- 600
 # samp <- 500
 rez <- 600
 samp <- 400
 # rez <- 300
-# samp <- 100
+# samp <- 25
 
 # scns <- list(scn.4a, scn.4b, scn.4c)
 # scns <- list(scn.4b)
@@ -111,9 +128,10 @@ samp <- 400
   # scn.4c,
   # filename=file,
 render_scenes(
-  list(scn.4a, scn.4b, scn.4c),
+  # list(scn.4a, scn.4b, scn.4c),
+  list(scn.4b, scn.4d),
   # list(scn.4a),
-  filename='~/Downloads/mesh-viz/small-mesh/water-fin-%d.png',
+  filename='~/Downloads/mesh-viz/small-mesh/water-tmp2-%d.png',
   height=rez, width=rez, samples=samp,
   # lookfrom=c(0, 3, 1.5), lookat=c(0, 0, 0),
   lookfrom=c(0, 3, 1.5), lookat=c(0, .25, 0), fov=28,
