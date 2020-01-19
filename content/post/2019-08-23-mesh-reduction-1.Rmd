@@ -75,9 +75,28 @@ original glass?  Should we use the full mesh of volcano, or the already
 partially reduced one?
 -->
 
-<img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/glass-and-mesh-3-f-merge.png'
-/>
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><a
+  href=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-3.png><img
+  class='bgw-img-wrap-panel bgw-zoomable'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-small-3.png
+  style='max-width: 300px;'
+/></a><figcaption
+>Tolerance: 1.9</figcaption></figure><figure><a
+  href=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-2.png><img
+  class='bgw-img-wrap-panel bgw-zoomable'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-small-2.png
+  style='max-width: 300px;'
+/></a><figcaption
+>Tolerance: 10.0</figcaption></figure><figure><a
+  href=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-1.png><img
+  class='bgw-img-wrap-panel bgw-zoomable'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-small-1.png
+  style='max-width: 300px;'
+/></a><figcaption
+>Tolerance: 50.0 Approx</figcaption></figure></span></div>
+```
 
 If you look closely you'll see that even in the higher fidelity approximation
 the wire mesh ends up above or below the glass surface, although on the whole

@@ -380,19 +380,21 @@ div.bgw-wide-window pre{
   margin: 0 auto;
   text-align: initial;
 }
-/* test and hopefully delete
-div.bgw-wide-window figure {
-  margin: 0;
-}
-*/
+/* Horrible margin hack here to ensure that there is a vertical margin between
+ * images when they wrap, but that the vertical margins don't double up.  For
+ * whatever reason the vertical margins were not collapsing across the inline
+ * block elements (perhaps because they don't align to the same point in the
+ * DOM), so we fake the collapse this way
+ */
+
 span.bgw-img-wrap-frame {
   margin: -1.5em auto 0 auto;
   /*white-space: pre-wrap;*/
   display: inline-block;
   text-align: center;
 }
-span.bgw-img-wrap-frame > img,
-span.bgw-img-wrap-frame > figure{
+span.bgw-img-wrap-frame img,
+span.bgw-img-wrap-frame figure{
   margin: 1.5em auto 0 auto;
   display: inline-block;
 }
@@ -405,11 +407,22 @@ figure figcaption {
   font-style: italic;
 }
 
-a.image-credit {
+a.image-credit,
+span.bgw-img-wrap-frame a {
   border-bottom: none;
   box-shadow: none;
+
+}
+article span.bgw-img-wrap-frame a:hover,
+article span.bgw-img-wrap-frame a:focus {
+  background: transparent;
 }
 
+img.bgw-zoomable{
+  cursor: -moz-zoom-in; 
+  cursor: -webkit-zoom-in; 
+  cursor: zoom-in;
+}
 
 .alignleft {
   float: left;
