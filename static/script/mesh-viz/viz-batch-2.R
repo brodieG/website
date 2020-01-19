@@ -10,17 +10,6 @@ f2 <- tempfile()
 f3 <- tempfile()
 f4 <- tempfile()
 
-vsq <- matrix(0, 65, 65)
-vsq[1:65, 3:63] <- volcano[1:65,1:61]
-vsq[1:65, 1:2] <- volcano[1:65, 1]
-vsq[1:65, 64:65] <- volcano[1:65, 61]
-
-map <- vsq
-errors <- compute_error(map)
-elmax <- diff(range(map))
-tris1 <- extract_mesh2(errors, elmax/25)
-tris2 <- extract_mesh2(errors, elmax/10)
-tris3 <- extract_mesh2(errors, elmax/3)
 
 # Glass full rez mesh
 

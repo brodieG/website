@@ -88,18 +88,64 @@ becomes apparent that all the triangles in the approximation are right angled
 isoceles triangles.  This is where the "Right-Triangulated" part of the
 algorithm name comes from.
 
-<img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-4.png'
-/>
+```{r}
+knitr::opts_chunk$get('fig.align')
+knitr::opts_chunk$get('fig.width')
+```
+
+```{r flat-side-by-side, echo=FALSE, fig.width=3.125, fig.height=3.125, fig.show='hold', fig.align='default'}
+old_chunk_hook <- knitr::knit_hooks$get('chunk')
+knitr::knit_hooks$set(chunk=function(x, options) {
+  paste0(
+    '<div class=bgw-wide-window><span class=bgw-img-wrap-frame>',
+    paste0(old_chunk_hook(x, options), collapse=''),
+    '</span></div>'
+  )
+} )
+source('../../static/script/mesh-viz/viz-lib.R')
+vsq <- matrix(0, 65, 65)
+vsq[1:65, 3:63] <- volcano[1:65,1:61]
+vsq[1:65, 1:2] <- volcano[1:65, 1]
+vsq[1:65, 64:65] <- volcano[1:65, 61]
+
+elmax <- diff(range(vsq))
+
+err.frac <- elmax/c(30,15,3)
+# mesh.colors <- c('gold', 'grey65', '#DD4F12')
+gold <- '#CCAC00'
+metal.col <-  c(gold, 'grey50', '#CC3322')
+mesh.colors <- metal.col
+
+errors <- rtini::rtini_error(vsq)
+meshes <- lapply(err.frac, rtini::rtini_extract, error=errors)
+de <- dim(errors)
+
+plot_tri_ids(
+  meshes[[1]], de, lwd=1, col=metal.col[[1]], new=TRUE, mai=rep(.1, 4), xpd=NA
+)
+plot_tri_ids(
+  meshes[[2]], de, lwd=1, col=metal.col[[2]], new=TRUE, mai=rep(.1, 4), xpd=NA
+)
+plot_tri_ids(
+  meshes[[3]], de, lwd=1, col=metal.col[[3]], new=TRUE, mai=rep(.1, 4), xpd=NA
+)
+```
+```{r echo=FALSE}
+knitr::knit_hooks$set(chunk=old_chunk_hook)
+```
 
 Another important feature of this mesh approximation is that it is hierarchical.
 When we stack the three meshes we can see that each low resolution triangle is
 exactly replaced by higher resolution ones when it does not meet the error
 tolerance:
 
-<img class='aligncenter'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-1.png'
-/>
+```{r flat-overlay, echo=FALSE, fig.width=4.2, fig.height=4.2}
+plot_tri_ids(
+  meshes[[1]], de, new=TRUE, lwd=4, mai=rep(.1, 4), xpd=NA, col=metal.col[[1]]
+)
+plot_tri_ids(meshes[[2]], de, lwd=2, col=metal.col[[2]], new=FALSE)
+plot_tri_ids(meshes[[3]], de, lwd=1, col=metal.col[[3]], new=FALSE)
+```
 
 If a triangle too coarse for the desired level of fidelity, it is broken up into
 two smaller triangles.  The process is repeated until the approximation error

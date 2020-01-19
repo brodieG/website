@@ -34,19 +34,23 @@ rescale <- function(x, range=1, center=0.5)
 ## Prepare a plot with a particular aspect ratio
 plot_new <- function(
   x, y, xlim=c(0,1), ylim=c(0,1),
-  par.args=list(mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i')
+  mai=numeric(4L), xaxt='n', yaxt='n', xaxs='i', yaxs='i', ...
 ) {
-  if(length(par.args)) do.call(par, par.args)
+  args <- as.list(environment())
+  do.call(par, args[!names(args) %in% c('x', 'y', 'xlim', 'ylim')])
   plot.new()
   plot.window(
     xlim, ylim, asp=diff(range(y, na.rm=TRUE))/diff(range(x, na.rm=TRUE))
 ) }
-plot_tri_ids <- function(tri, dim, new=TRUE) {
-  ids <- rbind(matrix(unlist(tri), 3L), NA) - 1L
+## @param ... parameters based on to `par` call when `new=TRUE`
+
+plot_tri_ids <- function(tri, dim, new=TRUE, lwd=1, col='#444444', ...) {
+  ids <- rbind(matrix(unlist(tri), 3L), matrix(unlist(tri), 3L)[1,], NA) - 1L
   x <- ids %/% dim[1]
   y <- ids %% dim[1]
-  if(new) plot_new(x, y)
-  polygon(x/(dim[2] - 1), y/(dim[1]-1), col='#DDDDDD', border='#444444')
+  if(new) plot_new(x, y, ...)
+  # polygon(x/(dim[2] - 1), y/(dim[1]-1), col='#DDDDDD', border='#444444')
+  lines(x/(dim[2] - 1), y/(dim[1]-1), col=col, lwd=lwd)
 }
 plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L

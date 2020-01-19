@@ -1,9 +1,4 @@
-# source('static/script/mesh-viz/viz.R')
-
-width <- 200
-samples <- 200
-seg.rad <- .0025
-zoff <- +.5
+source('static/script/mesh-viz/viz-batch-init.R')
 
 # - stacked meshes -------------------------------------------------------------
 

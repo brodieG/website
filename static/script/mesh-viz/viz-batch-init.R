@@ -1,6 +1,13 @@
+source('static/script/mesh-viz/viz.R')
 source('static/script/mesh-viz/viz-lib.R')
 source('static/script/mesh-viz/rtin-vec.R')
 library(vetr)
+
+map <- vsq
+
+tris1 <- extract_mesh2(errors, elmax/25)
+tris2 <- extract_mesh2(errors, elmax/10)
+tris3 <- extract_mesh2(errors, elmax/3)
 
 # - Test it Out ----------------------------------------------------------------
 

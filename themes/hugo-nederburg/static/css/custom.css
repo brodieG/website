@@ -374,11 +374,15 @@ div.bgw-wide-window figure {
 }
 */
 span.bgw-img-wrap-frame {
-  margin: 0 auto;
-  border: 3px red;
-  white-space: pre-wrap;
+  margin: -1.5em auto 0 auto;
+  /*white-space: pre-wrap;*/
   display: inline-block;
   text-align: center;
+}
+span.bgw-img-wrap-frame > img,
+span.bgw-img-wrap-frame > figure{
+  margin: 1.5em auto 0 auto;
+  display: inline-block;
 }
 /*
  * other image stuff
