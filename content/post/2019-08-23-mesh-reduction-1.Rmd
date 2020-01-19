@@ -88,11 +88,6 @@ becomes apparent that all the triangles in the approximation are right angled
 isoceles triangles.  This is where the "Right-Triangulated" part of the
 algorithm name comes from.
 
-```{r}
-knitr::opts_chunk$get('fig.align')
-knitr::opts_chunk$get('fig.width')
-```
-
 ```{r flat-side-by-side, echo=FALSE, fig.width=3.125, fig.height=3.125, fig.show='hold', fig.align='default'}
 old_chunk_hook <- knitr::knit_hooks$get('chunk')
 knitr::knit_hooks$set(chunk=function(x, options) {
@@ -110,24 +105,37 @@ vsq[1:65, 64:65] <- volcano[1:65, 61]
 
 elmax <- diff(range(vsq))
 
-err.frac <- elmax/c(30,15,3)
-# mesh.colors <- c('gold', 'grey65', '#DD4F12')
+tol <- rev(c(50, 9.99754364417931, 1.9))
 gold <- '#CCAC00'
-metal.col <-  c(gold, 'grey50', '#CC3322')
-mesh.colors <- metal.col
-
+mc <-  c(gold, 'grey50', '#CC3322')
+mai <- rep(.1, 4)
 errors <- rtini::rtini_error(vsq)
-meshes <- lapply(err.frac, rtini::rtini_extract, error=errors)
+meshes <- lapply(tol, rtini::rtini_extract, error=errors)
 de <- dim(errors)
 
-plot_tri_ids(
-  meshes[[1]], de, lwd=1, col=metal.col[[1]], new=TRUE, mai=rep(.1, 4), xpd=NA
+xyz <- lapply(
+  meshes, function(x) {
+    ids <- rbind(matrix(unlist(x), 3L), matrix(unlist(x), 3L)[1,], NA)
+    ids_to_xyz(ids, map=vsq, scale=rep(1, 3L))
+} )
+# switch x/y, xpd not working so we need to work-around
+xpdoff <- .05
+xyz <- lapply(
+  xyz,
+  function(w) {
+    w$z <- w$x * (1 - xpdoff) + xpdoff/2
+    w$x <- ((1 - w$y) * (1 - xpdoff) + xpdoff/2) * 64  + 1
+    w$y <- (w$z) * 64 + 1
+    w
+} )
+plot_tri_xy(
+  xyz[[1]]$x, xyz[[1]]$y, de, lwd=1, col=mc[1], new=TRUE, mai=mai,
 )
-plot_tri_ids(
-  meshes[[2]], de, lwd=1, col=metal.col[[2]], new=TRUE, mai=rep(.1, 4), xpd=NA
+plot_tri_xy(
+  xyz[[2]]$x, xyz[[2]]$y, de, lwd=1, col=mc[2], new=TRUE, mai=mai,
 )
-plot_tri_ids(
-  meshes[[3]], de, lwd=1, col=metal.col[[3]], new=TRUE, mai=rep(.1, 4), xpd=NA
+plot_tri_xy(
+  xyz[[3]]$x, xyz[[3]]$y, de, lwd=1, col=mc[3], new=TRUE, mai=mai,
 )
 ```
 ```{r echo=FALSE}
@@ -140,11 +148,11 @@ exactly replaced by higher resolution ones when it does not meet the error
 tolerance:
 
 ```{r flat-overlay, echo=FALSE, fig.width=4.2, fig.height=4.2}
-plot_tri_ids(
-  meshes[[1]], de, new=TRUE, lwd=4, mai=rep(.1, 4), xpd=NA, col=metal.col[[1]]
+plot_tri_xy(
+  xyz[[1]]$x, xyz[[1]]$y, de, lwd=3, col=mc[1], mai=mai, new=TRUE, xpd=NA
 )
-plot_tri_ids(meshes[[2]], de, lwd=2, col=metal.col[[2]], new=FALSE)
-plot_tri_ids(meshes[[3]], de, lwd=1, col=metal.col[[3]], new=FALSE)
+plot_tri_xy(xyz[[2]]$x, xyz[[2]]$y, de, lwd=2, col=mc[2], new=FALSE)
+plot_tri_xy(xyz[[3]]$x, xyz[[3]]$y, de, lwd=.75, col=mc[3], new=FALSE)
 ```
 
 If a triangle too coarse for the desired level of fidelity, it is broken up into

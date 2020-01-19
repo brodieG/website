@@ -44,14 +44,20 @@ plot_new <- function(
 ) }
 ## @param ... parameters based on to `par` call when `new=TRUE`
 
-plot_tri_ids <- function(tri, dim, new=TRUE, lwd=1, col='#444444', ...) {
+plot_tri_ids <- function(tri, dim) {
   ids <- rbind(matrix(unlist(tri), 3L), matrix(unlist(tri), 3L)[1,], NA) - 1L
   x <- ids %/% dim[1]
   y <- ids %% dim[1]
+  plot_tri_xy(x, y, dim, new=new, lwd=lwd, col=col, ...)
+}
+plot_tri_xy <- function(x, y, dim, new=TRUE, lwd=1, col='#444444', ...) {
+  x <- x - 1
+  y <- y - 1
   if(new) plot_new(x, y, ...)
   # polygon(x/(dim[2] - 1), y/(dim[1]-1), col='#DDDDDD', border='#444444')
   lines(x/(dim[2] - 1), y/(dim[1]-1), col=col, lwd=lwd)
 }
+
 plot_points_ids <- function(points.ids, dim, cex=1, col='red') {
   ids <- points.ids - 1L
   x <- ids %/% dim[1]

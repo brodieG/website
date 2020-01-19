@@ -344,7 +344,19 @@ figure.post-inset-image img {
  * <div><span><figure><img></figure><figure><img></figure></span></div>
  *
  * But be carefully about any stray white spaces, either yours or any injected
- * by pandoc
+ * by pandoc.
+ *
+ * The net result of all this should be  a sequence of images that will fill a
+ * single row, but wrap and be centered as needed.  The wide-window container
+ * allows the row to extend the full viewport length.
+ *
+ * This was all built without any consideration to whether flexbox based layouts
+ * would be more suitable, which they may indeed be.
+ *
+ * One big drawback of this is that we don't currently have a way to limit the
+ * max width of the row to something less than the viewport.  It may be possible
+ * to do this by adding yet another nested div inside bgw-wide-window, though
+ * that means even more mark-up to drag around.
  */
 
 div.bgw-wide-window {
