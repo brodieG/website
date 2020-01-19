@@ -820,4 +820,36 @@ new BgFlipBook({
 })
 </script>
 
+[^step-count]: We're under-counting as the calls used in the vectorized version
+  end to be more complex, and we also have `init_offsets` that hides some calls.
+[^simplified-offsets]: The actual implementation needs to handle several special
+ cases, such as the largest size "Diagonal" that only contains one hypotenuse
+ instead of the typical four, and the smallest size "Axis" that does not have
+ any children.  The unused variable `layers` is used to identify the corner
+ cases in the full version.
+[^shift-with-care]: But watch out for row shifts that cause column shifts, or
+  column shifts that take you out of bounds.
+[^not-diag]: In the "Diagonal" tiles the midpoints are on the inside of the tile
+  so there is no overlap issue.
+[^nine-nine]: Some tiling issues become apparent at this size that are less
+  obvious at smaller sizes.
+[^linearized]: [&commat;mourner's][6] implementation used this approach, and
+  since it saves space and may be faster computationally I adopted it.  To
+  preserve my sanity I transpose the coordinates in the actual implementation so
+  that the matrix representation aligns with the plotted one (i.e. x corresponds
+  to columns, y to rows, albeit with y values in the wrong direction).  In other
+  words, `x <- (id - 1) %/% nrow(map)`, and `y <- (id - 1) %% nrow(map)`
+[^int-vec]: Internally vectorized operations loop through elements of a vector
+  with statically compiled code instead of explicit R loops such as `for`,
+  `lapply`.
+[^grandiloquence]: If nothing else I feel I've earned the right not to be
+  embarrassed by misplaced eructations of grandiloquence.
+[^first-frame]: First frame in the flipbook, but step 65 in the overall
+  animation.
+[^double-speed]: As we'll see [later](#vec-inefficiency) the ordering step at
+  the end is only required for "Axis" tiles, and can be skipped for the first
+  layer altogether as in that layer "Axis" tiles have no children (this is also
+  the largest layer so there is a big gain from skipping it).
+[^c-vs-js]: Or it could be any other number of things, I'm guessing and can't be
+  bothered testing this with a stand-alone implementation.
 
