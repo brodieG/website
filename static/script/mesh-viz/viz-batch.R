@@ -35,10 +35,6 @@ make_layers <- function(
     ) }
   )
 }
-light.wide <- sphere(
-  y=8, z = 0, x = 0, radius = 2,
-  material = light(intensity = 16)
-)
 light.medium <- sphere(
   y=8, z = 0, x = 0, radius = .25,
   material = light(intensity = 500)
@@ -58,14 +54,21 @@ metal.col <-  c(gold, 'grey35', '#CC3322')
 mesh.colors <- metal.col
 floor <- xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 objs <- make_layers(
-  errors, err.frac, mesh.colors, radius=seg.rad*c(2,.85,.35),  10, 0, 
-  material=lambertian
+  errors, err.frac, mesh.colors, radius=seg.rad*c(2,.85,.35)/3,  10, 0, 
+  material=diffuse
+)
+light.wide <- sphere(
+  y=8, z = 0, x = 0, radius = 2,
+  material = light(intensity = 16)
+  # material = light(intensity = 8)
 )
 scene <- dplyr::bind_rows(objs, list(light.wide, floor))
+# scene <- dplyr::bind_rows(objs, list(floor))
 
-rez <- 200
-samp <- 50
+rez <- 1000
+samp <- 500
 
+file <- next_file('~/Downloads/mesh-viz/flat-mesh/stacked-')
 render_scene(
   scene, width=rez, height=rez, samples=samp,
   # lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0,
@@ -73,13 +76,15 @@ render_scene(
   # lookfrom=c(.375, 2, .375), lookat=c(.375, 0, .375), aperture=0,
   lookfrom=c(0, 5, 0), lookat=c(0, 0, 0), aperture=0,
   fov=0, 
-  ortho_dimensions=c(1.25,1.25), 
+  ortho_dimensions=c(1.1,1.1), 
   # ortho_dimensions=c(10,10), 
   camera_up=c(1,0,0),
   clamp=3, 
   ambient=TRUE,
   backgroundlow=bg, backgroundhigh=bg,
-  #file='~/Downloads/mesh-viz/batch-1.png'
+  # backgroundlow='#CCCCCC', backgroundhigh='#CCCCCC',
+  # backgroundlow='white', backgroundhigh='white',
+  file=file
 )
 # # full 8 stack
 # 

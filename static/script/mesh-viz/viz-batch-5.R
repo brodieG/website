@@ -72,8 +72,6 @@ render_scene(
   ambient_light=TRUE
 )
 
-silv.mat <-
-  diffuse(color='grey75', checkercolor='grey35', checkerperiod=.05)
 scn <- dplyr::bind_rows(
   scn.base2,
   disks, arrows,

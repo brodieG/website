@@ -25,7 +25,16 @@ trim_and_copy <- function(f, tar, tol=3, plot=FALSE) {
 allf[grep('(composite|water).*fin.*1', allf)]
 
 trim_and_copy(
-  allf[grep('(composite|water).*fin.*1', allf)], tar=dir.tar, plot=TRUE
+  allf[grep('(composite|water).*fin.*1', allf)], tar=dir.tar, plot=FALSE
+)
+trim_and_copy(
+  allf[grep('(composite|water).*fin.*2', allf)], tar=dir.tar, plot=FALSE
+)
+trim_and_copy(
+  allf[grep('(composite|water).*fin.*3', allf)], tar=dir.tar, plot=FALSE
+)
+trim_and_copy(
+  allf[grep('(composite|water).*fin.*4', allf)], tar=dir.tar, plot=FALSE
 )
 
 hexaptych.f <- allf[grep('(composite|water).*fin', allf)][c(4,1,5,2,6,3)]

@@ -2,11 +2,6 @@
 
 source('static/script/mesh-viz/viz-batch-init.R')
 
-vsq <- matrix(0, 65, 65)
-vsq[1:65, 3:63] <- volcano[1:65,1:61]
-vsq[1:65, 1:2] <- volcano[1:65, 1]
-vsq[1:65, 64:65] <- volcano[1:65, 61]
-
 approx <- rtini::rtini_error(vsq, carry.child=FALSE, approx.instead=TRUE)
 err <- rtini::rtini_error(vsq, carry.child=FALSE, approx.instead=FALSE)
 ztop <- pmax(approx, vsq)

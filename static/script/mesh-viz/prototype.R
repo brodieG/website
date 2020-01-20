@@ -7,7 +7,7 @@ source('static/script/mesh-viz/viz-lib.R')
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
-map <- elmat1[1:257,1:257]
+# map <- elmat1[1:257,1:257]
 
 stop('done loading')
 
