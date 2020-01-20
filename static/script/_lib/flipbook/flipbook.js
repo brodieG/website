@@ -197,6 +197,7 @@ function BgFlipBook(x) {
 
   this.imgN = x.imgEnd - x.imgStart + 1;
   this.playing = false;
+  this.playingAuto = false;
   this.imgPad = x.imgPad;
   this.imgActive = 1;
   this.fpsLast = x.fps;
@@ -214,6 +215,8 @@ function BgFlipBook(x) {
   this.playSymbMultMax = 15;
   this.playAnim = 0;   // 0: off, 1: expand, 2: contract
   this.playIntervalId = 0;
+  this.canvasTip =
+    'Click to step forward, shift+click to step backwards.'
 
   // Initialize HTML els
 
@@ -276,6 +279,7 @@ BgFlipBook.prototype.draw = function() {
     this.els.imgs.children[this.imgActive - 1], 0, 0,
     this.els.flipbook.width, this.els.flipbook.height
   );
+  this.els.flipbook.title = this.canvasTip;
 }
 BgFlipBook.prototype.drawHelp0 = function() {
   this.playSymbMult = 0;
@@ -286,16 +290,19 @@ BgFlipBook.prototype.drawHelp = function() {
   const fontSize = this.els.flipbook.width / 28;
   this.pauseFlip();
   this.draw();
+  this.els.flipbook.title = '';
   const text = [
-    "          \u{2022} Click in frame to step forward",
-    "          \u{2022} Shift + click to step backwards",
-    "          \u{2022} Use the controls below"
+    " \u{2022} Click in frame to step forward           ",
+    " \u{2022} Shift + click to step backwards       OR:",
+    " \u{2022} Use the controls below                   "
   ]
   /* figure out center point to put the text in */
 
   this.ctx.font = fontSize + 'px Lato, sans-serif';
   // this.ctx.font = fontSize + 'px sans-serif';
   const th = this.ctx.measureText('M').width * 1.1;
+  this.ctx.textAlign = 'left';
+  this.ctx.textBaseline = 'alphabetic';
 
   let textMaxWidth = 0;
   for(let i = 0; i < text.length; i++) {
@@ -303,7 +310,7 @@ BgFlipBook.prototype.drawHelp = function() {
       textMaxWidth = this.ctx.measureText(text[i]).width;
     }
   }
-  /* not guarnteed to fit b/c pad */
+  /* not guarnteed to fit b/c pad, but probably ok*/
   const pad = th * .4;
   const textOff = .3;
   const textExtra = textOff * textMaxWidth;
@@ -311,7 +318,9 @@ BgFlipBook.prototype.drawHelp = function() {
   const textTotHeight = th * text.length;
   const xstart = (this.els.flipbook.width - totalWidth) / 2;
   const ystart = (this.els.flipbook.height - textTotHeight) / 2 + th;
-  this.playX = xstart + textExtra / 2 + pad;
+
+
+  this.playX = xstart + textMaxWidth + textExtra / 2 + 3 * pad;
   this.playY = ystart + textTotHeight / 2 - 2 * pad;
   this.playR = (textTotHeight / 2 + pad)
 
@@ -338,20 +347,64 @@ BgFlipBook.prototype.drawHelp = function() {
 
   this.ctx.fillStyle = this.helpFillStyle;
   this.ctx.roundRect(
-    xstart + textExtra + 2 * pad, ystart - 3 * pad,
+    xstart + pad, ystart - 3 * pad,
     textMaxWidth + pad * 2, textTotHeight + 2 * pad, th / 2
   ).fill();
   this.ctx.fillStyle = this.helpTextStyle;
   for(i = 0; i < text.length; i++) {
-    this.ctx.fillText(text[i], xstart + textExtra + 3 * pad, ystart + th * i);
+    this.ctx.fillText(text[i], xstart + pad, ystart + th * i);
   }
-  this.ctx.fillText("OR", xstart + textExtra + 3 * pad, ystart + th);
 
   this.helpActive = true;
+}
+/*
+ * Bigger visual that we just looped past the end
+ */
+BgFlipBook.prototype.drawRollOver = function(symbol) {
+  if(bgFlipBookDebug) {console.log('Rollover Draw')};
+  this.draw();
+  const width = this.els.flipbook.width;
+  const height = this.els.flipbook.height;
+  const fontSize = width / 28;
+  this.ctx.font = fontSize + 'px Lato, sans-serif';
+
+  if(bgFlipBookDebug) {
+    console.log(this.ctx.font + ' w: '+ width + ' h: ' + height)
+  };
+  const th = this.ctx.measureText('M').width * 1.1;
+  const symbWidth = this.ctx.measureText(symbol).width;
+  // debugger;
+
+  this.ctx.fillStyle = this.helpFillStyle;
+  this.ctx.roundRect(
+    width/2 - symbWidth/2 - th/2, height / 2 - th,
+    symbWidth + th, th * 2, th / 2
+  ).fill();
+
+  this.ctx.fillStyle = this.helpTextStyle;
+  this.ctx.textAlign = 'center';
+  this.ctx.textBaseline = 'middle';
+  this.ctx.fillText(symbol, width/2, height/2);
+}
+BgFlipBook.prototype.signalRollOver = function() {
+  this.looping = true;
+  var oldStyle = this.els.frameSpan.style.backgroundColor;
+  this.els.frameSpan.style.backgroundColor = 'yellow';
+  // this.drawRollOver(this.els.loop.checked ? "\u{293E}" : '&#x25a0;');
+  this.drawRollOver(this.els.loop.checked ? "LOOP" : 'END!');
+  var flip = this;
+  setTimeout(
+    function() {
+      flip.draw();
+      flip.els.frameSpan.style.backgroundColor=oldStyle;
+    },
+    400
+  );
 }
 BgFlipBook.prototype.pauseFlip = function() {
   //if(bgFlipBookDebug) {console.log('pause clear interval')};
   this.playing = false;
+  this.playingAuto = false;
   clearInterval(this.intervalID);
 }
 BgFlipBook.prototype.stepFInt = function() {
@@ -359,35 +412,20 @@ BgFlipBook.prototype.stepFInt = function() {
     console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN)
   };
   if(this.imgActive == this.imgN) {
-    if(bgFlipBookDebug) {console.log('StepF reset img')};
-    var oldStyle = this.els.frameSpan.style.backgroundColor;
-    this.els.frameSpan.style.backgroundColor = 'yellow';
-    var flip = this;
-    setTimeout(
-      function() {
-        flip.els.frameSpan.style.backgroundColor=oldStyle;
-      },
-      200
-    );
     if(this.els.loop.checked) {this.imgActive = 1;}
+    if(!this.playingAuto) {this.signalRollOver();} else {this.draw();}
   } else {
     this.imgActive += 1;
+    this.draw();
   }
 }
 BgFlipBook.prototype.stepBInt = function() {
   if(this.imgActive == 1) {
-    var oldStyle = this.els.frameSpan.style.backgroundColor;
-    this.els.frameSpan.style.backgroundColor = 'yellow';
-    var flip = this;
-    setTimeout(
-      function() {
-        flip.els.frameSpan.style.backgroundColor=oldStyle;
-      },
-      200
-    );
     if(this.els.loop.checked) {this.imgActive = this.imgN;}
+    if(!this.playingAuto) {this.signalRollOver();} else {this.draw();}
   } else {
     this.imgActive -= 1;
+    this.draw();
   }
 };
 BgFlipBook.prototype.changeFrame = function(dir) {
@@ -396,7 +434,6 @@ BgFlipBook.prototype.changeFrame = function(dir) {
   };
   if(!this.helpActive) {
     if(dir > 0) this.stepFInt(); else this.stepBInt();
-    this.draw();
   } else if(this.helpActive) {
     this.helpClear();
   }
@@ -421,6 +458,7 @@ BgFlipBook.prototype.stepAuto = function() {
     if(this.els.loop.checked) {
       // delay at end
       this.pauseFlip();
+      this.playingAuto = true;
       var flip = this;
       setTimeout(
         function() {
@@ -449,6 +487,7 @@ BgFlipBook.prototype.playAll = function() {
   this.intervalID = setInterval(function() {flip.stepAuto()}, this.interval);
   if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
   this.playing = true;
+  this.playingAuto = true;
 }
 /*
 Restart when looping
@@ -460,6 +499,7 @@ BgFlipBook.prototype.resumeAll = function() {
   this.intervalID = setInterval(function(){flip.stepAuto()}, flip.interval);
   if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
   this.playing = true;
+  this.playingAuto = true;
 }
 BgFlipBook.prototype.helpClear = function() {
   if(this.helpActive) {
