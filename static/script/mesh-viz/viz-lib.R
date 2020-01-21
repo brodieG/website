@@ -216,6 +216,18 @@ mesh_to_xyz <- function(mesh, map, scale) {
     res, scale
   )
 }
+xyz_to_mesh <- function(xyz) {
+  xyzm <- lapply(xyz, matrix, 3)
+  xyzv1 <- lapply(xyzm, '[', 1,)
+  xyzv2 <- lapply(xyzm, '[', 2,)
+  xyzv3 <- lapply(xyzm, '[', 3,)
+  t(
+    matrix(
+      c(xyzv1, xyzv2, xyzv3),
+      c(3, 3),
+      dimnames=list(c('x','y','z'), paste0('v', 1:3))
+  ) )
+}
 # Generates vertices and triangles from id-based triangle coordinates
 # Attempts to order vertices so that the normals are "up", which really only
 # works properly so long as surfaces are no steeper than vertical.

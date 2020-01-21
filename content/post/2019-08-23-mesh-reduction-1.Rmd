@@ -1,7 +1,7 @@
 ---
-title: RTIN Mesh Reduction
+title: "RTINI Part I: The MARTINI Mesh Reduction Algorithm"
 author: ~
-date: '2019-08-23'
+date: '2020-01-23'
 slug: mesh-reduction-1
 categories: [R]
 tags: [algorithms,viz]
@@ -12,7 +12,8 @@ imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: "An illustrated examination of @mourner's MARTINI Javascript mesh
+reduction algorithm."
 output:
   blogdown::html_page:
     keep_md: true
@@ -43,32 +44,79 @@ thm.blnk <- list(
   class='post-inset-image'
 />
 
-A few months ago a stumbled on Vladimir Agafonkin's ([&commat;mourner][5]) fantastic
-[observable notebook][6] on adapting the Right-Triangulated Irregular
+A few months ago a stumbled on Vladimir Agafonkin's ([&commat;mourner][5])
+fantastic [observable notebook][6] on adapting the Right-Triangulated Irregular
 Networks (RTIN) algorithm to JavaScript.  The subject matter is interesting and
 the exposition superb.  I'll admit I envy the elegance of natively interactive
 notebooks.
 
 I almost left it at that, but then the irrepressible "but can we do that in R"
-bug in whispered into my ear, once again setting me hopelessly
-off-course[^off-course].  Obviously we can do it by porting the code directly,
-but the loop heavy nature of it would doom it.  We could also trivially port it
-to C and interface that into R, but where's the fun in that?
+bug whispered into my ear.  Since this problem also presents some interesting
+visualization challenges, I could hardly help once again going hopelessly
+off-course[^off-course] to write a post about it.
+
+Ultimately we're looking to reformulate the MARTINI JavaScript algorithm into
+something that can run reasonably efficiently in R.  The loop heaviness of the
+current implementation makes it anathema to R.  Of course we could also
+trivially port it to C and interface that into R, but where's the fun in that?
+
+Be sure to look at [&commat;mourner's notebook][6] or the original [Will
+Evans et al. 1997 paper][8] for more background about the algorithm.  In this
+post we'll focus on specific details of the MARTINI implementation and **how**
+it does what it does.
 
 # Right Triangles
 
-You should look at [&commat;mourner's][5] [notebook][6] or the original [Will
-Evans et al. 1997 paper][8] for in-depth details as the point of this post is
-the translation to an R idiomatic implementation.  Notwithstanding I can't
-resist indulging in some of my newly acquired `rayrender`ing powers for some
-illustrations.
+I will provide some basic background if only to indulge in some ray tracing.
+After all, what better way to illustrate a 3D algorithm in?  The algorithm
+generates triangle meshes that approximate surfaces with elevations defined on a
+regular grid in the x-y plane.  The beloved `volcano` height map that comes
+bundled with R is exactly this type of surface.  Approximations can be
+constrained to an error tolerance, and here we show the effect of specifying
+those tolerance on `volcano` as a percentage of its total height:
 
-The idea is to approximate a surface with heights defined on a regular
-grid in the x-y plane with a subset of those coordinates, subject to an error
-tolerance.  The beloved `volcano` height map is exactly this type of surface,
-and here we show the full detail surface (glass) and several approximations
-meshes (metallic) with different tolerances.  The tolerances are specified
-as percentages of total height.
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><span
+  class='bgw-img-wrap-frame bgw-inner'><figure><img
+  class='bgw-img-wrap-panel'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/surface-1-small.png
+  style='max-width: 300px;'
+/><figcaption
+>Full Detail (N=8,192)</figcaption></figure><figure><img
+  class='bgw-img-wrap-panel'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/surface-2-small.png
+  style='max-width: 300px;'
+/><figcaption
+>Tolerance: 2% (N=1,538)</figcaption></figure></span><span
+  class='bgw-img-wrap-frame bgw-inner'><figure><img
+  class='bgw-img-wrap-panel'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/surface-3-small.png
+  style='max-width: 300px;'
+/><figcaption
+>Tolerance: 11% (N=122)</figcaption></figure><figure><img
+  class='bgw-img-wrap-panel'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/surface-4-small.png
+  style='max-width: 300px;'
+/><figcaption
+>Tolerance: 53% (N=13)</figcaption></figure></span></span></div>
+```
+
+We're not going to spend time in this post evaluating the effectiveness of
+the RTIN approximation method as our focus is on the mechanics of the algorithm.
+That said, it's noteworthy that the "2%" approximation reduces the polygon count
+over five-fold and looks good without any shading tricks.
+
+One of the things that pulled me into this problem is the desire to better
+visualize the relationship between the original mesh and various approximations.
+This is easily solved with lines in 2D space with superimposition, but becomes
+more difficult with 2D surfaces in 3D space.  Occlusion and other artifacts from
+projection of the surfaces onto 2D displays get in the way.  Possible solutions
+include juxtaposing in time as in [&commat;mourner's notebook][6] with the
+slider, or faceting the 2D space as I did above, but neither lets us see the
+details of the difference.
+
+I ended up settling on the ["à-la-Pyramide-du-Louvre"][12] style visualization:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -96,14 +144,16 @@ as percentages of total height.
 >Tolerance: 53%</figcaption></figure></span></div>
 ```
 
-Look closely (click on the images for full-rez) and you'll see the
-approximations crossing in front of and behind the full resolution surface.
-From a distance this manifests as localized darkening of the mesh.
+Look closely (do zoom in!) and you will see where the surface weaves through the
+approximation.  You might even notice that all the vertices of the approximation
+are on the surface **and** are coincident with its vertices.  This is because
+the approximated meshes are made from subsets of the vertices of the original
+surface.
 
-When we flatten the elevation component of the meshes it becomes apparent that
-all the triangles in the approximation are right angled isoceles triangles on
-the x-y plane.  This is where the "Right-Triangulated" part of the algorithm
-name comes from.
+Let's flatten the elevation component of the meshes to look at the 2D structure
+of the mesh in the x-y plane.  All the triangles are right angled isoceles
+triangles in the x-y plane.  This is where the "Right-Triangulated" part of the
+algorithm name comes from.
 
 ```{r flat-side-by-side, echo=FALSE, fig.width=3.125, fig.height=3.125, fig.show='hold', fig.align='default'}
 old_chunk_hook <- knitr::knit_hooks$get('chunk')
@@ -160,9 +210,9 @@ knitr::knit_hooks$set(chunk=old_chunk_hook)
 ```
 
 Another important feature of this mesh approximation is that it is hierarchical.
-When we stack the three meshes we can see that each low resolution triangle is
-exactly replaced by higher resolution ones when it does not meet the error
-tolerance:
+When we stack the three meshes we can see that each of the larger triangles in
+the low fidelity meshes is exactly replaced by a set of triangles from the
+higher fidelity ones:
 
 ```{r flat-overlay, echo=FALSE, fig.width=4.2, fig.height=4.2}
 plot_tri_xy(
@@ -172,15 +222,14 @@ plot_tri_xy(xyz[[2]]$x, xyz[[2]]$y, de, lwd=2, col=mc[2], new=FALSE)
 plot_tri_xy(xyz[[3]]$x, xyz[[3]]$y, de, lwd=.75, col=mc[3], new=FALSE)
 ```
 
-If a triangle too coarse for the desired level of fidelity, it is broken up into
-two smaller triangles.  The process is repeated until the approximation error
-can be tolerated.
+This hierarchy of nested increasing resolution meshes is a key part of the
+algorithm.  We first compute the approximation errors of every triangle at every
+resolution, and once we have that test those errors against a tolerance level to
+figure out what set of triangles we want for our approximated mesh.
 
-In order to decide whether an approximation is faithful enough we measure the
-error between each level of mesh approximation at the middle of
-the hypotenuse of each triangle.  For the sake of exposition we will temporarily
-abandon volcano and switch to a simple 3x3 elevation surface, and we will show
-approximations where at each level every triangle is the same size.
+The algorithm measures the approximation error of each triangle at the
+middle of the hypotenuse.  For the sake of exposition we will abandon volcano
+and switch to a simple 3x3 elevation surface:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -205,9 +254,9 @@ approximations where at each level every triangle is the same size.
 At the most granular level (gold) there is no error as the mesh corresponds
 exactly to the elevation surface.  At the first level of approximation (silver)
 error appears around the periphery of the surface as that is where the triangle
-edges skip over surface vertices.  We show these errors as a checkered cylinder.
+edges skip over surface vertices.  We show these errors as checkered cylinders.
 At the coarsest level of approximation (copper) we generate additional error on
-the center of the surface and show that too as a checkered cylinder.
+the center of the surface.
 
 Errors are measured at the middle of the hypotenuse of the triangles.  This is
 not arbitrary: as we merge triangles together to increase coarseness, the
@@ -650,3 +699,9 @@ new BgFlipBook({
 [9]: /2019/10/30/visualizing-algorithms/
 [10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20
 [11]: https://github.com/brodieG/rtini/blob/v0.1.0/R/error.R#L98
+[12]: https://en.wikipedia.org/wiki/Louvre_Pyramid
+
+
+
+Blah blah.
+

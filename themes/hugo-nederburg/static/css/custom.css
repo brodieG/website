@@ -367,6 +367,8 @@ div.bgw-wide-window {
 }
 div.bgw-wide-window img,
 div.bgw-wide-window figure,
+/* not quite sure whether this should be 96% to more closely match what a wide
+ * image would do, although didn't 100% tie that out*/
 div.bgw-wide-window div {
   display: inline-block;
   margin: 0 auto;
@@ -388,13 +390,17 @@ div.bgw-wide-window pre{
  */
 
 span.bgw-img-wrap-frame {
-  margin: -1.5em auto 0 auto;
   /*white-space: pre-wrap;*/
   display: inline-block;
   text-align: center;
+  margin: -1.5em auto 0 auto;
 }
-span.bgw-img-wrap-frame img,
-span.bgw-img-wrap-frame figure{
+span.bgw-img-wrap-frame.bgw-inner {
+  margin: auto auto;
+}
+span.bgw-img-wrap-frame>img,
+span.bgw-img-wrap-frame>a>img,
+span.bgw-img-wrap-frame>figure{
   margin: 1.5em auto 0 auto;
   display: inline-block;
 }
