@@ -80,6 +80,7 @@ BgwZoomImages.prototype.showModal = function(e) {
   const imgCont = document.getElementById('bgw-zoom-img-container').children
   const imgBig = imgCont[img.getAttribute('data-big-id')]
   imgBig.style.display='inline-block';
+  this.activeEl = imgBig;
 
   // // Get coordinates for when we do smooth transition
   // const imgCoord = img.getBoundingClientRect();
