@@ -58,7 +58,12 @@ should be taken to mean "obj.x"
   the constructor attaches all the event handlers and nothing else beyond that
   is needed.
 
-TODO: provide a way to pass CSS for the whole canvas and container div.
+TODO: 
+
+* Fix margin left of bullets in help screen
+* provide a way to pass CSS for the whole canvas and container div.
+* fallback mode for no-JS (really only just splash screen)
+
 */
 
 /*---------------------------------------------------------------------------*\

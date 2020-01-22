@@ -222,7 +222,7 @@ plot_tri_xy(xyz[[2]]$x, xyz[[2]]$y, de, lwd=2, col=mc[2], new=FALSE)
 plot_tri_xy(xyz[[3]]$x, xyz[[3]]$y, de, lwd=.75, col=mc[3], new=FALSE)
 ```
 
-This hierarchy of nested increasing resolution meshes is a key part of the
+This hierarchy of nested-increasing-resolution meshes is a key part of the
 algorithm.  We first compute the approximation errors of every triangle at every
 resolution, and once we have that test those errors against a tolerance level to
 figure out what set of triangles we want for our approximated mesh.

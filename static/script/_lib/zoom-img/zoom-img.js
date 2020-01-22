@@ -13,25 +13,39 @@ function BgwZoomImages(x) {
   if(typeof(x) != 'string') {
     throw new Error("flipbook error: input is not an object");
   }
-  let imgs = document.getElementsByClassName(x).getElementsByTagName('img');
+  let imgs = document.querySelectorAll('img.' + x);
 
-  zb = this;
   this.tarClass = x;
-  this.container = document.getElememtById('bg-zoom-img-container');
+  var zb = this;
 
-  const zbTpl = document.GetElementById('bgw-zoom-img-template');
-
-  for(let i in imgs) {
-    if(typeof(imgs[i].getAttribute('data-src-big') != 'string') {
+  this.container = document.getElementById('bgw-zoom-img-container');
+  if(this.container == null) {
+    throw new Error("ZoomImages error: image container not found.");
+  }
+  const zbTpl = document.getElementById('bgw-zoom-img-template');
+  if(zbTpl == null) {
+    throw new Error("ZoomImages error: image template not found.");
+  }
+  for(let i = 0; i < imgs.length; ++i) {
+    if(typeof(imgs[i].getAttribute('data-src-big')) != 'string') {
       throw new Error("ZoomImages error: input lacking a srcBig attribute.");
     }
     /* Initialize the modals */
 
-    const zbNew = zbTpl.cloneNode(true)
+    const zbNew = zbTpl.cloneNode(true);
     zbNew.id = "";
-    zbNew.children()[1].src = imgs[i].getAttribute('data-src-big');
+    const zbClose = zbNew.children[0];
+    const zbImg = zbNew.children[1];
+    const zbCapt = zbNew.children[2];
+    zbImg.src = imgs[i].getAttribute('data-src-big');
+
+    if(typeof(zbImg.src) != 'string') {
+      throw new
+        Error("ZoomImages error: missing big image attribute for img " + i);
+    }
     imgs[i].setAttribute('data-big-id', i);
     imgs[i].addEventListener("mouseup", function(e) {zb.showModal(e)});
+    zbClose.addEventListener("mouseup", function(e) {zb.closeModal(e)});
     this.container.append(zbNew);
   }
 }
@@ -39,29 +53,17 @@ function BgwZoomImages(x) {
  */
 BgwZoomImages.prototype.showModal = function(e) {
   const img = e.target;
-
-  if(img.class != this.tarClass) {
-    throw new Error("ZoomImage internal error: unexpected class for object.");
-  }
-  if(img.tagName != 'IMG') {
-    throw new Error("ZoomImage internal error: unexpected tag name for object.");
-  }
-  if(typeof(img.getAttribute('data-src-big') != 'string')) {
-    throw new Error("ZoomImage error: data-src-big attribute not string.");
-  }
-
-  const zbImg = zbNew.children()[0];
-  const zbCaption = '';
-
+  const imgCont = document.getElementById('bgw-zoom-img-container').children
+  const imgBig = imgCont[img.getAttribute('data-big-id')]
+  imgBig.style.display='inline-block';
 
   // // Get coordinates for when we do smooth transition
   // const imgCoord = img.getBoundingClientRect();
-
-
-  // Get target element
-  // Read srcBig attribute
-  // create image
-  //   make with no display
-  //   out of flow
-  // Animate image
 }
+BgwZoomImages.prototype.closeModal = function(e) {
+  e.target.parentElement.style.display = 'none';
+}
+// zoom-imageize everything with class bgw-zoom-img
+
+new BgwZoomImages('bgw-zoom-img');
+
