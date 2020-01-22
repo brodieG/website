@@ -34,9 +34,10 @@ function BgwZoomImages(x) {
 
     const zbNew = zbTpl.cloneNode(true);
     zbNew.id = "";
-    const zbClose = zbNew.children[0];
-    const zbImg = zbNew.children[1];
-    const zbCapt = zbNew.children[2];
+    const zbFig = zbNew.children[0];
+    const zbClose = zbFig.children[0];
+    const zbImg = zbFig.children[1];
+    const zbCapt = zbFig.children[2];
     zbImg.src = imgs[i].getAttribute('data-src-big');
 
     if(typeof(zbImg.src) != 'string') {
@@ -61,7 +62,7 @@ BgwZoomImages.prototype.showModal = function(e) {
   // const imgCoord = img.getBoundingClientRect();
 }
 BgwZoomImages.prototype.closeModal = function(e) {
-  e.target.parentElement.style.display = 'none';
+  e.target.parentElement.parentElement.style.display = 'none';
 }
 // zoom-imageize everything with class bgw-zoom-img
 
