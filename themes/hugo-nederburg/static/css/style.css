@@ -110,9 +110,6 @@ a {
 a:link {
   color: #222;
 }
-a:visited, a:hover, a:active, a:focus {
-  color: black;
-}
 
 article a {
   text-decoration: underline;

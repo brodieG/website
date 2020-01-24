@@ -1,0 +1,4 @@
+```{r child='zoom-img.html', cache=FALSE}
+```
+<script type='text/javascript' src='/script/_lib/zoom-img/zoom-img.js'></script>
+

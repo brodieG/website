@@ -37,22 +37,57 @@ function BgwZoomImages(x) {
       "of them per page."
     );
   }
-  const zbTpl = document.getElementById('bgw-zoom-img-template');
-  if(zbTpl == null) {
+  const zbImgTpl = document.getElementById('bgw-zoom-img-template');
+  if(zbImgTpl == null) {
     throw new Error("ZoomImages error: image template not found.");
   }
+  const zbFigTpl = document.getElementById('bgw-zoom-fig-template');
+  if(zbFigTpl == null) {
+    throw new Error("ZoomImages error: figure template not found.");
+  }
+
   for(let i = 0; i < imgs.length; ++i) {
     if(typeof(imgs[i].getAttribute('data-src-big')) != 'string') {
       throw new Error("ZoomImages error: input lacking a srcBig attribute.");
     }
-    /* Initialize the modals */
+    /* Check what type we're dealing with */
 
+    const isFig = imgs[i].parentElement.tagName == 'FIGURE';
+
+    let figCapt = '';
+    let zbTpl = null, zbPar = null, zbOut=null;
+
+    if(isFig) {
+      zbTpl = zbFigTpl;
+
+      let dataCapt = imgs[i].getAttribute('data-caption');
+      const figCapts = imgs[i].parentElement.getElementsByTagName('figcaption');
+      if(typeof(dataCapt) == 'string') {
+        figCapt = dataCapt;
+      } else if (figCapts.length) {
+        figCapt = figCapts[0].innerHTML;
+      }
+    } else {
+      zbTpl = zbImgTpl;
+    }
     const zbNew = zbTpl.cloneNode(true);
     zbNew.id = "";
-    const zbFig = zbNew.children[0];
-    const zbClose = zbFig.children[0];
-    const zbImg = zbFig.children[1];
-    const zbCapt = zbFig.children[2];
+    const zbClose = zbNew.getElementsByClassName('bgw-zoom-boxclose')[0];
+    const zbImg = zbNew.getElementsByTagName('IMG')[0];
+
+    if(isFig) {
+      zbOut = zbNew.getElementsByTagName('FIGURE')[0];
+      let zbCaptEl = zbNew.getElementsByTagName('FIGCAPTION')[0];
+      if(figCapt.length) {
+        zbCaptEl.innerHTML = figCapt;
+      } else {
+        zpCaptEl.style.display = 'none'
+      }
+    } else {
+      zbOut = zbImg;
+    }
+    /* Initialize the modals */
+
     zbImg.src = imgs[i].getAttribute('data-src-big');
 
     if(typeof(zbImg.src) != 'string') {
@@ -62,8 +97,8 @@ function BgwZoomImages(x) {
     imgs[i].setAttribute('data-big-id', i);
     imgs[i].addEventListener("mouseup", function(e) {zb.showModal(e)});
     zbClose.addEventListener("mouseup", function(e) {zb.closeModal(e)});
-    zbFig.addEventListener("mouseup", function(e) {e.stopPropagation();});
     zbNew.addEventListener("mouseup", function(e) {zb.closeModal(e)});
+    zbOut.addEventListener("mouseup", function(e) {e.stopPropagation();});
     document.addEventListener("keyup", function(e) {
       if(zb.activeEl != null) {
         zb.activeEl.style.display = 'none';
@@ -89,17 +124,13 @@ BgwZoomImages.prototype.showModal = function(e) {
  * Handle closing of modal.  Super janky, need to cleanup some day (yeah right).
  */
 BgwZoomImages.prototype.closeModal = function(e) {
-  if(e.target.className == 'bgw-zoom-img-frame') {
-    // click on div frame
-    e.target.style.display = 'none';
-  } else if(e.target.parentElement.className == 'bgw-zoom-img-frame') {
-    // click on figure (this should really not happen)
-    e.target.parentElement.style.display = 'none';
-  } else {
-    // click on close button
-    e.target.parentElement.parentElement.style.display = 'none';
+  if(this.activeEl != null) {
+    // for some inscrutable reason I was getting duplicate mouseup events, but
+    // only with img, not fig templates, and only when clicking on closing box,
+    // not on main div
+    this.activeEl.style.display = 'none'
+    this.activeEl = null;
   }
-  this.activeEl = null;
 }
 // zoom-imageize everything with class bgw-zoom-img
 

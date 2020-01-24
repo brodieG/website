@@ -270,7 +270,7 @@ th {
   line-height: 1.5;
 }
 
-/* Images 
+/* Images
  *
  * We've used max-width: 100%; for knitr plots so they will scale down, this is
  * okay because we're now (1/2020) automatically wrapping stuff in full width
@@ -300,6 +300,12 @@ th {
 .size-large img,
 .size-medium img,
 .size-thumbnail img {
+  max-width: 100%;
+}
+img {
+  max-width: 100%;
+}
+video {
   max-width: 100%;
 }
 img.aligncenter {
@@ -380,7 +386,11 @@ div.bgw-wide-window {
 div.bgw-wide-window img,
 div.bgw-wide-window figure,
 /* not quite sure whether this should be 96% to more closely match what a wide
- * image would do, although didn't 100% tie that out*/
+ * image would do, although didn't 100% tie that out.
+ *
+ * Also, if we have img nested in figure, this seems wrong.
+ */
+
 div.bgw-wide-window div {
   display: inline-block;
   margin: 0 auto;
@@ -463,9 +473,8 @@ a.bgw-zoom-img-boxclose{
   padding: 11px 3px;
 }
 */
-.bgw-zoom-img-frame a.bgw-zoom-img-boxclose{
+.bgw-zoom-frame .bgw-zoom-frame-inner a.bgw-zoom-boxclose{
   position: absolute;
-  float:right;
   top: 15px; right: 15px;
   cursor:pointer;
   color: #fff;
@@ -480,7 +489,7 @@ a.bgw-zoom-img-boxclose{
   line-height: 0px;
   padding: 11px 3px;
 }
-.bgw-zoom-img-boxclose:before{
+.bgw-zoom-boxclose:before{
     content: "×";
 }
 
@@ -488,29 +497,35 @@ a.bgw-zoom-img-boxclose{
 Thank you Balus C
 https://stackoverflow.com/a/2006008/2725969
 */
-.bgw-zoom-img-frame {
+.bgw-zoom-frame {
+  z-index: 5;
   position: fixed;
   top: 0;
   left: 0;
-  margin: 0 auto;
+}
+.bgw-zoom-frame .bgw-zoom-frame-inner {
+  display: table-cell;
+  text-align: center;
+  vertical-align: middle;
   width: 100vw;
   height: 100vh;
   background-color: rgba(0, 0, 0, .7);
-  padding: 5vw;
-  text-align: center;
 }
-.bgw-zoom-img-frame figure {
+
+.bgw-zoom-frame .bgw-zoom-frame-inner figure {
   display: inline-block;
-  position: relative;
   margin: 0;
+  background-color: black;
+  color: white;
+  padding: 5px;
 }
-.bgw-zoom-img-frame img {
+.bgw-zoom-frame .bgw-zoom-frame-inner img {
   max-width: 90vw;
-  max-height: calc(100vh - 10vh);
+  max-height: calc(100vh - 10vw);
 }
 img.bgw-zoom-img {
-  cursor: -moz-zoom-in; 
-  cursor: -webkit-zoom-in; 
+  cursor: -moz-zoom-in;
+  cursor: -webkit-zoom-in;
   cursor: zoom-in;
 }
 
