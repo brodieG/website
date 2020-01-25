@@ -29,12 +29,12 @@ arrows <- dplyr::bind_rows(
   # ),
 )
 rad <- .05
-dots <- base_points(
-  which(errs1 == 0, arr.ind=TRUE), n=nrow(errs1), mat=dot.mat, rad=rad/3
+dots <- base_crosses(
+  which(errs1 == 0, arr.ind=TRUE), n=nrow(errs1), mat=dot.mat, rad=rad/2
 )
 scn <- dplyr::bind_rows(
   scn.base2,
-  disks, arrows,
+  # disks, arrows, # hide these for just errors
   dots,
   group_objects(
     errs2b.cyl, group_angle=gang,
@@ -47,10 +47,12 @@ scn <- dplyr::bind_rows(
   NULL
 )
 
-# rez <- 800
-# samp <- 200
-rez <- 700
-samp <- 300
+rez <- 800
+samp <- 400
+# rez <- 200
+# samp <- 10
+# rez <- 600
+# samp <- 400
 
 # scns <- list(scn.4a, scn.4b, scn.4c)
 # scns <- list(scn.4b)
@@ -71,7 +73,7 @@ render_scene(
   backgroundlow=bg, backgroundhigh=bg,
   ambient_light=TRUE
 )
-
+stop()
 scn <- dplyr::bind_rows(
   scn.base2,
   disks, arrows,

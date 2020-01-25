@@ -6,15 +6,15 @@ Suggested usage is adding
   ```{r child='../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis'}
   ```
 
-To a post.  Automatically all imgs with class 'bgw-zoom-img' and a 'data-src-big' attribute with the location of the large image will be made zoomable
+To a post.  Automatically all IMG elements with class 'bgw-zoom-img' and a
+'data-src-big' attribute with the location of the large image will be made
+zoomable.  Optionally setting a 'data-caption' attribute will use that as the caption for zoomed in image, otherwise if image is inside FIGURE element the FIGURE element caption will be used.
 
 TODO:
 
 * Nice smooth transition from existing image to modal
 * Add ability to cycle through all zoomable images
 * Add second level zoom
-* Add capability to recover caption from original image
-
 */
 
 function BgwZoomImages(x) {
@@ -45,48 +45,48 @@ function BgwZoomImages(x) {
   if(zbFigTpl == null) {
     throw new Error("ZoomImages error: figure template not found.");
   }
-
+  const zbFrameTpl = document.getElementById('bgw-zoom-frame-template')
+  if(zbFrameTpl == null) {
+    throw new Error("ZoomImages error: zoom frame template not found.");
+  }
   for(let i = 0; i < imgs.length; ++i) {
     if(typeof(imgs[i].getAttribute('data-src-big')) != 'string') {
       throw new Error("ZoomImages error: input lacking a srcBig attribute.");
     }
     /* Check what type we're dealing with */
 
-    const isFig = imgs[i].parentElement.tagName == 'FIGURE';
+    let dataCapt = imgs[i].getAttribute('data-caption');
+    const isFig = imgs[i].parentElement.tagName == 'FIGURE' ||
+      typeof(dataCapt) == 'string';
+
+    const zbNew = zbFrameTpl.cloneNode(true);
+    const zbInner = zbNew.getElementsByClassName('bgw-zoom-border')[0];
 
     let figCapt = '';
-    let zbTpl = null, zbPar = null, zbOut=null;
+    let zbContent = null, zbPar = null, zbOut=null;
 
     if(isFig) {
-      zbTpl = zbFigTpl;
-
-      let dataCapt = imgs[i].getAttribute('data-caption');
+      zbContent = zbFigTpl.cloneNode(true);
       const figCapts = imgs[i].parentElement.getElementsByTagName('figcaption');
       if(typeof(dataCapt) == 'string') {
         figCapt = dataCapt;
       } else if (figCapts.length) {
         figCapt = figCapts[0].innerHTML;
       }
-    } else {
-      zbTpl = zbImgTpl;
-    }
-    const zbNew = zbTpl.cloneNode(true);
-    zbNew.id = "";
-    const zbClose = zbNew.getElementsByClassName('bgw-zoom-boxclose')[0];
-    const zbImg = zbNew.getElementsByTagName('IMG')[0];
-
-    if(isFig) {
-      zbOut = zbNew.getElementsByTagName('FIGURE')[0];
-      let zbCaptEl = zbNew.getElementsByTagName('FIGCAPTION')[0];
+      const zbCaptEl = zbContent.getElementsByTagName('FIGCAPTION')[0];
       if(figCapt.length) {
         zbCaptEl.innerHTML = figCapt;
       } else {
         zpCaptEl.style.display = 'none'
       }
     } else {
-      zbOut = zbImg;
+      zbContent = zbImgTpl.cloneNode(true);
     }
-    /* Initialize the modals */
+    zbContent.id = "";
+    zbInner.appendChild(zbContent);
+
+    const zbClose = zbNew.getElementsByClassName('bgw-zoom-boxclose')[0];
+    const zbImg = zbNew.getElementsByTagName('IMG')[0];
 
     zbImg.src = imgs[i].getAttribute('data-src-big');
 
@@ -98,7 +98,7 @@ function BgwZoomImages(x) {
     imgs[i].addEventListener("mouseup", function(e) {zb.showModal(e)});
     zbClose.addEventListener("mouseup", function(e) {zb.closeModal(e)});
     zbNew.addEventListener("mouseup", function(e) {zb.closeModal(e)});
-    zbOut.addEventListener("mouseup", function(e) {e.stopPropagation();});
+    zbContent.addEventListener("mouseup", function(e) {e.stopPropagation();});
     document.addEventListener("keyup", function(e) {
       if(zb.activeEl != null) {
         zb.activeEl.style.display = 'none';

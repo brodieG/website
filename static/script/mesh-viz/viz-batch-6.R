@@ -19,9 +19,17 @@ for(i in 6:0) {
   this.lvl <- with(errs.df, (!x %% 2^i) & (!y %% 2^i))
   errs.df[this.lvl & errs.df$lvl == 0, 'lvl'] <- i
 }
-ramp1 <- colorRamp(rev(metal.col)[3:2], space='Lab')
-ramp2 <- colorRamp(rev(metal.col)[2:1], space='Lab')
+colors.hi.c <- c("#998800", "grey40", "#BB1111")
+ramp1 <- colorRamp(rev(colors.hi.c)[3:2], space='Lab')
+ramp2 <- colorRamp(rev(colors.hi.c)[2:1], space='Lab')
 colors <- c(
+  rgb(ramp1(0:3 / 3), maxColorValue=255),
+  rgb(ramp2(0:3 / 3), maxColorValue=255)[-1]
+)
+colors.hi.cc <- c("grey75", "grey95", "grey75")
+ramp1 <- colorRamp(rev(colors.hi.cc)[3:2], space='Lab')
+ramp2 <- colorRamp(rev(colors.hi.cc)[2:1], space='Lab')
+colors.c <- c(
   rgb(ramp1(0:3 / 3), maxColorValue=255),
   rgb(ramp2(0:3 / 3), maxColorValue=255)[-1]
 )
@@ -46,7 +54,9 @@ errs.cyl.ground <- dplyr::bind_rows(
   lapply(
     seq_along(colors),
     function(i) {
-      mat <- diffuse(color=colors[i], checkercolor='grey75', checkerperiod=rad)
+      mat <- diffuse(
+        color=colors[i], checkercolor=colors.c[i], checkerperiod=rad
+      )
       errs.cyl <- errs_to_cyl(
         transform(
           subset(errs.ground, lvl == i - 1), x=x-.5, y=y-.5, z0=0
@@ -54,19 +64,8 @@ errs.cyl.ground <- dplyr::bind_rows(
       )
     }
 ) )
-dots <- base_points(
-  which(err == 0, arr.ind=TRUE), n=nrow(err), mat=dot.mat, rad=rad/3
-)
-
-light.narrower <- sphere(
-  y=8, z = 2, x = 1, radius = .1,
-  material = light(intensity = 200 * mult * 25)
-)
-bg1 <- 102 / mult
-bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
-scn.base2 <- dplyr::bind_rows(
-  light.narrower,
-  xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
+dots <- base_crosses(
+  which(err == 0, arr.ind=TRUE), n=nrow(err), mat=dot.mat, rad=rad/2
 )
 
 gang <- c(90, 0, 0)
@@ -83,9 +82,9 @@ scn <- dplyr::bind_rows(
 )
 
 # rez <- 600
-# samp <- 100
-rez <- 800
-samp <- 200
+# samp <- 20
+rez <- 1200
+samp <- 400
 
 # scns <- list(scn.4a, scn.4b, scn.4c)
 # scns <- list(scn.4b)

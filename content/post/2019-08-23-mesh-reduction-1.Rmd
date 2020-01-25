@@ -40,40 +40,40 @@ thm.blnk <- list(
 <!-- this needs to become a shortcode -->
 <img
   id='front-img'
-  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-2.png'
-  class='post-inset-image'
+  src='/post/2019-08-23-mesh-reduction-1_files/images/batch-2-small.png'
+  data-src-big='/post/2019-08-23-mesh-reduction-1_files/images/batch-2.png'
+  data-caption='Seven `volcano` approximations, flattened and stacked.'
+  class='post-inset-image bgw-zoom-img'
 />
 
-A few months ago a stumbled on Vladimir Agafonkin's ([&commat;mourner][5])
-fantastic [observable notebook][6] on adapting the Right-Triangulated Irregular
-Networks (RTIN) algorithm to JavaScript.  The subject matter is interesting and
-the exposition superb.  I'll admit I envy the elegance of natively interactive
-notebooks.
+A few months ago I stumbled on Vladimir Agafonkin's ([&commat;mourner][5])
+fantastic [observable notebook][6] on adapting the [Will Evans etal.
+Right-Triangulated Irregular Networks (RTIN) algorithm][8] to JavaScript.  The
+subject matter is interesting and the exposition superb.  I'll admit I envy the
+elegance of natively interactive notebooks.
 
 I almost left it at that, but then the irrepressible "but can we do that in R"
-bug whispered into my ear.  Since this problem also presents some interesting
-visualization challenges, I could hardly help once again going hopelessly
-off-course[^off-course] to write a post about it.
+bug bit me[^susceptible].  It doesn't help that this problem also presents some
+interesting visualization challenges, so once again I veered hopelessly
+off-course[^off-course] and wrote this post about it.
 
-Ultimately we're looking to reformulate the MARTINI JavaScript algorithm into
-something that can run reasonably efficiently in R.  The loop heaviness of the
-current implementation makes it anathema to R.  Of course we could also
-trivially port it to C and interface that into R, but where's the fun in that?
-
-Be sure to look at [&commat;mourner's notebook][6] or the original [Will
-Evans et al. 1997 paper][8] for more background about the algorithm.  In this
+Our ultimate objective is to reformulate the MARTINI JavaScript algorithm into
+something that can run reasonably efficiently in R.  As it stands the reliance
+on explicit loops makes it slow in R.  Of course we could also trivially port it
+to C and interface that into R, but where's the fun in that?  In this particular
 post we'll focus on specific details of the MARTINI implementation and **how**
-it does what it does.
+it does what it does.  This way we will be better placed to take it apart and
+put it together again.  Oh, and we'll indulge in some directed computer drawing.
+If all you care about is the reformulation you'll need to wait for Part II.
 
 # Right Triangles
 
-I will provide some basic background if only to indulge in some ray tracing.
-After all, what better way to illustrate a 3D algorithm in?  The algorithm
-generates triangle meshes that approximate surfaces with elevations defined on a
-regular grid in the x-y plane.  The beloved `volcano` height map that comes
-bundled with R is exactly this type of surface.  Approximations can be
-constrained to an error tolerance, and here we show the effect of specifying
-those tolerance on `volcano` as a percentage of its total height:
+The RTIN algorithm generates triangle meshes that approximate surfaces with
+elevations defined on a regular grid in the x-y plane.  The beloved `volcano`
+height map that comes bundled with R is exactly this type of surface.
+Approximations can be constrained to an error tolerance, and here we show the
+effect of specifying those tolerance on `volcano` as a percentage of its total
+height:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -81,74 +81,93 @@ those tolerance on `volcano` as a percentage of its total height:
   class='bgw-img-wrap-frame bgw-inner'><figure><img
   class='bgw-img-wrap-panel'
   src=/post/2019-08-23-mesh-reduction-1_files/images/surface-1-small.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >Full Detail (N=8,192)</figcaption></figure><figure><img
   class='bgw-img-wrap-panel'
   src=/post/2019-08-23-mesh-reduction-1_files/images/surface-2-small.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >Tolerance: 2% (N=1,538)</figcaption></figure></span><span
   class='bgw-img-wrap-frame bgw-inner'><figure><img
   class='bgw-img-wrap-panel'
   src=/post/2019-08-23-mesh-reduction-1_files/images/surface-3-small.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >Tolerance: 11% (N=122)</figcaption></figure><figure><img
   class='bgw-img-wrap-panel'
   src=/post/2019-08-23-mesh-reduction-1_files/images/surface-4-small.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >Tolerance: 53% (N=13)</figcaption></figure></span></span></div>
 ```
 
-We're not going to spend time in this post evaluating the effectiveness of
-the RTIN approximation method as our focus is on the mechanics of the algorithm.
-That said, it's noteworthy that the "2%" approximation reduces the polygon count
-over five-fold and looks good without any shading tricks.
+We're not going to spend time here evaluating the effectiveness of this method
+as our focus is on the mechanics of the algorithm.  That said, it's noteworthy
+that the "2%" approximation reduces the polygon count over five-fold and looks
+good even without any shading tricks.
 
 One of the things that pulled me into this problem is the desire to better
-visualize the relationship between the original mesh and various approximations.
-This is easily solved with lines in 2D space with superimposition, but becomes
-more difficult with 2D surfaces in 3D space.  Occlusion and other artifacts from
-projection of the surfaces onto 2D displays get in the way.  Possible solutions
-include juxtaposing in time as in [&commat;mourner's notebook][6] with the
-slider, or faceting the 2D space as I did above, but neither lets us see the
-details of the difference.
+visualize the relationship between the original mesh and its various
+approximations.  This is easily solved with lines in 2D space with
+superimposition, but becomes more difficult with 2D surfaces in 3D space.
+Occlusion and other artifacts from projection of the surfaces onto 2D displays
+get in the way.  Possible solutions include juxtaposing in time as in
+[&commat;mourner's notebook][6] with the slider, or faceting the 2D space as I
+did above, but neither lets us see the details of the differences.
 
 I ended up settling on the ["à-la-Pyramide-du-Louvre"][12] style visualization:
 
 ```{=html}
 <div class=bgw-wide-window>
-<span class=bgw-img-wrap-frame><figure><a
-  title='Click for full resolution.'
-  href=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-3.png><img
-  class='bgw-img-wrap-panel bgw-zoomable'
+<span class=bgw-img-wrap-frame><figure><img
+  class='bgw-img-wrap-panel bgw-zoom-img'
   src=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-small-3.png
-  style='max-width: 300px;'
-/></a><figcaption
->Tolerance: 2%</figcaption></figure><figure><a
-  title='Click for full resolution.'
-  href=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-2.png><img
-  class='bgw-img-wrap-panel bgw-zoomable'
+  data-src-big=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-3.png
+  style='width: 300px;'
+/><figcaption
+>Tolerance: 2%</figcaption></figure><figure><img
+  class='bgw-img-wrap-panel bgw-zoom-img'
   src=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-small-2.png
-  style='max-width: 300px;'
-/></a><figcaption
->Tolerance: 11%</figcaption></figure><figure><a
-  title='Click for full resolution.'
-  href=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-1.png><img
-  class='bgw-img-wrap-panel bgw-zoomable'
+  data-src-big=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-2.png
+  style='width: 300px;'
+/><figcaption
+>Tolerance: 11%</figcaption></figure><figure><img
+  class='bgw-img-wrap-panel bgw-zoom-img'
   src=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-small-1.png
-  style='max-width: 300px;'
-/></a><figcaption
+  data-src-big=/post/2019-08-23-mesh-reduction-1_files/images/glm-static-1.png
+  style='width: 300px;'
+/><figcaption
 >Tolerance: 53%</figcaption></figure></span></div>
 ```
 
 Look closely (do zoom in!) and you will see where the surface weaves through the
 approximation.  You might even notice that all the vertices of the approximation
-are on the surface **and** are coincident with its vertices.  This is because
-the approximated meshes are made from subsets of the vertices of the original
-surface.
+coincide with surface vertices. This is because the approximated meshes are made
+from subsets of the vertices of the original surface.
+
+Unfortunately even when realistically ray traced 3D images projected onto 2D
+inevitably lose... depth.  One way we can compensate for this is to present
+different perspectives so that our brains interpret the parallax for additional
+depth perception.  Sorry `volcano`, I only do this to you about once a year and
+it's for a good cause.  
+
+<div class=bgw-wide-window>
+<video
+  id=louvre-rotate style='display: block; margin: 0 auto; max-width: 100%;'
+  onclick='this.setAttribute("controls", "");'
+  loop autoplay muted
+>
+<source
+  src='/post/2019-08-23-mesh-reduction-1_files/images/pyramide.mp4'
+  type="video/mp4"
+/>
+</video>
+</div>
+
+We keep the approximation mesh color the same in the video to make it easier to
+track it across frames, though going forward we go back to different colors
+indicating different levels of approximation.
 
 Let's flatten the elevation component of the meshes to look at the 2D structure
 of the mesh in the x-y plane.  All the triangles are right angled isoceles
@@ -214,69 +233,68 @@ When we stack the three meshes we can see that each of the larger triangles in
 the low fidelity meshes is exactly replaced by a set of triangles from the
 higher fidelity ones:
 
-```{r flat-overlay, echo=FALSE, fig.width=4.2, fig.height=4.2}
+```{r flat-overlay, echo=FALSE, fig.width=5.2, fig.height=5.2}
+mai <- rep(.01, 4)
 plot_tri_xy(
   xyz[[1]]$x, xyz[[1]]$y, de, lwd=3, col=mc[1], mai=mai, new=TRUE, xpd=NA
 )
 plot_tri_xy(xyz[[2]]$x, xyz[[2]]$y, de, lwd=2, col=mc[2], new=FALSE)
-plot_tri_xy(xyz[[3]]$x, xyz[[3]]$y, de, lwd=.75, col=mc[3], new=FALSE)
+plot_tri_xy(xyz[[3]]$x, xyz[[3]]$y, de, lwd=.5, col=mc[3], new=FALSE)
 ```
 
 This hierarchy of nested-increasing-resolution meshes is a key part of the
-algorithm.  We first compute the approximation errors of every triangle at every
-resolution, and once we have that test those errors against a tolerance level to
-figure out what set of triangles we want for our approximated mesh.
+algorithm.  It allows us to compute the approximation errors of every triangle
+at every resolution first, and then later quickly extract meshes comprising
+triangles that meet a particular error tolerance threshold.
 
-The algorithm measures the approximation error of each triangle at the
-middle of the hypotenuse.  For the sake of exposition we will abandon volcano
-and switch to a simple 3x3 elevation surface:
+For the sake of exposition we will abandon volcano and switch to a simple 3x3
+elevation surface to illustrate how the approximation errors are computed:
 
 ```{=html}
 <div class=bgw-wide-window>
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/simple-mesh-fin-1.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >Full Detail</figcaption></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/simple-mesh-fin-2.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >First Approximation</figcaption></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/simple-mesh-fin-3.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /><figcaption
 >Second Approximation</figcaption></figure></span></div>
 ```
 
 At the most granular level (gold) there is no error as the mesh corresponds
-exactly to the elevation surface.  At the first level of approximation (silver)
-error appears around the periphery of the surface as that is where the triangle
-edges skip over surface vertices.  We show these errors as checkered cylinders.
-At the coarsest level of approximation (copper) we generate additional error on
-the center of the surface.
+exactly to the elevation surface.  To get to the next level of approximation
+(silver) we combine triangles with adjacent right angles.  This causes error to
+appear in the middle of the hypotenuses of the resulting larger triangles.
+We show these errors as checkered cylinders.  At the coarsest level of
+approximation (copper) we again combine triangles with adjacent triangles,
+which generates additional error on the center of the surface.
 
-Errors are measured at the middle of the hypotenuse of the triangles.  This is
-not arbitrary: as we merge triangles together to increase coarseness, the
-vertices that are lost correspond to that point of the parent triangle.  An
-implication is that we never measure errors from different levels of
-approximation at overlapping locations, so we can store the errors in a matrix
-the same size as the surface, whether a simple 3 x 3 surface or a more complex
-one like `volcano`[^volcano-size]:
+An implication of measuring error at the point we combine the smaller triangles
+into bigger ones is that we never measure errors from different levels of
+approximation at overlapping locations.  This means we can store the errors in a
+matrix the same size as the surface, whether a simple 3 x 3 surface or a more
+complex one like `volcano`[^volcano-size]:
 
 ```{=html}
 <div class=bgw-wide-window>
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-simple.png
-  style='max-width: 400px;'
+  style='width: 400px;'
 /><figcaption
 >3 x 3 Simple Surface Errors</figcaption></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-volc.png
-  style='max-width: 400px;'
+  style='width: 400px;'
 /><figcaption
 >65 x 65 Volcano Errors</figcaption></figure></span></div>
 ```
@@ -300,11 +318,11 @@ the "water" level; errors visible above it must be addressed:
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-1.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-1.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure></span></div>
 ```
 
@@ -322,11 +340,11 @@ the surface:
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-2.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-2.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure></span></div>
 ```
 
@@ -337,11 +355,11 @@ But if we further increase our tolerance we run into problems:
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-3.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-3.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure></span></div>
 ```
 
@@ -356,12 +374,12 @@ children.  <span id='carry-over-viz'></span>
 <div class=bgw-wide-window>
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
-  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-carry-1.png
-  style='max-width: 300px;'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-carry-1-small.png
+  style='width: 300px;'
 /></figure><figure><img
   class=bgw-img-wrap-panel
-  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-carry-2.png
-  style='max-width: 300px;'
+  src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-carry-2-small.png
+  style='width: 300px;'
 /></figure></span></div>
 <br />
 ```
@@ -374,11 +392,11 @@ continuous:
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/water-fin-4.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/composite-mesh-fin-4.png
-  style='max-width: 300px;'
+  style='width: 300px;'
 /></figure></span></div>
 ```
 
@@ -655,7 +673,9 @@ errors_rtin_c <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body="
 
 ## System Info
 
-```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
+```{r child='../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis', cache=FALSE}
+```
+```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis', cache=FALSE}
 ```
 <script type='text/javascript'>
 const imgDir = '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/';
@@ -671,6 +691,7 @@ new BgFlipBook({
 </script>
 
 
+[^susceptible]: I appear to be particularly susceptible to it.
 [^off-course]: The beauty is I wasn't going anywhere in particular anyway, so
   why not do this.
 [^volcano-size]: Yes, yes, `volcano` is not really 65 x 65, more on that in a

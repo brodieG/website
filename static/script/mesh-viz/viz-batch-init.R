@@ -120,6 +120,17 @@ scn.base <- dplyr::bind_rows(
   light.narrow,
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 )
+light.narrower <- sphere(
+  y=8, z = 2, x = 1, radius = .1,
+  material = light(intensity = 200 * mult * 25)
+)
+bg1 <- 102 / mult
+bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
+scn.base2 <- dplyr::bind_rows(
+  light.narrower,
+  xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
+)
+#
 # coords should be from `which(..., arr.ind=TRUE)` so we only
 # do those with no error
 
@@ -137,3 +148,26 @@ base_points <- function(coords, n, rad, mat, offset=1e-3) {
   )
 }
 
+base_crosses <- function(coords, n, rad, mat, offset=1e-3) {
+  coords <- ((coords - 1) / (n - 1) - .5)
+  dplyr::bind_rows(
+    c(
+      lapply(
+        seq_len(nrow(coords)),
+        function(i)
+          xz_rect(
+            x=coords[i,2], z=-coords[i,1], y=offset, mat=mat,
+            xwidth=rad, zwidth=rad / 3
+          )
+      ),
+      lapply(
+        seq_len(nrow(coords)),
+        function(i)
+          xz_rect(
+            x=coords[i,2], z=-coords[i,1], y=offset, mat=mat,
+            zwidth=rad, xwidth=rad / 3
+          )
+      )
+    )
+  )
+}

@@ -19,11 +19,25 @@ obj1 <- shard_to_obj(shard1)
 f1 <- tempfile()
 writeLines(obj1, f1)
 
+
+
 gang <- c(90, 0, 0)
 gang2 <- c(90, 180, 0)
 sobj <- obj_model(filename=f1, material=dielectric(color='#BBBBCC'))
 x1 <- x2 <- x3 <- -.5
 yoff <- seg.rad/2
+
+corners <- unique(subset(as.data.frame(xyz1), x %in% 0:1 & y %in% 0:1))
+make_corners <- function(corners, mat, rad) {
+  dplyr::bind_rows(
+    lapply(
+      split(corners, seq_len(nrow(corners))),
+      function(x) with(x, sphere(x, y, z, radius=rad, material=mat))
+  ) )
+}
+crn1 <- make_corners(corners, seg.mat1, seg.rad)
+crn2 <- make_corners(corners, seg.mat2, seg.rad)
+crn3 <- make_corners(corners, seg.mat3, seg.rad)
 
 surf <- group_objects(
   sobj, group_angle=gang, group_translate=c(x1, 0, zoff),
@@ -32,14 +46,14 @@ surf <- group_objects(
 scn.1 <- dplyr::bind_rows(
   surf, scn.base,
   group_objects(
-    seg1, group_angle=gang, group_translate=c(x1, yoff, zoff),
+    add_object(seg1, crn1), group_angle=gang, group_translate=c(x1, yoff, zoff),
     pivot_point=numeric(3)
   )
 )
 scn.2 <- dplyr::bind_rows(
   surf, scn.base,
   group_objects(
-    seg2, group_angle=gang, group_translate=c(x2, yoff, zoff),
+    add_object(seg2, crn2), group_angle=gang, group_translate=c(x2, yoff, zoff),
     pivot_point=numeric(3)
   ),
   group_objects(
@@ -50,7 +64,8 @@ scn.2 <- dplyr::bind_rows(
 scn.3 <- dplyr::bind_rows(
   surf, scn.base,
   group_objects(
-    seg3, group_angle=gang, group_translate=c(x3, seg.rad/2, zoff),
+    add_object(seg3, crn3), group_angle=gang,
+    group_translate=c(x3, seg.rad/2, zoff),
     pivot_point=numeric(3)
   ),
   group_objects(
@@ -74,7 +89,7 @@ bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
 scn.base <- dplyr::bind_rows(
   light.narrow,
   # xz_rect(
-  #   xwidth=15, zwidth=15, y=10, flipped=TRUE, 
+  #   xwidth=15, zwidth=15, y=10, flipped=TRUE,
   #   material=diffuse(color='white', lightintensity=1)
   # )
   xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
@@ -82,6 +97,8 @@ scn.base <- dplyr::bind_rows(
 
 rez <- 600
 samp <- 400
+# rez <- 300
+# samp <- 20
 scns <- list(scn.1, scn.2, scn.3)
 # scns <- list(scn.2)
 render_scenes(

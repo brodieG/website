@@ -450,12 +450,14 @@ article span.bgw-img-wrap-frame a:focus {
 /*****************************************************************************\
 |                                   zoom-img                                  |
 \*****************************************************************************/
+/* Small Screens */
 
-.bgw-zoom-frame .bgw-zoom-frame-inner svg.bgw-zoom-boxclose {
+.bgw-zoom-frame .bgw-zoom-inner-frame svg.bgw-zoom-boxclose {
+  z-index: 6;
   cursor: pointer;
-  width: 30px;
+  width: 20px;
   position: absolute;
-  top: 15px; right: 15px;
+  top: 0; right: 0;
 }
 /*
 Thank you Balus C
@@ -467,7 +469,7 @@ https://stackoverflow.com/a/2006008/2725969
   top: 0;
   left: 0;
 }
-.bgw-zoom-frame .bgw-zoom-frame-inner {
+.bgw-zoom-frame .bgw-zoom-bg {
   display: table-cell;
   text-align: center;
   vertical-align: middle;
@@ -475,23 +477,47 @@ https://stackoverflow.com/a/2006008/2725969
   height: 100vh;
   background-color: rgba(0, 0, 0, .7);
 }
-.bgw-zoom-frame .bgw-zoom-frame-inner figure {
+.bgw-zoom-frame .bgw-zoom-inner-frame {
+  display: inline-block;
+  padding: 19px;
+  position: relative;
+}
+.bgw-zoom-frame .bgw-zoom-border {
+  display: inline-block;
+  background-color: black;
+  margin: 0;
+  padding: 3px;
+}
+.bgw-zoom-frame .bgw-zoom-border figure {
   display: inline-block;
   margin: 0;
   background-color: black;
   color: white;
-  padding: 5px;
 }
-.bgw-zoom-frame .bgw-zoom-frame-inner img {
-  max-width: 90vw;
-  max-height: calc(100vh - 10vw);
+.bgw-zoom-frame .bgw-zoom-inner-frame img {
+  max-width: calc(100vw - 44px);
+  max-height: calc(100vh - 44px);
 }
 img.bgw-zoom-img {
   cursor: -moz-zoom-in;
   cursor: -webkit-zoom-in;
   cursor: zoom-in;
 }
-
+@media all and (min-width: 37.5em) and(min-height: 37.5em) {
+  .bgw-zoom-frame .bgw-zoom-inner-frame svg.bgw-zoom-boxclose {
+    width: 30px;
+  }
+  .bgw-zoom-frame .bgw-zoom-inner-frame {
+    padding: 28px;
+  }
+  .bgw-zoom-frame .bgw-zoom-border {
+    padding: 5px;
+  }
+  .bgw-zoom-frame .bgw-zoom-inner-frame img {
+    max-width: calc(100vw - 66px);
+    max-height: calc(100vh - 66px);
+  }
+}
 /* end zoom box frame positioning */
 /*****************************************************************************\
 |                                   zoom-img                                  |

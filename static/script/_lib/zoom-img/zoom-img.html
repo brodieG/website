@@ -14,13 +14,24 @@
 -->
 
 ```{=html}
+<!--
+Container must be empty, elements will be put inside but placed absolutely, we just need it to be technically visible.
+-->
 <div id='bgw-zoom-img-container'></div>
+<!--
+Templates, will be copied and assembled in JS
+-->
+<div id='bgw-zoom-img-tpl-container' style='display: none'>
+
+<!--
+Outer part, shared by both figure-imgs and imgs, controls positioning and border frame around image.
+-->
 <div
-id=bgw-zoom-fig-template class=bgw-zoom-frame
-style='display: none;'
+  id=bgw-zoom-frame-template class=bgw-zoom-frame
+  style='display: none'
 >
-<div class=bgw-zoom-frame-inner>
-<figure>
+<div class=bgw-zoom-bg>
+<div class=bgw-zoom-inner-frame>
 <svg
   class=bgw-zoom-boxclose
   viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
@@ -31,26 +42,14 @@ style='display: none;'
   <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
 </g>
 </svg>
-<img />
-<figcaption></figcaption>
-</figure>
+  <div class=bgw-zoom-border><!-- image/figure goes here --></div>
 </div>
-<div
-id=bgw-zoom-img-template class=bgw-zoom-frame
-style='display: none;'
->
-<div class=bgw-zoom-frame-inner>
-<svg
-  class=bgw-zoom-boxclose
-  viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
->
-  <circle cx="50" cy="50" r="45" stroke='white' stroke-width='5'/>
-<g transform="rotate(45, 50, 50)">
-  <rect width='70' height='15' x='15', y='42.5' rx='5' fill='white'/>
-  <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
-</g>
-</svg>
-<img />
 </div>
+</div>
+
+<!-- Contents -->
+<figure id='bgw-zoom-fig-template'><img /><figcaption></figcaption></figure>
+<img id='bgw-zoom-img-template'/>
+
 </div>
 ```
