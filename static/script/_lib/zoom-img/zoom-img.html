@@ -10,7 +10,7 @@
   when there is no fig caption so there is no way to make it completely
   unobstrusive for images without captions.
 
-  Attempt to clear cache.
+  The SVG bit is lazy; we should have just one we clone in JS
 -->
 
 ```{=html}
@@ -21,7 +21,16 @@ style='display: none;'
 >
 <div class=bgw-zoom-frame-inner>
 <figure>
-<a class=bgw-zoom-boxclose></a>
+<svg
+  class=bgw-zoom-boxclose
+  viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+>
+  <circle cx="50" cy="50" r="45" stroke='white' stroke-width='5'/>
+<g transform="rotate(45, 50, 50)">
+  <rect width='70' height='15' x='15', y='42.5' rx='5' fill='white'/>
+  <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
+</g>
+</svg>
 <img />
 <figcaption></figcaption>
 </figure>
@@ -31,7 +40,16 @@ id=bgw-zoom-img-template class=bgw-zoom-frame
 style='display: none;'
 >
 <div class=bgw-zoom-frame-inner>
-<a class=bgw-zoom-boxclose></a>
+<svg
+  class=bgw-zoom-boxclose
+  viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+>
+  <circle cx="50" cy="50" r="45" stroke='white' stroke-width='5'/>
+<g transform="rotate(45, 50, 50)">
+  <rect width='70' height='15' x='15', y='42.5' rx='5' fill='white'/>
+  <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
+</g>
+</svg>
 <img />
 </div>
 </div>
