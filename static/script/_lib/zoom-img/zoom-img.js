@@ -37,14 +37,6 @@ function BgwZoomImages(x) {
       "of them per page."
     );
   }
-  const zbImgTpl = document.getElementById('bgw-zoom-img-template');
-  if(zbImgTpl == null) {
-    throw new Error("ZoomImages error: image template not found.");
-  }
-  const zbFigTpl = document.getElementById('bgw-zoom-fig-template');
-  if(zbFigTpl == null) {
-    throw new Error("ZoomImages error: figure template not found.");
-  }
   const zbFrameTpl = document.getElementById('bgw-zoom-frame-template')
   if(zbFrameTpl == null) {
     throw new Error("ZoomImages error: zoom frame template not found.");
@@ -56,35 +48,28 @@ function BgwZoomImages(x) {
     /* Check what type we're dealing with */
 
     let dataCapt = imgs[i].getAttribute('data-caption');
-    const isFig = imgs[i].parentElement.tagName == 'FIGURE' ||
-      typeof(dataCapt) == 'string';
 
     const zbNew = zbFrameTpl.cloneNode(true);
+    zbNew.id = "";
+    const zbContent = zbNew.getElementsByTagName('FIGURE')[0];
     const zbInner = zbNew.getElementsByClassName('bgw-zoom-border')[0];
 
     let figCapt = '';
-    let zbContent = null, zbPar = null, zbOut=null;
-
-    if(isFig) {
-      zbContent = zbFigTpl.cloneNode(true);
-      const figCapts = imgs[i].parentElement.getElementsByTagName('figcaption');
-      if(typeof(dataCapt) == 'string') {
-        figCapt = dataCapt;
-      } else if (figCapts.length) {
-        figCapt = figCapts[0].innerHTML;
-      }
-      const zbCaptEl = zbContent.getElementsByTagName('FIGCAPTION')[0];
-      if(figCapt.length) {
-        zbCaptEl.innerHTML = figCapt;
-      } else {
-        zpCaptEl.style.display = 'none'
-      }
-    } else {
-      zbContent = zbImgTpl.cloneNode(true);
+    const figCapts = imgs[i].parentElement.getElementsByTagName('figcaption');
+    if(typeof(dataCapt) == 'string') {
+      figCapt = dataCapt;
+    } else if (figCapts.length) {
+      figCapt = figCapts[0].innerHTML;
     }
-    zbContent.id = "";
-    zbInner.appendChild(zbContent);
-
+    const zbCaptEl = zbContent.getElementsByTagName('FIGCAPTION')[0];
+    if(figCapt.length) {
+      zbCaptEl.innerHTML = figCapt;
+      zbNew.setAttribute(
+        'class', zbNew.getAttribute('class') + ' bgw-with-caption'
+      );
+    } else {
+      zbCaptEl.style.display = 'none'
+    }
     const zbClose = zbNew.getElementsByClassName('bgw-zoom-boxclose')[0];
     const zbImg = zbNew.getElementsByTagName('IMG')[0];
 
@@ -105,7 +90,7 @@ function BgwZoomImages(x) {
       }
       zb.activeEl = null;
     });
-    this.container.append(zbNew);
+    this.container.appendChild(zbNew);
   }
 }
 /*

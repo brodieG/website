@@ -479,7 +479,7 @@ https://stackoverflow.com/a/2006008/2725969
 }
 .bgw-zoom-frame .bgw-zoom-inner-frame {
   display: inline-block;
-  padding: 19px;
+  padding: 10px;
   position: relative;
 }
 .bgw-zoom-frame .bgw-zoom-border {
@@ -489,7 +489,7 @@ https://stackoverflow.com/a/2006008/2725969
   padding: 3px;
 }
 .bgw-zoom-frame .bgw-zoom-border figure {
-  display: inline-block;
+  display: block;
   margin: 0;
   background-color: black;
   color: white;
@@ -497,18 +497,23 @@ https://stackoverflow.com/a/2006008/2725969
 .bgw-zoom-frame .bgw-zoom-inner-frame img {
   max-width: calc(100vw - 44px);
   max-height: calc(100vh - 44px);
+  display: block;
+}
+.bgw-zoom-frame.bgw-with-caption .bgw-zoom-inner-frame img {
+  max-width: calc(100vw - 44px);
+  max-height: calc(100vh - 44px - 1.4em);
 }
 img.bgw-zoom-img {
   cursor: -moz-zoom-in;
   cursor: -webkit-zoom-in;
   cursor: zoom-in;
 }
-@media all and (min-width: 37.5em) and(min-height: 37.5em) {
+@media all and (min-width: 37.5em) and (min-height: 37.5em) {
   .bgw-zoom-frame .bgw-zoom-inner-frame svg.bgw-zoom-boxclose {
     width: 30px;
   }
   .bgw-zoom-frame .bgw-zoom-inner-frame {
-    padding: 28px;
+    padding: 16px;
   }
   .bgw-zoom-frame .bgw-zoom-border {
     padding: 5px;
@@ -516,6 +521,10 @@ img.bgw-zoom-img {
   .bgw-zoom-frame .bgw-zoom-inner-frame img {
     max-width: calc(100vw - 66px);
     max-height: calc(100vh - 66px);
+  }
+  .bgw-zoom-frame.bgw-with-caption .bgw-zoom-inner-frame img {
+    max-width: calc(100vw - 66px);
+    max-height: calc(100vh - 66px - 1.4em);
   }
 }
 /* end zoom box frame positioning */
