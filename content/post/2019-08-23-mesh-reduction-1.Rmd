@@ -42,7 +42,7 @@ thm.blnk <- list(
   id='front-img'
   src='/post/2019-08-23-mesh-reduction-1_files/images/batch-2-small.png'
   data-src-big='/post/2019-08-23-mesh-reduction-1_files/images/batch-2.png'
-  data-caption='Seven `volcano` approximations, flattened and stacked.'
+  data-caption='Eight `volcano` approximations, flattened and stacked.'
   class='post-inset-image bgw-zoom-img'
 />
 
@@ -292,7 +292,8 @@ complex one like `volcano`[^volcano-size]:
   style='width: 400px;'
 /><figcaption
 >3 x 3 Simple Surface Errors</figcaption></figure><figure><img
-  class=bgw-img-wrap-panel
+  class='bgw-img-wrap-panel bgw-zoom-img'
+  data-src-big=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-volc-large.png
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-volc.png
   style='width: 400px;'
 /><figcaption
