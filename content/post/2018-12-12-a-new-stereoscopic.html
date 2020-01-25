@@ -63,9 +63,7 @@ volcano:</p>
 yv &lt;- col(volcano)
 plot_new(xv, yv)
 points(x=rescale(xv), y=rescale(yv), col=gray(rescale(volcano)), pch=15)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/height-map-1.png" width="576" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/height-map-1.png" width="576" style="display: block; margin: auto;" /></p>
 <p><code>plot_new</code> is a thin wrapper around <code>plot.new</code> that also sets some <code>par</code>
 values. <code>rescale</code> rescales values to between zero and one. Both of these are
 <a href="#helper-functions">helper functions defined in the appendix</a>.</p>
@@ -77,9 +75,7 @@ concerned I’m still abiding by the base-R-only pledge.</p>
 shadow &lt;- ray_shade2(volcano, seq(-90, 90, length=25), sunangle=180)
 plot_new(xv, yv)
 points(x=rescale(xv), y=rescale(yv), col=gray(shadow), pch=15)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/height-map-rs-1.png" width="576" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/height-map-rs-1.png" width="576" style="display: block; margin: auto;" /></p>
 </div>
 <div id="d-projection" class="section level1">
 <h1>3D Projection</h1>
@@ -132,9 +128,7 @@ x &lt;- vord[1,]
 y &lt;- vord[2,]
 plot_new(x, y)
 points(rescale(x), rescale(y), col=gray(shadow[zord]), pch=15, cex=0.5)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/height-points-1.png" width="576" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/height-points-1.png" width="576" style="display: block; margin: auto;" /></p>
 <p>The good news is now we have an awesome looking 3D rendition of our volcano…
 in the moments after a direct hit from a disruptor cannon.</p>
 </div>
@@ -178,9 +172,7 @@ arbitrary. The source data contains the information required to build the mesh:
 the original x-y grid. We can generate a tile mesh by subsetting a contiguous
 portion of our elevation matrix four times, once for each of the four vertices
 of each tile. This is what it looks like with an illustrative 4 x 4 grid:</p>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/tile-to-mesh-1.png" width="768" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/tile-to-mesh-1.png" width="768" style="display: block; margin: auto;" /></p>
 <p>To form each tile as shown in the first panel we take one vertex from each
 of the four vertex panels. Each panel has the 9 of 16 grid points available
 for use as vertices enclosed in a black bounding box. For the top left
@@ -278,9 +270,7 @@ x &lt;- do.call(rbind, c(mesh.tile[,&#39;x&#39;], list(NA)))[,zord]
 y &lt;- do.call(rbind, c(mesh.tile[,&#39;y&#39;], list(NA)))[,zord]
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=&#39;#DDDDDD&#39;, border=&#39;#444444&#39;)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/mesh-polygons-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/mesh-polygons-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>It may help to look at the data structure of <code>x</code> above to understand what’s
 going on:</p>
 <pre class="r"><code>x[,1:10]</code></pre>
@@ -315,9 +305,7 @@ we can do with <code>persp</code>.</p>
 tiles are flat. Triangles on the other hand are guaranteed to be flat, and
 additionally benefit from simple shading algorithms. So we will turn our tiles
 into triangles:</p>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/triangle-mesh-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/triangle-mesh-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>The list-matrix structure of our data makes the translation from tile to
 triangle mesh trivial:</p>
 <pre class="r"><code>vertex.blue &lt;- 1:3
@@ -337,17 +325,13 @@ y &lt;- do.call(rbind, c(mesh.tri[,&#39;y&#39;], list(NA)))[,zord3]
 col &lt;- rep(c(&#39;#CCCCFF&#39;,&#39;#CCFFCC&#39;), each=ncol(x)/2)[zord3]
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=col)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/triangle-mesh-3d-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/triangle-mesh-3d-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>And with more realistic colors by shading each facet with the mean of the vertex
 shadows:</p>
 <pre class="r"><code>texture &lt;- gray(Reduce(&#39;+&#39;, mesh.tri[,&#39;t&#39;]) / 3)[zord3]
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=texture, border=texture)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/triangle-mesh-3d-shadow-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/triangle-mesh-3d-shadow-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>Now we’re cooking!</p>
 </div>
 </div>
@@ -365,17 +349,13 @@ axis.</p>
 <p>In the following diagram you are looking along a line parallel to the X axis.
 The Z axis now runs from left to right. Observers 1, 2, and 3 are all still
 looking at <code>volcano</code> along the Z axis:</p>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/persp-1.png" width="672" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/persp-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>For convenience we define the quantity <code>ZD</code> as the total depth of our object
 along the Z axis. Then, we can define the distance of our observers from the
 nearest point along the Z axis with the measure <code>D</code> as multiples of <code>ZD</code>.</p>
 <p>Here is our volcano re-rendered from the perspective of each of observers 1-3
 pictured above:</p>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/persp-tryp-1.png" width="864" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/persp-tryp-1.png" width="864" style="display: block; margin: auto;" /></p>
 <p>The actual perspective computation is best applied to the original point cloud,
 so we go back to the <code>vl</code> variable, which is <code>volcano</code> in
 <a href="#volcano-list-long">long list format</a>, and apply the perspective transformation
@@ -413,9 +393,7 @@ y &lt;- do.call(rbind, c(mesh.tri[,&#39;y&#39;], list(NA)))
 texture &lt;- gray((Reduce(&#39;+&#39;, mesh.tri[,&#39;t&#39;])/nrow(mesh.tri)))
 plot_new(x, y)
 polygon(rescale(x), rescale(y), col=texture, border=texture)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/mesh-tri-persp-2-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/mesh-tri-persp-2-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p><code>mesh_tri</code> has the additional benefit that it orders the tiles by Z value so we
 do not need to worry about re-ordering before plotting anymore.</p>
 <p>Are we there yet? Nope, we’re going to drag this baby kicking and screaming
@@ -439,33 +417,26 @@ this is the type of thing a child could do easily, it is surprisingly difficult
 to instruct a computer to do the same, particularly when we need to account for
 the need to use internally vectorized<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a> base R code.</p>
 <p>Conceptually, the process takes three steps:</p>
-<div class="bgw-wide-window">
 <img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/raster-overview-1.png" width="672" style="display: block; margin: auto;" />
-</div>
 <div style="display: none;">
 <p>We use these for the little inset thumbnails.</p>
 <pre class="r"><code>plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
 rast_1(xr, yr)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png" width="288" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png" width="288" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
 rast_2(xr, yr, pdat)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png" width="288" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png" width="288" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_new(xr, yr, par.args=list(mai=c(.1,.1,.1,.1)))
 rast_3(xr, yr, pdat, mx1.oob, mx2.oob)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png" width="288" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png" width="288" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="step-1-bounding-boxes" class="section level2">
 <h2>Step 1: Bounding Boxes</h2>
 <p><img
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png'
-style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+class="post-inset-image"
+/>
 One thing that is easy to do is to compute the rectangular bounding box for each
 triangle. All we need to do is compute the x and y extents of the vertices, and
 use those to generate the corners of our bounding box.</p>
@@ -508,15 +479,14 @@ xss &lt;- lapply(minmax[c(1,3)], function(x) (x - xs[1]) / diff(xs))
 yss &lt;- lapply(minmax[c(2,4)], function(y) (y - ys[1]) / diff(ys))
 plot_new(xs, ys)
 rect(xss[[1]], yss[[1]], xss[[2]], yss[[2]], border=&#39;#00000033&#39;, asp=1)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rect-bound-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rect-bound-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 </div>
 <div id="step-2-candidate-pixels" class="section level2">
 <h2>Step 2: Candidate Pixels</h2>
 <p><img
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png'
-style='float: left; margin: 5px 15px 5px 0;' width='250'/></p>
+class="post-inset-image"
+/></p>
 <p>We will brute force generate pixels to fill each of our bounding boxes. Oddly
 this is a little tricky, mostly because we wish to do this fully in internally
 vectorized code. And it is particularly important that we do so because we are
@@ -569,15 +539,13 @@ x.off:  1 2 1 2 1 2 1 2 1 2 1 2 3 1 2 3</code></pre>
 x.off:  1 2 1 2 1 2 1 2 1 2 1 2 3 1 2 3
 y.off:  1 1 2 2 1 1 2 2 3 3 1 1 1 2 2 2</code></pre>
 <p>And visualized in two dimensions:</p>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-illust-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-illust-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>Unfortunately <code>sequence</code> is not an internally vectorized function. It is just a
 looped call to <code>seq_len</code>:</p>
 <pre class="r"><code>sequence</code></pre>
 <pre><code>function (nvec) 
 unlist(lapply(nvec, seq_len))
-&lt;bytecode: 0x7f8c3af6b348&gt;
+&lt;bytecode: 0x7fba7f879790&gt;
 &lt;environment: namespace:base&gt;</code></pre>
 <p>This becomes a liability when we have many sequences as with the full set of
 <code>volcano</code> polygons. Fortunately it turns out that it is possible to write an
@@ -643,16 +611,15 @@ about which directions the dimensions run in we need to flip our matrix:</p>
 <pre class="r"><code>flip &lt;- function(x) t(x)[rev(seq_len(ncol(x))),]
 par(mai=numeric(4))
 plot(as.raster(flip(p.raster)))</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/raster-plot-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/raster-plot-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>A volcano to make NovaLogic<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a> proud!</p>
 </div>
 <div id="step-3-pixel-trimming" class="section level2">
 <h2>Step 3: Pixel Trimming</h2>
 <p><img
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png'
-style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+class="post-inset-image"
+/>
 We are now worse off than we were when plotting the polygons in our
 <a href="#mesh-tri-persp">mesh</a>, but fear not, we can improve the chunky raster volcano.
 We need to trim the excess pixels in our bounding boxes. This is as simple as
@@ -711,9 +678,7 @@ p.raster[cbind(p.x.in, p.y.in)] &lt;- rep(texture, dims.xy)[inbounds]
 
 par(mai=numeric(4))
 plot(as.raster(flip(p.raster)), asp=1)</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/trim-pixel-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/trim-pixel-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>Great! All that work and we’re right back were we started<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a> with our
 <a href="#mesh-tri-persp">triangle mesh</a>. But isn’t it so satisfying that we built this
 thing pixel by pixel, with our bare hands. It’s a little bit like that pasta
@@ -741,9 +706,7 @@ p.raster[cbind(p.x.in, p.y.in)] &lt;- t.shaded
 
 par(mai=numeric(4))
 plot(as.raster(flip(p.raster)))</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/bary-shading-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/bary-shading-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>And just like that we have a beautifully shaded volcano!</p>
 </div>
 <div id="interlude-ii" class="section level1">
@@ -867,13 +830,9 @@ elcolor &lt;- analygraph(left, right)
 par(bg=&#39;black&#39;, mai=numeric(4))
 plot(as.raster(elcolor))
 shadow::analygraph_glasses(.15)   # for the icon h/t @jurbane2</code></pre>
-<div class="bgw-wide-window">
 <img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
 <div style="display: none;">
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png" width="384" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/analygraph-square-1.png" width="384" style="display: block; margin: auto;" /></p>
 </div>
 <p>You can get <a href="https://duckduckgo.com/?q=analygraph+glasses&amp;t=ffsb&amp;ia=products">analygraph glasses very cheaply</a>. I got ten for five bucks.</p>
 <p>One advantage of using red and cyan is that the areas where the images overlap
@@ -883,9 +842,7 @@ the overlapping areas would end up yellow.</p>
 <pre class="r"><code>eljuxt &lt;- cbind(left, right)
 par(bg=&#39;black&#39;, mai=c(.25, .5, .25, .5))
 plot(as.raster(eljuxt))</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/stereogram-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/stereogram-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>In order to see the 3D effect on these you need to get your <a href="https://en.wikipedia.org/wiki/Stereoscopy#Freeviewing">eyes to
 diverge</a> such that each eye is looking at one of the images. It does take
 practice to master. One trick that can help is making the image smaller so that
@@ -980,9 +937,7 @@ persp(
 )</code></pre>
 <pre><code>Warning in persp.default(x = seq_len(nrow(volcano)), y =
 seq_len(ncol(volcano)), : surface extends beyond the box</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/base-persp-best-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/base-persp-best-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>I left the box in on purpose to highlight that I had to go to ridiculous lengths
 to get <code>persp</code> to fit the viewport the way I wanted. Finding the correct <code>xlim</code>
 and <code>ylim</code> values to achieve the desired effect was an exercise in almost futile
@@ -1007,9 +962,7 @@ persp(
   ylim=c(2,52), xlim=c(6,46), theta=-65, phi=70,
   col=gray(tile.col), border=NA, r=1e7, scale=FALSE, box=FALSE
 )</code></pre>
-<div class="bgw-wide-window">
-<img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/base-persp-1.png" width="649.92" style="display: block; margin: auto;" />
-</div>
+<p><img src="/post/2018-12-12-a-new-stereoscopic_files/figure-html/base-persp-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>This doesn’t look great: it’s blocky, and there is no <a href="https://stackoverflow.com/questions/53620261/control-persp-mesh-tile-border-colors">good way to
 get rid of the anti-aliasing lines</a>. I also used our <code>mesh.tile</code>
 list-matrix to compute the shading of the tiles, which requires a fair bit of

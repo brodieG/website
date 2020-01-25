@@ -710,7 +710,8 @@ rast_3(xr, yr, pdat, mx1.oob, mx2.oob)
 
 <img
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-one-1.png'
-style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+class="post-inset-image"
+/>
 One thing that is easy to do is to compute the rectangular bounding box for each
 triangle.  All we need to do is compute the x and y extents of the vertices, and
 use those to generate the corners of our bounding box.
@@ -768,7 +769,8 @@ rect(xss[[1]], yss[[1]], xss[[2]], yss[[2]], border='#00000033', asp=1)
 
 <img
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-two-1.png'
-style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+class="post-inset-image"
+/>
 
 We will brute force generate pixels to fill each of our bounding boxes.  Oddly
 this is a little tricky, mostly because we wish to do this fully in internally
@@ -990,7 +992,8 @@ A volcano to make NovaLogic[^4] proud!
 
 <img
 src='/post/2018-12-12-a-new-stereoscopic_files/figure-html/rast-three-1.png'
-style='float: left; margin: 5px 15px 5px 0;' width='250'/>
+class="post-inset-image"
+/>
 We are now worse off than we were when plotting the polygons in our
 [mesh](#mesh-tri-persp), but fear not, we can improve the chunky raster volcano.
 We need to trim the excess pixels in our bounding boxes.  This is as simple as
