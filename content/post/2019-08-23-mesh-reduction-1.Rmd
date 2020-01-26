@@ -152,10 +152,27 @@ different perspectives so that our brains interpret the parallax for additional
 depth perception.  Sorry `volcano`, I only do this to you about once a year and
 it's for a good cause.
 
+<!--
+This horror show is so that we can force a fixed sizes for the video display
+window as in auto-play mode it appears to cause the whole page to shift
+seemingly at random and having a fixed height with proper aspect ratio seems to
+work
+
+Padding top trick from: https://css-tricks.com/aspect-ratio-boxes/
+-->
 <div class=bgw-wide-window>
+<div style='width: 720px; max-width: 100%; margin: 0 auto;'>
+<div style='
+  width: 720px; max-width: 100%;
+  overflow: hidden; padding-top: 100%; position: relative;
+'>
 <video
-  id=louvre-rotate 
-  style='display: block; margin: 0 auto; max-width: 100%; width: 720px; height: 720px'
+  id=louvre-rotate
+  style='
+    display: block; margin: 0 auto;
+    width: 720px; max-width: 100%;
+    position: absolute; top: 0; right: 0;
+  '
   onclick='this.setAttribute("controls", "");'
   loop autoplay muted
 >
@@ -164,6 +181,8 @@ it's for a good cause.
   type="video/mp4"
 />
 </video>
+</div>
+</div>
 </div>
 
 We keep the approximation mesh color unchanging just in the video to make it
