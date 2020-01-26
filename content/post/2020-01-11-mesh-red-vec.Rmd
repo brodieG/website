@@ -806,6 +806,17 @@ knees, and even inventing some of it.
 
 ## Acknowledgments
 
+* patchwork
+* rgl
+* rayrender
+* Agafonkin
+* reshape2
+* ggplot2
+* ffmpeg
+* inline
+* Brewer
+* dplyr for bind_rows
+
 ## Session Info
 
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}

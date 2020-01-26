@@ -297,9 +297,9 @@ BgFlipBook.prototype.drawHelp = function() {
   this.draw();
   this.els.flipbook.title = '';
   const text = [
-    " \u{2022} Click in frame to step forward           ",
-    " \u{2022} Shift + click to step backwards       OR:",
-    " \u{2022} Use the controls below                   "
+    "  \u{2022} Click in frame to step forward           ",
+    "  \u{2022} Shift + click to step backwards       OR:",
+    "  \u{2022} Use the controls below                   "
   ]
   /* figure out center point to put the text in */
 
