@@ -51,14 +51,16 @@ tol <- rev(c(50, 9.99754364417931, 1.9))
 err.frac <- tol
 # mesh.colors <- c('gold', 'grey65', '#DD4F12')
 gold <- '#AA9A00'
-metal.col <-  c(gold, 'grey35', '#CC3322')
+# metal.col <-  c(gold, 'grey35', '#CC3322')
+# metal.col <-  c(gold, 'grey35', '#AA2211')
+metal.col <-  c(gold, 'grey35', '#942211')
 mesh.colors <- metal.col
 floor <- xz_rect(xwidth=15, zwidth=15, material=diffuse(color='white'))
 
 # rez <- 600
 # samp <- 400
 rez <- 600
-samp <- 400
+samp <- 600
 mult <- .45
 bg1 <- 102 / mult
 bg <- do.call(rgb, c(as.list(rep(bg1, 3)), max=255))
@@ -68,22 +70,24 @@ light.wide <- sphere(
   # material = light(intensity = 8)
 )
 
-for(i in seq_along(err.frac)) {
-  objs <- make_layers(
-    errors, err.frac[i], mesh.colors[i], sizes=seg.rad/3, material=diffuse
-  )
-  scene <- dplyr::bind_rows(objs, list(light.wide, floor))
-  file <- next_file('~/Downloads/mesh-viz/flat-mesh/stacked-')
-  render_scene(
-    scene, width=rez, height=rez, samples=samp,
-    lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=0,
-    ortho_dimensions=c(1.05,1.05),
-    # ortho_dimensions=c(4,4),
-    camera_up=c(1,0,0),
-    # ortho_dimensions=c(1.1,1.1),
-    clamp=3, ambient=TRUE, backgroundlow=bg, backgroundhigh=bg, file=file
-  )
-}
+# for(i in seq_along(err.frac)) {
+#   objs <- make_layers(
+#     #errors, err.frac[i], mesh.colors[i], sizes=seg.rad/3, material=diffuse
+#     errors, err.frac[i], mesh.colors[i], sizes=seg.rad * .75, material=diffuse
+#   )
+#   scene <- dplyr::bind_rows(objs, list(light.wide, floor))
+#   file <- next_file('~/Downloads/mesh-viz/flat-mesh/stacked-')
+#   render_scene(
+#     scene, width=rez, height=rez, samples=samp,
+#     lookfrom=c(0, 2, 0), lookat=c(0, 0, 0), aperture=0, fov=0,
+#     ortho_dimensions=c(1.05,1.05),
+#     # ortho_dimensions=c(4,4),
+#     camera_up=c(1,0,0),
+#     # ortho_dimensions=c(1.1,1.1),
+#     clamp=3, ambient=TRUE, backgroundlow=bg, backgroundhigh=bg, file=file
+#   )
+# }
+# stop()
 objs <- make_layers(
   errors, err.frac, mesh.colors, sizes=seg.rad*c(1.75,1,.25)/3, material=diffuse
 )

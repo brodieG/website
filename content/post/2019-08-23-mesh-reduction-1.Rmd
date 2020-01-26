@@ -150,7 +150,7 @@ Unfortunately even when realistically ray traced 3D images projected onto 2D
 inevitably lose... depth.  One way we can compensate for this is to present
 different perspectives so that our brains interpret the parallax for additional
 depth perception.  Sorry `volcano`, I only do this to you about once a year and
-it's for a good cause.  
+it's for a good cause.
 
 <div class=bgw-wide-window>
 <video
@@ -166,14 +166,14 @@ it's for a good cause.
 </video>
 </div>
 
-We keep the approximation mesh color the same in the video to make it easier to
-track it across frames, though going forward we go back to different colors
-indicating different levels of approximation.
+We keep the approximation mesh color unchanging just in the video to make it
+easier to track it across frames.
 
-Let's flatten the elevation component of the meshes to look at the 2D structure
-of the mesh in the x-y plane.  All the triangles are right angled isoceles
-triangles in the x-y plane.  This is where the "Right-Triangulated" part of the
-algorithm name comes from.
+Let's flatten the elevation component of the meshes to look at their 2D
+structure.  All the triangles are right angled isoceles triangles in the
+x-y plane.  This is where the "Right-Triangulated" part of the algorithm name
+comes from.
+
 <!-- we keep this old code for reference for how to do the polyptich thing from
 an Rmd hunk.
 ```{r flat-side-by-side, echo=FALSE, fig.width=3.125, fig.height=3.125, fig.show='hold', fig.align='default'}
@@ -276,13 +276,20 @@ higher fidelity ones:
 </div>
 ```
 
-This hierarchy of nested-increasing-resolution meshes is a key part of the
-algorithm.  It allows us to compute the approximation errors of every triangle
-at every resolution first, and then later quickly extract meshes comprising
-triangles that meet a particular error tolerance threshold.
+If you look closely you'll see that edges of larger triangles never cross the
+faces of the smaller ones.  This is because the smaller triangles are made by
+adding a vertex in the middle of the long edge of a larger triangle and
+connecting it to the opposite vertex.  This means that every edge of the
+original triangle overlaps with an edge of the smaller triangles.  As we'll see
+in the next post this creates an important constraint on how the different
+approximation layers are calculated.
 
-For the sake of exposition we will abandon volcano and switch to a simple 3x3
-elevation surface to illustrate how the approximation errors are computed:
+# Errors
+
+We've seen that MARTINI allows us to extract approximation meshes subject to a
+particular error tolerance, which means that at some point we have to calculate
+the approximation error.  We'll see how this is done with a simple
+3x3 elevation instead of `volcano` for the sake of exposition:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -305,12 +312,12 @@ elevation surface to illustrate how the approximation errors are computed:
 ```
 
 At the most granular level (gold) there is no error as the mesh corresponds
-exactly to the elevation surface.  To get to the next level of approximation
-(silver) we combine triangles with adjacent right angles.  This causes error to
-appear in the middle of the hypotenuses of the resulting larger triangles.
-We show these errors as checkered cylinders.  At the coarsest level of
-approximation (copper) we again combine triangles with adjacent triangles,
-which generates additional error on the center of the surface.
+exactly to the elevation surface.  Recall that the smaller triangles are made by
+splitting larger triangles in the middle of the long edge.  So at the first
+level of approximation (silver) we want to measure the error in the middle of
+the long edges, shown here as the grey checked cylinders.  We know we can remove
+that error by moving to the more granular level.  At the next level (copper) we
+repeat the process.  This time the long edge runs across the middle of the mesh.
 
 An implication of measuring error at the point we combine the smaller triangles
 into bigger ones is that we never measure errors from different levels of
@@ -334,19 +341,22 @@ complex one like `volcano`[^volcano-size]:
 >65 x 65 Volcano Errors</figcaption></figure></span></div>
 ```
 
-For clarity the surface was constructed so that all the errors are in the same
-direction and directly visible from our observation point.  In practice the
-errors can occur on either side of the surface, and we would record their
-absolute values.  The corners of the matrix will never have any error as even
-the coarsest level of approximation will have vertices at those locations.
+Since the errors of each level are measured at different points,
+the above matrices contain the approximation errors for ever level of
+approximation.  We only need to calculate the matrix once, and thereafter we can
+test it against different tolerance thresholds to determine what approximation
+mesh to draw.
 
 # Surface Extraction
 
-We can now compare our recorded errors to different tolerance levels, and use
-that to decide what triangles to draw.  A possible algorithm is to draw the
-child triangles of any triangle for which its error or the error of any of its
-descendants exceeds the threshold.  Here we represent a possible threshold as
-the "water" level; errors visible above it must be addressed:
+Let's play through the process of extracting meshes to different tolerance
+levels.  The idea is the extract the coarsest mesh that does not have any
+remaining errors above the threshold.  Resolving errors is easy: just put a
+vertex at any of the surface points where the error is too high.  Since the
+vertex will be on the original surface there will be no error there anymore.
+
+Here we illustrate our error tolerance as a "water" level; errors peeking
+above the surface must be addressed:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -362,10 +372,10 @@ the "water" level; errors visible above it must be addressed:
 ```
 
 For each of the three errors that exceeds our threshold we split the
-corresponding triangle at its hypotenuse midpoint to create a vertex at the
-problematic point and remove the error.  This requires us to draw the highest
-detail triangles for the bottom right part of the surface (gold), but lets us
-use the first level of approximation for the top left.
+corresponding triangle in the middle of the long edge to remove the error.  This
+requires us to draw the highest detail triangles for the bottom right part of
+the surface (gold), but lets us use the first level of approximation for the top
+left.
 
 As we increase our tolerance we can extend the approximation to the bottom of
 the surface:
@@ -398,11 +408,22 @@ But if we further increase our tolerance we run into problems:
 /></figure></span></div>
 ```
 
-Even though we are willing to tolerate the error from using the highest level of
-approximation for the top left part of the surface, doing so introduces a gap in
-our surface.  One solution to this is to ensure that the error at any given
+Breaking the right-most triangle led us to break the containing triangle
+(bottom-right half) even though error in the middle of the surface is below our
+threshold.  Anytime we split a triangle, all the ancestor triangles that
+contain it will need to be split as well.  But that is not sufficient as
+demonstrated by the remaining gap in the mesh.  We must also break up any
+ancestor siblings that share an edge with the edges that are split.
+
+You can imagine how this might complicate our mesh extraction.  We need to
+check a point's error, but also the errors of any of its children, and the
+children of its siblings.
+
+One clever solution to this is to ensure that the error at any given
 point is the greater of the actual error, or the errors associated with its
-children.  <span id='carry-over-viz'></span>
+children.  Then, if we compute error from smallest triangles to larger ones, we
+can carry over child errors to the parents:
+<span id='carry-over-viz'></span>
 
 ```{=html}
 <br />
@@ -419,8 +440,11 @@ children.  <span id='carry-over-viz'></span>
 <br />
 ```
 
-This ensure that the mesh has no T intersections and as such is
-continuous:
+In this case we carry over the error from the right child from the first level
+of approximation onto the second level.  We actually carry over the error from
+all four children, it just so happens in this case there is only one that has an
+error greater than the parent.  Now our mesh extraction can work correctly
+without any additional logic:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -450,10 +474,11 @@ We now have a rough idea of the algorithm.  Unfortunately I learned the hard way
 that "a rough idea" is about as useful when refactoring an algorithm as it is to
 know that a jar of nitroglycerin is "kinda dangerous" when you're tasked with
 transporting it.  In order to safely adapt the algorithm to R we need
-full mastery of the details.  I'm still covered in gouges and bruises from the
-sharp corner cases and the off-by-who-knows-how-many-errors I smacked into.
+full mastery of the details (or at least, I would have greatly benefited from
+it).
 
-The outline of the algorithm is as follows:
+We will focus on the error computation algorithm as that is the more complicated
+part of the process.  Its outline follows:
 
 ```{r eval=FALSE}
 for (every triangle in mesh) {
@@ -468,8 +493,8 @@ The `for` loop iterates as many times as there are triangles in the mesh.  In
 our [3 x 3 grid](#three-by-three) there are six triangles (4 at the first level
 of approximation, and another 2 at the next level).  For each of these
 triangles, the `while` loop identifies the vertex coordinates `$(ax,ay)$`,
-`$(bx,by)$`, and `$(cx,cy)$`.  This allow us to compute the error at the
-midpoint of the hypotenuse.
+`$(bx,by)$`, and `$(cx,cy)$`, which we can use to compute the error at the
+middle of the long edge.
 
 Let's observe the algorithm find the first triangle to get a sense for how it
 works.  We'll use a 5 x 5 grid this time[^min-complex], and regrettably abandon
@@ -528,7 +553,11 @@ four child errors.
 
 Here is the whole thing at 60fps:
 
-<video id=mesh-anim style='display: block; margin: 0 auto;' controls loop>
+<video
+  id=mesh-anim
+  style='display: block; margin: 0 auto;'
+  controls loop
+>
 <source
   src='/post/2019-08-23-mesh-reduction-1_files/images/out.mp4'
   type="video/mp4"
@@ -717,11 +746,11 @@ const imgDir = '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/';
 const fps = 4;
 new BgFlipBook({
   targetId: 'flipbook1', imgDir:imgDir, imgStart: 7, imgEnd: 53,
-  imgPad: "0000", fps: fps, loop: true
+  imgPad: "0000", fps: fps, loop: false
 })
 new BgFlipBook({
   targetId: 'flipbook2', imgDir:imgDir, imgStart: 803, imgEnd: 844,
-  imgPad: "0000", fps: fps, loop: true
+  imgPad: "0000", fps: fps, loop: false
 })
 </script>
 
