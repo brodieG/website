@@ -787,9 +787,6 @@ new BgFlipBook({
   every point on the elevation map coincides with a vertex so there is no error.
 [^second-triangle]: The first triangle is not very interesting because the child
   errors are smaller than the parent error so there is no error to carry over.
-[^branch-predict]: In particular it seems unlikely the `while` loop condition
-  and the `if` statements therein could be easily predicted by a hardware branch
-  predictor, and that's assuming JS code can even be branch predicted.
 [^timings-note]: Chrome was 2.5x faster than Firefox, and tended to get
   substantially faster after the first few runs, presumably due to adaptive
   compilation.  The reported times are after the timings stabilized, so will
