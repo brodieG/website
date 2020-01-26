@@ -289,13 +289,13 @@ complex one like `volcano`[^volcano-size]:
 <span class=bgw-img-wrap-frame><figure><img
   class=bgw-img-wrap-panel
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-simple.png
-  style='width: 400px;'
+  style='width: 334px;'
 /><figcaption
 >3 x 3 Simple Surface Errors</figcaption></figure><figure><img
   class='bgw-img-wrap-panel bgw-zoom-img'
   data-src-big=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-volc-large.png
   src=/post/2019-08-23-mesh-reduction-1_files/images/post-proc-res/err-volc.png
-  style='width: 400px;'
+  style='width: 334px;'
 /><figcaption
 >65 x 65 Volcano Errors</figcaption></figure></span></div>
 ```

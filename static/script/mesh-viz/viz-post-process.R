@@ -63,9 +63,21 @@ lapply(
       dip.carry[[id]], file.path(dir.tar, basename(dip.carry.f)[[id]])
 ) } )
 
-surf.err.f <- allf[grep('^err-(simple|volc)', basename(allf))]
+surf.err.f <- allf[grep('^err-(simple|volc)\\.', basename(allf))]
 surf.err.in <- lapply(surf.err.f, png::readPNG)
 surf.err <- trim_png_row(surf.err.in, 6)
+surf.err <- lapply(surf.err, aperm, c(2, 1, 3))
+surf.err <- trim_png_row(surf.err, 6)
+surf.err <- lapply(surf.err, aperm, c(2, 1, 3))
+surf.err <- lapply(
+  surf.err,
+  function(x) {
+    d <- dim(x)
+    res <- array(1, d + c(20, 20, 0))
+    res[seq_len(d[1]) + 10, seq_len(d[2]) + 10,] <- x
+    res
+  }
+)
 
 par(bg='blue', mfrow=c(1,2), mai=numeric(4))
 lapply(surf.err, function(x) plot(as.raster(x)))
@@ -75,6 +87,29 @@ lapply(
   function(id) {
     png::writePNG(
       surf.err[[id]], file.path(dir.tar, basename(surf.err.f)[[id]])
+) } )
+
+surf.errl.f <- allf[grep('^err-volc-large', basename(allf))]
+surf.errl.in <- lapply(surf.errl.f, png::readPNG)
+surf.errl <- trim_png_row(surf.errl.in, 6)
+surf.errl[[1]] <- aperm(surf.errl[[1]], c(2, 1, 3))
+surf.errl <- trim_png_row(surf.errl, 6)
+surf.errl[[1]] <- aperm(surf.errl[[1]], c(2, 1, 3))
+surf.tmp <- array(1, dim(surf.errl[[1]] )+ c(50, 50, 0))
+surf.tmp[
+  seq_len(dim(surf.errl[[1]])[1]) + 25,
+  seq_len(dim(surf.errl[[1]])[2]) + 25,
+] <- surf.errl[[1]]
+surf.errl[[1]] <- surf.tmp
+
+par(bg='blue', mfrow=c(1,1), mai=numeric(4))
+lapply(surf.errl, function(x) plot(as.raster(x)))
+
+lapply(
+  seq_along(surf.errl),
+  function(id) {
+    png::writePNG(
+      surf.errl[[id]], file.path(dir.tar, basename(surf.errl.f)[[id]])
 ) } )
 
 simple.m.f <- allf[grep('^simple-mesh-fin', basename(allf))]
