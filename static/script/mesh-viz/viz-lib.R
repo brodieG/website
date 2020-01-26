@@ -478,6 +478,35 @@ xyz_to_seg <- function(xyz, material, radius, angle, translate) {
     group_angle=angle, group_translate=translate
   )
 }
+xyz_to_cube <- function(xyz, material, xwidth, zwidth, angle, translate) {
+  coords <- array(
+    unlist(xyz), c(3, length(xyz[[1]]) / 3, 3),
+    dimnames=list(paste0('v', 1:3), NULL, c('x', 'y', 'z'))
+  )
+  a <- rbind(coords[1,,], coords[2,,], coords[3,,])
+  b <- rbind(coords[2,,], coords[3,,], coords[1,,])
+  dir <- sqrt(rowSums(a^2)) < sqrt(rowSums(b^2))
+  starts <- a
+  ends <- b
+  starts[!dir,] <- b[!dir]
+  ends[!dir,] <- a[!dir]
+
+  segdat <- unique(cbind(starts, ends))
+
+  group_objects(
+    dplyr::bind_rows(
+      lapply(
+        seq_len(nrow(segdat)),
+        function(i) {
+          cubement(
+            start=segdat[i, 1:3], end=segdat[i, 4:6],
+            xwidth=xwidth, zwidth=zwidth, material=material
+          )
+        }
+    ) ),
+    group_angle=angle, group_translate=translate
+  )
+}
 tris_to_seg <- function(
   tris, map, scale=c(1, 1, 1), material=diffuse(), radius=1,
   angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
@@ -486,12 +515,65 @@ tris_to_seg <- function(
     ids_to_xyz(tris, map, scale, flatten), material, radius, angle, translate
   )
 }
+tris_to_cube <- function(
+  tris, map, scale=c(1, 1, 1), material=diffuse(), xwidth=1, zwidth=1,
+  angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
+) {
+  xyz_to_cube(
+    ids_to_xyz(tris, map, scale, flatten), 
+    material, xwidth, zwidth, angle, translate
+  )
+}
+
 mesh_to_seg <- function(
   mesh, map, scale=c(1, 1, 1), material=diffuse(), radius=1,
   angle=c(0,0,0), translate=c(0,0,0)
 ) {
   xyz_to_seg(mesh_to_xyz(mesh, map, scale), material, radius, angle, translate)
 }
+# Adaptation of rayender::segment
+
+cubement <- function (start = c(0, -1, 0), end = c(0, 1, 0), 
+  xwidth = 1, zwidth = 1,
+    material = diffuse(), velocity = c(0,
+        0, 0), flipped = FALSE, scale = c(1, 1, 1))
+{
+  if (length(scale) == 1) {
+    scale = c(scale, scale, scale)
+  }
+  x = (start[1] + end[1])/2
+  y = (start[2] + end[2])/2
+  z = (start[3] + end[3])/2
+  order_rotation = c(3, 2, 1)
+  phi = atan2(end[1] - start[1], end[3] - start[3])/pi * 180 + 90
+  length_xy = sqrt((end[1] - start[1])^2 + (end[3] - start[3])^2)
+  if (end[1] == start[1] && end[3] == start[3]) {
+      theta = 0
+  }
+  else {
+      theta = atan2(-length_xy, (end[2] - start[2]))/pi * 180
+  }
+  fulllength = sqrt(sum((end - start)^2))
+  angle = c(0, phi, theta)
+  boxinfo = c(unlist(material$properties), xwidth, fulllength,
+        zwidth)
+
+  tibble::tibble(x = x, y = y, z = z, radius = NA, type = material$type,
+    shape = "box", properties = list(boxinfo), velocity = list(velocity),
+    checkercolor = material$checkercolor, noise = material$noise,
+    noisephase = material$noisephase, noiseintensity = material$noiseintensity,
+    noisecolor = material$noisecolor, angle = list(angle),
+    image = material$image, lightintensity = material$lightintensity,
+    flipped = flipped, fog = material$fog, fogdensity = material$fogdensity,
+    implicit_sample = material$implicit_sample, sigma = material$sigma,
+    order_rotation = list(order_rotation), pivot_point = list(NA),
+    group_translate = list(NA), group_angle = list(NA),
+    group_order_rotation = list(NA),
+    tricolorinfo = list(NA), fileinfo = NA, scale_factor = list(scale),
+    group_scale = list(NA)
+  )
+}
+
 # Render a list of scenes into files
 
 render_scenes <- function(scene, filename='scene-%d.png', ...) {
