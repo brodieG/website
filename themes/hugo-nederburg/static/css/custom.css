@@ -504,6 +504,16 @@ https://stackoverflow.com/a/2006008/2725969
   max-width: calc(100vw - 44px);
   max-height: calc(100vh - 44px - 1.4em);
 }
+/* thanks Ricky https://stackoverflow.com/a/18367765/2725969 */
+figure.bgw-with-zoom figcaption:after {
+  content: " \1f50d";
+  font-size: .8em;
+}
+figure.bgw-with-zoom {
+  cursor: -moz-zoom-in;
+  cursor: -webkit-zoom-in;
+  cursor: zoom-in;
+}
 img.bgw-zoom-img {
   cursor: -moz-zoom-in;
   cursor: -webkit-zoom-in;

@@ -55,11 +55,18 @@ function BgwZoomImages(x) {
     const zbInner = zbNew.getElementsByClassName('bgw-zoom-border')[0];
 
     let figCapt = '';
-    const figCapts = imgs[i].parentElement.getElementsByTagName('figcaption');
+    const parEl = imgs[i].parentElement;
+    if(parEl.tagName == 'FIGURE') {
+      parEl.setAttribute(
+        'class', parEl.getAttribute('class') + ' bgw-with-zoom'
+      );
+    }
+    const figCaptPar = imgs[i].parentElement.getElementsByTagName('figcaption');
+
     if(typeof(dataCapt) == 'string') {
       figCapt = dataCapt;
-    } else if (figCapts.length) {
-      figCapt = figCapts[0].innerHTML;
+    } else if (figCaptPar.length) {
+      figCapt = figCaptPar[0].innerHTML;
     }
     const zbCaptEl = zbContent.getElementsByTagName('FIGCAPTION')[0];
     if(figCapt.length) {
@@ -80,7 +87,12 @@ function BgwZoomImages(x) {
         Error("ZoomImages error: missing big image attribute for img " + i);
     }
     imgs[i].setAttribute('data-big-id', i);
-    imgs[i].addEventListener("mouseup", function(e) {zb.showModal(e)});
+
+    if(parEl.tagName == 'FIGURE') {
+      parEl.addEventListener("mouseup", function(e) {zb.showModal(e)});
+    } else {
+      imgs[i].addEventListener("mouseup", function(e) {zb.showModal(e)});
+    }
     zbClose.addEventListener("mouseup", function(e) {zb.closeModal(e)});
     zbNew.addEventListener("mouseup", function(e) {zb.closeModal(e)});
     zbContent.addEventListener("mouseup", function(e) {e.stopPropagation();});
@@ -97,7 +109,14 @@ function BgwZoomImages(x) {
  */
 BgwZoomImages.prototype.showModal = function(e) {
   if(e.button == 0) {
-    const img = e.target;
+    let img = e.target;
+    if(img.tagName != 'IMG') {
+      if(img.tagName == 'FIGURE') {
+        img = e.target.getElementsByTagName('IMG')[0];
+      } else {
+        img = e.target.parentElement.getElementsByTagName('IMG')[0];
+      }
+    }
     const imgCont = document.getElementById('bgw-zoom-img-container').children
     const imgBig = imgCont[img.getAttribute('data-big-id')]
     imgBig.style.display='inline-block';

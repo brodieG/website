@@ -5,11 +5,6 @@
   DO NOT INDENT more than 2 spaces!! Otherwise pandoc will think it is markdown
   code.
 
-  Super annoying need separate templates for figure and images because for
-  whatever reason figures including a tiny bit of padding at the bottom even
-  when there is no fig caption so there is no way to make it completely
-  unobstrusive for images without captions.
-
   The SVG bit is lazy; we should have just one we clone in JS
 -->
 
@@ -25,6 +20,7 @@ Templates, will be copied and assembled in JS
 
 <!--
 Outer part, shared by both figure-imgs and imgs, controls positioning and border frame around image.
+
 -->
 <div
   id=bgw-zoom-frame-template class=bgw-zoom-frame
@@ -43,6 +39,10 @@ Outer part, shared by both figure-imgs and imgs, controls positioning and border
 </g>
 </svg>
 <div class=bgw-zoom-border>
+<!--
+  carefull messing with anything inside the figure as JS makes assumptions
+  about existing structure
+-->
   <figure><img /><figcaption></figcaption></figure>
 </div>
 </div>
