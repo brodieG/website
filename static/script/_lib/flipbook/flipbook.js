@@ -400,6 +400,7 @@ BgFlipBook.prototype.signalRollOver = function() {
   var flip = this;
   setTimeout(
     function() {
+      if(bgFlipBookDebug) {console.log('roll over timeout')};
       flip.draw();
       flip.els.frameSpan.style.backgroundColor=oldStyle;
     },
@@ -407,7 +408,7 @@ BgFlipBook.prototype.signalRollOver = function() {
   );
 }
 BgFlipBook.prototype.pauseFlip = function() {
-  //if(bgFlipBookDebug) {console.log('pause clear interval')};
+  if(bgFlipBookDebug) {console.log('pause clear interval ' + this.intervalID)};
   this.playing = false;
   this.playingAuto = false;
   clearInterval(this.intervalID);
@@ -458,7 +459,9 @@ BgFlipBook.prototype.stepClick = function(e) {
 }
 // automated stepping, pauses at end
 BgFlipBook.prototype.stepAuto = function() {
-  if(bgFlipBookDebug) {console.log('stepping ', this.imgActive)};
+  if(bgFlipBookDebug) {
+    console.log('stepping ' + this.imgActive + ' intID ' + this.intervalID)
+  };
   if(this.imgActive == this.imgN) {
     if(this.els.loop.checked) {
       // delay at end
@@ -467,7 +470,7 @@ BgFlipBook.prototype.stepAuto = function() {
       var flip = this;
       setTimeout(
         function() {
-          if(bgFlipBookDebug) {console.log('end image')};
+          if(bgFlipBookDebug) {console.log('end image timeout')};
           flip.changeFrame(1);
           flip.pauseFlip();
           flip.resumeAll();
@@ -487,7 +490,13 @@ BgFlipBook.prototype.playAll = function() {
     return null;
   }
   clearInterval(this.intervalID);
-  this.stepF();  // always immediately advance
+  // always immediately advance
+  if(this.imgActive == this.imgN) {
+    this.imgActive = 1;
+    this.draw();
+  } else {
+    this.stepF();
+  }
   var flip = this;
   this.intervalID = setInterval(function() {flip.stepAuto()}, this.interval);
   if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
