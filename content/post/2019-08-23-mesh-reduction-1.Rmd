@@ -154,7 +154,8 @@ it's for a good cause.
 
 <div class=bgw-wide-window>
 <video
-  id=louvre-rotate style='display: block; margin: 0 auto; max-width: 100%;'
+  id=louvre-rotate 
+  style='display: block; margin: 0 auto; max-width: 100%; width: 720px; height: 720px'
   onclick='this.setAttribute("controls", "");'
   loop autoplay muted
 >
