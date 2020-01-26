@@ -433,6 +433,7 @@ span.bgw-img-wrap-frame>figure{
 figure figcaption {
   font-size: 0.8em;
   font-style: italic;
+  text-align: center;
 }
 
 a.image-credit,

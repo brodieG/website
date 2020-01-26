@@ -173,7 +173,8 @@ Let's flatten the elevation component of the meshes to look at the 2D structure
 of the mesh in the x-y plane.  All the triangles are right angled isoceles
 triangles in the x-y plane.  This is where the "Right-Triangulated" part of the
 algorithm name comes from.
-
+<!-- we keep this old code for reference for how to do the polyptich thing from
+an Rmd hunk.
 ```{r flat-side-by-side, echo=FALSE, fig.width=3.125, fig.height=3.125, fig.show='hold', fig.align='default'}
 old_chunk_hook <- knitr::knit_hooks$get('chunk')
 knitr::knit_hooks$set(chunk=function(x, options) {
@@ -227,12 +228,6 @@ plot_tri_xy(
 ```{r echo=FALSE}
 knitr::knit_hooks$set(chunk=old_chunk_hook)
 ```
-
-Another important feature of this mesh approximation is that it is hierarchical.
-When we stack the three meshes we can see that each of the larger triangles in
-the low fidelity meshes is exactly replaced by a set of triangles from the
-higher fidelity ones:
-
 ```{r flat-overlay, echo=FALSE, fig.width=5.2, fig.height=5.2}
 mai <- rep(.01, 4)
 plot_tri_xy(
@@ -240,6 +235,44 @@ plot_tri_xy(
 )
 plot_tri_xy(xyz[[2]]$x, xyz[[2]]$y, de, lwd=2, col=mc[2], new=FALSE)
 plot_tri_xy(xyz[[3]]$x, xyz[[3]]$y, de, lwd=.5, col=mc[3], new=FALSE)
+```
+-->
+
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/flat-1.png
+  style='width: 300px;'
+/><figcaption
+>Tolerance: 2%</figcaption></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/flat-2.png
+  style='width: 300px;'
+/><figcaption
+>Tolerance: 11%</figcaption></figure><figure><img
+  class=bgw-img-wrap-panel
+  src=/post/2019-08-23-mesh-reduction-1_files/images/flat-3.png
+  style='width: 300px;'
+/><figcaption
+>Tolerance: 53%</figcaption></figure></span></div>
+```
+
+Another important feature of this mesh approximation is that it is hierarchical.
+When we stack the three meshes we can see that each of the larger triangles in
+the low fidelity meshes is exactly replaced by a set of triangles from the
+higher fidelity ones:
+
+```{=html}
+<div class=bgw-wide-window>
+<figure><img
+  class=bgw-zoom-img
+  src=/post/2019-08-23-mesh-reduction-1_files/images/stacked.png
+  data-src-big=/post/2019-08-23-mesh-reduction-1_files/images/stacked-detail.png
+  data-caption='Top-righthand Corner Detail of Stacked Meshes'
+  style='width: 500px;'
+/><figcaption>Stacked Approximation Meshes</figcaption></figure>
+</div>
 ```
 
 This hierarchy of nested-increasing-resolution meshes is a key part of the

@@ -96,20 +96,24 @@ function BgwZoomImages(x) {
 /*
  */
 BgwZoomImages.prototype.showModal = function(e) {
-  const img = e.target;
-  const imgCont = document.getElementById('bgw-zoom-img-container').children
-  const imgBig = imgCont[img.getAttribute('data-big-id')]
-  imgBig.style.display='inline-block';
-  this.activeEl = imgBig;
+  if(e.button == 0) {
+    const img = e.target;
+    const imgCont = document.getElementById('bgw-zoom-img-container').children
+    const imgBig = imgCont[img.getAttribute('data-big-id')]
+    imgBig.style.display='inline-block';
+    this.activeEl = imgBig;
+  }
 
   // // Get coordinates for when we do smooth transition
   // const imgCoord = img.getBoundingClientRect();
 }
 /*
  * Handle closing of modal.  Super janky, need to cleanup some day (yeah right).
+ *
+ * Only for mouse events
  */
 BgwZoomImages.prototype.closeModal = function(e) {
-  if(this.activeEl != null) {
+  if(this.activeEl != null && e.button == 0) {
     // for some inscrutable reason I was getting duplicate mouseup events, but
     // only with img, not fig templates, and only when clicking on closing box,
     // not on main div
