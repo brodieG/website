@@ -71,8 +71,8 @@ scene <- dplyr::bind_rows(
   scn.base,
   group_objects(objs, group_angle=ga, group_translate=gt, pivot_point=pp)
 )
-rez <- 200
-samp <- 20
+rez <- 1000
+samp <- 500
 file <- next_file('~/Downloads/mesh-viz/harlequin/harl-')
 render_scene(
   scene, width=rez, height=rez, samples=samp,
