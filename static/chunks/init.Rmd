@@ -1,0 +1,22 @@
+
+```{r echo=FALSE}
+options(digits=3, crayon.enabled=TRUE)
+knitr::opts_chunk$set(
+  comment = "", 
+  fig.align='center', 
+  error=TRUE, fig.width=6.77, fig.retina=2
+)
+plot_hook <- knitr::knit_hooks$get('plot')
+plot_hook_bgw <- function(x, options) {
+  paste0(
+    "<div class=bgw-wide-window>",
+    paste0(plot_hook(x, options), collapse='\n'),
+    '</div>'
+  )
+}
+# knitr::knit_hooks$set(plot=plot_hook_bgw)
+```
+```{r echo=FALSE, comment="", results='asis'}
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+options(fansi.term.cap=c('bright', '256', 'truecolor'))
+```

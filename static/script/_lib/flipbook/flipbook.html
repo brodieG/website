@@ -1,58 +1,76 @@
 <!--
-  Flipbook HTML template, intended to be copied for use in actual instantiated 
+  Flipbook HTML template, intended to be copied for use in actual instantiated
   flipbooks
+
+  DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
 -->
 <div id='bg-flipbook-template' style='display: none;'>
-  <div id='bg-flipbook-images' style='display: none'></div>
-  <div style='margin: auto; display: block; width: 95%;'>
-  <canvas
-    id='bg-flipbook-flipbook'
-    style='width: 100%; display: block;'
-    title='Click to step forward, shift+click to step backwards.'
-  >
-  This is an HTML Canvas flipbook that displays key frames of an animation in a
-  more controllable manner than in a video player.  If you are reading this text
-  your browser does not support HTML Canvas.
-  </canvas>
-  <p style='margin-top: 5px; margin-bottom: 25px;'>
-    <input
-      id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
-      title='Display help overlay'
-    />
-    <input
-      id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
-      title='Play/Pause'
-    />
-    <input
-      id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
-      title='Stop and Reset'
-    />
-    &nbsp;
-    <input
-      id='bg-flipbook-step-b' type='button' value='&#10703;' style='font-size: 18px;'
-      title='Step Backwards'
-    />
-    <input
-      id='bg-flipbook-step-f' type='button' value='&#10704;' style='font-size: 18px;'
-      title='Step Forwards'
-    />
-    &nbsp;
-    FPS:
-    <input
-      id='bg-flipbook-fps' type='text'
-      style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
-      line-height: 1; padding: 0;'
-      title='Set Playback Rate' value=3
-    />
-    &nbsp;
-    Frame:
-    <input
-      id='bg-flipbook-frame'
-      type='text'
-      style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
-      line-height: 1; padding: 0;'
-      value=1
-      title='Jump to frame #'
-    /> / <span id='bg-flipbook-frame-n'></span>
-  </p>
+<div id='bg-flipbook-images' style='display: none'></div>
+<div
+  id='bg-flipbook-container'
+  style='margin: auto; display: inline-block; max-width: 98%;'
+>
+<canvas
+  id='bg-flipbook-flipbook'
+  style='display: block; max-width: 100%;'
+>
+This is an HTML Canvas flipbook that displays key frames of an animation in a
+more controllable manner than in a video player.  If you are reading this text
+your browser does not support HTML Canvas.
+</canvas>
+<!--
+We have to use a P block here as otherwise pandoc adds a P block for the
+inline elements
+-->
+<p style='margin-top: 5px; margin-bottom: 0px; text-align: initial;'>
+<input
+  id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
+  title='Display help overlay'
+/>
+<input
+  id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  title='Play/Pause'
+/>
+<input
+  id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+  title='Stop and Reset'
+/>
+&nbsp;
+<input
+  id='bg-flipbook-step-b' type='button' value='&#x21E4;' style='font-size: 18px;'
+  title='Step Backwards'
+/>
+<input
+  id='bg-flipbook-step-f' type='button' value='&#x21E5;' style='font-size: 18px;'
+  title='Step Forwards'
+/>
+&nbsp;
+FPS:
+<input
+  id='bg-flipbook-fps' type='text'
+  style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  title='Set Playback Rate' value=3
+/>
+<span id=bg-flipbook-frame-span>
+&nbsp;
+#:
+<input
+  id='bg-flipbook-frame'
+  type='text'
+  style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  value=1
+  title='(Jump to) frame #'
+/> / <span id='bg-flipbook-frame-n'></span>
+&nbsp;
+<label title='Loop-play'>
+  <span
+    id='bg-flipbook-loop-ind'
+    style='font-size: 1.3em; font-weight: bold;'>&#x293E;</span>:
+  <input id='bg-flipbook-loop' value=1 type='checkbox' />
+</label>
+</span>
+</p>
+</div>
 </div>

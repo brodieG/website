@@ -25,5 +25,14 @@ Maybe the problem is that the path is "post" but the kind is "post-img"?
 
 [Allison Hill][2] notes that Academic does have [bundle archetypes][1]:
 
+## Folder Use
+
+The folder static/post/... seem to be recreated during the post generation and
+as such are not available and cannot be directly sourced from R code, even
+though in other respects the stuff is available (e.g. to link in as HTML).
+Ideally we would put all this stuff directly in the content directory but we
+have to figure out how to do the folders in the archetype.  Instead, just use
+static/... without the post part.
+
 [1]: https://github.com/gcushen/hugo-academic/tree/master/archetypes
 [2]: https://twitter.com/apreshill/status/1098696759377780736

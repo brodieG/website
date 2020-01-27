@@ -13,14 +13,16 @@ weight: 1
 contenttype: article
 description: "Overcoming floating point precision problems in a
 group-stats rematch with `data.table`."
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
-```{r echo=FALSE}
-old.opt <- options(digits=3)
-knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
-suppressMessages(library(ggplot2))
+
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
-```{r echo=FALSE, comment="", results='asis'}
-old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+```{r echo=FALSE}
+suppressMessages(library(ggplot2))
 ```
 
 ```{r echo=FALSE}
@@ -223,7 +225,7 @@ all of this in vectorized code, so we don't have the luxury of using things like
 use `cumsum` on group ordered data.  Here is a visual recap of the key steps
 (these are steps 4 and 5 of the [previously described algorithm][110]):
 
-```{r cumsum-review, echo=FALSE, warning=FALSE}
+```{r cumsum-review, echo=FALSE, warning=FALSE, fig.height=3.5}
 library(ggbg)
 RNGversion("3.5.2"); set.seed(42)
 n1 <- 7
@@ -254,7 +256,7 @@ df5 <- transform(
 df6 <- transform(df5, step=steps[[6]])
 
 plot.extra <- list(
-  facet_wrap(~step, ncol=3),
+  facet_wrap(~step, ncol=2),
   ylab(NULL), xlab(NULL),
   theme(
     axis.text.x=element_blank(), axis.text.y=element_blank(),
@@ -373,7 +375,7 @@ What about all those digits of seeming precision we see in the decimal
 representation of `B.s.new`?  Well check this out:
 
 ```{r echo=FALSE}
-options(sci.pen=100, digits=22)
+old.opt <- options(sci.pen=100, digits=22)
 ```
 ```{r}
 2^-32 + 2^-34
@@ -481,30 +483,32 @@ bits 10 are added to the fraction[^80-vs-64].
 Let's look again at the `A.n` and `B.n` values, but this time comparing the
 underlying 80 bit representations with the 64 bit one visible from R, first for `A.n`:<span id='a-err'></span>
 
+<div class=bgw-wide-window><div style='width: 725px;'>
 ```{r a-n-err, echo=FALSE}
-
 val <- "\033[44;37m+18\033[m     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
-\033[43m0\033[42m11100001111111010000110011011010000100100111110111111\033[m00000000000: 64 bit
-\033[43m0\033[42m11100001111111010000110011011010000100100111110111110\033[48;5;156m1110000010\033[m1: 80 bit
-\033[43m0\033[m00000000000000000000000000000000000000000000000000000000\033[48;5;156m1011101\033[m1: A.n Err
- "
+\033[43m0\033[42m11100001111111010000110011011010000100100111110111111\033[m00000000000:  64 bit
+\033[43m0\033[42m11100001111111010000110011011010000100100111110111110\033[48;5;156m1110000010\033[m1:  80 bit
+\033[43m0\033[m00000000000000000000000000000000000000000000000000000000\033[48;5;156m1011101\033[m1: A.n Err"
 writeLines(val)
 ```
+</div></div>
 
 The extended precision bits are shown in light green.  The additional bit beyond
 that is the guard bit used in rounding[^guard-bit].
 
 And `B.n`:
 
+<div class=bgw-wide-window><div style='width: 725px;'>
 ```{r echo=FALSE}
 val <- "\033[44;37m+18\033[m     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
-\033[43m0\033[42m11100001111111010000110011011010000100100111111000100\033[m00000000000: 64 bit
-\033[43m0\033[42m11100001111111010000110011011010000100100111111000011\033[48;5;156m1111100010\033[m0: 80 bit
+\033[43m0\033[42m11100001111111010000110011011010000100100111111000100\033[m00000000000:  64 bit
+\033[43m0\033[42m11100001111111010000110011011010000100100111111000011\033[48;5;156m1111100010\033[m0:  80 bit
 \033[43m0\033[m0000000000000000000000000000000000000000000000000000000000\033[48;5;156m11110\033[m0: B.n Err"
 writeLines(val)
 ```
+</div></div>
 
 The rounding errors `A.n.err` and `B.n.err`  between the 80 and 64 bit
 representations are small compared to the difference between the `A.n` and
@@ -883,6 +887,7 @@ Arithmetic"][114].
 If we had been unlucky maybe the true values of `A.n` and `B.n` would have been
 as follows:
 
+<div class=bgw-wide-window><div style='width: 725px;'>
 ```{r echo=FALSE}
 val <- "\033[44;37m+18\033[m     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
@@ -891,9 +896,11 @@ val <- "\033[44;37m+18\033[m     +10        0        -10       -20       -30    
 \033[43m0\033[m00000000000000000000000000000000000000000000000000000\033[48;5;156m0111111111\033[m1: A.n Err"
 writeLines(val)
 ```
+</div></div>
 
 And:
 
+<div class=bgw-wide-window><div style='width: 725px;'>
 ```{r echo=FALSE}
 val <- "\033[44;37m+18\033[m     +10        0        -10       -20       -30       -40
  |       |         |         |         |         |   *     |   *
@@ -902,6 +909,7 @@ val <- "\033[44;37m+18\033[m     +10        0        -10       -20       -30    
 \033[43m1\033[m00000000000000000000000000000000000000000000000000000\033[48;5;156m1000000000\033[m0: B.n Err"
 writeLines(val)
 ```
+</div></div>
 
 These have the same 64 bit representations as the original values, but the error
 relative to the "true" 80 bit representations is quite different:

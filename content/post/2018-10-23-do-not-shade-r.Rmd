@@ -10,11 +10,17 @@ contenttype: article
 description: A base-R only implementation of rayshader that is competitive with
   compiled solutions demonstrates R is not as slow as its made out to be.
 tags: [optimization,visualization]
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
 
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
 ```{r echo=FALSE}
-options(digits=3)
-knitr::opts_chunk$set(comment = "", fig.align='center')
+source('../../static/script/_lib/plot.R')
+suppressMessages(library(ggplot2))
 ```
 
 # I Got Sucked In
@@ -135,12 +141,15 @@ supported as R.
 And to confirm we are actually doing the same thing:
 
 <a name='fig4'></a>
-<img
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><img
   src='/images/do-not-shade-shadows.png'
-  style='width: 90%; max-width: 1000px'
+  style='width: 900px;'
   alt='Fig. 4: Mountain landscape shaded with three methods.'
   class='aligncenter'
->
+></span></div>
+```
 
 We are not showing the Julia output, but we confirmed visually that it looks
 the same.  The various R versions shown here are not exactly identical, partly
@@ -275,7 +284,7 @@ inner function with a toy 3 x 3 example where the sun at an azimuth of 50
 degrees (figure 5):
 
 <a name='fig5'></a>
-```{r fig5, echo=FALSE}
+```{r echo=FALSE}
 df1 <- expand.grid(x=1:4, y=1:4)
 angle <- 50 / 180 * pi
 sin <- sin(angle)
@@ -305,15 +314,22 @@ df3 <- with(df2, {
   id <- as.integer(names(xs))
   data.frame(id=id, x=xs, xend, y=ys, yend)
 })
-library(ggplot2)
-ggplot(mapping=aes(x, y)) +
+p <- ggplot(mapping=aes(x, y)) +
   geom_point(data=df1.sub, color='black', size=3) +
   geom_point(data=df2, aes(color=factor(id))) +
   geom_segment(
     data=df3, aes(color=factor(id), xend=xend, yend=yend),
     arrow=arrow(type="closed"), size=0.5
   ) +
-  scale_colour_discrete(guide=FALSE)
+  scale_colour_discrete(guide=FALSE) +
+  coord_fixed()
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r fig5, echo=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
 ```
 
 We want the coordinates of the dots along each of the colored arrows, and we

@@ -4,8 +4,27 @@ Instantiate a Flipbook Object
 A flipbook will display images from a directory onto a canvas 2D object.  This
 javascript object relies on a pre-existing flipbook template loaded into the
 document which should be available in the companion 'flipbook.html' file.  The
-user is responsible for injecting that HTML into the same page as this JS.  For
-an example see 'flipbook.Rmd'.
+user is responsible for injecting that HTML into the same page as this JS.
+
+Suggested usage is something like:
+
+    A flipbook goes here:
+    <div id='flipbook1'></div>
+
+    ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
+    ```
+    <script type='text/javascript'>
+    new BgFlipBook({
+      targetId: 'flipbook1',
+      imgDir: '/post/2019-08-23-mesh-reduction-1_files/images/flipbook/',
+      imgStart: 7, imgEnd: 53,  imgPad: "0000",
+      fps: 4, loop: true, loopDelay: 2000
+    })
+    </script>
+
+The Rmd combines the JS and HTML inclusion.  It seems best to include this code
+after the target divs, although only the `new BgFlipBook` calls should need
+to happen after they are defined, in theory (failed in practice).
 
 Failure to set the directory or file names properly will result in errors like
 "NS_ERROR_NOT_AVAILABLE" (firefox).
@@ -13,16 +32,38 @@ Failure to set the directory or file names properly will result in errors like
 naturalWidth and naturalHeight of the first image will set the size of the HTML
 canvas element the images are drawn in.
 
-@param targetId string id of pre-existing DIV that will be populated with the
-  flipbook.  The DIV must be empty.
+Flipbook is configured via a single object with named values.  Here "@param x"
+should be taken to mean "obj.x"
+@param targetId string id of pre-existing DIV that will be populated
+  with the flipbook.  The DIV must be empty.
 @param imgDir string location for images for flipbook, the images must be named
-  in format img-0001.png.
+  in format img-001.png (see `pad` as well).
 @param imgEnd where to end the flipbook, required because we cannot get a
   directory listing so don't know how many images there are.
-@param imgStart where to start the flipbook, must be less than imgEnd
-@param fpsInit number the default initial frame rate.
-@param endDelay number how many frames to pause when playing before looping
-  back to start.
+@param imgStart positive integer where to start the flipbook, must be less than
+  imgEnd
+@param fps frame rate in frames per second.
+@param loop boolean whether to loop back to beginning when auto-playing.
+@param loopDelay number how many millisecond to pause for when playing before
+  looping back to start.
+@param imgPad string of form "0", "00", "000", etc., of length corresponding to
+  how many digits re used in the image file names.
+@param helpFillStyle background color for help pop-up box, may need to be
+  adjusted if flipbook contents are mostly dark.
+@param helpTextStyle background color for help pop-up box, may need to be
+  adjusted if flipbook contents are mostly dark.
+@param width string a width string like "100%" or "800px" to use as the CSS
+  'width' value for the container.
+@return an instantiated flipboook object, although it serves no real purpose as
+  the constructor attaches all the event handlers and nothing else beyond that
+  is needed.
+
+TODO: 
+
+* Fix margin left of bullets in help screen
+* provide a way to pass CSS for the whole canvas and container div.
+* fallback mode for no-JS (really only just splash screen)
+
 */
 
 /*---------------------------------------------------------------------------*\
@@ -30,17 +71,92 @@ canvas element the images are drawn in.
 \*---------------------------------------------------------------------------*/
 
 const bgFlipBookDebug = false;
-function BgFlipBook(
-  targetId, imgDir, imgEnd, imgStart=1, fpsInit=1, endDelay=0
-) {
+function BgFlipBook(x) {
   // - Validate ----------------------------------------------------------------
 
+  if(typeof(x) != 'object') {
+    throw new Error("flipbook error: input is not an object");
+  }
+  // Defaults
+  xDef = {
+    targetId: null,
+    imgDir: null,
+    imgEnd: null,
+    imgStart: 1,
+    imgPad: "000",
+    fps: 1,
+    loopDelay: 1500,
+    loop: true,
+    helpFillStyle: 'rgb(0, 0, 0, .7)',
+    helpTextStyle: 'white',
+    width: 'auto'
+  }
+  for (let k in x) {
+    if (x.hasOwnProperty(k)) {
+      if(typeof(xDef[k]) == 'undefined') {
+        throw new Error(
+          "flipbook error: " + k +" is not a known property"
+        );
+      }
+      xDef[k] = x[k]
+  } }
+  for (let k in xDef) {
+    if (xDef.hasOwnProperty(k)) {
+      if(xDef[k] == null) {
+        throw new Error(
+          "flipbook error: required property " + k +" was no provided"
+        );
+  } } }
+  x = xDef;
+
+  if(typeof(x.targetId) != "string") {
+    throw new Error("flipbook error: 'targetId' is not a string");
+  }
+  if(typeof(x.imgDir) != "string") {
+    throw new Error("flipbook error: 'imgDir' is not a string");
+  }
+  if(typeof(x.imgPad) != "string") {
+    throw new Error("flipbook error: 'imgPad' is not a string");
+  }
+  if(typeof(x.helpFillStyle) != "string") {
+    throw new Error("flipbook error: 'helpFillStyle' is not a string");
+  }
+  if(typeof(x.helpTextStyle) != "string") {
+    throw new Error("flipbook error: 'helpTextStyle' is not a string");
+  }
+  if(
+    typeof(x.imgStart) != 'number' || !Number.isInteger(x.imgStart) ||
+    x.imgStart < 1
+  ) {
+    throw new Error("flipbook error: 'imgStart' must be integer > 1.");
+  }
+  if(
+    typeof(x.imgEnd) != 'number' || !Number.isInteger(x.imgEnd) ||
+    x.imgEnd < 1
+  ) {
+    throw new Error("flipbook error: 'imgEnd' must be integer > 1.");
+  }
+  if(x.imgEnd < x.imgStart) {
+    throw new Error("flipbook error: 'imgEnd' must be GTE to 'imgStart'.");
+  }
+  if(typeof(x.fps) != 'number' || x.fps <= 0) {
+    throw new Error("flipbook error: 'fps' must be numeric > 0.");
+  }
+  if(typeof(x.loopDelay) != 'number' || x.loopDelay < 0) {
+    throw new Error("flipbook error: 'loopDelay' must be numeric >= 0.");
+  }
+  if(typeof(x.loop) != 'boolean') {
+    throw new Error("flipbook error: 'loop' must be boolean.");
+  }
+  if(typeof(x.width) != "string") {
+    throw new Error("flipbook error: 'width' is not a string");
+  }
   // Find target and template DOM objects
 
-  const target = document.getElementById(targetId)
+  const target = document.getElementById(x.targetId)
   if(target == null) {
     throw new Error(
-      "flipbook error: could not find target div with id '" + targetId + "'."
+      "flipbook error: could not find target div with id '" + x.targetId + "'."
     );
   }
   if(target.childElemCount) {
@@ -58,6 +174,7 @@ function BgFlipBook(
   const flipNew = flipTpl.cloneNode(true)
 
   this.els = {
+    container: flipNew.querySelector('#bg-flipbook-container'),
     flipbook: flipNew.querySelector('#bg-flipbook-flipbook'),
     imgs: flipNew.querySelector('#bg-flipbook-images'),
     play: flipNew.querySelector('#bg-flipbook-play'),
@@ -67,11 +184,13 @@ function BgFlipBook(
     fps: flipNew.querySelector('#bg-flipbook-fps'),
     frame: flipNew.querySelector('#bg-flipbook-frame'),
     stop: flipNew.querySelector('#bg-flipbook-stop'),
-    frameN: flipNew.querySelector('#bg-flipbook-frame-n')
+    frameN: flipNew.querySelector('#bg-flipbook-frame-n'),
+    loop: flipNew.querySelector('#bg-flipbook-loop'),
+    frameSpan: flipNew.querySelector('#bg-flipbook-frame-span')
   }
   for(let i in this.els) {
     if(this.els[i] == null) {
-      throw new Error("flipbook error: template missing '", i, "' element.");
+      throw new Error("flipbook error: template missing '" + i + "' element.");
     }
     this.els[i].id = ""
   }
@@ -81,34 +200,49 @@ function BgFlipBook(
   }
   // Other properties
 
-  this.imgN = imgEnd - imgStart + 1;
+  this.imgN = x.imgEnd - x.imgStart + 1;
   this.playing = false;
-  this.pad = "000";
+  this.playingAuto = false;
+  this.imgPad = x.imgPad;
   this.imgActive = 1;
-  this.fpsLast = fpsInit;
-  this.endDelay = endDelay;
+  this.fpsLast = x.fps;
+  this.loopDelay = x.loopDelay;
   this.init = false;
   this.helpActive = false;
+  this.helpFillStyle = x.helpFillStyle;
+  this.helpTextStyle = x.helpTextStyle;
   this.intervalID = 0;
+  this.width = x.width;
+  this.playX = 0;
+  this.playY = 0;
+  this.playR = 0;
+  this.playSymbMult = 0;
+  this.playSymbMultMax = 15;
+  this.playAnim = 0;   // 0: off, 1: expand, 2: contract
+  this.playIntervalId = 0;
+  this.canvasTip =
+    'Click to step forward, shift+click to step backwards.'
 
   // Initialize HTML els
 
   this.els.frameN.innerHTML = this.imgN;
   this.els.fps.value = this.fpsLast;
   this.interval = 1 / this.fpsRead() * 1000;
-
+  if(x.loop) {
+    this.els.loop.checked=true;
+  }
   if(!isNaN(parseInt(this.els.frame.value))) {
     this.imgActive = parseInt(this.els.frame.value);
   };
 
   // - Load Images -------------------------------------------------------------
 
-  for(i = imgStart; i <= imgEnd; ++i) {
+  for(i = x.imgStart; i <= x.imgEnd; ++i) {
     const img = document.createElement("img");
     const imgNStr = "" + i;
     const imgFile =
-      this.pad.substring(0, this.pad.length - imgNStr.length) + imgNStr;
-    const imgSrc = imgDir + '/img-' + imgFile + '.png'
+      this.imgPad.substring(0, this.imgPad.length - imgNStr.length) + imgNStr;
+    const imgSrc = x.imgDir + '/img-' + imgFile + '.png'
     img.src = imgSrc;
     this.els.imgs.append(img);
   }
@@ -121,10 +255,13 @@ function BgFlipBook(
 
   var flip = this;
   this.els.flipbook.addEventListener("click", function(e) {flip.stepClick(e)});
+  this.els.flipbook.addEventListener(
+    "mousemove", function(e) {flip.handleHover(e)}
+  );
   this.els.stepf.addEventListener("mouseup", function() {flip.stepF()});
   this.els.stepb.addEventListener("mouseup", function() {flip.stepB()});
   this.els.play.addEventListener("mouseup", function() {flip.playAll()});
-  this.els.help.addEventListener("mouseup", function() {flip.drawHelp()});
+  this.els.help.addEventListener("mouseup", function() {flip.drawHelp0()});
   this.els.stop.addEventListener("mouseup", function() {flip.handleStop()});
   this.els.fps.addEventListener("input", function() {flip.handleInputFPS()});
   this.els.frame.addEventListener("input", function() {flip.handleInputFrame()});;
@@ -137,6 +274,9 @@ function BgFlipBook(
 BgFlipBook.prototype.draw = function() {
   this.els.frame.value = this.imgActive;
   if(!this.init) {
+    this.els.container.style.width = this.width;
+    this.els.flipbook.style.width = this.width;
+
     this.els.flipbook.width = this.els.imgs.children[0].naturalWidth;
     this.els.flipbook.height = this.els.imgs.children[0].naturalHeight;
   }
@@ -144,29 +284,30 @@ BgFlipBook.prototype.draw = function() {
     this.els.imgs.children[this.imgActive - 1], 0, 0,
     this.els.flipbook.width, this.els.flipbook.height
   );
+  this.els.flipbook.title = this.canvasTip;
+}
+BgFlipBook.prototype.drawHelp0 = function() {
+  this.playSymbMult = 0;
+  this.drawHelp()
 }
 BgFlipBook.prototype.drawHelp = function() {
-  if(bgFlipBookDebug) {console.log('Draw Help')};
-  const fontSize = this.els.flipbook.width / 25;
+  if(bgFlipBookDebug) {console.log('Draw Help ' + this.playSymbMult)};
+  const fontSize = this.els.flipbook.width / 28;
   this.pauseFlip();
   this.draw();
-  this.ctx.fillStyle = 'rgb(0, 0, 0, .7)';
-  this.ctx.fillRect(0, 0, this.els.flipbook.width, this.els.flipbook.height)
-  this.ctx.fillStyle = 'white'
-  this.ctx.font = fontSize + 'px serif';
-  const th = this.ctx.measureText('M').width * 1.1;
-  const xoff = this.els.flipbook.width * .1
-  const yoff = this.els.flipbook.height * .1
+  this.els.flipbook.title = '';
   const text = [
-    "This is a flipbook.  You can press '\u25b6' to cycle",
-    "through frames, but it is really intended for you to",
-    "step through them:",
-    "",
-    "* Click in frame to step forward",
-    "* Shift + click in frame to step backwards",
-    "* Or use the controls below"
+    "  \u{2022} Click in frame to step forward           ",
+    "  \u{2022} Shift + click to step backwards       OR:",
+    "  \u{2022} Use the controls below                   "
   ]
   /* figure out center point to put the text in */
+
+  this.ctx.font = fontSize + 'px Lato, sans-serif';
+  // this.ctx.font = fontSize + 'px sans-serif';
+  const th = this.ctx.measureText('M').width * 1.1;
+  this.ctx.textAlign = 'left';
+  this.ctx.textBaseline = 'alphabetic';
 
   let textMaxWidth = 0;
   for(let i = 0; i < text.length; i++) {
@@ -174,41 +315,131 @@ BgFlipBook.prototype.drawHelp = function() {
       textMaxWidth = this.ctx.measureText(text[i]).width;
     }
   }
+  /* not guarnteed to fit b/c pad, but probably ok*/
+  const pad = th * .4;
+  const textOff = .3;
+  const textExtra = textOff * textMaxWidth;
+  const totalWidth = textMaxWidth + textExtra + 4 * pad;
   const textTotHeight = th * text.length;
-  const xstart = (this.els.flipbook.width - textMaxWidth) / 2;
+  const xstart = (this.els.flipbook.width - totalWidth) / 2;
   const ystart = (this.els.flipbook.height - textTotHeight) / 2 + th;
 
+
+  this.playX = xstart + textMaxWidth + textExtra / 2 + 3 * pad;
+  this.playY = ystart + textTotHeight / 2 - 2 * pad;
+  this.playR = (textTotHeight / 2 + pad)
+
+  /* play button */
+
+  this.ctx.fillStyle = this.helpFillStyle;
+  this.ctx.beginPath();
+  this.ctx.arc(this.playX, this.playY, this.playR, 0, 2*Math.PI);
+  this.ctx.fill();
+
+  /* Play  Offset */
+
+  this.ctx.fillStyle = this.helpTextStyle;
+  let playMult = 1 + (this.playButtonMult()) * .3;
+  if(bgFlipBookDebug) {console.log('play mult ' + playMult)};
+  playRin = pad * 4 * playMult;
+  this.ctx.beginPath();
+  this.ctx.moveTo(this.playX - playRin / 3, this.playY - playRin / 2);
+  this.ctx.lineTo(this.playX - playRin / 3, this.playY + playRin / 2);
+  this.ctx.lineTo(this.playX + playRin * 2 / 3, this.playY);
+  this.ctx.fill()
+
+  /* pre-draw the marquee the text will overlay on */
+
+  this.ctx.fillStyle = this.helpFillStyle;
+  this.ctx.roundRect(
+    xstart + pad, ystart - 3 * pad,
+    textMaxWidth + pad * 2, textTotHeight + 2 * pad, th / 2
+  ).fill();
+  this.ctx.fillStyle = this.helpTextStyle;
   for(i = 0; i < text.length; i++) {
-    this.ctx.fillText(text[i], xstart, ystart + th * i);
+    this.ctx.fillText(text[i], xstart + pad, ystart + th * i);
   }
+
   this.helpActive = true;
 }
+/*
+ * Bigger visual that we just looped past the end
+ */
+BgFlipBook.prototype.drawRollOver = function(symbol) {
+  if(bgFlipBookDebug) {console.log('Rollover Draw')};
+  this.draw();
+  const width = this.els.flipbook.width;
+  const height = this.els.flipbook.height;
+  const fontSize = width / 28;
+  this.ctx.font = fontSize + 'px Lato, sans-serif';
+
+  if(bgFlipBookDebug) {
+    console.log(this.ctx.font + ' w: '+ width + ' h: ' + height)
+  };
+  const th = this.ctx.measureText('M').width * 1.1;
+  const symbWidth = this.ctx.measureText(symbol).width;
+  // debugger;
+
+  this.ctx.fillStyle = this.helpFillStyle;
+  this.ctx.roundRect(
+    width/2 - symbWidth/2 - th/2, height / 2 - th,
+    symbWidth + th, th * 2, th / 2
+  ).fill();
+
+  this.ctx.fillStyle = this.helpTextStyle;
+  this.ctx.textAlign = 'center';
+  this.ctx.textBaseline = 'middle';
+  this.ctx.fillText(symbol, width/2, height/2);
+}
+BgFlipBook.prototype.signalRollOver = function() {
+  this.looping = true;
+  var oldStyle = this.els.frameSpan.style.backgroundColor;
+  this.els.frameSpan.style.backgroundColor = 'yellow';
+  // this.drawRollOver(this.els.loop.checked ? "\u{293E}" : '&#x25a0;');
+  this.drawRollOver(this.els.loop.checked ? "LOOP" : 'END!');
+  var flip = this;
+  setTimeout(
+    function() {
+      if(bgFlipBookDebug) {console.log('roll over timeout')};
+      flip.draw();
+      flip.els.frameSpan.style.backgroundColor=oldStyle;
+    },
+    400
+  );
+}
 BgFlipBook.prototype.pauseFlip = function() {
-  //if(bgFlipBookDebug) {console.log('pause clear interval')};
+  if(bgFlipBookDebug) {console.log('pause clear interval ' + this.intervalID)};
   this.playing = false;
+  this.playingAuto = false;
   clearInterval(this.intervalID);
 }
 BgFlipBook.prototype.stepFInt = function() {
-  if(bgFlipBookDebug) {console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN)};
+  if(bgFlipBookDebug) {
+    console.log('StepF imgActive ' + this.imgActive + ' imgN ' + this.imgN)
+  };
   if(this.imgActive == this.imgN) {
-    if(bgFlipBookDebug) {console.log('StepF reset img')};
-    this.imgActive = 1
+    if(this.els.loop.checked) {this.imgActive = 1;}
+    if(!this.playingAuto) {this.signalRollOver();} else {this.draw();}
   } else {
     this.imgActive += 1;
+    this.draw();
   }
 }
 BgFlipBook.prototype.stepBInt = function() {
   if(this.imgActive == 1) {
-    this.imgActive = this.imgN
+    if(this.els.loop.checked) {this.imgActive = this.imgN;}
+    if(!this.playingAuto) {this.signalRollOver();} else {this.draw();}
   } else {
     this.imgActive -= 1;
+    this.draw();
   }
 };
 BgFlipBook.prototype.changeFrame = function(dir) {
-  if(bgFlipBookDebug) {console.log('change frame ' + dir + ' help act ' + this.helpActive)};
+  if(bgFlipBookDebug) {
+    console.log('change frame ' + dir + ' help act ' + this.helpActive)
+  };
   if(!this.helpActive) {
     if(dir > 0) this.stepFInt(); else this.stepBInt();
-    this.draw();
   } else if(this.helpActive) {
     this.helpClear();
   }
@@ -221,24 +452,34 @@ BgFlipBook.prototype.stepF = function() {this.step(1);}
 BgFlipBook.prototype.stepB = function() {this.step(-1);}
 BgFlipBook.prototype.stepClick = function(e) {
   this.pauseFlip();
-  if(e.shiftKey) {this.stepB();} else {this.stepF();}
+  if(this.inPlay(e)) {this.playAll();}
+  else {
+    if(e.shiftKey) {this.stepB();} else {this.stepF();}
+  }
 }
 // automated stepping, pauses at end
 BgFlipBook.prototype.stepAuto = function() {
-  if(bgFlipBookDebug) {console.log('stepping ', this.imgActive)};
+  if(bgFlipBookDebug) {
+    console.log('stepping ' + this.imgActive + ' intID ' + this.intervalID)
+  };
   if(this.imgActive == this.imgN) {
-    // delay at end
-    this.pauseFlip();
-    var flip = this;
-    setTimeout(
-      function() {
-        if(bgFlipBookDebug) {console.log('end image')};
-        flip.changeFrame(1);
-        flip.pauseFlip();
-        flip.resumeAll();
-      },
-      this.endDelay * this.interval
-    );
+    if(this.els.loop.checked) {
+      // delay at end
+      this.pauseFlip();
+      this.playingAuto = true;
+      var flip = this;
+      setTimeout(
+        function() {
+          if(bgFlipBookDebug) {console.log('end image timeout')};
+          flip.changeFrame(1);
+          flip.pauseFlip();
+          flip.resumeAll();
+        },
+        this.loopDelay
+      );
+    } else {
+      this.pauseFlip();
+    }
   } else {
     this.changeFrame(1);
   }
@@ -249,11 +490,18 @@ BgFlipBook.prototype.playAll = function() {
     return null;
   }
   clearInterval(this.intervalID);
-  this.stepF();  // always immediately advance
+  // always immediately advance
+  if(this.imgActive == this.imgN) {
+    this.imgActive = 1;
+    this.draw();
+  } else {
+    this.stepF();
+  }
   var flip = this;
   this.intervalID = setInterval(function() {flip.stepAuto()}, this.interval);
   if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
   this.playing = true;
+  this.playingAuto = true;
 }
 /*
 Restart when looping
@@ -265,6 +513,7 @@ BgFlipBook.prototype.resumeAll = function() {
   this.intervalID = setInterval(function(){flip.stepAuto()}, flip.interval);
   if(bgFlipBookDebug) {console.log('Interval ID set to ' + this.intervalID)}
   this.playing = true;
+  this.playingAuto = true;
 }
 BgFlipBook.prototype.helpClear = function() {
   if(this.helpActive) {
@@ -302,7 +551,94 @@ BgFlipBook.prototype.handleInputFrame = function() {
 };
 BgFlipBook.prototype.handleLoad = function() {
   this.draw();
-  this.drawHelp();
+  this.drawHelp0();
   this.init=true;
 };
+BgFlipBook.prototype.handleHover = function(e) {
+  if(bgFlipBookDebug) {console.log('enter hover');}
+  if(this.helpActive) {
+    var flip = this;
+    if(this.inPlay(e) && this.playAnim != 1) {
+      clearInterval(this.playIntervalId);
+      this.playAnim = 1;
+      if(bgFlipBookDebug) {console.log('in play expand');}
+      this.playIntervalId = setInterval(
+        function() {
+          flip.playSymbMult = flip.playSymbMult + 1;
+          if(flip.playSymbMult > flip.playSymbMultMax) {
+            clearInterval(flip.playIntervalId);
+            flip.playSymbMult = flip.playSymbMultMax;
+            flip.playAnim = 0;
+          } else {flip.drawHelp();}
+        }, 15
+      );
+    } else if(!this.inPlay(e) && this.playAnim != 2) {
+      clearInterval(this.playIntervalId);
+      this.playAnim = 2;
+      if(bgFlipBookDebug) {console.log('not in play contract');}
+      this.playIntervalId = setInterval(
+        function() {
+          flip.playSymbMult = flip.playSymbMult - 1;
+          if(flip.playSymbMult < 0) {
+            clearInterval(flip.playIntervalId);
+            flip.playSymbMult = 0;
+            flip.playAnim = 0;
+          } else {flip.drawHelp();}
+        }, 15
+      );
+    }
+  }
+}
+// Did an event happen with mouse inside play button help panel?
+
+BgFlipBook.prototype.inPlay = function(e) {
+  const mouse = this.getMousePos(e);
+  const dist = Math.sqrt(
+    Math.pow(mouse.x - this.playX, 2) +
+    Math.pow(mouse.y - this.playY, 2)
+  );
+  const inPlay = this.helpActive && dist <= this.playR;
+
+  if(bgFlipBookDebug) {console.log('In play: ' + inPlay)};
+  return inPlay;
+}
+// Thank you user1693593 https://stackoverflow.com/a/17130415/2725969
+
+BgFlipBook.prototype.getMousePos = function(e) {
+  var canvas = this.els.flipbook;
+  let rect = canvas.getBoundingClientRect(),
+      scaleX = canvas.width / rect.width,
+      scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  }
+}
+BgFlipBook.prototype.playButtonMult = function() {
+  const frac = Math.min(
+    Math.max(this.playSymbMult / this.playSymbMultMax, 0), 1
+  );
+  const m = (1 - Math.cos((frac* Math.PI))) / 2;
+  return m;
+}
+
+/*---------------------------------------------------------------------------*\
+ * Utils *********************************************************************|
+\*---------------------------------------------------------------------------*/
+
+// Thank you Jhoff and Grumdrig from  https://stackoverflow.com/a/7838871/2725969
+
+CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  this.beginPath();
+  this.moveTo(x+r, y);
+  this.arcTo(x+w, y,   x+w, y+h, r);
+  this.arcTo(x+w, y+h, x,   y+h, r);
+  this.arcTo(x,   y+h, x,   y,   r);
+  this.arcTo(x,   y,   x+w, y,   r);
+  this.closePath();
+  return this;
+}
+
 

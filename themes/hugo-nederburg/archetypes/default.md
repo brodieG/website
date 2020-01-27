@@ -7,11 +7,12 @@ draft: true
 weight: 1
 contenttype: article
 description: "Front page summary"
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
-
-```{r echo=FALSE}
-options(digits=3)
-knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
 
 # Header 1
@@ -26,6 +27,10 @@ knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
-<div id='feedback-cont'></div>
+<p id='feedback-cont'></p>
 
 # Appendix
+
+## Acknowledgments
+
+## Session Info

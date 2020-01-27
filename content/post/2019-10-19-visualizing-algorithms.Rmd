@@ -15,12 +15,12 @@ weight: 1
 contenttype: article
 description: How to record algorithms in action and use the resulting data to
   visualize them.
-
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
-
-```{r echo=FALSE}
-options(digits=2)
-knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
 
 # If Only We Could See Code In Action
@@ -147,15 +147,15 @@ If you would rather mine bitcoin[^bitcoin] with your CPU cycles we can settle
 for a 2D flipbook.  From a pedagogical standpoint this is probably a more
 effective visualization, if a bit flat in comparison:
 
-<div id='flipbook1'></div>
-```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
+<div id='flipbook1' class=bgw-wide-window></div>
+```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
 ```
 <script type='text/javascript'>
-var img_dir = "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/";
-var fps_def = 4;
-var img_n = 75;
-var end_delay = 8;
-new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
+new BgFlipBook({
+  targetId: 'flipbook1',
+  imgDir: "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/",
+  imgEnd: 75,  fps: 4, loop: true
+})
 </script>
 
 If we're content with just the right hand side of the boring 2D visualization it

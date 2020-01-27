@@ -15,11 +15,17 @@ weight: 1
 contenttype: article
 description: How to record algorithms in action and use the resulting data to
   visualize them.
-
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
 
 
 
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
 <div id="if-only-we-could-see-code-in-action" class="section level1">
 <h1>If Only We Could See Code In Action</h1>
 <!-- this needs to become a shortcode -->
@@ -75,19 +81,20 @@ but does just enough for my purposes.</p>
 demonstration purposes:</p>
 <pre class="r"><code>library(watcher) # you&#39;ll need to install from github for this
 insert_sort</code></pre>
-<pre><code>function(x) {
-  i &lt;- 2
-  while(i &lt;= length(x)) {
-    j &lt;- i
-    while(j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j]) {
-      j &lt;- j - 1
-      x[j + 0:1] &lt;- x[j + 1:0]
+<pre><code>function (x) 
+{
+    i &lt;- 2
+    while (i &lt;= length(x)) {
+        j &lt;- i
+        while (j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j]) {
+            j &lt;- j - 1
+            x[j + 0:1] &lt;- x[j + 1:0]
+        }
+        i &lt;- i + 1
     }
-    i &lt;- i + 1
-  }
-  x
+    x
 }
-&lt;bytecode: 0x7fd66a8fa130&gt;
+&lt;bytecode: 0x7f8d1160f070&gt;
 &lt;environment: namespace:watcher&gt;</code></pre>
 <p>We can use <code>watcher::watch</code> to transmogrify <code>insert_sort</code> into its instrumented
 cousin <a href="#instrumented-insertion-sort"><code>insert_sort_w</code></a>:</p>
@@ -98,9 +105,9 @@ result as an attribute:</p>
 <pre class="r"><code>set.seed(1220)
 x &lt;- runif(10)
 x</code></pre>
-<pre><code> [1] 0.098 0.232 0.030 0.333 0.567 0.485 0.415 0.678 0.308 0.512</code></pre>
+<pre><code> [1] 0.0979 0.2324 0.0297 0.3333 0.5672 0.4846 0.4145 0.6775 0.3080 0.5123</code></pre>
 <pre class="r"><code>insert_sort(x)</code></pre>
-<pre><code> [1] 0.030 0.098 0.232 0.308 0.333 0.415 0.485 0.512 0.567 0.678</code></pre>
+<pre><code> [1] 0.0297 0.0979 0.2324 0.3080 0.3333 0.4145 0.4846 0.5123 0.5672 0.6775</code></pre>
 <pre class="r"><code>all.equal(insert_sort(x), insert_sort_w(x), check.attributes=FALSE)</code></pre>
 <pre><code>[1] TRUE</code></pre>
 <p>We can retrieve the recorded data from the “watch.data” attribute:</p>
@@ -110,23 +117,23 @@ str(dat[1:2])  # show first two steps</code></pre>
  $ :List of 2
   ..$ i: num 2
   ..$ x: num [1:10] 0.0979 0.2324 0.0297 0.3333 0.5672 ...
-  ..- attr(*, &quot;line&quot;)= int 2
+  ..- attr(*, &quot;line&quot;)= int 3
  $ :List of 2
   ..$ i: num 2
   ..$ x: num [1:10] 0.0979 0.2324 0.0297 0.3333 0.5672 ...
-  ..- attr(*, &quot;line&quot;)= int 3</code></pre>
+  ..- attr(*, &quot;line&quot;)= int 4</code></pre>
 <p><code>watcher::simplify_data</code> combines values across steps into more accessible
 structures. For example, scalars are turned into vectors with one element
 per step:</p>
 <pre class="r"><code>dat.s &lt;- simplify_data(dat)
 head(dat.s[[&#39;.scalar&#39;]])</code></pre>
 <pre><code>  .id .line i  j
-1   1     2 2 NA
-2   2     3 2 NA
-3   3     4 2  2
-4   4     5 2  2
-5   5     9 3  2
-6   6     3 3  2</code></pre>
+1   1     3 2 NA
+2   2     4 2 NA
+3   3     5 2  2
+4   4     6 2  2
+5   5    10 3  2
+6   6     4 3  2</code></pre>
 <p><code>.id</code> represents the evaluation step, and <code>.line</code> the corresponding line number
 from the function.</p>
 </div>
@@ -144,72 +151,86 @@ nothing better!</p>
 <p>If you would rather mine bitcoin<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a> with your CPU cycles we can settle
 for a 2D flipbook. From a pedagogical standpoint this is probably a more
 effective visualization, if a bit flat in comparison:</p>
-<div id="flipbook1">
+<div id="flipbook1" class="bgw-wide-window">
 
 </div>
 <!--
-  Flipbook HTML template, intended to be copied for use in actual instantiated 
+  Flipbook HTML template, intended to be copied for use in actual instantiated
   flipbooks
+
+  DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
 -->
-<div id='bg-flipbook-template' style='display: none;'>
+<div id="bg-flipbook-template" style="display: none;">
 <div id="bg-flipbook-images" style="display: none">
 
 </div>
-<div style="margin: auto; display: block; width: 95%;">
-<canvas id="bg-flipbook-flipbook" style="width: 100%; display: block;" title="Click to step forward, shift+click to step backwards.">
+<div id="bg-flipbook-container" style="margin: auto; display: inline-block; max-width: 98%;">
+<canvas id="bg-flipbook-flipbook" style="display: block; max-width: 100%;">
 This is an HTML Canvas flipbook that displays key frames of an animation in a
 more controllable manner than in a video player. If you are reading this text
 your browser does not support HTML Canvas.
 </canvas>
-<p style="margin-top: 5px; margin-bottom: 25px;">
+<!--
+We have to use a P block here as otherwise pandoc adds a P block for the
+inline elements
+-->
+<p style="margin-top: 5px; margin-bottom: 0px; text-align: initial;">
 <input
-      id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
-      title='Display help overlay'
-    />
+  id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
+  title='Display help overlay'
+/>
 <input
-      id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
-      title='Play/Pause'
-    />
+  id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  title='Play/Pause'
+/>
 <input
-      id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
-      title='Stop and Reset'
-    />
+  id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+  title='Stop and Reset'
+/>
  
 <input
-      id='bg-flipbook-step-b' type='button' value='&#10703;' style='font-size: 18px;'
-      title='Step Backwards'
-    />
+  id='bg-flipbook-step-b' type='button' value='&#x21E4;' style='font-size: 18px;'
+  title='Step Backwards'
+/>
 <input
-      id='bg-flipbook-step-f' type='button' value='&#10704;' style='font-size: 18px;'
-      title='Step Forwards'
-    />
+  id='bg-flipbook-step-f' type='button' value='&#x21E5;' style='font-size: 18px;'
+  title='Step Forwards'
+/>
  
 FPS:
 <input
-      id='bg-flipbook-fps' type='text'
-      style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
-      line-height: 1; padding: 0;'
-      title='Set Playback Rate' value=3
-    />
+  id='bg-flipbook-fps' type='text'
+  style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  title='Set Playback Rate' value=3
+/>
+<span id="bg-flipbook-frame-span">
  
-Frame:
+#:
 <input
-      id='bg-flipbook-frame'
-      type='text'
-      style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
-      line-height: 1; padding: 0;'
-      value=1
-      title='Jump to frame #'
-    /> / <span id="bg-flipbook-frame-n"></span>
+  id='bg-flipbook-frame'
+  type='text'
+  style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  value=1
+  title='(Jump to) frame #'
+/> / <span id="bg-flipbook-frame-n"></span>
+ 
+<label title='Loop-play'>
+<span id="bg-flipbook-loop-ind" style="font-size: 1.3em; font-weight: bold;">⤾</span>:
+<input id='bg-flipbook-loop' value=1 type='checkbox' />
+</label>
+</span>
 </p>
+</div>
 </div>
 <script type='text/javascript' src='/script/_lib/flipbook/flipbook.js'></script>
 <script type='text/javascript'>
-var img_dir = "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/";
-var fps_def = 4;
-var img_n = 75;
-var end_delay = 8;
-new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
+new BgFlipBook({
+  targetId: 'flipbook1',
+  imgDir: "/post/2019-10-19-visualizing-algorithms_files/images/sort-anim/",
+  imgEnd: 75,  fps: 4, loop: true
+})
 </script>
 <p>If we’re content with just the right hand side of the boring 2D visualization it
 is pretty easy to create that:</p>
@@ -323,55 +344,56 @@ just as easily modified every line of any function<a href="#fn6" class="footnote
     res &lt;- {
         {
             .res &lt;- (i &lt;- 2)
-            watcher:::capture_data(environment(), 2L)
+            watcher:::capture_data(environment(), 3L)
             .res
         }
         while ({
             .res &lt;- (i &lt;= length(x))
-            watcher:::capture_data(environment(), 3L)
+            watcher:::capture_data(environment(), 4L)
             .res
         }) {
             {
                 .res &lt;- (j &lt;- i)
-                watcher:::capture_data(environment(), 4L)
+                watcher:::capture_data(environment(), 5L)
                 .res
             }
             while ({
                 .res &lt;- (j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j])
-                watcher:::capture_data(environment(), 5L)
+                watcher:::capture_data(environment(), 6L)
                 .res
             }) {
                 {
                   .res &lt;- (j &lt;- j - 1)
-                  watcher:::capture_data(environment(), 6L)
+                  watcher:::capture_data(environment(), 7L)
                   .res
                 }
                 {
                   .res &lt;- (x[j + 0:1] &lt;- x[j + 1:0])
-                  watcher:::capture_data(environment(), 7L)
+                  watcher:::capture_data(environment(), 8L)
                   .res
                 }
             }
             {
                 .res &lt;- (i &lt;- i + 1)
-                watcher:::capture_data(environment(), 9L)
+                watcher:::capture_data(environment(), 10L)
                 .res
             }
         }
         {
             .res &lt;- (x)
-            watcher:::capture_data(environment(), 11L)
+            watcher:::capture_data(environment(), 12L)
             .res
         }
     }
     attr(res, &quot;watch.data&quot;) &lt;- watcher:::watch_data()
-    attr(res, &quot;watch.code&quot;) &lt;- c(&quot;insert_sort &lt;- function(x) {&quot;, 
-    &quot;  i &lt;- 2&quot;, &quot;  while(i &lt;= length(x)) {&quot;, &quot;    j &lt;- i&quot;, &quot;    while(j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j]) {&quot;, 
-    &quot;      j &lt;- j - 1&quot;, &quot;      x[j + 0:1] &lt;- x[j + 1:0]&quot;, &quot;    }&quot;, 
-    &quot;    i &lt;- i + 1&quot;, &quot;  }&quot;, &quot;  x&quot;, &quot;}&quot;)
+    attr(res, &quot;watch.code&quot;) &lt;- c(&quot;insert_sort &lt;- function (x) &quot;, 
+    &quot;{&quot;, &quot;    i &lt;- 2&quot;, &quot;    while (i &lt;= length(x)) {&quot;, &quot;        j &lt;- i&quot;, 
+    &quot;        while (j &gt; 1 &amp;&amp; x[j - 1] &gt; x[j]) {&quot;, &quot;            j &lt;- j - 1&quot;, 
+    &quot;            x[j + 0:1] &lt;- x[j + 1:0]&quot;, &quot;        }&quot;, &quot;        i &lt;- i + 1&quot;, 
+    &quot;    }&quot;, &quot;    x&quot;, &quot;}&quot;)
     res
 }
-&lt;bytecode: 0x7fd66aa1a840&gt;
+&lt;bytecode: 0x7f8d110d6390&gt;
 &lt;environment: namespace:watcher&gt;</code></pre>
 </div>
 <div id="session-info" class="section level2">

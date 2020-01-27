@@ -1,0 +1,52 @@
+<!--
+  ZoomImage HTML template, intended to be copied for use in actual instantiated
+  flipbooks
+
+  DO NOT INDENT more than 2 spaces!! Otherwise pandoc will think it is markdown
+  code.
+
+  The SVG bit is lazy; we should have just one we clone in JS
+-->
+
+```{=html}
+<!--
+Container must be empty, elements will be put inside but placed absolutely, we just need it to be technically visible.
+-->
+<div id='bgw-zoom-img-container'></div>
+<!--
+Templates, will be copied and assembled in JS
+-->
+<div id='bgw-zoom-img-tpl-container' style='display: none'>
+
+<!--
+Outer part, shared by both figure-imgs and imgs, controls positioning and border frame around image.
+
+-->
+<div
+  id=bgw-zoom-frame-template class=bgw-zoom-frame
+  style='display: none'
+>
+<div class=bgw-zoom-bg>
+<div class=bgw-zoom-inner-frame>
+<svg
+  class=bgw-zoom-boxclose
+  viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+>
+  <circle cx="50" cy="50" r="45" stroke='white' stroke-width='5'/>
+<g transform="rotate(45, 50, 50)">
+  <rect width='70' height='15' x='15', y='42.5' rx='5' fill='white'/>
+  <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
+</g>
+</svg>
+<div class=bgw-zoom-border>
+<!--
+  carefull messing with anything inside the figure as JS makes assumptions
+  about existing structure
+-->
+  <figure><img /><figcaption></figcaption></figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+```

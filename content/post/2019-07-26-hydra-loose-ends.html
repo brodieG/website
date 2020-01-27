@@ -15,6 +15,10 @@ weight: 1
 contenttype: article
 description: "A few more tricks for fast group statistics in base R, and
 benchmarks against C implementations."
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
 
 
@@ -43,18 +47,18 @@ we used to “beat” <code>data.table</code>.</p>
 <div id="rowsum" class="section level1">
 <h1>rowsum</h1>
 <p>I did mention this one <a href="/2019/06/10/base-vs-data-table/#rowsums">in passing</a>, but it bears re-examining:
-<code>base::rowsum</code> is a remarkable creature in the R. As far as I know, it is the
-only base R function that computes group statistics on unequal group sizes in
-statically compiled code. Despite this it is arcane, especially when compared
-with its popular cousin <code>base::rowSums</code>.</p>
+<code>base::rowsum</code> is a remarkable creature in the R ecosystem. As far as I know,
+it is the only base R function that computes group statistics on unequal group
+sizes in statically compiled code. Despite this it is arcane, especially when
+compared with its popular cousin <code>base::rowSums</code>.</p>
 <p><code>rowsum</code> and <code>rowSums</code> are near indistinguishable on name alone, but they
 do quite different things. <code>rowsum</code> collapses rows together by group, leaving
 column count unchanged, whereas <code>rowSums</code> collapses all columns leaving row
 count unchanged:</p>
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/rowsum-vs-rowsum-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/rowsum-vs-rowsum-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>In the single column/vector case, <code>rowsum(x, grp)</code> computes the sum of <code>x</code> by
 the groups in <code>grp</code>. Typically this operation is done with <code>tapply(x, grp, sum)</code> (or <code>vapply(split(x, grp), sum, 0)</code>):</p>
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/rowsum-vs-tapply-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/rowsum-vs-tapply-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>As illustrated above <code>tapply</code> must split the vector by group, explicitly call
 the R-level <code>sum</code> on each group, and simplify the result to a
 vector<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>. <code>rowsum</code> can just compute the group sums directly in
@@ -86,7 +90,7 @@ time to order. <code>data.table</code> is faster for this task.</p>
 <blockquote>
 <p>All <code>data.table</code> timings are single threaded (<code>setDTthreads(1)</code>)<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>.</p>
 </blockquote>
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/group-sum-times-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/group-sum-times-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>The slow step for <code>data.table</code> is also the ordering, but we don’t have a
 good way to break that out.</p>
 </div>
@@ -126,72 +130,87 @@ For how we built the 3D animation see:
 
 static/post/2019-07-26-hydra-loose-ends_files/scripts/threed-plot.R
 -->
-<div id="flipbook1">
+<div id="flipbook1" class="bgw-wide-window">
 
 </div>
 <!--
-  Flipbook HTML template, intended to be copied for use in actual instantiated 
+  Flipbook HTML template, intended to be copied for use in actual instantiated
   flipbooks
+
+  DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
 -->
-<div id='bg-flipbook-template' style='display: none;'>
+<div id="bg-flipbook-template" style="display: none;">
 <div id="bg-flipbook-images" style="display: none">
 
 </div>
-<div style="margin: auto; display: block; width: 95%;">
-<canvas id="bg-flipbook-flipbook" style="width: 100%; display: block;" title="Click to step forward, shift+click to step backwards.">
+<div id="bg-flipbook-container" style="margin: auto; display: inline-block; max-width: 98%;">
+<canvas id="bg-flipbook-flipbook" style="display: block; max-width: 100%;">
 This is an HTML Canvas flipbook that displays key frames of an animation in a
 more controllable manner than in a video player. If you are reading this text
 your browser does not support HTML Canvas.
 </canvas>
-<p style="margin-top: 5px; margin-bottom: 25px;">
+<!--
+We have to use a P block here as otherwise pandoc adds a P block for the
+inline elements
+-->
+<p style="margin-top: 5px; margin-bottom: 0px; text-align: initial;">
 <input
-      id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
-      title='Display help overlay'
-    />
+  id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
+  title='Display help overlay'
+/>
 <input
-      id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
-      title='Play/Pause'
-    />
+  id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  title='Play/Pause'
+/>
 <input
-      id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
-      title='Stop and Reset'
-    />
+  id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+  title='Stop and Reset'
+/>
  
 <input
-      id='bg-flipbook-step-b' type='button' value='&#10703;' style='font-size: 18px;'
-      title='Step Backwards'
-    />
+  id='bg-flipbook-step-b' type='button' value='&#x21E4;' style='font-size: 18px;'
+  title='Step Backwards'
+/>
 <input
-      id='bg-flipbook-step-f' type='button' value='&#10704;' style='font-size: 18px;'
-      title='Step Forwards'
-    />
+  id='bg-flipbook-step-f' type='button' value='&#x21E5;' style='font-size: 18px;'
+  title='Step Forwards'
+/>
  
 FPS:
 <input
-      id='bg-flipbook-fps' type='text'
-      style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
-      line-height: 1; padding: 0;'
-      title='Set Playback Rate' value=3
-    />
+  id='bg-flipbook-fps' type='text'
+  style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  title='Set Playback Rate' value=3
+/>
+<span id="bg-flipbook-frame-span">
  
-Frame:
+#:
 <input
-      id='bg-flipbook-frame'
-      type='text'
-      style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
-      line-height: 1; padding: 0;'
-      value=1
-      title='Jump to frame #'
-    /> / <span id="bg-flipbook-frame-n"></span>
+  id='bg-flipbook-frame'
+  type='text'
+  style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  value=1
+  title='(Jump to) frame #'
+/> / <span id="bg-flipbook-frame-n"></span>
+ 
+<label title='Loop-play'>
+<span id="bg-flipbook-loop-ind" style="font-size: 1.3em; font-weight: bold;">⤾</span>:
+<input id='bg-flipbook-loop' value=1 type='checkbox' />
+</label>
+</span>
 </p>
+</div>
 </div>
 <script type='text/javascript' src='/script/_lib/flipbook/flipbook.js'></script>
 <script type='text/javascript'>
-var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
-var fps_def = 1;
-var img_n = 15;
-var end_delay = 1;
-new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
+new BgFlipBook({
+  targetId: 'flipbook1',
+  imgDir: '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/',
+  imgEnd: 15, fps: 1, loop: true,
+  width: '800px'
+})
 </script>
 <p>You can also view the flipbook <a href="/post/2019-07-26-hydra-loose-ends_files/scripts/anim.html">as a video</a> if you prefer.</p>
 <p>The embedding step warrants additional explanation. The trick is to generate a
@@ -213,17 +232,17 @@ will index into our matrices as if they were vectors, e.g.:</p>
 <pre><code>[1] 3</code></pre>
 <p>Let’s look at our 95 data before and after embedding, showing the indices in
 vector format for both our ordered vector (left) and the target matrix (right):</p>
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/index-compare-1.png" width="1280.16" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/index-compare-1.png" width="799.68" style="display: block; margin: auto;" /></p>
 <p>The indices corresponding to each group diverge after the first group due
 to the unused elements of the embedding matrix, shown in grey above. What we’re
 looking for is a fast way to generate the indices in the colored cells in the
 matrix on the right. In other words, we want to generate the <code>id1</code> (<code>id.embed</code>
 in the animation) vector below. For clarity we only show it for the first three
 groups:</p>
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/pad-index-1.png" width="672" style="display: block; margin: auto;" />
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/pad-index-1.png" width="799.68" style="display: block; margin: auto;" />
 We can emphasize the relationship between these by looking at the element by
 element difference in each index vector, e.g. using <code>diff</code>:<span id="diff-id1"></span></p>
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/pad-index-diff-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/pad-index-diff-1.png" width="799.68" style="display: block; margin: auto;" /></p>
 <p>The indices always increment by one, except at group transitions for the
 embedding indices as shown in green above. There they increment by <code>$1 + pad$</code>.
 “<code>$pad$</code>” is how much empty space there is between the end of the group and the
@@ -300,7 +319,7 @@ do it faster than what we have here. Both of these are beyond my reach.</p>
 <code>cumsum</code> based group sum</a> (<code>cumsum-1</code>), and the <a href="/2019/06/18/hydra-precision/#a-new-hope">precision corrected two
 pass version</a> (<code>cumsum-2</code>):</p>
 <!-- See static/..._files/scripts/benchmark.Rmd -->
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/sum-benchmarks-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/sum-benchmarks-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>We’re actually able to beat <code>data.table</code> with our custom C code, although that
 is only possible because <code>data.table</code> <a href="https://twitter.com/BrodieGaslam/status/1106231241488154626">contributed its fast radix sort to
 R</a>, and <code>data.table</code> requires more complex code to be able to run a broader
@@ -326,7 +345,7 @@ appendix</a>.</p>
 calculation, against the new <code>rowsum</code> and <code>colSums</code> implementations the
 advantage of re-using the group information becomes apparent:</p>
 <!-- See static/..._files/scripts/benchmark.Rmd -->
-<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/slope-benchmarks-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="/post/2019-07-26-hydra-loose-ends_files/figure-html/slope-benchmarks-1.png" width="649.92" style="display: block; margin: auto;" /></p>
 <p>Even though <code>rowsum</code> was the fastest group sum implementation, it is the
 slowest of the base options outside of <code>split/vapply</code> because none of the
 computation components other than the re-ordering can be re-used. <code>colSums</code>
@@ -356,9 +375,8 @@ language right out of the box<a href="#fn11" class="footnote-ref" id="fnref11"><
 achieve this, but in many cases it is possible with a little thought and care.</p>
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
-<div id="feedback-cont">
-
-</div>
+<p id="feedback-cont">
+</p>
 <p>This post is the last post of the <a href="/tags/hydra/">Hydra Chronicles</a> post series.</p>
 </div>
 <div id="appendix" class="section level1">

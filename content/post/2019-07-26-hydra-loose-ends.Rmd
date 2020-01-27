@@ -15,20 +15,19 @@ weight: 1
 contenttype: article
 description: "A few more tricks for fast group statistics in base R, and
 benchmarks against C implementations."
+output:
+  blogdown::html_page:
+    keep_md: true
+    md_extensions: +raw_attribute
 ---
-
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
 ```{r echo=FALSE}
-old.opt <- options(digits=3)
-knitr::opts_chunk$set(comment = "", fig.align='center', error=TRUE)
+source('../../static/script/_lib/plot.R')
 suppressMessages(library(ggplot2))
 suppressMessages(library(viridisLite))
 suppressMessages(library(data.table))
 setDTthreads(1)
-```
-```{r echo=FALSE, comment="", results='asis'}
-old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
-options(fansi.term.cap=c('bright', '256', 'truecolor'))
-
 make.plot.theme <- theme(
   panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
   axis.title.x=element_blank(), axis.text.x=element_blank(),
@@ -36,7 +35,6 @@ make.plot.theme <- theme(
   axis.title.y=element_blank(), axis.text.y=element_blank(),
   axis.ticks.y=element_blank()
 )
-
 ```
 
 # Almost Done!
@@ -62,17 +60,17 @@ we used to "beat" `data.table`.
 # rowsum
 
 I did mention this one [in passing][120], but it bears re-examining:
-`base::rowsum` is a remarkable creature in the R.  As far as I know, it is the
-only base R function that computes group statistics on unequal group sizes in
-statically compiled code.  Despite this it is arcane, especially when compared
-with its popular cousin `base::rowSums`.
+`base::rowsum` is a remarkable creature in the R ecosystem.  As far as I know,
+it is the only base R function that computes group statistics on unequal group
+sizes in statically compiled code.  Despite this it is arcane, especially when
+compared with its popular cousin `base::rowSums`.
 
 `rowsum` and `rowSums` are near indistinguishable on name alone, but they
 do quite different things.  `rowsum` collapses rows together by group, leaving
 column count unchanged, whereas `rowSums` collapses all columns leaving row
 count unchanged:
 
-```{r rowsum-vs-rowsum, echo=FALSE, fig.width=7, fig.height=2, warning=FALSE}
+```{r echo=FALSE, warning=FALSE}
 set.seed(1)
 vals <- sample(1:10)
 group <- c(1,1,2,3,3)
@@ -128,7 +126,7 @@ scale.fill.2 <- scale_fill_manual(
 dat <- rbind(
   dat.rowsum, dat.rowsum.res, dat.rowSums, dat.rowSums.res, dat.grp
 )
-ggplot(dat, aes(x, y)) +
+p <- ggplot(dat, aes(x, y)) +
   geom_tile(aes(fill=as.factor(group)), color='#AAAAAA') +
   geom_text(aes(label=val), size=lsize, color='white') +
   geom_text(data=text.arrows, aes(label=label), size=tsize, parse=TRUE) +
@@ -146,6 +144,13 @@ ggplot(dat, aes(x, y)) +
   scale.fill.2 +
   make.plot.theme +
   NULL
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r rowsum-vs-rowsum, echo=FALSE, warning=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
 ```
 
 In the single column/vector case, `rowsum(x, grp)` computes the sum of `x` by
@@ -275,7 +280,6 @@ ggplot(dat, aes(x, y)) +
   scale.fill.2 +
   make.plot.theme +
   NULL
-
 ```
 
 As illustrated above `tapply` must split the vector by group, explicitly call
@@ -413,15 +417,16 @@ For how we built the 3D animation see:
 
 static/post/2019-07-26-hydra-loose-ends_files/scripts/threed-plot.R
 -->
-<div id='flipbook1'></div>
+<div id='flipbook1' class=bgw-wide-window></div>
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd'}
 ```
 <script type='text/javascript'>
-var img_dir = '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/';
-var fps_def = 1;
-var img_n = 15;
-var end_delay = 1;
-new BgFlipBook('flipbook1', img_dir, img_n, 1, fps_def, end_delay);
+new BgFlipBook({
+  targetId: 'flipbook1',
+  imgDir: '/post/2019-07-26-hydra-loose-ends_files/user-imgs/flip-book/',
+  imgEnd: 15, fps: 1, loop: true,
+  width: '800px'
+})
 </script>
 
 You can also view the flipbook [as a video][320] if you prefer.
@@ -818,7 +823,7 @@ for(i in seq_along(steps)) {
   png::writePNG(tmp, file)
 }
 ```
-```{r index-compare, echo=FALSE, fig.width=8.89, fig.height=5.56, dpi=144}
+```{r index-compare, echo=FALSE, fig.width=8.33, fig.height=5.21}
  ## Additional frames
 
  # dat.sub <- rbind(
@@ -873,7 +878,7 @@ matrix on the right.  In other words, we want to generate the `id1` (`id.embed`
 in the animation) vector below.  For clarity we only show it for the first three
 groups:
 
-```{r pad-index, echo=FALSE, fig.height=1.25}
+```{r echo=FALSE, fig.width=8.33}
 g13 <- sum(g.rle[['lengths']][1:3])
 g13id <- seq_len(g13)
 id.dat <- data.table(
@@ -890,20 +895,27 @@ grp.lab <- data.frame(
 el.lab <- data.frame(x=-1, y=c(1, 0), lab=paste0('id', 0:1))
 el.ellipse <- data.frame(x=23.5, y=0:2, lab="...")
 
-ggplot(id.dat, aes(x, y)) +
+p <- ggplot(id.dat, aes(x, y)) +
   geom_tile(aes(fill=as.factor(g2)), color='#AAAAAA') +
   geom_text(data=grp.lab, aes(label=lab), hjust=0, vjust=.75) +
   geom_text(data=el.lab, aes(label=lab), hjust=0, family='mono') +
   geom_text(data=el.ellipse, aes(label=lab), family='mono', vjust=0.5) +
   geom_label(aes(label=glabel), size=2) +
-  coord_fixed(xlim=c(-3,24), ylim=c(-1,2.5)) +
+  coord_fixed(xlim=c(-2,23), ylim=c(-1,2.5)) +
   scale.fill + make.plot.theme
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r pad-index, echo=FALSE, warning=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
 ```
 We can emphasize the relationship between these by looking at the element by
 element difference in each index vector, e.g. using `diff`:<span
 id=diff-id1></span>
 
-```{r pad-index-diff, echo=FALSE, fig.height=1.75}
+```{r echo=FALSE, fig.width=8.33}
 id.dat.2 <- copy(id.dat)[y == 0, y:=-1]
 el.ellipse <- data.frame(x=23.5, y=-2:2, lab="...")
 diff.dat <- data.table(
@@ -914,16 +926,23 @@ diff.dat <- data.table(
 el.lab.2 <- data.frame(
   x=0, y=1:(-2), lab=c('id0', 'diff(id0)', 'id1', 'diff(id1)')
 )
-ggplot(id.dat.2, aes(x, y)) +
+p <- ggplot(id.dat.2, aes(x, y)) +
   geom_tile(aes(fill=as.factor(g2)), height=1, color='#AAAAAA') +
   geom_text(data=diff.dat, aes(label=lab, color=lab>1), size=3) +
   geom_text(data=grp.lab, aes(label=lab), hjust=0, vjust=.75) +
   geom_text(data=el.lab.2, aes(label=lab), hjust=1, family='mono') +
   geom_label(aes(label=glabel), size=2) +
   geom_text(data=el.ellipse, aes(label=lab), family='mono', vjust=0.5) +
-  coord_fixed(xlim=c(-3,24), ylim=c(-3,2.5)) +
+  coord_fixed(xlim=c(-2,23), ylim=c(-3,2.5)) +
   scale.fill + make.plot.theme +
   scale_color_manual(values=c('black','green'), guide=FALSE)
+pdim <- gtable_dim(ggplotGrob(p))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r pad-index-diff, echo=FALSE, warning=FALSE}
+p
+do.call(knitr::opts_chunk$set, old.opt)
 ```
 ```{r echo=FALSE, eval=FALSE}
 g2.rle <- rle(sort(g2))
@@ -1211,7 +1230,7 @@ achieve this, but in many cases it is possible with a little thought and care.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
-<div id='feedback-cont'></div>
+<p id='feedback-cont'></p>
 
 This post is the last post of the [Hydra Chronicles][100] post series.
 
@@ -1605,9 +1624,6 @@ g_slope_C <- function(x, y, group) {
 [^near-statically]: I consider ~3x close given that typically differences
   between statically compiled and interpreted coder are more on the order of
   ~10-100x.
-[^driven-snow]: This is not strictly true as the ordering is done via a calls to
-  `order` and `[`, although for those almost all the computations are done via
-  statically compiled code.
 [^group-order]: With group-ordered data we can detect group transitions any time
   the value of  the group vector changes.  We can use that as a trigger to
   transfer the accumulator value to the result vector and reset it.
