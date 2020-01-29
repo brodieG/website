@@ -830,6 +830,7 @@ new BgFlipBook({
 [300]: https://twitter.com/thomasp85
 [310]: https://github.com/thomasp85/gganimate
 
+[380]: http://colorbrewer2.org/#type=qualitative&scheme=Set2&n=3
 [390]: http://www.personal.psu.edu/cab38/
 [400]: https://www.axismaps.com/
 [410]: https://github.com/eddelbuettel/inline
