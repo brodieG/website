@@ -1,0 +1,127 @@
+---
+title: Quosures
+author: ~
+date: '2020-02-17'
+slug: quosures
+categories: []
+tags: []
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+output:
+  blogdown::html_page:
+    keep_md: yes
+    md_extensions: +raw_attribute
+---
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
+
+# Header 1
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+# Implementing Quosures with `with`?
+
+```{r eval=FALSE}
+quo_with <- function(x, env=parent.frame()) {
+  force(env)
+  exp <- eval(call('bquote', substitute(x)), parent.frame())
+  bquote(base::with(.(env), .(exp)))
+}
+quo_arg_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
+  force(caller)
+  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), env)
+  bquote(base::with(.(caller), .(exp.s)))
+}
+
+a <- 17
+b <- 59
+w <- local({
+  b <- 1e6
+  quo_with(a + b)
+})
+exp <- local({
+  b <- 100
+  x <- 3
+  quo_with(x + 1 + .(w))
+})
+exp
+eval(exp)
+
+w <- 1
+local({
+  w <- 2
+  f <- function(x) {
+    w <- 5
+    quo_arg_with(x)
+  }
+})
+eval(f(w))
+```
+
+# What does it for self eval formula
+
+* Override `~` in the mask environment
+* Need access to the actual formula somehow.  We can get the call with
+  `sys.call`.  And if the environment is attached to the unevaluated quosure
+  itself then it can be retrieved from `sys.call`, and it seems that's what
+  !! as that's how it works does?
+
+```{r eval=FALSE}
+
+`~` <- function(...) {
+  call <- sys.call()
+  env <- parent.frame()
+  is.quo <- function(x)
+    is.call(x) && is.environment(attr(x, '.Environment')) &&
+    inherits(x, 'bquosure')
+  if(!is.quo(call)) {
+    tilde <- get('~', mode='function', envir=env)
+    eval(bquote(.(tilde))(...), env)
+  } else {
+    eval(substitute(list(...))[[3]], attr(x, '.Environment'))
+  }
+}
+
+library(rlang)
+`~` <- function(...) stop('boom')
+~ 1 + 1
+x <- quo(~1 + 1)
+eval_tidy(x)
+rm(`~`)
+x <- quo(~1 + 1)
+eval_tidy(x)
+
+
+
+```
+
+# Original Garbage
+
+# References
+
+* [TidyEval Bookdown][21]
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<p id='feedback-cont'></p>
+
+# Appendix
+
+## Acknowledgments
+
+## Session Info
+
+[22]: https://tidyeval.tidyverse.org/
+
+

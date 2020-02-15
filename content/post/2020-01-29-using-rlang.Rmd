@@ -1,0 +1,853 @@
+---
+title: Using Rlang
+author: ~
+date: '2020-01-29'
+slug: using-rlang
+categories: []
+tags: []
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+output:
+  blogdown::html_page:
+    keep_md: yes
+    md_extensions: +raw_attribute
+---
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
+
+# A Step Into the Dark Side
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+I'm not a regular `tidyverse` user, but today Miles McBain  [said something][1]
+about `rle` and `cumsum` and he might as well have shouted "squirrel" at my
+inner [Dug][2]:
+
+> Is there a #tidyverse port of rle() hanging out in some 📦 ? Something like
+> group_by_runs() would be sweet.
+>
+> Also is it just me or the the key to that hectic data rectangling problem
+> pretty much always rle() or cumsum()? #rstats
+>
+> -- @MilesMcBain
+
+So I decided to try to implement something that could pass for a tidy function
+that does this.
+
+# Run IDs
+
+R comes with the built-in function `rle` that computes lengths of repeated
+sequences:
+
+```{r}
+set.seed(1)
+groups <- rep(c('A', 'B', 'A'), c(2, 3, 1))
+values <- runif(length(groups))
+```
+```{r echo=FALSE}
+values
+```
+```{r}
+groups.rle <- rle(groups)
+```
+```{r echo=FALSE}
+groups.rle
+```
+
+The output tells us that the first run of 'A' is two long, the first run of 'B'
+three long, and the last run of 'A' one long.  We can combine the data from
+`rle` with `rep` to create indices for each run:
+
+<div id='rle-calc'>
+```{r}
+rle.ids <- rep(seq_along(groups.rle$lengths), groups.rle$lengths)
+```
+```{r echo=FALSE}
+rle.ids
+```
+</div>
+
+# Non Standard Evaluation
+
+<div style='backround-color: red'>Link in other post</div>
+>
+Let's combine the data, runs, and run ids for some computation:
+
+```{r}
+tapply(values, rle.ids, mean)
+```
+
+There you go: mean calculations by run id.
+
+# Hey!  I Thought This Was a Post About The Tidyverse
+
+Oh, right, yes, moving along, let's try to implement something like
+`group_by_runs`.
+
+```{r}
+# first lets
+rle_id <- function(x) {
+  rle.x <- rle(x)
+  with(rle.x, rep(seq_along(lengths), lengths))
+}
+DF <- data.frame(grp=groups, val=values)
+
+library(dplyr)
+group_by_runs0 <- function(.data, var) {
+  rle.ids <- rle_id(.data[[var]])
+  group_by(.data, rle.ids)
+}
+DF %>%
+  group_by_runs0('grp') %>%
+  summarize(mean(val))
+```
+<!--
+Tada!  Well, kind of.  `group_by_runs` has very different semantics to
+`group_by`.  We have to give it a column name as a string instead of being able
+to provide one or more arbitrary R expressions.  Hardly a proper tidy function.
+
+For a function to integrate well into the Tidy chain it pretty much has to use
+`rlang`.  We can definitely use all sorts of non-tidy non-`rlang` functions with
+the `tidyverse`, but if we want our function to behave Tidy its probably best to
+do like the Romans.
+
+# `rlang`
+
+`rlang` is powerful.  Insanely so.  [Lionel][3] has done amazing things in that
+package[^self-evaluating].  But with that power also comes and intimidating
+level of complexity, even for people experienced with NSE.  I've valiantly tried
+to die on the hill of "`rlang` should offer a simpler interface in in favor of
+accessibility and compatibility", but the opposing armies walked right by
+sparing nary a glance at the lunatic perched on the hill yelling about recursive
+substitution.
+
+# Level 1
+
+Let's pretend for a minute we only have one expression we want to compute runs
+on.  We need to capture the user provided expression, use it with our `rle_id`
+function in the context of the data, and also pass it on to `group_by`:
+
+```{r}
+library(rlang)
+group_by_runs1 <- function(.data, run.exp) {
+  en.exp <- enquo(run.exp)
+  group_by(.data, !!run.exp, rle.ids=rle_id(!!run.exp))
+}
+DF %>% group_by_runs1(paste0(runs, tolower(runs)))
+```
+
+NSE functions have two primary steps.  The first is to capture an expression
+without evaluating.  `enquo` in particular captures the expression that was
+passed to the function as an argument:
+
+<div id='enquo'>
+```{r eval=FALSE}
+en.exp <- enquo(run.exp)
+en.exp
+```
+```{r echo=FALSE}
+local(quo(paste0(runs, tolower(runs))))
+```
+</div>
+
+If we had use the "normal" `quo` we would get:
+
+```{r}
+q.exp <- quo(run.exp)  # not `enquo`
+q.exp
+```
+
+`enquo` has the special capability to reach into function parameters and
+extract the expression passed as an argument.  This is possible because function
+parameter symbols such as `run.exp` here [are special in R][6].  They look and
+act like any other symbol, but they store within them the expression that was
+matched to them when the function was evaluated.
+
+Be sure not to confuse `rlang::enquo` with `base::enquote`.  The two do quite
+different things, although both are used when computing on unevaluated language.
+The closest thing in base to `rlang::enquo` is `base::substitute`.
+
+This takes us to to the second step, which normally is evaluation.  Here we rely
+on `dplyr::group_by` to do the actual context-modified evaluation, so instead we
+just forward the captured expressions:
+
+```{r}
+group_by(.data, !!run.exp, rle.ids=rle_id(!!run.exp))
+```
+
+We use `!!` to tell `dplyr::group_by` that the expression we just captured with
+`enquo` should be evaluated.
+`group_by` and other `dplyr` functions are both meta-programming interfaces and
+evaluators, in addition to normal "NSE" interfaces.  It is also possible to mix
+normal usage with previously captured expression.  `rle_id(!!run.exp)` is such a
+mixture, with a "normal" call to `rle_id(...)`, supplied with `!!run.exp` as the
+argument.  The net of all this power and complexity is that we
+
+
+is both a
+supports both normal usage and meta programming, allows
+composing
+and it's
+possible to mix previously captured expressions with normal usage ones, we are
+required to explicitly disambiguate how each symbol in the expression is to
+be treated.
+
+<div style='background-color: red;'>Add footnote about self evaluating
+quosures</div>
+
+The `rlang` team recognized the seeming oddity
+
+The reason we need to do this is that `group_by`
+
+```{r}
+en.exp <- enquo(run.exp)
+```
+
+
+We must use `enquo`
+We use `enquo` because we want to extract the expression that was given as the
+parameter `run.exp`, not the symbol `run.exp`.
+
+```{r}
+run.exp.q <- quo(run.exp)
+run.exp.q
+```
+
+```{r}
+en.exp <- enquo(run.exp)
+
+```
+
+
+
+
+The
+recently added `{{` "operator",
+henceforth, makes this relatively straightforward:
+
+```{r}
+library(rlang)
+group_by_runs1 <- function(.data, run.exp) {
+  group_by(.data, {{run.exp}}, rle.ids=rle_id({{run.exp}}))
+}
+DF %>% group_by_runs1(paste0(runs, tolower(runs)))
+```
+
+
+
+# Level 2
+
+We got close to `group_by` semantics above, but in `group_by` we can group by
+multiple expressions.  But before we get into implementation,
+what does it even mean to have runs generated from multiple variables?  I'm
+going to take that to mean runs on the interaction of the variables.  Let's add
+another run, the interaction of that with the original run, and finally the
+`rle_id`s on the interaction:
+
+<div id=rle-id-mutate>
+```{r}
+groups2 <- c('C','C','D','C','C','C')
+DF2 <- DF %>%
+  mutate(
+    grp2=groups2,
+    grp_int=interaction(grp, grp2), # interaction of the two groups
+    rle_ids=rle_id(c(grp_int))      # `c` to use integer value of factor
+  )
+DF2
+```
+</div>
+
+`interaction` creates a factor of the "concatenated" values of its inputs.
+We can extract integer levels from the factor with `c(grp_int)` and use those to
+compute `rle` ids.  While this isn't too difficult, we want to encapsulate the
+logic so that our users have an easier time of it. To implement multi element
+`group_by_runs` we need to update the function signature to add `...`:
+
+```{r, eval=FALSE}
+group_by_runs <- function(.data, ...)
+```
+
+In [Level 1](#level-1) we got away with simply "tunneling" the NSE arguments
+directly to `group_by` with `{{}}` and letting it do all the fancy footwork.
+Unfortunately this does not work:
+
+```{r}
+group_by_runs <- function(.data, ...) {
+  group_by(
+    .data,
+    rle.ids=rle_id(c(interaction({{...}}))),  # no worky
+    ...                                       # all good
+) }
+```
+
+You can pass dots naked to "enquoting" functions like `group_by`, `mutate`,
+etc., so long as they are at the top level of the call.  So the very last set of
+dots in the above function is legal.  But we can't pass the naked dots nested in
+a call, and we can't tunnel them with the (`{{`). I sense the
+(`{{{`) in our near-future, along with chaos in the nascent
+rlinguist vim community[^vim-folds].
+
+The solution is to peel back the freshly applied veneer and
+examine the `rlang` quote/unquote process:
+
+```{r}
+group_by_runs <- function(.data, ...) {
+  dots <- enquos(...)
+  group_by(.data, rle.ids=rle_id(c(interaction(!!!dots))), ...)
+}
+```
+
+We explicitly capture (quote) the expressions passed by our user via dots with:
+
+```{r, eval=FALSE}
+dots <- enquos(...)
+```
+
+Every R NSE implementation involves this step in some form.  The
+also does this.  The novel concept `rlang` adds is that
+freshly quoted expressions must immediately be "unquoted" with `!!` for single
+variables or `!!!` for `...` variables so that they may be used.  A bold
+strategy that has now been partially walked back with `{{`, at least for single
+variables.  More on this in a bit.
+
+Let's see what this does:
+
+```{r}
+DF2 %>%
+  group_by_runs(grp, grp2) %>%
+  summarize(mean(val), n())
+```
+
+Boom!  That worked, although I'll admit I explored a good chunk of the
+what-to-quote-and/or-unquote universe to get to the right answer.  It is very
+nice though that we were able to do what is actually a somewhat complex
+manipulation with just two lines of code.
+
+If we were to put this function in a package we would want to add some safety
+features, such as handling the case where `rle.ids` is already a column name in
+the data.
+
+# Level 3
+
+I'm not a huge fan of:
+
+```{r eval=FALSE}
+group_by(.data, rle.ids=rle_id(c(interaction(!!!dots))), ...)
+```
+
+I would have preferred to break that expression up over a couple of lines as we
+did when [we demoed `interaction`](#rle-id-mutate).  While not strictly
+necessary here, it becomes difficult to cram more complex manipulations into the
+`group_by` call.  To break up our expression outside of `group_by` we need some
+heavier machinery[^avoid-machinery]:
+
+```{r}
+group_by_runs_alt <- function(.data, ...) {
+  dots <- enquos(...)
+  call <- quo(interaction(!!!dots))
+  grp.int <- eval_tidy(call, data=.data)
+  rle.ids <- rle_id(c(grp.int))
+  group_by(.data, rle.ids=rle.ids, ...)
+}
+```
+
+We expose the entire NSE pipeline, from input quote/capture with `enquos`, to
+expression manipulation with `quo`, and finally to context-altered evaluation
+with `eval_tidy(..., data=.data)`.  This produces the exact same result as
+before:
+
+```{r}
+DF2 %>%
+  group_by_runs_alt(grp, grp2) %>%
+  summarize(mean(val), n())
+```
+
+Except now we have full control of the intermediate results, which gives us the
+capability to handle more complex manipulations.  A similar implementation in
+base would look as follows[^base-nse]:
+
+```{r}
+group_by_runs_base <- function(.data, ...) {
+  interactl <- function(...) do.call(interaction, list(...))
+  dots <- substitute(list(...))
+  call <- bquote((.(interactl))(.(dots)))
+  grp.int <- eval(call, envir=.data, enclos=parent.frame())
+  rle.ids <- rle_id(c(grp.int))
+  group_by(.data, rle.ids=rle.ids, ...)
+}
+```
+
+We need to define `interactl` a helper function to use `interaction` with a list
+of arguments as we don't benefit from the neat functionality the splice (`!!!`)
+operator provides.  This works:
+
+```{r}
+DF2 %>%
+  group_by_runs_base(grp, grp2) %>%
+  summarize(mean(val), n())
+```
+
+From this we can see the rough correspondence between tidy and base NSE:
+
+* `enquos(...)` => `substitute(list(....))` and by extension:
+* `enquo(x)` => `substitute(x)`
+* `quo(fun(!!x))` => `bquote(fun(.(x)))`
+* `eval_tidy(call, data=.data)` => `eval(call, .data, parent.frame())`
+
+The problem with this is that the tidy functions re-use the same lexical roots
+as base, but mix-up the semantics.  For example base also has `enquote`, but
+that does something completely different from `rlang::enquo`.  Similarly base
+has `quote` and `bquote`, but `rlang::quo` is closer to `bquote` than `quote`,
+and in fact `rlang::expr` is the closest thing to `bquote`.  To further add to
+the confusing base also has `expression`, which is something different yet
+again.
+
+From this (and several other design decisions) I get the sense that building
+`rlang` in a way that is complementary to precedent in R proper ranked low
+on the list of priorities.  It would have been reasonably easy to come up with
+complimentary names, or failing that more orthogonal ones.  Instead we have a
+new NSE syntax that is hostile to the precedent.  I do believe this was not the
+intent, but I find it
+
+
+
+
+
+.  There is also `base::expression`, and you'd be forgiven to think
+it might be similar to but the latter is actually the closest
+thing to `bquote` in `rlang`.  `rlang::exprs` is probably the closest analogue
+to `expression`.
+
+I understand the appeal of tabula-rasa.  I don't expect that conforming to
+existing standards that are flawed should overrule everything.  But I do believe
+that if the tidy philosophy prioritized complementing rather than replacing base
+R when it does not **substantively** compromise the mission the tidyverse would
+be less divisive than it is today.
+
+```{r eval=FALSE}
+library(rlang)
+library(dplyr)
+
+(function(x) {
+  xq <- enquo(x)
+  xqu <- UQ(xq)
+  mutate(mtcars[1:3, 1:2],xqu + 1)
+})(1 + 1)
+
+(function(x) {
+  xq <- enquo(x)
+  mutate(mtcars[1:3, 1:2], UQ(xq) + 1)
+})(1 + 1)
+
+(function(x) {
+  xq <- enexpr(x)
+  xqu <- UQ(xq)
+  mutate(mtcars[1:3, 1:2], xqu + 1)
+})(1 + 1)
+
+(function(x) {
+  xq <- enexpr(x)
+  mutate(mtcars[1:3, 1:2], UQ(xq) + 1)
+})(1 + 1)
+
+
+library(dplyr)
+library(rlang)
+f_out <- function() {
+  x <- -999
+  f_in <- function() {
+    y <- 3
+    quo(x + y)
+  }
+  f_in()
+}
+f_out2 <- function() {
+  f_in <- function() {
+    y <- 50
+    quo(x + 2*y)
+  }
+  f_in()
+}
+aquo <- f_out()
+aquo2 <- f_out2()
+
+mutate(mtcars[1:3,], boom=!!aquo2 + !!aquo + cyl)
+
+quo(!!aquo2 + !!aquo + cyl)
+
+f(q)
+
+f_in <- function(y) quo(y)
+f_out_bad <- function(x) f_in(x)
+f_out_good <- function(x) {
+  xu <- UQ(enquo(x));
+}
+
+f_out_bad(message('bomb'))
+f_out_good(message('bomb'))
+
+function(x) {
+
+
+
+```
+
+
+made extending and complementing existing semantics
+an important part of design decisions frictions in the R community would be
+lessened.
+
+
+
+,
+
+seemingly below closely hewing to principles of obscure, AFAICT mostly dead, CS
+theory on fexprs.
+
+
+was considered overwhelmingly more important.  Obviously I don't know
+what Lionel
+and Hadley were thinking when they put this together, but this model of
+priorities is what I can make consistent with the observed results.  Either
+aligning to the existing semantics or creating a distinct lexicon would have
+been better, and neither would have been harder.  Instead the translation of
+experience in base NSE to `rlang` and vice versa is perversely hindered by the
+mixed semantics[^not-end-of-world].
+
+
+
+Another `rlang` mechanism that I still can't get my head around is that captured
+expressions are protected from evaluation.  This is a new-to-R feature, possibly
+resurrected from a long dead language to haunt us at our terminals.  When I'm
+particularly inspired I can think of some cases where this could be
+useful[^uneval-quosure], but in real life it is immediately and systematically
+bypassed, as in:
+
+```{r, eval=FALSE}
+function(.data, x) {
+  xq <- enquo(x)
+  mutate(.data, !!xq)
+}
+```
+
+The decision to use `!!` and `!!!` as the unquoting operator is yet another one
+that _appears_ to reflect a lack of interest in complementing R.  It is a
+completely new parse-only artifact that changes the meaning of `!`.  The reason
+I've heard given for this is that the unquoting action is a parse-level event
+with no corresponding evaluation analogue, so using a function like the now
+deprecated `UQ()` is misleading, therefore using `!!` is the least bad solution.
+Setting aside that operators are also functions, I can't think of a reason why
+unquoting can't be an evaluation level event.  For example, in:
+
+```{r, eval=FALSE}
+function(.data, x) {
+  xq <- enquo(x)
+  xqu <- UQ(xq)
+  mutate(.data, xqu)
+}
+```
+
+`UQ` can just set a hypothetical "armed" internal attribute of the quosure such
+that it is subject to evaluation in the eventual `eval_tidy` call.
+
+
+
+
+
+
+Jkk
+I have a
+tough time with.
+
+Thing is R an incredibly flexible language.  You can make it
+do just about anything you want, ill-advised or not.  The only substantive limit
+is the parser.  Yet this is something that the parser had to be
+here we have something that cannot be interpreted correctly
+by the parser being .
+
+
+something that I could
+only bring myself to do if I gave exactly zero fucks about
+
+another result that I
+can only explain
+
+
+
+The absurdity of this pattern led to the
+
+
+
+I've been
+able to think of some cases where this is usefu
+can think
+of some cases
+
+Jkk
+need to be separately marked for evaluation in order to evaluate.
+This is a new feature, and it is directly
+
+as in base you just evaluate the expression.  This
+feature is directly responsible for
+
+
+
+followed by the immediate unquote, i.e. they why are we doing this
+
+
+
+I can only attribute to ideological purity is the
+need to
+
+And voilà!  Aaargh.  I can't completely suppress it.  I still don't understand
+
+why unquoting was made such a prominent part of the `rlang` user interface.  I
+have seen dozens of uses of `enquo` followed immediately by `!!`, and no cases
+of `enquo`sures that should remained unevaluted.  They exist[^uneval-quosure],
+but the design is geared to the rare rather than the predominant use case.
+Sorry, couldn't keep the lid completely on it.  At least the new `{{}}`
+moustache operator makes takes some of the edge off.
+
+
+
+
+
+it is harder for experienced base NSE programmers to understand
+`rlang`, and where `rlinguists` will similarly struggle with base NSE.
+
+
+experienced base R NSE programmers trying to use `rlang` are
+befuddled, and likely vice-versa
+
+<div style='background-color: red;'>check old conversions on SO</div>
+
+
+
+Maybe the original names weren't great, but using names that are
+lexically close, semantically different, and in the same subfield interferes
+with the existing language constructs.
+
+This makes It appear as if minimal
+consideration is given to future `rlinguists` who may have to work with base
+NSE, or vice versa.  If this paragraph sounds a little faint and distorted it's
+because I'm screaming it from that hill over yonder, the one I'm still waiting
+to die on[^conf-update].
+
+
+One of my beefs[^beef] with `rlang` is that it prioritizes **internal**
+consistency and adherence to obscure CS principles at the expense of precedent
+in R.  For example `base::substitute` does roughly what `enquo` does, but
+`base::enquote` does something completely different.  `base::bquote` does
+roughly what `expr` does, but `base::expression` does something different yet
+again.
+
+
+
+kk
+And herein lies my major philosophical beef with `rlang` and to a lesser extent
+the `tidyverse` in general .
+
+
+Note about whether in package or not to find `interaction`?  But that's a
+problem with tidy version too.
+
+
+```{r}
+DF2 %>%
+  group_by_runs_base(grp, grp2) %>%
+  summarize(mean(val), n())
+```
+
+
+
+And this brings me to my major philosophical beef with `rlang` and the
+`tidyverse`
+
+
+
+We could
+try to avoid going this way
+
+One
+solution
+
+
+We've had to cram a reasonably complex
+
+
+
+I like that `rlang` added the double-mo-perator
+
+In the first line we capture the user expression (`paste0(runs, tolower(runs))`)
+without evaluating it so that we may later evaluate it in a different context.
+This is the first step of [NSE](#NSE):
+
+<div id='enquo'>
+```{r eval=FALSE}
+run.exp.eq <- enquo(run.exp)
+run.exp.eq   # so we can see what the "quosure" contains
+```
+```{r echo=FALSE}
+local(quo(paste0(runs, tolower(runs))))
+```
+</div>
+
+We use `enquo` because we want to extract the expression that was given as the
+parameter `run.exp`, not the symbol `run.exp`.  Function parameter symbols
+such as `run.exp` here [are special in R][6].  They look and act like any other
+symbol, but they store within them the expression that was matched to them in
+the function call.
+
+```{r}
+run.exp.q <- quo(run.exp)
+run.exp.q
+```
+
+Step number two in NSE is to evaluate the captured expression in a different
+context.  We do this with `eval_tidy` mostly because we need it for [Level
+2](#level-2).  An alternative would have been to use `mutate`.
+
+```{r eval=FALSE}
+runs <- eval_tidy(run.exp.eq, .data)
+```
+
+The context is changed by adding `.data` to the list of locations to look for
+symbols, and therein it finds `runs`.  The next couple of steps are the same RLE
+ID calculation we've [seen previously](#rle-calc).  This takes us to the grand
+finale:
+
+```{r eval=FALSE}
+group_by(.data, !!run.exp.eq, rle.ids)
+```
+
+araHGAKQEadfqJKSNUFhsocrITT.  That's me suppressing a tirade.  Let's focus on
+`!!run.exp.eq`.  The `!!` means to `unquote` which is necessary because we just
+quoted it and `group_by` won't ueYsAhdazUQEJfk unquote it on its own.  Even
+though `eval_tidy` did exactly that a few lines prior.  Anyhow, it's necessary
+here[^eval-alternatives].  Why is there no twitchy-eye-lid emoji?
+
+```{r}
+DF %>%
+  group_by_runs1(paste0(runs, tolower(runs))) %>%
+  summarize(mean(vals))
+
+
+
+
+
+group_by_runs <- function(.data, ...) {
+  dots <- enquos(...)
+  call <- quo(rle_id(as.integer(interaction(!!!dots))))
+  rle.ids <- eval_tidy(call, data=.data)
+  group_by(.data, rle.ids=rle.ids, ...)
+}
+
+```
+
+But wow dude that's a bit more complicated than what we did
+[previously](#level-1).  Let's break it down.  Because there is no way to
+"tunnel" the `...` to
+
+```{r eval=FALSE}
+(function(.data, ...) group_by(.data, ...))(DF2, grp, grp2)
+
+(function(.data, ...) {
+  dots <- enquos(...)
+  group_by(.data, interaction(!!!dots))
+})(DF, a, b)
+
+group_by_runs3 <- function(.data, ...) {
+  .data <- mutate(
+    .data, ...
+  )
+  group_by(.data, ...)
+}
+DF %>%
+  group_by_runs3(r1=runs, r2=runs2) %>%
+  summarize(mean(vals), n())
+
+```
+
+`enquos` is the equivalent of [`enquo`](#enquo) but specifically for dealing
+with the `...` parameter.  A [recent presentation]
+
+```{r}
+dots <- enquos(..., .named=TRUE)
+```
+
+
+
+```
+DF$runs2 <- 'C'
+DF %>%
+  group_by_runs2(r1=runs, r2=runs2) %>%
+  summarize(mean(vals), n())
+```
+
+# In Base
+
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<p id='feedback-cont'></p>
+
+# Appendix
+
+## Mutate Alternative
+
+```{r}
+group_by_runs1a <- function(.data, run) {
+  .data <- mutate(.data, run.exp={{run}})
+  group_by(.data, {{run}}, rle.ids=rle_id(run.exp))
+}
+DF %>%
+  group_by_runs1a(runs) %>%
+  summarize(mean(vals), n())
+```
+-->
+## Acknowledgments
+
+## Session Info
+
+[^beef]: Yes, I have several.
+[^uneval-quosure]: Strictly speaking it is possible to want a symbol that by
+  happenstance points to a quosure that's lying around in the search path to be
+  evaluated as the symbol and not the quosure, but it makes more sense to me to
+  require special handling for that case, e.g. just `quo` that symbol.
+[^vim-folds]: The triple-mo is the vim fold marker for folding code in marker
+  mode.  It's unlikely that this conflict would actually cause much chaos, but
+  I needed an excuse to write "rlinguist vim community".  Hi Jim!
+[^avoid-machinery]: We could try to avoid some of this by using `mutate`, but it
+  gets messy quickly if interim steps produce multiple columns, or things that
+  don't neatly fit in the structure of the data frame.
+[^base-nse]: In reality I would have done this differently, but I'm looking to
+  keep a parallel structure to the tidy solution.
+[^not-end-of-world]: Sure, people can learn both.  I have.  But it was made
+  harder than it needed to be for reasons that AFAICT are not relevant to the
+  large majority of the R community.
+[^closure]: In R most functions are closures.  This arcane name is necessary to
+  distinguish it from "buitin" and "special" functions which are the other two
+  types of functions.
+
+e distinction is made because
+  R also has functions that are not closures
+
+The special thing about closures
+  is that they have their own lexically scoped environments
+
+[1]: https://twitter.com/MilesMcBain/status/1222343645170262016?s=20
+[2]: https://disney.fandom.com/wiki/Dug
+[3]: https://twitter.com/_lionelhenry
+[4]: https://speakerdeck.com/lionelhenry/interactivity-and-programming-in-the-tidyverse
+[5]: https://speakerdeck.com/lionelhenry/reusing-tidyverse-code
+[6]: https://cran.r-project.org/doc/manuals/R-lang.html#Promise-objects
+
