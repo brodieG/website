@@ -39,19 +39,26 @@ meaning after it is issued but before it is executed.  For example in:
 subset(mtcars, hp > 250)
 ```
 
-The meaning of the command `hp > 300` is changed to be `mtcars$hp > 300`.  If
-`subset` did not do this we would get an error as `hp` does not exist in my
-workspace.
+The meaning of the command `hp > 300` is changed such that the column `hp` from
+`mtcars` is used as `hp`.  If `subset` did not do this we would get an error as
+`hp` does not exist in my workspace.
 
-The objective of this post is to set down the bare minimum we need to know to
-build a working mental of standard and non-standard evaluation.  We'll indulge
-in approximations and otherwise gloss over important but secondary
-details[^simple-model].
+NSE is quite widespread in R.  It shows up in places we don't normally think of
+as being special, such as in commands like `library(Rcpp)` or even `mtcars$hp`.
+It is also used to great effect by third party packages like `data.table` and
+`dplyr`.
+
+The objective of this post is to set down the minimum we need to know for a
+useful mental model of standard and non-standard evaluation.  We'll indulge in
+approximations and otherwise gloss over important but secondary
+details[^simple-model].  Maybe I'll throw in some not-strictly-necessary but
+interesting tidbits I can't suppress.
 
 If you already understand how variable name resolution works in R, what
 it means for unevaluated commands to be first-class objects, and what NSE does,
-you are unlikely to find anything earth-shattering here.  For everyone else,
-well, earth-shattering might be a wee exaggeration.
+you are unlikely to find anything earth-shattering here.  For
+everyone else, well, you too are unlikely to find anything earth-shattering.
+Sorry.
 
 # Standard Evaluation
 
@@ -63,8 +70,8 @@ y <- c("am", "I", "why")
 z <- c(1, 5, 9, 8)
 ```
 ```{r}
-x <- c("am", "I", "global")
-rev(x)           # reverse the order of vector `x`
+w <- c("am", "I", "global")
+rev(w)           # reverse the order of vector `x`
 ```
 
 <span id=two-things>R actually does two things after we hit ENTER:
@@ -72,16 +79,17 @@ rev(x)           # reverse the order of vector `x`
 1. Parses the command.
 2. Evaluates it.
 
-This is a fastidious distinction that is rarely noticed, but it is critical to
-the functioning of NSE.  Parsing translates the command into a format that can
-be more easily evaluated, and in the processes weeds out syntactically invalid
-commands.  Evaluation then runs the command to produce the results.</span>
+This is a fastidious distinction that is rarely noticed, but as we'll see later
+it is critical to the functioning of NSE.  Parsing translates the command into a
+format that can be more easily evaluated, and in the processes weeds out
+syntactically invalid commands.  Evaluation then runs the command to produce the
+results.</span>
 
 ```{r eval=FALSE, echo=FALSE}
 # code to generate flipbook images
 source('static/script/mesh-viz/viz-lib.R')
 png.in <- list.files(
-  'static/post/2020-02-13-on-nse_files/templates/anim2',
+  'static/post/2020-02-13-on-nse_files/templates/anim3',
   full.names=TRUE
 )
 png.dat <- lapply(png.in, png::readPNG)
@@ -90,8 +98,10 @@ fname <- 'static/post/2020-02-13-on-nse_files/images/flip-1/img-%03d.png'
 lapply(
   seq_along(png.a), function(x) png::writePNG(png.a[[x]], sprintf(fname, x))
 )
-ids <- 7:8
-png.a <- trim_png(png.dat[ids], pad=c(10,10))
+ids <- 7:9
+png.a <- unlist(lapply(
+  png.dat[ids], function(x, pad) trim_png(list(x), pad=pad), pad=c(10,10)
+), recursive=FALSE)
 lapply(
   seq_along(ids), function(x) png::writePNG(png.a[[x]], sprintf(fname, ids[[x]]))
 )
@@ -105,75 +115,80 @@ data structures called environments, shown in blue in this flipbook:
 
 <div id='flipbook1'></div>
 
-Mind the weapons grade hand-waving here, but this models observable behavior
-reasonably well _for our purposes_[^promises].  R will search for each name
-through a chain of environments.  <span id=eval-env>The first environment in the
-environment chain is called the "evaluation environment"</span> and will be set
-by the context the command is called in[^env-vs-chain].  For commands typed at
-the prompt the evaluation environment is the global environment.
-
-The object returned by the search is the one associated with the first instance
-of each name in the environment chain[^not-object].  Once the evaluator has the
-actual function and arguments it can run the function[^run-recursive], although
-we omit that step here.
-
 <span id='env-desc'>Environments are akin to named lists with a few additional
 features.  All elements are uniquely named, and the names are usually indexed
 with a [hash table][25] for fast lookups.  The mapping of names to objects
-is called the "frame".  Additionally, environments carry a link to an
-"enclosing" environment a.k.a. "enclosure".  In the diagram these links are
-represented as arrows pointing to the enclosure.  This is how the chain is
-implemented: when a name isn't found in an environment, R follows the link to
-the enclosure and continues the search there and through subsequent enclosures
-as needed.  An implication of this is the environment chain is defined
-completely by the [evaluation environment](#eval-env)</span>
+is called the "frame" (blue boxes in the diagrams).  Additionally, environments
+carry a link to an "enclosing" environment a.k.a. "enclosure" (black arrows in
+the diagram, pointing to enclosure).  R searches for a name in an environment's
+frame, and if it doesn't find it it moves on to the enclosure repeating the
+process until the name is found or it runs out of enclosures.</span>
 
+<span id=ref-sem-warn>
 > **WARNING**: Environments have reference semantics.  Be sure you
 > understand the [documentation][24] before you attempt to directly modify
 > elements in environments, e.g. as in `env$name[3] <- 42`.
+</span>
 
+<span id=eval-env>The first environment in the environment chain is called the
+"evaluation environment"[^env-vs-chain]</span>, and because the chain never
+forks it dictates how all names in a command are found.
 
-Since the global environment is the evaluation environment for prompt commands,
-that is where name-object associations typed at the prompt are kept.  These
-associations define "variables", but it's useful to distinguish between names
-and the objects they are associated with, so we'll avoid the term "variable".
-In the [flipbook](#flipbook1) we can see the object we associated with the name
-`x`, along with another couple of associations for the names `y` and `z`.
-`ls.str` confirms this:
+Once the names have been substituted with the objects they point to, R can run
+the retrieved function (`rev` here).  Be advised there is some weapons-grade
+hand-waving going on at the moment[^weapons-grade].  Functions[^closures], like
+environments, also carry a link to an environment[^fun-env-terminology].
+Usually it is the package environment they belong to[^search-path], or the
+evaluation environment they are created in[^fun-create].
 
+<span id=fun-eval-env>Prior to running a function, R creates a new environment
+and assigns the function's environment as its enclosure.  We'll call this new
+environment the function's **evaluation** environment, not to be confused with
+the **function** environment that is used as its enclosure (yes this terminology
+is unforgiving).  R populates the function **evaluation** environment with the
+provided arguments and evaluates each command of the function body
+therein[^fun-body].  `rev` only has one command in its body:</span>
 
-```{r eval=FALSE}
-ls.str()
+```{r}
+body(rev)
 ```
-```
-x :  chr [1:3] "am" "I" "global"
-y :  chr [1:3] "am" "I" "why"
-z :  num [1:4] 1 5 9 8
-```
 
-What about the object associated with the name `rev`?  As we saw earlier it is
-in a different environment called the base environment:
+Let's illustrate the environment chain for evaluation of the body of `rev`.
+We show the one command on the left, and the chain starting with `rev`'s
+evaluation environment (`<rev>` in the diagram) on the right:
 
 <img
-  src='/post/2020-02-13-on-nse_files/images/flip-1/img-002.png'
-  alt='Retrieving the rev function from the base environment.'
+  id=rev-chain
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-007.png'
+  alt='The environment chain for the rev function.'
 />
 
-We can ask `ls` to list objects from that environment, and confirm
-that `rev` is indeed there:
+In `<rev>` we have the name `x` corresponding to its one argument.  It is
+associated to the same value[^value-copy] as `w` from the global environment
+because the original call `rev(w)` was evaluated in the global environment.  The
+previous environment chain shown in the background still exists but it's
+inactive at the moment.
 
-```{r eval=FALSE}
-ls(envir=baseenv())[928:932]
-```
-```
-[1] "return"      "returnValue" "rev"         "rev.default" "rle"
-```
+Now that the new evaluation environment is set we proceed with the same name
+substitution [observed previously](#flipbook1).  `UseMethod` will be retrieved
+from the base environment (not shown, but it's there I promise), and it will be
+"run" just as `rev` was.  The substitute-then-"run" process continues
+recursively until we hit statically compiled code routines invoked by
+`.Primitive`, `.Internal`, etc., at which point the actual computations
+occur[^use-method].  Ironically this means the R evaluator itself doesn't do any
+evaluating.  It just substitutes names with objects[^not-object], sets up
+environment chains, and recurses.
 
-There are many other environments between the global environment and the base
-environment, though we do not use any names that would be resolved by them here.
+Important take-aways from this section:
 
-> For a fantastic treatment of environments do read Saruj
-> Gupta's ["How R Searches and Finds Stuff"][29].
+1. Commands acquire their meaning when the names therein are substituted with
+   objects the they reference.
+2. Names are resolved to objects by looking them up through environment chains.
+3. The environment chain, and hence the meaning of commands, is set by the
+   environment in which the command is evaluated.
+
+> For a more complete treatment of environments and how they are used by R do
+> read Saruj Gupta's ["How R Searches and Finds Stuff"][29].
 
 # Masking
 
@@ -185,88 +200,88 @@ chain that contains that name.  Consider what happens if we nest our simple
 <span id='fun'>
 ```{r}
 fun <- function() {
-  x <- c("am", "I", "fun")
-  rev(x)
+  w <- c("am", "I", "fun")
+  rev(w)
 }
 fun()
 ```
 </span>
 
-Most functions in R will create an environment when they are invoked to map
-their names to objects in[^closures].  These function evaluation environments
-normally have for enclosure the environment in which the function was
-_created_[^fun-env-terminology].  For `fun` above that is the global
-environment.
-
-By running `rev(x)` inside of `fun` instead of directly at the prompt we changed
-the active evaluation environment for `rev(x)` to be evaluation environment of
-the function instead of the global environment as before.  This changes
-environment chain the evaluator looks through:
+As we saw [earlier](#fun-eval-env), R will create an evaluation environment to
+evaluate the body of `fun`.  Since `fun` was created in the global environment,
+that will be the enclosure for the function evaluation environment.  As a
+result, by running `rev(w)` inside of `fun` instead of directly at the prompt we
+changed the evaluation environment for the command.  This is what the
+environment chain looks like now:
 
 <img
-  src='/post/2020-02-13-on-nse_files/images/flip-1/img-007.png'
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-008.png'
   alt='How a function environment modifies the environment chain.'
 />
 
-The evaluator finds `x` in the function's evaluation environment instead of the
-now-masked `x` in the global environment.
+The evaluator finds `w` in the function's evaluation environment instead of the
+now-masked `w` in the global environment and so substitutes a different value
+for it.
 
 # Non-Standard Evaluation
 
 Before we go on, a quick flash-back to standard evaluation:
 
 ```{r}
-rev(x)
+rev(w)
 ```
 
 Consider instead:
 
 ```{r}
-L <- list(x=c("am", "I", "list"))
+L <- list(w=c("am", "I", "list"))
 with(
   L,
-  rev(x)     # same commmand
+  rev(w)     # same commmand
 )
 ```
 
-What happened?  The names in `rev(x)` were matched against the list `L`.  In
-fact, `with` converts `L` into an environment and adds it to the start of the
-environment chain.  This is similar to what happened with [`fun` earlier](#fun),
-except we didn't need to define a function.  That environments are [akin to
-named lists](#env-desc) makes it particularly easy.
+What happened?  The names in `rev(w)` were matched against the list `L`.  In
+other words `L` masked the name search as [`fun`'s evaluation environment
+did](#fun), except we didn't need to define a function.
 
 While the concept is straightforward the execution is more complicated.
-`with` needs mechanisms for interrupting the evaluation, changing the
-environment chain, and resuming evaluation.  R, being the strange language that
-it is, provides tools to do all this.
+`with` needs mechanisms for interrupting the evaluation, masking the
+active environment chain in some way with `L`, and resuming evaluation.  R,
+being the strange language that it is, provides tools to do all this.
 
-Let's implement a version of `with` at the prompt to see what's going on:
+Let's implement a version of `with` at the prompt to see how this might be
+done:
 
 ```{r}
-cmd  <- quote(rev(x))        # capture command
+cmd  <- quote(rev(w))       # capture command
 Lenv <- list2env(L)         # convert list to env
 eval(cmd, envir=Lenv)       # invoke the evaluator
 ```
 
 `quote` captures a parsed R command before the evaluator gets to it.  Once
-captured the command no longer self-evaluates at the prompt:
+captured the command no longer self-evaluates at the prompt, that is if you type
+it at the prompt you get the unsubstituted, un-run command back:
 
 ```{r}
 cmd    # we get command back, not result of evaluating it
 ```
 
-We'll explore some more interesting implications of this in a bit, but for now
-what we care about is that the evaluator is on hold.
+It may not seem like much, but it's a big deal R allows this.  Commands when
+quoted as we did here are first class objects.  We'll explore some more
+interesting implications of this in a bit, but for now what we care about is
+that the evaluator is on hold.
 
-`list2env` creates a new environment which has for enclosure the global environment
-as that is where we called it from:
+`list2env` creates a new environment which has for enclosure the global
+environment as that is where we called it from.  This is possible because
+environments are [akin to named lists](#env-desc).
 
 ```{r}
 Lenv
-ls(Lenv)                    # list names
+ls.str(Lenv)
 ```
 ```{r}
-parent.env(Lenv)
+parent.env(Lenv)   # parent.env == enclosure
 ```
 
 `eval` provides a mechanism to resume evaluation with a different environment
@@ -276,15 +291,16 @@ chain for name lookups:
 eval(cmd, envir=Lenv)
 ```
 
-This is what the environment chain looks like now:
+This is what the environment chain looks like now right before substituting the
+`w` name[^no-fun]:
 
 <img
-  src='/post/2020-02-13-on-nse_files/images/flip-1/img-008.png'
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-009.png'
   alt='Adding an environment to the environment chain with eval.'
 />
 
-Environments can have multiple children.  While not shown here the `fun`'s
-environment is still linked to the global environment.
+> By changing the environment chain we made the evaluation "Non-Standard".
+
 
 Running `eval` without changing the starting environment produces the same result as if we had typed the command at the prompt:
 
@@ -292,20 +308,37 @@ Running `eval` without changing the starting environment produces the same resul
 eval(cmd) # envir defaults to parent.frame (global here)
 ```
 
-By changing the environment chain we made the evaluation "Non-Standard".
+Now look at what happens if we make a new mask that contains a `rev` symbol as
+well:
+
+```{r}
+L2 <- list(rev=toupper)
+L2env <- list2env(L2, parent=Lenv)
+eval(cmd, envir=L2env)
+```
+
+We can change the meaning of functions as well as values by modifying the
+environment chain.  Notice how we set the enclosure to `L2env` to be `Lenv` with
+the `parent` parameter to `list2env`[^par-vs-enc].  We could also have directly
+added a `rev` mapping to `Lenv`, but recall the warning about [environment
+reference semantics](#ref-sem-warn).
+
+Manipulating the environment chain is not the only way to perform NSE.  Anything
+that changes the meaning of a command after it is issued relative to what would
+have happened in standard evaluation is NSE.
 
 # In Functions
 
 Compare:
 
 ```{r}
-with(L, rev(x))
+with(L, rev(w))
 ```
 
 To our hack-at-the-prompt version:
 
 ```{r}
-cmd  <- quote(rev(x))
+cmd  <- quote(rev(w))
 Lenv <- list2env(L)
 eval(cmd, envir=Lenv)
 ```
@@ -319,7 +352,7 @@ with2 <- function(dat, cmd) {
   quote(cmd)                 # capture command
   # rest of function will go here later
 }
-with2(L, rev(x))
+with2(L, rev(w))
 ```
 
 What we want to quote is the command supplied argument `cmd`, not the name
@@ -331,7 +364,7 @@ with2 <- function(dat, cmd) {
   substitute(cmd)
   # rest of function will go here later
 }
-with2(L, rev(x))
+with2(L, rev(w))
 ```
 
 When called within a function on a function parameter, `substitute` acts like
@@ -344,7 +377,7 @@ with2 <- function(dat, cmd) {
   denv <- list2env(dat, parent=parent.frame())
   eval(cmd2, envir=denv)
 }
-with2(L, rev(x))
+with2(L, rev(w))
 ```
 
 We can do a bit better because `eval` supports adding a list-like element to the
@@ -355,11 +388,11 @@ with2 <- function(L, cmd) {
   cmd2 <- substitute(cmd)
   eval(cmd2, L, enclos=parent.frame())
 }
-with2(L, rev(x))
+with2(L, rev(w))
 ```
 
-What's the `parent.frame()` business?  And why do we pass it to the `enclos`
-parameter for `eval`, but to the `parent`
+What's the `parent.frame()` business?  And why do we pass it as the `enclos`
+argument for `eval`, but as the argument `parent` for `list2env`?
 
 # Environmental Dichotomy
 
@@ -367,8 +400,118 @@ parameter for `eval`, but to the `parent`
 arguments.  This is a powerful feature, but with it comes a new class of
 potential errors.  Notice in our `with2` implementation how we call `eval`:
 
-```{r}
+```{r eval=FALSE}
+eval(cmd2, L, enclos=parent.frame())
 ```
+
+Recall that in R the evaluation process is recursive.  Additionally, note that
+in R every evaluated command is actually a function
+invocation[^every-cmd-is-fun].  Even commands that don't look like functions are
+functions:
+
+```{r}
+is.function(`+`)
+`+`(1, 1)
+is.function(`if`)
+`if`(2 > 1, 'truth', 'falsehood')
+```
+
+The behavior of function invocations (a.k.a. function calls) is to evaluate
+arguments in the environment the call is made, but then to evaluate the body
+of the function in the function **evaluation** environment[^non-default].  For
+clarity we'll call the environment in which the function call is made the
+**calling** environment.  This distinction may appear particularly fastidious
+especially when we're used to creating functions in the global environment.
+After all when we do that the enclosure to our function **evaluation**
+environment is often the **calling** environment.  Consider a bad version of
+`with2` that doesn't specify the calling environment as the enclosure:
+
+```{r}
+with2_bad <- function(L, cmd) {
+  cmd2 <- substitute(cmd)
+  eval(cmd2, L)
+}
+with2_bad(L, rev(w))
+```
+
+No problem right?  Except look at what happens with a pathological input:
+
+```{r}
+cmd2 <- c("pathological", "I", "am")
+with2_bad(L, rev(cmd2))
+```
+
+Wow, what the heck is that?  It is the result of:
+
+```{r}
+rev(quote(rev(cmd2)))
+```
+
+The key thing to realize is that we had a name clash.  The `cmd2` symbol
+associated in `with2_bad`'s **evaluation** environment masks the `cmd2` in the
+**calling** environment  By changing the enclosure for the `eval` call as our
+original `with2` all the names are resolved properly:
+
+```{r}
+cmd2 <- c("pathological", "I", "am")
+with2(L, rev(cmd2))
+```
+
+No, you're not pathological, not anymore.
+
+This is a contrived example as it requires the function doing NSE to have names
+that mask those used in the captured call, but there are other ways things go
+wrong.  If our function were called from within another function, then the names
+might not resolve at all, or resolve to the wrong object:
+
+
+```{r}
+friendly_fun <- function(L) {
+  z <- c('hello', 'friend', '!')
+  with2_bad(L, paste(c(z, w), collapse=' '))
+}
+friendly_fun(L)
+```
+
+What happened?  Instead of using the `z` in `fun2`'s evaluation environment,
+which in this case is `with2_bad`'s **calling** environment, we used the `z` in
+the global environment.  Why?  Because the `with2_bad`'s **function**
+environment, and hence the enclosure of it's **evaluation** environments, is the
+global environment.  Again, this is resolved by explicitly setting the
+evaluation enclosure to the **calling** frame with `parent.frame` as `with2`
+does:
+
+```{r}
+friendly_fun <- function(L) {
+  z <- c('hello', 'friend', '!')
+  with2(L, paste(c(z, w), collapse=' '))
+}
+friendly_fun(L)
+```
+
+
+If we were to put our function in a package then there will
+the possibility of a
+name collision increases substantially
+
+s rare to change function
+environments in this way.  However, if you put functions in packages, or create
+functions within other functions, or simply use functions in NSE contexts, it is
+easy to end up in situations where the calling environment and the enclosure of
+the function evaluation environment (i.e. the function environment) diverge.
+
+
+
+
+The
+important thing here is that the
+
+
+Every time a command is
+evaluated
+
+
+
 
 Coincidentally this is the same environment we called the function from, but the
 calling environment and the enclosing environment need not be the same.  For
@@ -424,7 +567,7 @@ str(as.list(cmd))    # show list nature of cmd
 We used this feature in a [previously post][28] to implement a Reverse Polish
 Notion calculator in R.
 
-R gives us the ability to 
+R gives us the ability to
 
 # Why
 
@@ -436,6 +579,7 @@ Saving keystrokes.
 * [Survey of Macros in R][22]
 * [R NSE Reference][27]
 * [Tips on NSE in R][28] by Kun Ren
+* [Original R Paper][30]
 
 # Conclusions
 
@@ -446,6 +590,8 @@ Saving keystrokes.
 # Appendix
 
 ## Acknowledgments
+
+Sumner.
 
 * png
 
@@ -475,7 +621,12 @@ new BgFlipBook({
 [27]: http://developer.r-project.org/nonstandard-eval.pdf
 [28]: /2019/01/11/reverse-polish-notation-parsing-in-r/
 [29]: https://renkun.me/2014/12/03/tips-on-non-standard-evaluation-in-r/
+[30]: https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf
+[82]: /2019/02/18/an-unofficial-reference-for-internal-inspect/
 
+[^earth-shattering]: Under no circumstances
+[^more-complicated]: The actual meaning changes is more complicated, but we'll
+  discuss that in the body of this post.
 [^simple-model]: <span id='simple-model'>Items we gloss over include but are not
   limited to:<ul>
   <li>Function parameters are [evaluated lazily][20] so they are only fetched
@@ -503,20 +654,68 @@ new BgFlipBook({
   `.Internal`, and similar, when the actual computation occurs.  All the
   [aforementioned caveats](#simple-model) still apply, in particular that names
   are not actually substituted until they are used in a function body.
-[^promises]: The most substantive inaccuracy is that arguments are only
-  substituted until they are used in the function body, not when the function is
-  called.
+[^weapons-grade]: In reality the names are not substituted in place as we show
+  here.  R will hold the function and a list of the arguments encapsulated as
+  promises which it can then use to evaluate the body of the function.  Because
+  the arguments are kept as promises they are not actually substituted until
+  they are used in the body of the function, or in those of subsequent functions
+  that they are forward to, or not all if they are not used.  However, in most
+  cases were the argument is used and evaluating it does not cause side-effects,
+  the observed behavior is as if the names had been substituted in place, or at
+  least in place in a copy of the list.
 [^not-object]: What's actually returned is a pointer to the location in memory
   the object is located at.  Since in R memory addresses are not directly
   visible, we'll pretend the actual objects instead of just pointers to them are
   returned.
-[^fun-env-terminology]: For reasons unclear to me the documentation refers to
-  the enclosing environment of the function evaluation environment as the
-  "function environment" instead of the enclosing environment which seems much
-  more natural to me.  Maybe because it needs to be called the "environment to
-  be used as the enclosure of the function evaluation environment" to be
-  technically correct?
-[^env-vs-chain]: In some context the term "environment" is taken to mean the
+[^fun-env-terminology]: <span id=fun-env>I find the idea of the "function
+  environment" very confusing.  I think a better name would be "function
+  enclosure".  Yes, strictly speaking the function does not have an enclosure,
+  it is the function evaluation environments that do.  But by calling the
+  function environment "function enclosure" we avoid ambiguity with the
+  "function **evaluation** environment".  Additionally, it seems pretty natural
+  to me for the "function enclosure" to be the enclosure of the function
+  **evaluation** environment.  Technically the "function environment" is the
+  "environment to be used as the enclosure of the function evaluation
+  environment", and "function environment" captures that no better than
+  "function enclosure"</span>
+[^env-vs-chain]: In some contexts the term "environment" is taken to mean the
   entire environment chain.  In fact, the term "environment chain" is not a term
   used by the R documentation.
+[^fun-create]: That is the default behavior, but is possible to change what the
+  enclosing environment for any given function's evaluation environments will
+  be with `environment(fun) <- `.  See also the discussion of [function
+  evaluation environment terminology](#fun-env).
+[^search-path]: Packages in R have multiple environments associated with them.
+  We're hand-waving away distinctions between them, but they exist and are
+  important.  Saruj Gupta's ["How R Searches and Finds Stuff"][29] is a
+  must-read if you want to understand all the details.
+[^name-vs-pkg]: Strictly speaking it is the base namespace environment, not the
+  base package environment.
+[^closures]: Functions created with `function` in R are called "closures"
+  because they carry the reference to the environment they were created in.
+  There are other types of functions without such an environment.  These are
+  called "builtin" or "special" functions.  They do not reference environments
+  as they link directly to statically compiled code and do not need to look up
+  names.
+[^use-method]: It turns out `UseMethod` invokes one of those statically compiled
+  routines.  It also so happens that routine does some frightful
+  uber-non-standard-evaluation, but we're just going to gloss over that
+  business.  If you're really interested see `?UseMethod`.
+[^fun-body]: The function "body" is the set of commands that follow the
+  declaration.  In `function(...) {<function-body>}` the body is the set of
+  commands that would replace the `<function-body>` placeholder.
+[^value-copy]: R only copies objects when necessary to maintain the
+  "pass-by-value" illusion.  See ["The Secret Lives Of R Objects"][31] for more
+  details.
+[^no-fun]: Environments can have multiple children [as we saw
+  previously](#rev-chain).  While not shown here `fun`'s environment from
+  earlier is still linked to the global environment.
+[^par-vs-enc]: Unfortunately the terminology around the hierarchical
+  relationship of environments in R is muddled.  In early days the term "parent"
+  was used for enclosures, which is why `parent.env` returns the enclosure of an
+  environment.  However, there is also the `parent.frame`, which is the
+  evaluation environment of the command that that triggered the current
+  evaluation.  The `parent.frame` is known as the "calling environment".
+
+
 
