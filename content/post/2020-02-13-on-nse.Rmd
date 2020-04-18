@@ -115,7 +115,7 @@ R prompt are kept (e.g. `w <- c("am", "I", "global")`).
 Our substituted command is a bit weird in appearance, but more useful to R as
 the names `rev` and `w` have no inherent meaning.  There is _a fair bit_ of hand
 waving here[^simple-model], but for the most part the lookup-and-substitute
-model reflects observed R behavior.  
+model reflects observed R behavior.
 
 R is not yet done with our command.  More on this shortly, but first lets talk
 about environments.
@@ -160,73 +160,66 @@ stop the search:
 />
 
 <span id=eval-env>The first environment in the environment chain is called the
-"Evaluation Environment"[^env-vs-chain].  We'll say that commands are
-"evaluated in" the Evaluation Environment, even though what we really mean is
-that they are evaluated according to the environment chain that starts with that
-Evaluation Environment.</span>
+"Evaluation Environment"[^env-vs-chain].  When we say that commands are
+"evaluated in" the Evaluation Environment we mean that they are evaluated
+according to the environment chain that starts with that environment.</span>
 
 When evaluating commands at the R prompt, the Evaluation Environment is usually
 the global environment, so this may all seem moot.  However, commands can be
 issued in different Evaluation Environments, as is the case when they are
 part of the body of a function.
 
+> For a more complete treatment of environments and how they are used by R do
+> read Saruj Gupta's excellent ["How R Searches and Finds Stuff"][29].
+
 # In Functions
 
-After the initial substitution of `rev` and `w` for the function and its
-argument, R will "run" the function, which means recursively repeating the
-lookup-and-substitute process on the body of the function.  This continues until
-we hit the special `.Primitive`, `.Internal`, `.Call`, and
-similar[^static-compile-funs] entry points to statically compiled machine
-code[^use-method].
+After the initial substitution of `rev` and `w` for the function  and its
+argument, R will call (i.e "run") the function, which means repeating the
+lookup-and-substitute process on any R commands it contains[^fun-components].
+This process is a bit more involved in functions.
 
-Normal R Functions  add some wrinkles to the lookup-and-substitute step of
-evaluation.  These functions are known as closures[^closures] because they carry
-a reference to an environment to use as an [Enclosure](#enclos) when they are
-evaluated.  We'll call this environment the Function Enclosure.
+Most functions in R are "closures"[^closures].  They are so called because they
+carry a reference to a "Function Enclosure" (this is not an official
+term[^fun-env-term]).  Function Enclosures are typically the Evaluation
+Environment in which the function was defined[^fun-create].  Other functions
+like the basic arithmetic operators are "primitives".  They are entry points
+into statically compiled machine code, and contain no R commands or Function
+Enclosures[^static-compile-funs].
 
-<span id=fun-eval-env>When such a function is invoked, it creates a new
-environment with the aforementioned [Enclosure](#enclos), and populates it with
-its parameters mapped to the values supplied for its
-arguments[^promises-actually].  This new environment is the function's
-Evaluation Environment in which the commands from the function body will be
-evaluated[^fun-body].</span>
-
-`rev` happens to just have one command in its body:
-
-Typically the [Enclosure](#enclos) is the package namespace the
-functions belong to, or the [Evaluation Environment](#eval-env) the functions
-were defined in[^fun-create].
-
-
-```{r}
-body(rev)
-```
-
-And a flipbook of this process:
+<span id=fun-eval-env>Each time a closure is called, a new environment is
+created, enclosed by the Function Enclosure, and with the parameter-name ->
+value[^promises-actually] mappings as its Frame.  This new environment becomes
+the Evaluation Environment for the commands in the function body:</span>
 
 <div id='flipbook2'></div>
 
-In `<rev>` we have the name `x` corresponding to its one argument.  It is
-associated to the same value[^value-copy] as `w` from the global environment
-because the original call `rev(w)` was evaluated in the global environment.  The
-previous environment chain shown in the background still exists but it's
-inactive at the moment.
+R is now ready to proceed with the [lookup-and-substitute process](#flipbook1)
+on the body of the function in the function Evaluation Environment (`<rev>` in
+the diagram[^env-names]).  In this case there is just the one command
+`UseMethod("rev")` to process.
 
-Now that the new evaluation environment is set we proceed with the same name
-substitution [observed previously](#flipbook1).  `UseMethod` will be retrieved
-from the base environment (not shown, but it's there I promise), and it will be
-"run" just as `rev` was.  
+The environment chain has changed.  It used to start at the global environment
+and pass through all the loaded packages (`<...>` in the diagrams).  Now it
+starts at `<rev>` and goes directly to the base namespace environment.  Even
+though the environment chain no longer passes through the global environment, we
+can still access a copy of the object referenced by `w` via `x` in
+`<rev>`[^value-copy].
 
-Important take-aways from this section:
+`<rev>` is now the Evaluation Environment.  In this context, the global
+environment is now the "Calling Environment" as it was the active
+Evaluation Environment that **called** `rev` via the command `rev(w)`.
 
-1. Commands acquire their meaning when the names therein are substituted with
-   objects they reference.
-2. Names are resolved to objects by looking them up through environment chains.
-3. The environment chain, and hence the meaning of commands, is set by the
-   environment that is designated as the Evaluation Environment.
+The lookup-and-substitute-and-call-closures process will continue recursively
+until we hit primitive functions, at which point actual computations happen in
+machine code.
 
-> For a more complete treatment of environments and how they are used by R do
-> read Saruj Gupta's ["How R Searches and Finds Stuff"][29].
+The resetting of environment chains to be based on the Function Environment
+instead of the Calling Environment is also known as "Lexical Scope".  The term
+reflects that the environment chain is based on how the functions were
+"written", instead of how they were invoked.  This scoping mechanism was
+inherited by R from Scheme, not from S, as can be seen the [original R
+paper][32].
 
 # Masking
 
@@ -571,6 +564,8 @@ new BgFlipBook({
 [28]: /2019/01/11/reverse-polish-notation-parsing-in-r/
 [29]: https://renkun.me/2014/12/03/tips-on-non-standard-evaluation-in-r/
 [30]: https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf
+[31]: https://cran.r-project.org/doc/manuals/R-lang.html#Function-objects
+[32]: https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf
 [82]: /2019/02/18/an-unofficial-reference-for-internal-inspect/
 
 [^earth-shattering]: Under no circumstances
@@ -631,14 +626,24 @@ new BgFlipBook({
 [^pathological-pkg]: Well, it will unless you have loaded a pathological package
   that also defines a `rev` function, or if you yourself define a `rev` function
   in the global environment.
-[^fun-env-term]: <span id=fun-env-term>The correct term for what we call the
-  "function enclosure" is "environment to use as the enclosure for the function
-  evaluation environments".  So "function enclosure" is not strictly correct,
-  but neither is "function environment", and "function enclosure" is much closer
-  semantically to the correct term.</span>
+[^fun-env-term]: <span id=fun-env-term>The [R documentation][31] uses the term
+  "Function Environment" for what we are calling the "Function Enclosure".  I
+  find this confusing because there are two environments that could be
+  considered the "function environment": the evaluation environment generated
+  each time the function is invoked, and the environment to use as its
+  enclosure.  Additionally, "Function Environment" suggests the environment
+  belongs to the function.  Strictly speaking, what we call the "Function
+  Enclosure" is "environment to use as the enclosure for the function evaluation
+  environments".</span>
 [^env-vs-chain]: In some contexts the term "environment" is taken to mean the
   entire environment chain.  In fact, the term "environment chain" is not a term
   used by the R documentation.
+[^fun-components]: Functions in R that are defined with the `function` keyword
+  (i.e. `fun <- function(<formals>) {<body>}` have three components: formals
+  (a.k.a.  parameter list), body (a.k.a. the set of commands that the function
+  executes}, and environment, which we like to call the [Function
+  Enclosure](#fun-env-term).  See full details in the [R Language
+  Definition][31].
 [^fun-create]: That is the default behavior, but is possible to change what the
   enclosing environment for any given function's evaluation environments will
   be with `environment(fun) <- `.  See also the discussion of [function
@@ -656,10 +661,12 @@ new BgFlipBook({
   compiled routines themselves invoke the internal version of `eval` or similar
   to evaluate R code.
 [^closures]: Functions created with `function` in R are called "closures"
-  because they have an enclosure.  There are other types of functions without
-  such an environment.  These are called "builtin" or "special" functions.  They
-  do not reference environments as they link directly to statically compiled
-  code and do not need to look up names.
+  because they carry a link to an environment to use as an Enclosure to the
+  Evaluation Environment that will be used to evaluate the commands in the body
+  of the function.  There is also another class of functions call "primitives".
+  Primitives are entry points into statically compiled machine code.  These
+  functions don't contain any R commands, and as such do not require an
+  Enclosure to lookup names.
 [^use-method]: It turns out `UseMethod` invokes one of those statically compiled
   routines.  It also so happens that routine does some frightful
   über-NSE, but we're just going to gloss over that business.  If you're really
@@ -680,8 +687,11 @@ new BgFlipBook({
   evaluation environment of the command that that triggered the current
   evaluation.  The `parent.frame` is known as the "calling environment".
 [^attached]: Packages loaded with `library`, or those that are part of the
-  "base" set of packages that are pre-attache by R (e.g. `stats`, etc.), or any
+  "base" set of packages that are pre-attached by R (e.g. `stats`, etc.), or any
   other environments attached with `attach`.
+[^env-names]: We use `<rev>` for clarity; in reality function Evaluation
+  Environments don't have names and would be displayed in R as their memory
+  address, something like `<environment: 0x7fce5c930238>`.
 
 
 
