@@ -32,58 +32,6 @@ C: curveto - cubic bezier, which start at the previous point, list the two
 
 Pull out the bezier segments
 -->
-```{r eval=FALSE, echo=FALSE}
-# Logo stuff, very specific to this file
-
-logo.page <- readLines('https://www.r-project.org/logo/Rlogo.svg')
-dat <-regmatches(logo.page, gregexpr("\"[^\"]+\"", logo.page))
-path <- unlist(strsplit(sub('^"(.*)"$', '\\1', dat[[13]][[1]]), " "))
-path <- path[-length(path)]  # drop "Z" command at end
-cmd <- sub("^([A-Z]*).*$", "\\1", path)
-x <- sub("[^0-9]*([0-9.]*),.*$", "\\1", path)
-y <- sub(".*,([0-9.]*).*$", "\\1", path)
-
-d <- data.frame(i=seq_along(x), x=as.numeric(x), y=as.numeric(y), cmd=cmd)
-d[2:3] <- lapply(d[2:3], function(x) (x - min(x)) / diff(range(x)) * .9 + .05)
-
-library(gridBezier)
-
-brle <- rle(cmd == "C" | cmd == "")
-ends <- with(brle, cumsum(lengths)[values])
-starts <- with(brle, cumsum(lengths)[!values])
-
-bzs <- Map(
-  function(start, end) {
-    points <- d[start:end, c('x', 'y')]
-    BezierGrob(points[[1]], points[[2]], stepFn=nSteps(20))
-  },
-  starts,
-  ends
-)
-bzsp <- lapply(bzs, BezierPoints)
-
- # reconnect with the line segments
-
-lrle <- rle(cmd == "L")
-ends <- with(lrle, cumsum(lengths)[values])
-starts <- with(lrle, cumsum(lengths)[!values])
-
-lns <- Map(
-  function(start, end) {
-    points <- d[start:end, c('x', 'y')]
-    grid.lines(points[[1]], points[[2]], gp=gpar(col='#000000'))
-  },
-  starts[seq_along(ends)],
-  ends
-)
- # par(mai=numeric(4))
- # plot.new()
- # lapply(bzs, grid.draw)
- # lapply(lns, grid.draw)
-
-
-
-```
 
 # With Great Freedom...
 
@@ -771,10 +719,9 @@ so.
 
 ## Acknowledgments
 
-Sumner.
+Sumner (decidio, other things?).
 gridBezier
-
-* png
+png
 
 ## Session Info
 
