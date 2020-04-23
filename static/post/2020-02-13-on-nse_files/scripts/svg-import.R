@@ -46,21 +46,11 @@ bzs <- Map(
 # back to NPC manually, which is a real hack.  Need to make sure `par$pin()` is
 # properly set to use, so we init device.
 
-dev.new(width=4, height=4)
-plot.new()
-par(mai=numeric(4))
-grid.draw(grid.lines(c(0, 0, 1, 1), c(0, 1, 1, 0)))
-
 bzsp <- lapply(bzs, BezierPoints)
 bzspi <- lapply(bzsp, lapply, unit, 'inches')
 bzsp <- lapply(
   bzspi, function(x) list(convertX(x[[1]], 'npc'),convertY(x[[2]], 'npc'))
 )
-bzsp <- lapply(
-  bzsp, function(z) list(z[[1]] / par()$pin[[1]], z[[2]] / par()$pin[[2]])
-)
-dev.off()
-#
 # plot.new(); lapply(bzs, grid.draw)
 # reconnect with the line segments
 
@@ -151,9 +141,9 @@ stop()
 library(rayrender)
 
 epr <- extruded_polygon(
-  # xy.coords(allx, ally),
-  # holes=length(outx),  # for some reason index off by 1 relative to decido
-  xy.coords(outx, 1-outy),
+  xy.coords(allx, ally),
+  holes=length(outx),  # for some reason index off by 1 relative to decido
+  # xy.coords(outx, 1-outy),
   top=0, bottom=-.2,
   material=diffuse(color="#1e64b6"),
   plane='xy',
@@ -175,7 +165,7 @@ b <- xy_rect(
 scene <- dplyr::bind_rows(
   epr,
   # cube(x=-.5, material=diffuse(color="#1e64b6")),
-  # eph,
+  eph,
   # l,
   # f, b
 )
