@@ -1,0 +1,885 @@
+---
+title: Standard and Non-Standard Evaluation in R
+author: ~
+date: '2020-05-05'
+slug: on-nse
+categories: [r]
+tags: [meta-program]
+image: /post/2020-02-13-on-nse_files/images/four-small.jpg
+imagerect: /post/2020-02-13-on-nse_files/images/two.jpg
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "An attempt at demystifying standard and non-standard evaluation
+models in R."
+output:
+  blogdown::html_page:
+    keep_md: yes
+    md_extensions: +raw_attribute
+---
+
+
+
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
+<div id="with-great-freedom" class="section level1">
+<h1>With Great Freedom…</h1>
+<p><img
+  id='front-img'
+  src='/post/2020-02-13-on-nse_files/images/four-small.jpg'
+  data-src-big='/post/2020-02-13-on-nse_files/images/four.jpg'
+  class='post-inset-image bgw-zoom-img'
+/></p>
+<p>Non-Standard Evaluation is a pretty controversial topic in R circles, and even
+in the R documentation. Whether you like it never, sometimes, or always, is
+neither here nor there. What matters is that R allows it. Not many languages
+give the programmer the power to implement, use, and abuse Non-Standard
+Evaluation (“NSE”), or anything like it.</p>
+<p>So what is NSE? Very roughly, it is to programmatically modify a command or its
+meaning after it is issued but before it is executed. For example in:</p>
+<pre class="r"><code>subset(mtcars, hp &gt; 250)</code></pre>
+<pre><code>                mpg cyl disp  hp drat   wt qsec vs am gear carb
+Ford Pantera L 15.8   8  351 264 4.22 3.17 14.5  0  1    5    4
+Maserati Bora  15.0   8  301 335 3.54 3.57 14.6  0  1    5    8</code></pre>
+<p><code>subset</code> intercepts the command <code>hp &gt; 250</code> before it is run, and changes its
+meaning by allowing the name <code>hp</code> to resolve against columns from <code>mtcars</code>
+instead of just against objects in the workspace. In other words, <code>subset</code>
+performs non-standard evaluation on the command <code>hp &gt; 250</code>.</p>
+<p>Compare to what happens with a command that is evaluated in the standard way:</p>
+<pre class="r"><code>mtcars[hp &gt; 250,]</code></pre>
+<pre><code>Error in `[.data.frame`(mtcars, hp &gt; 250, ): object &#39;hp&#39; not found</code></pre>
+<p>We get an error because <code>hp</code> is not defined in my workspace.</p>
+</div>
+<div id="standard-evaluation" class="section level1">
+<h1>Standard Evaluation</h1>
+<p><img
+  id='se-img'
+  src='/post/2020-02-13-on-nse_files/images/one-1.jpg'
+  class='post-inset-image'
+/></p>
+<p>When we type a simple command at the R prompt and hit ENTER, R computes its
+value (a.k.a. evaluates it):</p>
+<div class="bgw-code-float">
+<pre class="r"><code>w &lt;- c(&quot;am&quot;, &quot;I&quot;, &quot;global&quot;)
+rev(w)    # reverse the order of `w`</code></pre>
+<pre><code>[1] &quot;global&quot; &quot;I&quot;      &quot;am&quot;    </code></pre>
+</div>
+<p>Ironically the process of evaluation in R is mostly about looking things up
+rather than computing them. In our example, when we hit ENTER R first looks for
+the named objects in our command: <code>rev</code>, and <code>w</code><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>. Lookups are done
+through data structures called environments, represented in blue in this
+flipbook:</p>
+<div id="flipbook1">
+
+</div>
+<p>After the lookup <code>rev(w)</code> becomes:</p>
+<pre><code>(function(x) UseMethod(&quot;rev&quot;))(c(&quot;am&quot;, &quot;I&quot;, &quot;global&quot;))</code></pre>
+<p><code>rev</code> is replaced by the definition of the function from the base environment,
+and <code>w</code> by the character vector from the workspace. The workspace, also known
+as the global environment, is where name -&gt; value mappings created at the
+R prompt are kept (e.g. <code>w &lt;- c(&quot;am&quot;, &quot;I&quot;, &quot;global&quot;)</code>). Our substituted command
+is a bit weird in appearance, but more useful to R as the names <code>rev</code> and <code>w</code>
+have no inherent meaning.</p>
+<blockquote>
+<p>There is <em>a fair bit</em> of hand waving here<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>, but for the most
+part the lookup-and-substitute model reflects observed R behavior.</p>
+</blockquote>
+<p>R is not yet done with our command. More on this shortly, but first lets talk
+about environments.</p>
+</div>
+<div id="environments" class="section level1">
+<h1>Environments</h1>
+<p><span id="env-desc">Environments are akin to named lists with a few additional
+features. All elements are uniquely named, and the names can be <a href="https://en.wikipedia.org/wiki/Hash_table">hashed</a>
+for fast lookups. The name -&gt; object mappings are known as the “Frame” of
+the environment. <span id="enclos">Environments also carry a link to an
+“Enclosing Environment” a.k.a. “Enclosure” (black arrows in the
+<a href="#flipbook1">flipbook</a>, pointing to the Enclosure). The Frame and the link to
+the Enclosure together make up the environment.</span></span></p>
+<blockquote>
+<p><strong>WARNING</strong>: Environments have reference semantics. Be sure you
+understand the <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Environment-objects">documentation</a> before you attempt to directly modify
+elements in environments, e.g. as in <code>env$name[3] &lt;- 42</code>. We do not write to
+environments here so this isn’t important for our discussion, but be wary
+when interacting with them directly.</p>
+</blockquote>
+<p>R searches for a name in an environment’s Frame, and if it doesn’t find it moves
+on to its Enclosure. Enclosures are environments so they too carry a link to
+their own Enclosure. R repeats the search process until the name is found or it
+hits the empty environment, which does not have an Enclosure<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. We’ll
+call an environment and the sequence of Enclosures it links to an “Environment
+Chain”<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>.</p>
+<p>For commands typed at the prompt the Environment Chain usually starts at the
+global environment and links the environments of all the attached
+packages<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a> (represented with the <code>...</code> below) through to the base
+package. When searching for <code>rev</code>, R will work through this entire
+chain and retrieve the <code>base::rev</code> function from the base
+package<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>.</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-002.png'
+  alt='Retrieving `rev` from the base environment'
+/></p>
+<p>When searching for <code>w</code> R will find it immediately in the global environment and
+stop the search:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-004.png'
+  alt='Retrieving an object from the global environment'
+/></p>
+<p><span id="eval-env">The first environment in the Environment Chain is called the
+“Evaluation Environment”<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>. When we say that commands are
+“evaluated in” the Evaluation Environment we mean that they are evaluated
+according to the Environment Chain that starts with that environment.</span></p>
+<p>When evaluating commands at the R prompt, the Evaluation Environment is usually
+the global environment, so this may all seem moot. However, commands can be
+issued in different Evaluation Environments, as is the case when they are
+part of the body of a function.</p>
+<blockquote>
+<p>For a more complete treatment of environments and how they are used by R do
+read Saruj Gupta’s excellent <a href="https://blog.obeautifulcode.com/R/How-R-Searches-And-Finds-Stuff/">“How R Searches and Finds Stuff”</a>.</p>
+</blockquote>
+</div>
+<div id="in-functions" class="section level1">
+<h1>In Functions</h1>
+<p>After the initial substitution of <code>rev</code> and <code>w</code> for the function and its
+argument, R will call (i.e “run”) the function. This means repeating the
+lookup-and-substitute process on any R commands contained in the body of the
+function<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a>, though with some additional wrinkles.</p>
+<p>Most functions in R are “closures”<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a>. They are so called because they
+carry a reference to a “Function Environment”<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a> to use as an
+Enclosure. The Function Environment is typically the Evaluation Environment the
+function was defined in<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a>. <span id="primitives">Other functions like
+the basic arithmetic operators are “primitives”. They are entry points into
+statically compiled machine code, and contain no R commands or
+environments<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>.</span></p>
+<p><span id="fun-eval-env">Each time a closure is called a new environment is
+created, enclosed by the <strong>Function</strong> Environment, and with the function
+parameter -&gt; value<a href="#fn13" class="footnote-ref" id="fnref13"><sup>13</sup></a> mappings as its Frame. This new
+environment becomes the <strong>Evaluation</strong> Environment for the commands in the
+function body:</span></p>
+<div id="flipbook2">
+
+</div>
+<p>Once the function <strong>Evaluation</strong> Environment is set up (<code>&lt;rev&gt;</code> in the
+diagram<a href="#fn14" class="footnote-ref" id="fnref14"><sup>14</sup></a>), R can proceed with the <a href="#flipbook1">lookup-and-substitute
+process</a> on the body of the function. In this case there is just
+the one command <code>UseMethod(&quot;rev&quot;)</code> in the body.</p>
+<p>The key observation is that the Environment Chain changed. It used to start
+at the global environment and pass through all the loaded packages (<code>&lt;...&gt;</code> in
+the diagrams). Now it starts at <code>&lt;rev&gt;</code> and goes directly to the base namespace
+environment as that is where <code>rev</code> is defined. Even though the Environment
+Chain no longer passes through the global environment, we can still access a
+copy of the object referenced by <code>w</code> via <code>x</code> in <code>&lt;rev&gt;</code><a href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a>.</p>
+<p>On the left is the Environment Chain used to evaluate <code>rev(w)</code>. On the right
+the one used to evaluate the body of the <code>rev</code> function:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-014.png'
+  alt='The Environment Chain used for the call to a function compared to the one used for the body of the function'
+/></p>
+<p><span id="calling"> <code>&lt;rev&gt;</code> is now the Evaluation Environment. In this context,
+the global environment becomes the “Calling Environment”, so named because it
+was the active Evaluation Environment when <code>rev</code> was <strong>called</strong> via the command
+<code>rev(w)</code>.</span></p>
+<p>The lookup-and-substitute-and-call-closures process will continue recursively
+until we hit <a href="#primitives">primitive functions</a>, at which point actual
+computations happen in machine code<a href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a>.</p>
+<p>R’s resetting of Environment Chains to be based on the Function Environment
+instead of the Calling Environment is known as “Lexical Scope”. The term
+reflects that the Environment Chain is based on how the functions were
+“written”, instead of how they were called. This scoping mechanism was
+inherited by R from Scheme, not from S, as can be seen the <a href="https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf">original R
+paper</a>.</p>
+</div>
+<div id="masking" class="section level1">
+<h1>Masking</h1>
+<p>It is possible for different environments in a chain to contain the same name.
+When this happens the object matched is the one from the first environment along
+the chain that contains that name. Consider what happens if we nest our simple
+<code>rev(x)</code> command in a trivial function:</p>
+<p><span id='fun'></p>
+<pre class="r"><code>fun &lt;- function() {
+  w &lt;- c(&quot;am&quot;, &quot;I&quot;, &quot;fun&quot;)
+  rev(w)
+}</code></pre>
+<p></span></p>
+<p>When we call <code>fun()</code>, R creates a new Evaluation Environment enclosed by the
+global environment as that is where <code>fun</code> was defined. We also assign a new
+value for <code>w</code> in that Evaluation Environment. The evaluation chain for <code>rev(w)</code>
+within <code>fun</code> is different from <code>rev(w)</code> at the prompt:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-015.png'
+  alt='How a function environment modifies the environment chain.'
+/></p>
+<p>The evaluator finds <code>w</code> in the function’s evaluation environment instead of the
+now-masked <code>w</code> in the global environment, and so substitutes a different value
+for it:</p>
+<pre class="r"><code>rev(w)</code></pre>
+<pre><code>[1] &quot;global&quot; &quot;I&quot;      &quot;am&quot;    </code></pre>
+<pre class="r"><code>fun()</code></pre>
+<pre><code>[1] &quot;fun&quot; &quot;I&quot;   &quot;am&quot; </code></pre>
+</div>
+<div id="non-standard-evaluation" class="section level1">
+<h1>Non-Standard Evaluation</h1>
+<p><img
+  id='nse-img'
+  src='/post/2020-02-13-on-nse_files/images/one-2.jpg'
+  class='post-inset-image'
+/>
+One of the simplest NSE functions in R is <code>with</code>:</p>
+<div class="bgw-code-float">
+<pre class="r"><code>L &lt;- list(w=c(&quot;am&quot;, &quot;I&quot;, &quot;list&quot;))
+with(
+  L,
+  rev(w)     # same commmand
+)</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+</div>
+<p>What happened? <code>L</code> was somehow made part of the Environment Chain and the names
+in <code>rev(w)</code> were matched against it. <code>L</code> masked the name lookup as <a href="#fun"><code>fun</code>’s
+Evaluation Environment did</a>, except we didn’t need to define a function.</p>
+<p>While the concept is straightforward the execution is more complicated.
+<code>with</code> needs mechanisms for interrupting the evaluation, masking the
+active Environment Chain in some way with <code>L</code>, and resuming evaluation. R,
+being the strange language that it is, provides tools to do all this.</p>
+<p>Let’s implement a version of <code>with</code> at the prompt to see how this might be
+done:</p>
+<pre class="r"><code>cmd  &lt;- quote(rev(w))   # capture command
+Lenv &lt;- list2env(L)     # convert list to env
+eval(cmd, envir=Lenv)   # invoke the evaluator</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p><code>quote</code> captures a parsed R command before the evaluator gets to it. Once
+captured the command no longer self-evaluates at the prompt:</p>
+<pre class="r"><code>cmd    # we get command back, not result of evaluating it</code></pre>
+<pre><code>rev(w)</code></pre>
+<p>It may not seem like much, but it’s a big deal R allows this: unevaluated R
+commands can be directly manipulated by R itself. For now all we care about is
+that the evaluation is on hold, but you can do some interesting things with this
+as in the <a href="/2019/01/11/reverse-polish-notation-parsing-in-r/">RPN in R post</a>.</p>
+<p><code>list2env</code> creates a new environment with the Calling Environment (global env
+here) as the enclosure. This is natural because environments are <a href="#env-desc">akin to named
+lists</a>.</p>
+<pre class="r"><code>Lenv</code></pre>
+<pre><code>&lt;environment: 0x7f9844cf2118&gt;</code></pre>
+<pre class="r"><code>ls.str(Lenv)</code></pre>
+<pre><code>w :  chr [1:3] &quot;am&quot; &quot;I&quot; &quot;list&quot;</code></pre>
+<pre class="r"><code>parent.env(Lenv)   # parent.env == enclosure</code></pre>
+<pre><code>&lt;environment: R_GlobalEnv&gt;</code></pre>
+<p><code>eval</code> provides a mechanism to resume evaluation while explicitly specifying
+an Evaluation Environment:</p>
+<pre class="r"><code>eval(cmd, envir=Lenv)</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p>This is what the Environment Chain looks like right before substituting the
+<code>w</code> name<a href="#fn17" class="footnote-ref" id="fnref17"><sup>17</sup></a>:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-016.png'
+  alt='Adding an environment to the Environment Chain with eval.'
+/></p>
+<p>By changing the Environment Chain we made the evaluation “Non-Standard”. This
+is similar to what functions do, but because we are doing it by interrupting
+evaluation and manually setting the Evaluation Environment it becomes
+“Non-Standard”.</p>
+<p>Now look at what happens if we add another environment to the chain with the
+<code>rev</code> name in it:</p>
+<pre class="r"><code>L2 &lt;- list(rev=toupper)
+L2env &lt;- list2env(L2, parent=Lenv)
+eval(cmd, envir=L2env)</code></pre>
+<pre><code>[1] &quot;AM&quot;   &quot;I&quot;    &quot;LIST&quot;</code></pre>
+<p>We can change the meaning of both functions and values by modifying the
+Environment Chain. We set the enclosure to <code>L2env</code> to be <code>Lenv</code> with the
+<code>parent</code> parameter to <code>list2env</code><a href="#fn18" class="footnote-ref" id="fnref18"><sup>18</sup></a>. We could also have directly
+added a <code>rev</code> mapping to <code>Lenv</code>.</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-017.png'
+  alt='We can affect function lookup in our mask environments.'
+/></p>
+<p>Manipulating the Environment Chain is not the only way to perform NSE. Anything
+that changes the meaning of a command after it is issued relative to what would
+have happened in standard evaluation is NSE.</p>
+</div>
+<div id="nse-in-functions" class="section level1">
+<h1>NSE In Functions</h1>
+<p>Compare:</p>
+<pre class="r"><code>with(L, rev(w))</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p>To our hack-at-the-prompt version:</p>
+<pre class="r"><code>cmd  &lt;- quote(rev(w))
+Lenv &lt;- list2env(L)
+eval(cmd, envir=Lenv)</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p>It would be nice to implement <code>with</code> ourselves, but if we try to use <code>quote</code>
+inside a function to get what someone types in as the argument to that function
+we are disappointed:</p>
+<pre class="r"><code>with2 &lt;- function(dat, cmd) {
+  quote(cmd)                 # capture command
+  # rest of function will go here later
+}
+with2(L, rev(w))</code></pre>
+<pre><code>cmd</code></pre>
+<p>What we want to quote is the command supplied as the argument <code>cmd</code>, not the
+name <code>cmd</code>. Thankfully R in its infinite flexibility provides a mechanism for
+doing this with <code>substitute</code>:</p>
+<pre class="r"><code>with2 &lt;- function(dat, cmd) {
+  substitute(cmd)
+  # rest of function will go here later
+}
+with2(L, rev(w))</code></pre>
+<pre><code>rev(w)</code></pre>
+<p>When called within a function on a function parameter, <code>substitute</code> acts like
+<code>quote</code> except it substitutes the unevaluated command passed as the argument.
+This allows us to implement <code>with</code>:</p>
+<pre class="r"><code>with2 &lt;- function(dat, cmd) {
+  cmd2 &lt;- substitute(cmd)
+  denv &lt;- list2env(dat, parent=parent.frame())
+  eval(cmd2, envir=denv)
+}
+with2(L, rev(w))</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p>We can do a bit better because <code>eval</code> supports adding a list-like element to the
+Environment Chain out of the box, saving us the <code>list2env</code> step:</p>
+<pre class="r"><code>with2 &lt;- function(L, cmd) {
+  cmd2 &lt;- substitute(cmd)
+  eval(cmd2, L, enclos=parent.frame())
+}
+with2(L, rev(w))</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p><code>list2env</code> specifies Enclosures with <code>parent=</code>, whereas <code>eval</code> does so with
+<code>enclos=</code>. This is unfortunately one of those areas where R is not as clear as
+it could be about the names of things, and there are closely related concepts
+that should be clearly distinguished<a href="#fn19" class="footnote-ref" id="fnref19"><sup>19</sup></a>.</p>
+<p>So, what’s the <code>parent.frame()</code> business?</p>
+</div>
+<div id="environmental-dichotomy" class="section level1">
+<h1>Environmental Dichotomy</h1>
+<p><code>substitute</code> allows us to implement functions that perform NSE on their
+arguments. This is a powerful feature, but with it comes a new class of
+potential errors. Recall that functions create their own Evaluation
+Environments, but the commands that we capture and wish to re-evaluate refer to
+names in the <a href="#calling">Calling Environment</a>. For things to work correctly we
+must hand craft an Environment Chain that connects to the Calling
+Environment at the correct point.</p>
+<p>When <code>parent.frame()</code> is called in a function body, it returns the <strong>Calling</strong>
+Environment. <code>with2</code> uses <code>eval</code> to create an Environment Chain that starts
+with our list <code>L</code> and with the Calling Environment as the Enclosure:</p>
+<pre class="r"><code>with2 &lt;- function(L, cmd) {
+  cmd2 &lt;- substitute(cmd)
+  eval(cmd2, L, enclos=parent.frame()) #&lt;&lt; Calling Env as Enclosure
+}
+with2(L, rev(w))</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p>Compare to what happens when we don’t do this:</p>
+<pre class="r"><code>with2_bad &lt;- function(L, cmd) {
+  cmd2 &lt;- substitute(cmd)
+  eval(cmd2, L)
+}
+with2_bad(L, rev(w))</code></pre>
+<pre><code>[1] &quot;list&quot; &quot;I&quot;    &quot;am&quot;  </code></pre>
+<p>No problem right? Except:</p>
+<pre class="r"><code>cmd2 &lt;- c(&quot;pathological&quot;, &quot;I&quot;, &quot;am&quot;)
+with2_bad(L, rev(cmd2))</code></pre>
+<pre><code>cmd2(rev)</code></pre>
+<p>Wow, what the heck is that? Instead of reversing <code>c(&quot;pathological&quot;, &quot;I&quot;, &quot;am&quot;)</code>
+we reversed the command <code>rev(cmd2)</code>. Here is what <code>with2_bad</code> effectively did:</p>
+<pre class="r"><code>cmd2 &lt;- quote(rev(cmd2))
+cmd2</code></pre>
+<pre><code>rev(cmd2)</code></pre>
+<pre class="r"><code>rev(cmd2)</code></pre>
+<pre><code>cmd2(rev)</code></pre>
+<p>It’s mind boggling enough that we can reverse an unevaluated R command,
+but imagine you’re the user and everything was perfectly fine until the fateful
+day you used the <code>cmd2</code> name in your command. On the “Principle of Least
+Surprise” scale this outcome is right there with finding a rat in your toilet
+bowl.</p>
+<p>So what happened? We had a name clash with the <code>cmd2</code> symbol that exists both
+in <code>with2_bad</code>’s <strong>Evaluation</strong> Environment and in the <strong>Calling</strong> Environment.
+This is what the Environment Chain looks like when <code>eval</code> begins the
+lookup-and-substitute process on <code>rev(cmd2)</code> (<code>&lt;w2_b&gt;</code> is <code>with2_bad</code>’s
+Evaluation Environment):</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-018.png'
+  alt='NSE in Evaluation Environment instead of Calling Env is bad.'
+/></p>
+<p>When evaluating with <code>with2_bad</code> as the enclosure <code>cmd2</code> resolves to the object
+in <code>with2_bad</code>, instead to the one in the global environment.</p>
+<p>As we saw earlier <code>with2</code> bypasses its Evaluation Environment when calling
+<code>eval</code>:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-019.png'
+  alt='Lookups are fixed by setting the Eval Env to be the Calling Env.'
+/></p>
+<p>So it works as expected:</p>
+<pre class="r"><code>cmd2 &lt;- c(&quot;pathological&quot;, &quot;I&quot;, &quot;am&quot;)
+with2(L, rev(cmd2))</code></pre>
+<pre><code>[1] &quot;am&quot;           &quot;I&quot;            &quot;pathological&quot;</code></pre>
+<p>There are other ways things go wrong. Suppose we wanted to use <code>with2_bad</code>
+inside a function that is careful not to use names used by <code>with2_bad</code>:</p>
+<pre class="r"><code>friendly_fun &lt;- function(L) {
+  z &lt;- c(&#39;hello&#39;, &#39;friend&#39;, &#39;!&#39;)
+  with2_bad(L, paste(c(z, w), collapse=&#39; &#39;))
+}
+friendly_fun(L)</code></pre>
+<pre><code>[1] &quot;1 5 9 8 am I list&quot;</code></pre>
+<p>What happened? Instead of using the <code>z</code> in <code>friendly_fun</code>’s <strong>Evaluation</strong>
+Environment, which in this case is <code>with2_bad</code>’s <strong>Calling</strong> Environment, we
+used the <code>z</code> in the global environment. Why? Because the <code>with2_bad</code>’s
+<strong>Function</strong> Environment, and hence the Enclosure of its <strong>Evaluation</strong>
+Environments, is the global environment. So <code>friendly_fun</code>’s Evaluation
+Environment (<code>&lt;ffun&gt;</code> below) is not part of the Environment Chain:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-020.png'
+  alt="Similarly lookups fail if we start looking in with2_bad's Evaluation
+  Environment"
+/></p>
+<p>Again, this is resolved by explicitly setting the Enclosure in <code>eval</code> to the
+<strong>Calling</strong> Environment with <code>parent.frame</code> as <code>with2</code> does:</p>
+<pre class="r"><code>friendly_fun &lt;- function(L) {
+  z &lt;- c(&#39;hello&#39;, &#39;friend&#39;, &#39;!&#39;)
+  with2(L, paste(c(z, w), collapse=&#39; &#39;))
+}
+friendly_fun(L)</code></pre>
+<pre><code>[1] &quot;hello friend ! am I list&quot;</code></pre>
+<p>The chain is now as we want it to be:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-021.png'
+  alt='Setting the Evaluation Environment to be `friendly_fun`s fixes things.'
+/></p>
+</div>
+<div id="advanced-nse" class="section level1">
+<h1>Advanced NSE</h1>
+<p>Since we can capture user commands, we can also edit them before we run
+them. For example, suppose we want to write a function to sum things in the
+context of a data frame, by group. It could look something like:</p>
+<pre class="r"><code>mean_call &lt;- function(cmd) {
+  call &lt;- quote(mean(NULL))
+  call[[2L]] &lt;- cmd
+  call
+}
+mean_by_grp &lt;- function(data, cmd, grp) {
+  call_env &lt;- parent.frame()
+  grp &lt;- eval(substitute(grp), data, enclos=call_env)
+  data &lt;- split(data, grp)
+  cmd &lt;- mean_call(substitute(cmd))
+  res &lt;- setNames(numeric(length(data)), names(data))
+
+  for(i in seq_along(data)) {
+    res[[i]] &lt;- eval(cmd, data[[i]], enclos=call_env)
+  }
+  res
+}</code></pre>
+<p><code>mean_call</code> takes an unevaluated R command of the type produced by <code>quote</code> or
+<code>substitute</code> and wraps it in <code>mean</code>:</p>
+<pre class="r"><code>cmd &lt;- quote(Sepal.Length / Sepal.Width)
+cmd</code></pre>
+<pre><code>Sepal.Length/Sepal.Width</code></pre>
+<pre class="r"><code>mean_call(cmd)</code></pre>
+<pre><code>mean(Sepal.Length/Sepal.Width)</code></pre>
+<p><code>mean_by_grp</code> splits the data into groups and then evaluates the above command
+in the context of those groups:</p>
+<pre class="r"><code>mean_by_grp(iris, Sepal.Length / Sepal.Width, Species)</code></pre>
+<pre><code>    setosa versicolor  virginica 
+      1.47       2.16       2.23 </code></pre>
+<p>Don’t worry too much about the details, the important point is that we’re
+calling <code>eval</code> with <code>enclos=call_env</code>. Previously this ensured everything
+worked fine, and it seems to here, but what if:</p>
+<pre class="r"><code>mean &lt;- function(...) stop(&quot;Boom&quot;)
+mean_by_grp(iris, Sepal.Length / Sepal.Width, Species)</code></pre>
+<pre><code>Error in mean(Sepal.Length/Sepal.Width): Boom</code></pre>
+<p>Normally this problem is obviated by the use of packages and associated
+namespaces. That ensures that when package functions evaluate they resolve
+their names without interference from user objects. But this doesn’t work here
+because we explicitly bypass the normal Evaluation Environment and request
+evaluation in the Calling Environment.</p>
+<p>Let’s examine the modified command <code>mean_call</code> produces:</p>
+<pre><code><span style='background-color: #aaffaa;'>mean</span>(<span
+style='background-color: #aaaaff;'>Sepal.Length/Sepal.Width</span>)</code></pre>
+<p>The problem is that we need <code style='background-color:
+#aaffaa;'>mean</code> to be resolved according to our function’s Evaluation
+Environment, but <code style='background-color:
+#aaaaff;'>Sepal.Length/Sepal.Width</code> to be resolved according to the
+Calling Environment. We can only evaluate a command in a single environment, so
+we’re stuck.</p>
+<p>We could use <code>base::mean</code> instead of <code>mean</code>, but this would still fail if
+someone redefined <code>::</code> in the Calling Environment (and yes, they can).
+Another option is to manually substitute the actual function instead of the name
+of the function:</p>
+<pre class="r"><code>mean_call &lt;- function(cmd) {
+  call &lt;- quote(NULL(NULL))  # call template
+  call[[1L]] &lt;- mean         # actual function object
+  call[[2L]] &lt;- cmd
+  call
+}</code></pre>
+<p>Let’s pretend our functions here are in a hypothetical package <code>pkg</code> with no
+dependencies. In that case, this is what the Environment Chain looks like as
+<code>mean_call</code> is injecting <code>mean</code> into the call template (<code>call</code>, shown as
+<code>NULL(NULL)</code>) in the second line of the function<a href="#fn20" class="footnote-ref" id="fnref20"><sup>20</sup></a>:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-022.png'
+  alt='Package functions are immune from interference by objects in the global
+  environment'
+/></p>
+<p><code>&lt;mcll&gt;</code> is <code>mean_call</code>’s Evaluation Environment, and <code>&lt;pkg&gt;</code> the package
+namespace. The latter has for enclosure the base namespace, so the
+version of <code>mean</code> defined in the global environment does not interfere. We get:</p>
+<pre class="r"><code>mean_call(cmd)</code></pre>
+<pre><code>(function (x, ...) 
+UseMethod(&quot;mean&quot;))(Sepal.Length/Sepal.Width)</code></pre>
+<p>This looks ugly, but by pre-resolving <code>mean</code> to the correct function we can
+safely <code>eval</code> the command in a different Environment Chain:</p>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/flip-1/img-023.png'
+  alt='Pre-substituting our function call prior to evaluation allows things to
+  resolve correctly'
+/></p>
+<p><code>&lt;mbg&gt;</code> is the Evaluation Environment of <code>mean_by_group</code>, but that Environment
+Chain is bypassed by <code>eval</code> to resolve <code>Sepal.Length</code>, <code>Sepal.Width</code>, and <code>/</code> in
+<code>iris</code> enclosed by the Calling Environment.</p>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p><img
+  src='/post/2020-02-13-on-nse_files/images/four-2-small.jpg'
+  data-src-big='/post/2020-02-13-on-nse_files/images/four-2.jpg'
+  class='post-inset-image bgw-zoom-img'
+/></p>
+<p>Geez, that was a lot less fun than I thought it was going to be when I started
+writing the post. Trying to keep all those closely related but critically
+different concepts distinct while remaining faithful<a href="#fn21" class="footnote-ref" id="fnref21"><sup>21</sup></a> to the
+documentation was exhausting. I imagine reading through this likely had a
+similar effect on you, so if you managed to get this far I’ll consider it a
+small victory.</p>
+<p>Unfortunately even the standard evaluation model in R is complex, so messing
+around with it for NSE is even more so. It is particularly challenging
+because in many cases incorrect usage of NSE works fine, but then proceeds to
+break in the most bewildering ways under global usage. Further compounding
+things is the challenging terminology (looking at you <code>parent.env</code> vs
+<code>parent.frame</code> vs <code>environment</code>).</p>
+<p>I do hope that whatever clarity this post might add on the topic is not
+terminally muddled by its length. If you have any feedback I’d be happy to hear
+it.</p>
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<p id="feedback-cont">
+</p>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="references" class="section level2">
+<h2>References</h2>
+<ul>
+<li>Sections <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Environment-objects">2.1.11</a>, <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Evaluation-of-expressions">3</a>, and <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Functions">4</a> of the R Language Definition (or
+really, the whole document, it’s a must read).</li>
+<li><a href="https://renkun.me/2014/12/03/tips-on-non-standard-evaluation-in-r/">Tips on NSE in R</a> by Kun Ren.</li>
+<li><a href="https://blog.obeautifulcode.com/R/How-R-Searches-And-Finds-Stuff/">How R Searches And Finds Stuff</a> by Saruj Gupta.</li>
+<li>The Original Ihaka and Gentleman <a href="https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf">R Paper</a>.</li>
+<li><a href="https://developer.r-project.org/nonstandard-eval.pdf">Standard Nonstandard Evaluation Rules</a> by Thomas Lumley.</li>
+<li><code>?environment</code> in the R documentation.</li>
+</ul>
+</div>
+<div id="acknowledgments" class="section level2">
+<h2>Acknowledgments</h2>
+<p>The following are post-specific acknowledgments. This website owes many
+additional thanks to <a href="/about/#acknowledgments">generous people and organizations</a> that have made it
+possible.</p>
+<ul>
+<li><a href="https://www.r-project.org/contributors.html">R-core</a> for creating and maintaining a language so wonderful it allows
+crazy things like NSE.</li>
+<li>For the R logo renderings:
+<ul>
+<li><a href="https://www.r-project.org/contributors.html">R-core</a> for providing the logo in SVG format.</li>
+<li><a href="https://github.com/pmur002/">Paul Murrell</a> for <a href="https://cran.r-project.org/package=gridBezier"><code>gridBezier</code></a> which I used to turn the SVG into
+a polygon outline.</li>
+<li><a href="https://github.com/mdsumner">Michael Sumner</a> for <a href="https://cran.r-project.org/package=decido"><code>decido</code></a> which I initially used to triangulate the
+polygons.</li>
+<li><a href="https://github.com/tylermorganwall/">Tyler Morgan Wall</a> for <a href="https://cran.r-project.org/package=rayrender"><code>rayrender</code></a> with which I rendered the logos in
+beautiful path-traced glory.</li>
+</ul></li>
+</ul>
+</div>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.6.3 (2020-02-29)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.3       bookdown_0.18    digest_0.6.25    later_1.0.0     
+ [5] mime_0.9         R6_2.4.1         jsonlite_1.6.1   magrittr_1.5    
+ [9] evaluate_0.14    blogdown_0.18    stringi_1.4.6    rlang_0.4.5.9000
+[13] rstudioapi_0.11  promises_1.1.0   rmarkdown_2.1    tools_3.6.3     
+[17] stringr_1.4.0    servr_0.16       httpuv_1.5.2     xfun_0.12       
+[21] compiler_3.6.3   htmltools_0.4.0  knitr_1.28      </code></pre>
+<!--
+  ZoomImage HTML template, intended to be copied for use in actual instantiated
+  flipbooks
+
+  DO NOT INDENT more than 2 spaces!! Otherwise pandoc will think it is markdown
+  code.
+
+  The SVG bit is lazy; we should have just one we clone in JS
+-->
+<!--
+Container must be empty, elements will be put inside but placed absolutely, we just need it to be technically visible.
+-->
+<div id='bgw-zoom-img-container'></div>
+<!--
+Templates, will be copied and assembled in JS
+-->
+<div id='bgw-zoom-img-tpl-container' style='display: none'>
+
+<!--
+Outer part, shared by both figure-imgs and imgs, controls positioning and border frame around image.
+
+-->
+<div
+  id=bgw-zoom-frame-template class=bgw-zoom-frame
+  style='display: none'
+>
+<div class=bgw-zoom-bg>
+<div class=bgw-zoom-inner-frame>
+<svg
+  class=bgw-zoom-boxclose
+  viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+>
+  <circle cx="50" cy="50" r="45" stroke='white' stroke-width='5'/>
+<g transform="rotate(45, 50, 50)">
+  <rect width='70' height='15' x='15', y='42.5' rx='5' fill='white'/>
+  <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
+</g>
+</svg>
+<div class=bgw-zoom-border>
+<!--
+  carefull messing with anything inside the figure as JS makes assumptions
+  about existing structure
+-->
+  <figure><img /><figcaption></figcaption></figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script type='text/javascript' src='/script/_lib/zoom-img/zoom-img.js'></script>
+<!--
+  Flipbook HTML template, intended to be copied for use in actual instantiated
+  flipbooks
+
+  DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
+-->
+<div id="bg-flipbook-template" style="display: none;">
+<div id="bg-flipbook-images" style="display: none">
+
+</div>
+<div id="bg-flipbook-container" style="margin: auto; display: inline-block; max-width: 98%;">
+<canvas id="bg-flipbook-flipbook" style="display: block; max-width: 100%;">
+This is an HTML Canvas flipbook that displays key frames of an animation in a
+more controllable manner than in a video player. If you are reading this text
+your browser does not support HTML Canvas.
+</canvas>
+<!--
+We have to use a P block here as otherwise pandoc adds a P block for the
+inline elements
+-->
+<p style="margin-top: 5px; margin-bottom: 0px; text-align: initial;">
+<input
+  id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
+  title='Display help overlay'
+/>
+<input
+  id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  title='Play/Pause'
+/>
+<input
+  id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+  title='Stop and Reset'
+/>
+ 
+<input
+  id='bg-flipbook-step-b' type='button' value='&#x21E4;' style='font-size: 18px;'
+  title='Step Backwards'
+/>
+<input
+  id='bg-flipbook-step-f' type='button' value='&#x21E5;' style='font-size: 18px;'
+  title='Step Forwards'
+/>
+ 
+FPS:
+<input
+  id='bg-flipbook-fps' type='text'
+  style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  title='Set Playback Rate' value=3
+/>
+<span id="bg-flipbook-frame-span">
+ 
+#:
+<input
+  id='bg-flipbook-frame'
+  type='text'
+  style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  value=1
+  title='(Jump to) frame #'
+/> / <span id="bg-flipbook-frame-n"></span>
+ 
+<label title='Loop-play'>
+<span id="bg-flipbook-loop-ind" style="font-size: 1.3em; font-weight: bold;">⤾</span>:
+<input id='bg-flipbook-loop' value=1 type='checkbox' />
+</label>
+</span>
+</p>
+</div>
+</div>
+<script type='text/javascript' src='/script/_lib/flipbook/flipbook.js'></script>
+<script type='text/javascript'>
+const imgDir = '/post/2020-02-13-on-nse_files/images/flip-1/';
+const fps = 1;
+new BgFlipBook({
+  targetId: 'flipbook1', imgDir: imgDir, imgStart: 1, imgEnd: 6,
+  imgPad: "000", fps: fps, loop: true
+})
+new BgFlipBook({
+  targetId: 'flipbook2', imgDir: imgDir, imgStart: 7, imgEnd: 13,
+  imgPad: "000", fps: .3, loop: true, loopDelay: 3000
+})
+</script>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>The parentheses in <code>rev(x)</code> are not considered “names”. They are
+syntax tokens that are used to parse the command. Opening parentheses that
+are not part of the syntax of a function call are names, as in <code>(1 + 2) * 3</code>.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><span id='simple-model'>Items we gloss over include but are not
+limited to:
+<ul>
+<li>
+Function parameters are <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Argument-evaluation">evaluated lazily</a> so they are only fetched
+when they are referenced within a function body as something other than an
+argument to a closure (e.g. as an argument to a primitive or other entry
+points into statically compiled machine code, or simply as a stand-alone
+reference to the name as in <code>force</code>).
+<li>
+What is fetched is a pointer to the location in memory the R objects are
+stored in, not the objects proper. Since in R memory addresses are not
+directly visible, we’ll treat the pointers as if they are the actual R
+objects they reference.
+<li>
+The <a href="https://stat.ethz.ch/R-manual/R-devel/library/compiler/html/compile.html">byte-compiler</a> affects the nature of non-evaluated code
+prefetching the objects names point to and performing other optimizations, and
+generally bypassing many aspects of the “normal” evaluation process.
+<li>
+Names representing called functions are only resolved against names that
+are associated with functions.
+<li>
+Lookups from the global environment down are usually done against a
+“global” hash table that replicates the semantics of the Environment Chain,
+but isn’t actually a chain.
+<li>
+The base environment has an enclosure, although it is the empty
+environment which itself does not have an enclosure.
+<li>
+And more.
+</ul>
+<p></span><a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>One other possibility is that a chain connects back on itself,
+forming an infinite loop. This doesn’t usually happen unless people are
+messing with environments in a way they shouldn’t be.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>This is not a formal R term. In the documentation the term
+“environment” is often used as we use Environment Chain here.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>Packages loaded with <code>library</code>, or those that are part of the
+“base” set of packages that are pre-attached by R (e.g. <code>stats</code>, etc.), or any
+other environments attached with <code>attach</code>.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>Well, it will unless you have loaded a pathological package
+that also defines a <code>rev</code> function, or if you yourself define a <code>rev</code> function
+in the global environment.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p>In some contexts the term “environment” is taken to mean the
+entire Environment Chain. In fact, the term “Environment Chain” is not a term
+used by the R documentation.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>Functions in R that are defined with the <code>function</code> keyword
+(i.e. <code>fun &lt;- function(&lt;formals&gt;) {&lt;body&gt;}</code> have three components: formals
+(a.k.a. parameter list), body (a.k.a. the set of commands that the function
+executes), and the Function Environment, which I prefer to call the <a href="#fun-env-term">Function
+Enclosure</a>. See full details in the <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Function-objects">R Language
+Definition</a>.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p>Functions created with <code>function</code> in R are called “closures”
+because they carry a link to an environment to use as an Enclosure to the
+Evaluation Environment that will be used to evaluate the commands in the body
+of the function. There is also another class of functions call “primitives”.
+Primitives are entry points into statically compiled machine code. These
+functions don’t contain any R commands, and as such do not require an
+Enclosure to lookup names.<a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p><span id="fun-env-term">I dislike the term “Function Environment”
+as because there are two environments that could be considered the “function
+environment”: the evaluation environment generated each time the function is
+invoked, and the environment to use as its enclosure. Additionally, “Function
+Environment” suggests the environment belongs to the function. Strictly
+speaking, what we call the “Function Enclosure” is “environment to use as the
+enclosure for the function evaluation environments”.</span><a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>That is the default behavior, but is possible to change what the
+enclosing environment for any given function’s evaluation environments will
+be with <code>environment(fun) &lt;-</code>. See also the discussion of <a href="#fun-env-term">function
+evaluation environment terminology</a>.<a href="#fnref11" class="footnote-back">↩</a></p></li>
+<li id="fn12"><p><code>.Primitive</code>, <code>.Internal</code>, and a few other special
+R functions are entry points into the statically compiled machine code that
+actually does the work of computation. Once those functions are invoked there
+is no more R code until they return, except if for some reason the statically
+compiled routines themselves invoke the internal version of <code>eval</code> or similar
+to evaluate R code.<a href="#fnref12" class="footnote-back">↩</a></p></li>
+<li id="fn13"><p><span id="promises-actually">In reality instead of the
+values of the arguments, R stores the command passed as the argument along
+with the environment to evaluate it in. If the argument is used by the
+function then the command is evaluated in its environment to produce the
+value. This is typically the same as if R had used the values directly, but
+there are some circumstances where behavior is changed due to this feature.
+Values that are stored as the command used to generate them along with the
+environment to evaluate that command are known as promises</span><a href="#fnref13" class="footnote-back">↩</a></p></li>
+<li id="fn14"><p>We use <code>&lt;rev&gt;</code> for clarity; in reality function Evaluation
+Environments don’t have names and would be displayed in R as their memory
+address, something like <code>&lt;environment: 0x7fce5c930238&gt;</code>.<a href="#fnref14" class="footnote-back">↩</a></p></li>
+<li id="fn15"><p>R only copies objects when necessary to maintain the
+“pass-by-value” illusion. See <a href="https://cran.r-project.org/doc/manuals/R-lang.html#Function-objects">“The Secret Lives Of R Objects”</a> for more
+details.<a href="#fnref15" class="footnote-back">↩</a></p></li>
+<li id="fn16"><p>One of the interesting things about R is that R code
+never modifies or creates objects. The only effect of running R code is to
+substitute the names for the R objects they point to. It is only once we
+enter into statically compiled machine code routines that objects are created
+/ modified. This may seem obvious to some, and even though I’ve always been
+aware of it to some degree, I still find it interesting.<a href="#fnref16" class="footnote-back">↩</a></p></li>
+<li id="fn17"><p>Environments can have multiple children <a href="#rev-chain">as we saw
+previously</a>. While not shown here <code>fun</code>’s environment from
+earlier is still linked to the global environment.<a href="#fnref17" class="footnote-back">↩</a></p></li>
+<li id="fn18"><p>Unfortunately the terminology around the hierarchical
+relationship of environments in R is muddled. In early days the term “parent”
+was used for enclosures, which is why <code>parent.env</code> returns the enclosure of an
+environment. However, there is also the <code>parent.frame</code>, which is the
+Calling Environment, i.e. the evaluation environment of the command that that
+triggered the current evaluation. Perhaps S’s lack of lexical scope
+contributed to this infelicity. Another oddity is that <code>environment(fun)</code>
+is used to retrieve the environment to use as an Enclosure, i.e. <em>similar</em> in
+semantics to <code>parent.env</code>.<a href="#fnref18" class="footnote-back">↩</a></p></li>
+<li id="fn19"><p>Unfortunately the terminology around the hierarchical
+relationship of environments in R is muddled. In early days the term “parent”
+was used for enclosures, which is why <code>parent.env</code> returns the enclosure of an
+environment. However, there is also the <code>parent.frame</code>, which is the
+Calling Environment, i.e. the evaluation environment of the command that that
+triggered the current evaluation. Perhaps S’s lack of lexical scope
+contributed to this infelicity. Another oddity is that <code>environment(fun)</code>
+is used to retrieve the environment to use as an Enclosure, i.e. <em>similar</em> in
+semantics to <code>parent.env</code>.<a href="#fnref19" class="footnote-back">↩</a></p></li>
+<li id="fn20"><p>The lookup-and-substitute metaphor is a little strained
+here as <code>[[&lt;-</code> is a primitive, but please humor me.<a href="#fnref20" class="footnote-back">↩</a></p></li>
+<li id="fn21"><p>I’m sure better nitpickers than me will find some spots I
+failed to do this in properly.<a href="#fnref21" class="footnote-back">↩</a></p></li>
+</ol>
+</div>

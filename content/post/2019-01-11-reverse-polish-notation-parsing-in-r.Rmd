@@ -8,10 +8,10 @@ imagemrgvt: "0%"
 imagemrghz: "0%"
 weight: 1
 contenttype: article
-description: An examination of R's compute-on-the-language capabilities in the
-  context of a Reverse Polish Notation parser.
+description: "An examination of R's compute-on-the-language capabilities in the
+  context of a Reverse Polish Notation parser."
 categories: [r]
-tags: []
+tags: [meta-program]
 ---
 
 ```{r echo=FALSE}

@@ -17,10 +17,12 @@ Tracks is distributed under the terms of the GNU GPL
 /*===== Variables =====*/
 /* Theme Colors */
 :root {
-  --post-width: 675px;
-  --excerpt-width: 800px;
+  --bgw-post-width: 675px;
+  --bgw-excerpt-width: 800px;
+  --bgw-inset-width: 250px;
+  --bgw-inset-width-small: 200px;
+  --bgw-inset-width-margin: 15px;
 }
-
 .site-title, .toggle-navigation i {
   font-size: 1.625em;
   line-height: 1.85;
@@ -314,30 +316,38 @@ img.aligncenter {
 }
 /* Inset image settings
  *
- * see min-width 37.5 section for the wider settings
+ * see min-width 600px section for the wider settings
  */
 img.post-inset-image {
   float: left;
   margin: 5px 15px 5px 0;
   object-fit: cover;
-  width: 100%;
-  height: 100%;
+  width: var(--bgw-inset-width-small);
 }
 figure.post-inset-image {
   display: inline-block;
   float: left;
   margin: 5px 15px 10px 0;
-  width: 200px;
+  width: var(--bgw-inset-width-small);
 }
 figure.post-inset-image div.post-inset-image-frame{
   width: 100%;
-  height: 200px;
+  height: var(--bgw-inset-width-small);
 }
 figure.post-inset-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
+/*
+  For code that is supposed to "float" right of an inset image, we only
+  have special treatment for 600px or wider (see in width-dependent section.
+ */
+
+div.bgw-code-float {
+  clear: both;
+}
+
 /* End image inset */
 /*****************************************************************************\
 |                                   Wrappable                                 |
@@ -543,8 +553,6 @@ img.bgw-zoom-img {
 |                                   zoom-img                                  |
 \*****************************************************************************/
 
-
-
 .alignleft {
   float: left;
   margin: 0 1.5em 1.5em 0;
@@ -708,10 +716,10 @@ a img {
 }
 
 body.single-post div.main {
-  max-width: var(--post-width);
+  max-width: var(--bgw-post-width);
 }
 body.home div.main {
-  max-width: var(--excerpt-width);
+  max-width: var(--bgw-excerpt-width);
   width: 88.89%;
 }
 
@@ -2188,9 +2196,8 @@ code {
 \*****************************************************************************/
 
 /*
- * Note that the em widths probably don't match pixel widths anymore since we
- * changed the font from raleway, and additionally since we changed some of the
- * actual em widths as well.
+ * Used to be em widths, which widths probably don't match pixel widths anymore 
+ * since we changed the font from raleway.  Changed back to pixels
  */
 
 @media only screen and (min-device-width: 320px) and (max-device-width: 480px) and (orientation: landscape) {
@@ -2205,19 +2212,25 @@ code {
     /* none for no scaling */
   }
 }
-/* 600px */
-@media all and (min-width: 37.5em) {
+@media all and (min-width: 600px) {
     /* see also default settings for narrower */
     img.post-inset-image {
-      width: 250px;
-      height: 250px;
+      width: var(--bgw-inset-width);
+      height: var(--bgw-inset-width);
     }
     figure.post-inset-image {
-      width: 250px;
+      width: var(--bgw-inset-width);
     }
     figure.post-inset-image div.post-inset-image-frame{
-      width: 250px;
-      height: 250px;
+      width: var(--bgw-inset-width);
+      height: var(--bgw-inset-width);
+    }
+    /* For code that is supposed to "float" right of an inset image,
+     * but only do it if we're wide enough (600 is borderline...)
+     */
+    div.bgw-code-float {
+      margin-left: calc(var(--bgw-inset-width) + var(--bgw-inset-width-margin));
+      clear: none;
     }
     /* end post-inset */
     .return-top {
@@ -2452,7 +2465,7 @@ code {
 /*
  * 700px originally 43.75em
  * */
-@media all and (min-width: 39em) {
+@media all and (min-width: 700px) {
     .comments {
       padding: 0 0 3em;
     }
@@ -2546,7 +2559,7 @@ code {
 /* These seem to be the threshold at which the navigation stuff collapses */
 /* 800px originally 50em */
 
-@media all and (min-width: 42em) {
+@media all and (min-width: 800px) {
     .top-navigation {
       margin: 0 0 1.5em 0;
     }
@@ -2749,7 +2762,7 @@ code {
  * 900px: This is where we transition from thumbnail side image to top/bottom
  * originally 56.25 em
  */
-@media all and (min-width: 50em) {
+@media all and (min-width: 900px) {
     .comments {
       padding: 0 0 3em;
     }
@@ -2925,7 +2938,7 @@ code {
     }
 }
 /* 1000px */
-@media all and (min-width: 62.5em) {
+@media all and (min-width: 1000px) {
   li.comment article,
   li.pingback article {
     line-height: 0;
@@ -2989,7 +3002,7 @@ code {
   }
 }
 /* 1100px */
-@media all and (min-width: 68.75em) {
+@media all and (min-width: 1100px) {
     .comments {
       padding: 0 0 3em;
     }
@@ -3028,7 +3041,7 @@ code {
     }
 }
 /* 1200px */
-@media all and (min-width: 75em) {
+@media all and (min-width: 1200px) {
     .entry-container {
       padding: 0 0;
     }
