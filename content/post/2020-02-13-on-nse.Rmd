@@ -1,17 +1,18 @@
 ---
-title: On NSE
+title: Standard and Non-Standard Evaluation in R
 author: ~
-date: '2020-02-13'
+date: '2020-05-05'
 slug: on-nse
-categories: []
-tags: []
-image: /front-img/default.png
-imagerect: ~
+categories: [r]
+tags: [meta-program]
+image: /post/2020-02-13-on-nse_files/images/four-small.jpg
+imagerect: /post/2020-02-13-on-nse_files/images/two.jpg
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: "An attempt at demystifying standard and non-standard evaluation
+models in R."
 output:
   blogdown::html_page:
     keep_md: yes
@@ -19,25 +20,14 @@ output:
 ---
 ```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
-<!--
-Absolute coordinates in caps
-
-M: moveto
-L: lineto
-Z: closepath
-ZM: cloepath/moveto?
-C: curveto - cubic bezier, which start at the previous point, list the two
-   control point, and then list the end point, so four coordinates, of which
-   one is the last coordinate of the prior command.
-
-Pull out the bezier segments
--->
 
 # With Great Freedom...
 
 <img
-  id='front-img' src='/front-img/default.png'
-  class='post-inset-image'
+  id='front-img'
+  src='/post/2020-02-13-on-nse_files/images/four-small.jpg'
+  data-src-big='/post/2020-02-13-on-nse_files/images/four.jpg'
+  class='post-inset-image bgw-zoom-img'
 />
 
 Non-Standard Evaluation is a pretty controversial topic in R circles, and even
@@ -55,28 +45,36 @@ subset(mtcars, hp > 250)
 
 The command `hp > 250` is intercepted before it is run, and its meaning is
 changed by allowing the name `hp` to resolve against columns from `mtcars`
-instead of against objects in the workspace.  Compare what happens with a
-command that is evaluated in the standard way:
+instead of just against objects in the workspace.  Compare to what happens with
+a command that is evaluated in the standard way:
 
 ```{r}
 mtcars[hp > 250,]
 ```
 
-We get an error because `hp` does  not exist in my workspace.
+We get an error because `hp` is not defined in my workspace.
 
 # Standard Evaluation
+
+<img
+  id='se-img'
+  src='/post/2020-02-13-on-nse_files/images/one-1.jpg'
+  class='post-inset-image'
+/>
 
 When we type a simple command at the R prompt and hit ENTER, R computes its
 value (a.k.a. evaluates it):
 
+<div class='bgw-code-float'>
 ```{r echo=FALSE}
 y <- c("am", "I", "why")
 z <- c(1, 5, 9, 8)
 ```
 ```{r}
 w <- c("am", "I", "global")
-rev(w)           # reverse the order of vector `x`
+rev(w)    # reverse the order of `w`
 ```
+</div>
 
 Ironically the process of evaluation in R is mostly about looking things up
 rather than computing them.  In our example, when we hit ENTER R first looks for
@@ -127,12 +125,12 @@ After the lookup `rev(w)` becomes:
 `rev` is replaced by the definition of the function from the base environment,
 and `w` by the character vector from the workspace.  The workspace, also known
 as the global environment, is where name -> value mappings created at the
-R prompt are kept (e.g. `w <- c("am", "I", "global")`).
+R prompt are kept (e.g. `w <- c("am", "I", "global")`).  Our substituted command
+is a bit weird in appearance, but more useful to R as the names `rev` and `w`
+have no inherent meaning.
 
-Our substituted command is a bit weird in appearance, but more useful to R as
-the names `rev` and `w` have no inherent meaning.  There is _a fair bit_ of hand
-waving here[^simple-model], but for the most part the lookup-and-substitute
-model reflects observed R behavior.
+> There is _a fair bit_ of hand waving here[^simple-model], but for the most
+> part the lookup-and-substitute model reflects observed R behavior.
 
 R is not yet done with our command.  More on this shortly, but first lets talk
 about environments.
@@ -141,11 +139,11 @@ about environments.
 
 <span id='env-desc'>Environments are akin to named lists with a few additional
 features.  All elements are uniquely named, and the names can be [hashed][25]
-for fast lookups.  This name -&gt; object mappings are known as the "Frame" of
+for fast lookups.  The name -&gt; object mappings are known as the "Frame" of
 the environment.  <span id='enclos'>Environments also carry a link to an
-"Enclosing Environment" a.k.a. "Enclosure" (black arrows in the flipbook,
-pointing to the Enclosure).  The Frame and the link to the Enclosure together
-make up the environment.</span></span>
+"Enclosing Environment" a.k.a. "Enclosure" (black arrows in the
+[flipbook](#flipbook1), pointing to the Enclosure).  The Frame and the link to
+the Enclosure together make up the environment.</span></span>
 
 > **WARNING**: Environments have reference semantics.  Be sure you
 > understand the [documentation][24] before you attempt to directly modify
@@ -155,13 +153,14 @@ make up the environment.</span></span>
 
 R searches for a name in an environment's Frame, and if it doesn't find it moves
 on to its Enclosure, and repeats the process until the name is found or it runs
-out of Enclosures.
+out of Enclosures.  We'll call this sequence of Enclosures the environment
+chain.
 
-When searching for `rev`, R will work through the entire environment chain down
-to the base package to retrieve the `base::rev` function[^pathological-pkg].
 For commands typed at the prompt the environment chain usually starts at the
 global environment and links the environments of all the attached
-packages[^attached] (represented with the `...` below) through to the base package.
+packages[^attached] (represented with the `...` below) through to the base
+package.  When searching for `rev`, R will work through this entire
+chain and the `base::rev` function from the base package[^pathological-pkg].
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-002.png'
@@ -192,9 +191,9 @@ part of the body of a function.
 # In Functions
 
 After the initial substitution of `rev` and `w` for the function  and its
-argument, R will call (i.e "run") the function, which means repeating the
-lookup-and-substitute process on any R commands it contains[^fun-components].
-Functions though introduce some additional wrinkles.
+argument, R will call (i.e "run") the function.  This means repeating the
+lookup-and-substitute process on any R commands contained in the body of the
+function[^fun-components], though with some additional wrinkles.
 
 Most functions in R are "closures"[^closures].  They are so called because they
 carry a reference to a "Function Environment"[^fun-env-term] to use as an
@@ -205,9 +204,10 @@ statically compiled machine code, and contain no R commands or
 environments[^static-compile-funs].</span>
 
 <span id=fun-eval-env>Each time a closure is called a new environment is
-created, enclosed by the **Function** Environment, and with the parameter ->
-value[^promises-actually] mappings as its Frame.  This new environment becomes
-the **Evaluation** Environment for the commands in the function body:</span>
+created, enclosed by the **Function** Environment, and with the function
+parameter -> value[^promises-actually] mappings as its Frame.  This new
+environment becomes the **Evaluation** Environment for the commands in the
+function body:</span>
 
 <div id='flipbook2'></div>
 
@@ -284,8 +284,14 @@ fun()
 
 # Non-Standard Evaluation
 
+<img
+  id='nse-img'
+  src='/post/2020-02-13-on-nse_files/images/one-2.jpg'
+  class='post-inset-image'
+/>
 One of the simplest NSE functions in R is `with`:
 
+<div class='bgw-code-float'>
 ```{r}
 L <- list(w=c("am", "I", "list"))
 with(
@@ -293,6 +299,7 @@ with(
   rev(w)     # same commmand
 )
 ```
+</div>
 
 What happened?  `L` was somehow made part of the environment chain and the names
 in `rev(w)` were matched against it.  `L` masked the name lookup as [`fun`'s
@@ -457,14 +464,14 @@ arguments.  This is a powerful feature, but with it comes a new class of
 potential errors.  Recall that functions create their own Evaluation
 Environments, but the commands that we capture and wish to re-evaluate refer to
 names in the [Calling Environment](#calling).  For things to work correctly we
-must hand craft an environment chain that passes through the Calling
-Environment.
+must hand craft an environment chain that connects to the Calling
+Environment at the correct point.
 
 When `parent.frame()` is called in a function body, it returns the **Calling**
 Environment.  `with2` uses `eval` to create an environment chain that starts
 with our list `L` and with the Calling Environment as the Enclosure:
 
-```{r eval=FALSE}
+```{r}
 with2 <- function(L, cmd) {
   cmd2 <- substitute(cmd)
   eval(cmd2, L, enclos=parent.frame()) #<< Calling Env as Enclosure
@@ -490,7 +497,7 @@ with2_bad(L, rev(cmd2))
 ```
 
 Wow, what the heck is that?  Instead of reversing `c("pathological", "I", "am")`
-we reversed the command `rev(cmd2)`:
+we reversed the command `rev(cmd2)`.  Here is what `with2_bad` effectively did:
 
 ```{r}
 cmd2 <- quote(rev(cmd2))
@@ -498,9 +505,9 @@ cmd2
 rev(cmd2)
 ```
 
-It's mind boggling enough that we can actually reverse an unevaluated R command,
-but imagine you're the user and everything was perfectly fine until one day you
-happen to use the `cmd2` name in your command.  On the "Principle of Least
+It's mind boggling enough that we can reverse an unevaluated R command,
+but imagine you're the user and everything was perfectly fine until the fateful
+day you used the `cmd2` name in your command.  On the "Principle of Least
 Surprise" scale this outcome is right there with finding a rat in your toilet
 bowl.
 
@@ -515,8 +522,8 @@ Evaluation Environment):
   alt='NSE in Evaluation Environment instead of Calling Env is bad.'
 />
 
-When evaluating with `with2_bad` as the enclosure `cmd2` resolves to the wrong
-object.
+When evaluating with `with2_bad` as the enclosure `cmd2` resolves to the object
+in `with2_bad`, instead to the one in the global environment.
 
 As we saw earlier `with2` bypasses its Evaluation Environment when calling
 `eval`:
@@ -544,12 +551,12 @@ friendly_fun <- function(L) {
 friendly_fun(L)
 ```
 
-What happened?  Instead of using the `z` in `fun2`'s **Evaluation** Environment,
-which in this case is `with2_bad`'s **Calling** Environment, we used the `z` in
-the global environment.  Why?  Because the `with2_bad`'s **Function**
-Environment, and hence the Enclosure of its **Evaluation** Environments, is the
-global environment.  So `friendly_fun`'s Evaluation Environment is not part of
-the environment chain:
+What happened?  Instead of using the `z` in `friendly_fun`'s **Evaluation**
+Environment, which in this case is `with2_bad`'s **Calling** Environment, we
+used the `z` in the global environment.  Why?  Because the `with2_bad`'s
+**Function** Environment, and hence the Enclosure of its **Evaluation**
+Environments, is the global environment.  So `friendly_fun`'s Evaluation
+Environment (`<ffun>` below) is not part of the environment chain:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-020.png'
@@ -577,10 +584,9 @@ The chain is now as we want it to be:
 
 # Advanced NSE
 
-NSE goes beyond to changing the environment chains used for evaluation.
-Since we capture a user command, we could in theory edit it before we run it.
-For example, suppose we wanted to write a function to sum things in the context
-of a data frame, by group.  It could look something like:
+Since we can capture user commands, we can also edit them before we run
+them.  For example, suppose we want to write a function to sum things in the
+context of a data frame, by group.  It could look something like:
 
 ```{r}
 mean_call <- function(cmd) {
@@ -619,7 +625,7 @@ mean_by_grp(iris, Sepal.Length / Sepal.Width, Species)
 ```
 
 Don't worry too much about the details, the important point is that we're
-calling `eval` with the `enclos=call_env`.  Previously this ensured everything
+calling `eval` with `enclos=call_env`.  Previously this ensured everything
 worked fine, and it seems to here, but what if:
 
 ```{r}
@@ -661,7 +667,8 @@ mean_call <- function(cmd) {
 
 Let's pretend our functions here are in a hypothetical package `pkg` with no
 dependencies.  In that case, this is what the environment chain looks like as
-`mean_call` is injecting `mean` into the call template[^strained-metaphor]:
+`mean_call` is injecting `mean` into the call template in the second line of
+the function[^strained-metaphor]:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-022.png'
@@ -697,10 +704,16 @@ chain is bypassed by `eval` to resolve `Sepal.Length`, `Sepal.Width`, and `/` in
 # Conclusions
 
 Geez, that was a lot less fun than I thought it was going to be when I started
-writing the post.  Hopefully you found it instructive.  I'll consider it a
-small victory if you managed to get this far.  Unfortunately even the standard
-evaluation model in R is complex, so messing around with it for NSE is even more
-so.
+writing the post.  Trying to keep all those closely related but critically
+different concepts distinct while remaining faithful[^mostly-faithful] to the
+documentation was exhausting.  I imagine reading through this likely had a
+similar effect on you, so if you managed to get this far I'll consider it a
+small victory.
+
+Unfortunately even the standard evaluation model in R is complex, so messing
+around with it for NSE is even more so.  This all compounded by the fact that
+things that work fine in the workspace stop working correctly in functions, and
+even then only in some circumstances.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -710,25 +723,62 @@ so.
 
 ## References
 
-* [Survey of Macros in R][22]
-* [R NSE Reference][27]
-* [Tips on NSE in R][29] by Kun Ren
-* [Original R Paper][30]
-* R Lang Def
-
+* Sections [2.1.11][35], [3][33], and [4][34] of the R Language Definition (or
+  really, the whole document, it's a must read).
+* [Tips on NSE in R][29] by Kun Ren.
+* [How R Searches And Finds Stuff][26] by Saruj Gupta.
+* The Original Ihaka and Gentleman [R Paper][30].
+* [Standard Nonstandard Evaluation Rules][27] by Thomas Lumley.
+* `?environment` in the R documentation.
 
 ## Acknowledgments
 
-Sumner (decidio, other things?).
-gridBezier
-png
+The following  are post-specific acknowledgments.  This website owes many
+additional thanks to [generous people and organizations][260] that have made it
+possible.
+
+* [R-core][50] for creating and maintaining a language so wonderful it allows
+  crazy things like NSE.
+* For the R logo renderings:
+    * [R-core][50] for providing the logo in SVG format.
+    * [Paul Murrell][54] for [`gridBezier`][51] which I used to turn the SVG into
+      a polygon outline.
+    * [Michael Sumner][55] for [`decido`][52] which I initially used to triangulate the
+      polygons.
+    * [Tyler Morgan Wall][56] for [`rayrender`][53] with which I rendered the logos in
+      beautiful path-traced glory.
 
 ## Session Info
 
-<!--
+```{r eval=FALSE}
+sessionInfo()
+```
+```
+R version 3.6.3 (2020-02-29)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.3       bookdown_0.18    digest_0.6.25    later_1.0.0     
+ [5] mime_0.9         R6_2.4.1         jsonlite_1.6.1   magrittr_1.5    
+ [9] evaluate_0.14    blogdown_0.18    stringi_1.4.6    rlang_0.4.5.9000
+[13] rstudioapi_0.11  promises_1.1.0   rmarkdown_2.1    tools_3.6.3     
+[17] stringr_1.4.0    servr_0.16       httpuv_1.5.2     xfun_0.12       
+[21] compiler_3.6.3   htmltools_0.4.0  knitr_1.28      
+```
+
 ```{r child='../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis', cache=FALSE}
 ```
--->
 ```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis', cache=FALSE}
 ```
 <script type='text/javascript'>
@@ -754,13 +804,26 @@ new BgFlipBook({
 [28]: /2019/01/11/reverse-polish-notation-parsing-in-r/
 [29]: https://renkun.me/2014/12/03/tips-on-non-standard-evaluation-in-r/
 [30]: https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf
-[31]: https://cran.r-project.org/doc/manuals/R-lang.html#Function-objects
-[32]: https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf
-[82]: /2019/02/18/an-unofficial-reference-for-internal-inspect/
 
-[^earth-shattering]: Under no circumstances
-[^more-complicated]: The actual meaning changes is more complicated, but we'll
-  discuss that in the body of this post.
+[31]: https://cran.r-project.org/doc/manuals/R-lang.html#Function-objects
+
+[32]: https://www.stat.auckland.ac.nz/~ihaka/downloads/R-paper.pdf
+[33]: https://cran.r-project.org/doc/manuals/R-lang.html#Evaluation-of-expressions
+[34]: https://cran.r-project.org/doc/manuals/R-lang.html#Functions
+[35]: https://cran.r-project.org/doc/manuals/R-lang.html#Environment-objects
+
+[50]: https://www.r-project.org/contributors.html
+[51]: https://cran.r-project.org/package=gridBezier
+[52]: https://cran.r-project.org/package=decido
+[53]: https://cran.r-project.org/package=rayrender
+
+[54]: https://github.com/pmur002/
+[55]: https://github.com/mdsumner
+[56]: https://github.com/tylermorganwall/
+
+[260]: /about/#acknowledgments
+
+
 [^simple-model]: <span id='simple-model'>Items we gloss over include but are not
   limited to:<ul>
   <li>Function parameters are [evaluated lazily][20] so they are only fetched
@@ -783,28 +846,9 @@ new BgFlipBook({
   <li>The base environment has an enclosure, although it is the empty
   environment which itself does not have an enclosure.
   <li>And more.</ul></span>
-[^mostly-names]: In R "names" are not restricted to words in the typical sense.
-  Symbols like `*`, `+`, and even `(` in some circumstances are also called
-  "names".  "names" are also called "symbols" and the terms are often used
-  interchangeably in the documentation.
 [^parens]: The parentheses in `rev(x)` are not considered "names".  They are
   syntax tokens that are used to parse the command.  Opening parentheses that
   are not part of the syntax of a function call are names, as in `(1 + 2) * 3`.
-[^run-recursive]: Where by "run the function" means retrieving the body of the
-  function, and repeating the fetching we just went through, until eventually we
-  start hitting statically compiled functions invoked via `.Primitive`,
-  `.Internal`, and similar, when the actual computation occurs.  All the
-  [aforementioned caveats](#simple-model) still apply, in particular that names
-  are not actually substituted until they are used in a function body.
-[^weapons-grade]: In reality the names are not substituted in place as we show
-  here.  R will hold the function and a list of the arguments encapsulated as
-  [promises](#promises-actually) which it can then use to evaluate the body of
-  the function.  Because the arguments are kept as promises they are not
-  actually substituted until they are used in the body of the function, or in
-  those of subsequent functions that they are forward to, or not all if they are
-  not used.  However, in most cases were the argument is used and evaluating it
-  does not use side-effects, the observed behavior is as if the names had been
-  substituted in place, or at least in place in a copy of the list.
 [^promises-actually]: <span id=promises-actually>In reality instead of the
   values of the arguments, R stores the command passed as the argument along
   with the environment to evaluate it in.  If the argument is used by the
@@ -823,30 +867,19 @@ new BgFlipBook({
   Environment" suggests the environment belongs to the function.  Strictly
   speaking, what we call the "Function Enclosure" is "environment to use as the
   enclosure for the function evaluation environments".</span>
-
-The [R documentation][31] uses the term
-  "Function Environment" for what we are calling the "Function Enclosure".  I
-  find this confusing
-
 [^env-vs-chain]: In some contexts the term "environment" is taken to mean the
   entire environment chain.  In fact, the term "environment chain" is not a term
   used by the R documentation.
 [^fun-components]: Functions in R that are defined with the `function` keyword
   (i.e. `fun <- function(<formals>) {<body>}` have three components: formals
   (a.k.a.  parameter list), body (a.k.a. the set of commands that the function
-  executes}, and environment, which we like to call the [Function
+  executes), and the Function Environment, which I prefer to call the [Function
   Enclosure](#fun-env-term).  See full details in the [R Language
   Definition][31].
 [^fun-create]: That is the default behavior, but is possible to change what the
   enclosing environment for any given function's evaluation environments will
   be with `environment(fun) <- `.  See also the discussion of [function
   evaluation environment terminology](#fun-env-term).
-[^search-path]: Packages in R have multiple environments associated with them.
-  We're hand-waving away distinctions between them, but they exist and are
-  important.  Saruj Gupta's ["How R Searches and Finds Stuff"][29] is a
-  must-read if you want to understand all the details.
-[^name-vs-pkg]: Strictly speaking it is the base namespace environment, not the
-  base package environment.
 [^static-compile-funs]: `.Primitive`, `.Internal`, and a few other special
   R functions are entry points into the statically compiled machine code that
   actually does the work of computation.  Once those functions are invoked there
@@ -860,13 +893,6 @@ The [R documentation][31] uses the term
   Primitives are entry points into statically compiled machine code.  These
   functions don't contain any R commands, and as such do not require an
   Enclosure to lookup names.
-[^use-method]: It turns out `UseMethod` invokes one of those statically compiled
-  routines.  It also so happens that routine does some frightful
-  über-NSE, but we're just going to gloss over that business.  If you're really
-  interested see `?UseMethod`.
-[^fun-body]: The function "body" is the set of commands that follow the
-  declaration.  In `function(...) {<function-body>}` the body is the set of
-  commands that would replace the `<function-body>` placeholder.
 [^value-copy]: R only copies objects when necessary to maintain the
   "pass-by-value" illusion.  See ["The Secret Lives Of R Objects"][31] for more
   details.
@@ -896,4 +922,7 @@ The [R documentation][31] uses the term
   aware of it to some degree, I still find it interesting.
 [^strained-metaphor]: The lookup-and-substitute metaphor is a little strained
   here as `[[<-` is a primitive, but please humor me.
+[^mostly-faithful]: I'm sure better nitpickers than me will find some spots I
+  failed to do this in properly.
+
 
