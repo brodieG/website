@@ -29,8 +29,8 @@ dr[[3]] <- dr[[3]] / height
 dh[[2]] <- dh[[2]] / width
 dh[[3]] <- dh[[3]] / height
 
-Absolute coordinates in caps
-
+# Absolute coordinates in caps
+#
 # M: moveto
 # L: lineto
 # Z: closepath

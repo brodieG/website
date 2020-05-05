@@ -1,3 +1,4 @@
+# source('static/post/2020-02-13-on-nse_files/scripts/svg-import.R', echo=TRUE)
 # source('static/post/2020-02-13-on-nse_files/scripts/r-render.R', echo=TRUE)
 library(rayrender)
 
@@ -72,47 +73,47 @@ w <- h <- 800
 s <- 1000
 bg <- '#FFFFFF'
 
-render_scene(
-  scene, width=w*2, height=h, samples=s,
-  fov=13, 
-  # fov=40, 
-  # lookfrom=c(10, 0, -3),
-  lookfrom=c(0, 2, 5),
-  lookat=c(0, 0.50, 0),
-  clamp_value=5,
-  filename='~/Downloads/Rs/two.png',
-  aperture=0
-)
-render_scene(
-  dplyr::bind_rows(
-    group_objects(add_object(epr, eph), group_translate=c(.6, 0, 0)),
-    l, l2, f, b, cyl
-  ),
-  width=w, height=h, samples=s,
-  fov=13, 
-  # fov=40, 
-  # lookfrom=c(10, 0, -3),
-  lookfrom=c(0, 2, 5),
-  lookat=c(0, 0.50, 0),
-  clamp_value=5,
-  aperture=0,
-  filename='~/Downloads/Rs/one-1.png'
-)
-render_scene(
-  dplyr::bind_rows(
-    group_objects(add_object(epr2, eph2), group_translate=c(-.5, 0, 0)),
-    l, l2, f, b, cyl
-  ),
-  width=w, height=h, samples=s,
-  fov=13, 
-  # fov=40, 
-  # lookfrom=c(10, 0, -3),
-  lookfrom=c(0, 2, 5),
-  lookat=c(0, 0.50, 0),
-  clamp_value=5,
-  aperture=0,
-  filename='~/Downloads/Rs/one-2.png'
-)
+# render_scene(
+#   scene, width=w*2, height=h, samples=s,
+#   fov=13, 
+#   # fov=40, 
+#   # lookfrom=c(10, 0, -3),
+#   lookfrom=c(0, 2, 5),
+#   lookat=c(0, 0.50, 0),
+#   clamp_value=5,
+#   filename='~/Downloads/Rs/two.png',
+#   aperture=0
+# )
+# render_scene(
+#   dplyr::bind_rows(
+#     group_objects(add_object(epr, eph), group_translate=c(.6, 0, 0)),
+#     l, l2, f, b, cyl
+#   ),
+#   width=w, height=h, samples=s,
+#   fov=13, 
+#   # fov=40, 
+#   # lookfrom=c(10, 0, -3),
+#   lookfrom=c(0, 2, 5),
+#   lookat=c(0, 0.50, 0),
+#   clamp_value=5,
+#   aperture=0,
+#   filename='~/Downloads/Rs/one-1.png'
+# )
+# render_scene(
+#   dplyr::bind_rows(
+#     group_objects(add_object(epr2, eph2), group_translate=c(-.5, 0, 0)),
+#     l, l2, f, b, cyl
+#   ),
+#   width=w, height=h, samples=s,
+#   fov=13, 
+#   # fov=40, 
+#   # lookfrom=c(10, 0, -3),
+#   lookfrom=c(0, 2, 5),
+#   lookat=c(0, 0.50, 0),
+#   clamp_value=5,
+#   aperture=0,
+#   filename='~/Downloads/Rs/one-2.png'
+# )
 
 go <- group_objects(dplyr::bind_rows(epr, epr2, eph, eph2))
 go2 <- group_objects(go, group_translate=c(0, 2.05, 0), group_angle=c(180,180,0))
@@ -124,18 +125,22 @@ l22 <- add_object(
 )
 scene2 <- dplyr::bind_rows(go, go2, f, b, cyl, l1, l22)
 
-render_scene(
-  scene2, width=w * 2, height=h * 2, samples=s,
-  fov=26,
-  # fov=40, 
-  # lookfrom=c(10, 0, -3),
-  lookfrom=c(0, 2, 5),
-  lookat=c(0, 1.025, 0),
-  clamp_value=5,
-  aperture=0,
-  filename='~/Downloads/Rs/four.png'
-  # filename=mk_name()
-)
+w <- 200
+h <- 200
+s <- 20
+
+# render_scene(
+#   scene2, width=w * 2, height=h * 2, samples=s,
+#   fov=26,
+#   # fov=40, 
+#   # lookfrom=c(10, 0, -3),
+#   lookfrom=c(0, 2, 5),
+#   lookat=c(0, 1.025, 0),
+#   clamp_value=5,
+#   aperture=0,
+#   # filename='~/Downloads/Rs/four-2.png'
+#   # filename=mk_name()
+# )
 
 
 

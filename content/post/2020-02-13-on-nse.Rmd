@@ -43,10 +43,12 @@ meaning after it is issued but before it is executed.  For example in:
 subset(mtcars, hp > 250)
 ```
 
-The command `hp > 250` is intercepted before it is run, and its meaning is
-changed by allowing the name `hp` to resolve against columns from `mtcars`
-instead of just against objects in the workspace.  Compare to what happens with
-a command that is evaluated in the standard way:
+`subset` intercepts the command `hp > 250` before it is run, and changes its 
+meaning by allowing the name `hp` to resolve against columns from `mtcars`
+instead of just against objects in the workspace.  In other words, `subset`
+performs non-standard evaluation on the command `hp > 250`.
+
+Compare to what happens with a command that is evaluated in the standard way:
 
 ```{r}
 mtcars[hp > 250,]
@@ -152,15 +154,18 @@ the Enclosure together make up the environment.</span></span>
 > when interacting with them directly.
 
 R searches for a name in an environment's Frame, and if it doesn't find it moves
-on to its Enclosure, and repeats the process until the name is found or it runs
-out of Enclosures.  We'll call this sequence of Enclosures the environment
-chain.
+on to its Enclosure.  Enclosures are environments so they too carry a link to
+their own Enclosure.  R repeats the search process until the name is found or it
+hits the empty environment, which does not have an Enclosure[^last-env].  We'll
+call an environment and the sequence of Enclosures it links to an "Environment
+Chain"[^env-chain].
 
-For commands typed at the prompt the environment chain usually starts at the
+For commands typed at the prompt the Environment Chain usually starts at the
 global environment and links the environments of all the attached
 packages[^attached] (represented with the `...` below) through to the base
 package.  When searching for `rev`, R will work through this entire
-chain and the `base::rev` function from the base package[^pathological-pkg].
+chain and retrieve the `base::rev` function from the base
+package[^pathological-pkg].
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-002.png'
@@ -175,10 +180,10 @@ stop the search:
   alt='Retrieving an object from the global environment'
 />
 
-<span id=eval-env>The first environment in the environment chain is called the
+<span id=eval-env>The first environment in the Environment Chain is called the
 "Evaluation Environment"[^env-vs-chain].  When we say that commands are
 "evaluated in" the Evaluation Environment we mean that they are evaluated
-according to the environment chain that starts with that environment.</span>
+according to the Environment Chain that starts with that environment.</span>
 
 When evaluating commands at the R prompt, the Evaluation Environment is usually
 the global environment, so this may all seem moot.  However, commands can be
@@ -186,7 +191,7 @@ issued in different Evaluation Environments, as is the case when they are
 part of the body of a function.
 
 > For a more complete treatment of environments and how they are used by R do
-> read Saruj Gupta's excellent ["How R Searches and Finds Stuff"][29].
+> read Saruj Gupta's excellent ["How R Searches and Finds Stuff"][26].
 
 # In Functions
 
@@ -216,19 +221,19 @@ diagram[^env-names]), R can proceed with the [lookup-and-substitute
 process](#flipbook1) on the body of the function.  In this case there is just
 the one command `UseMethod("rev")` in the body.
 
-The key observation is that the environment chain changed.  It used to start
+The key observation is that the Environment Chain changed.  It used to start
 at the global environment and pass through all the loaded packages (`<...>` in
 the diagrams).  Now it starts at `<rev>` and goes directly to the base namespace
-environment as that is where `rev` is defined.  Even though the environment
-chain no longer passes through the global environment, we can still access a
+environment as that is where `rev` is defined.  Even though the Environment
+Chain no longer passes through the global environment, we can still access a
 copy of the object referenced by `w` via `x` in `<rev>`[^value-copy].
 
-On the left is the environment chain used to evaluate `rev(w)`.  On the right
+On the left is the Environment Chain used to evaluate `rev(w)`.  On the right
 the one used to evaluate the body of the `rev` function:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-014.png'
-  alt='The environment chain used for the call to a function compared to the one used for the body of the function'
+  alt='The Environment Chain used for the call to a function compared to the one used for the body of the function'
 />
 
 <span id=calling> `<rev>` is now the Evaluation Environment.  In this context,
@@ -240,9 +245,9 @@ The lookup-and-substitute-and-call-closures process will continue recursively
 until we hit [primitive functions](#primitives), at which point actual
 computations happen in machine code[^actual-computations].
 
-R's resetting of environment chains to be based on the Function Environment
+R's resetting of Environment Chains to be based on the Function Environment
 instead of the Calling Environment is known as "Lexical Scope".  The term
-reflects that the environment chain is based on how the functions were
+reflects that the Environment Chain is based on how the functions were
 "written", instead of how they were called.  This scoping mechanism was
 inherited by R from Scheme, not from S, as can be seen the [original R
 paper][32].
@@ -301,13 +306,13 @@ with(
 ```
 </div>
 
-What happened?  `L` was somehow made part of the environment chain and the names
+What happened?  `L` was somehow made part of the Environment Chain and the names
 in `rev(w)` were matched against it.  `L` masked the name lookup as [`fun`'s
 Evaluation Environment did](#fun), except we didn't need to define a function.
 
 While the concept is straightforward the execution is more complicated.
 `with` needs mechanisms for interrupting the evaluation, masking the
-active environment chain in some way with `L`, and resuming evaluation.  R,
+active Environment Chain in some way with `L`, and resuming evaluation.  R,
 being the strange language that it is, provides tools to do all this.
 
 Let's implement a version of `with` at the prompt to see how this might be
@@ -350,15 +355,15 @@ an Evaluation Environment:
 eval(cmd, envir=Lenv)
 ```
 
-This is what the environment chain looks like right before substituting the
+This is what the Environment Chain looks like right before substituting the
 `w` name[^no-fun]:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-016.png'
-  alt='Adding an environment to the environment chain with eval.'
+  alt='Adding an environment to the Environment Chain with eval.'
 />
 
-By changing the environment chain we made the evaluation "Non-Standard".  This
+By changing the Environment Chain we made the evaluation "Non-Standard".  This
 is similar to what functions do, but because we are doing it by interrupting
 evaluation and manually setting the Evaluation Environment it becomes
 "Non-Standard".
@@ -373,7 +378,7 @@ eval(cmd, envir=L2env)
 ```
 
 We can change the meaning of both functions and values by modifying the
-environment chain.  We set the enclosure to `L2env` to be `Lenv` with the
+Environment Chain.  We set the enclosure to `L2env` to be `Lenv` with the
 `parent` parameter to `list2env`[^par-vs-enc].  We could also have directly
 added a `rev` mapping to `Lenv`.
 
@@ -382,7 +387,7 @@ added a `rev` mapping to `Lenv`.
   alt='We can affect function lookup in our mask environments.'
 />
 
-Manipulating the environment chain is not the only way to perform NSE.  Anything
+Manipulating the Environment Chain is not the only way to perform NSE.  Anything
 that changes the meaning of a command after it is issued relative to what would
 have happened in standard evaluation is NSE.
 
@@ -440,7 +445,7 @@ with2(L, rev(w))
 ```
 
 We can do a bit better because `eval` supports adding a list-like element to the
-environment chain out of the box, saving us the `list2env` step:
+Environment Chain out of the box, saving us the `list2env` step:
 
 ```{r}
 with2 <- function(L, cmd) {
@@ -464,11 +469,11 @@ arguments.  This is a powerful feature, but with it comes a new class of
 potential errors.  Recall that functions create their own Evaluation
 Environments, but the commands that we capture and wish to re-evaluate refer to
 names in the [Calling Environment](#calling).  For things to work correctly we
-must hand craft an environment chain that connects to the Calling
+must hand craft an Environment Chain that connects to the Calling
 Environment at the correct point.
 
 When `parent.frame()` is called in a function body, it returns the **Calling**
-Environment.  `with2` uses `eval` to create an environment chain that starts
+Environment.  `with2` uses `eval` to create an Environment Chain that starts
 with our list `L` and with the Calling Environment as the Enclosure:
 
 ```{r}
@@ -513,7 +518,7 @@ bowl.
 
 So what happened?  We had a name clash with the `cmd2` symbol that exists both
 in `with2_bad`'s **Evaluation** Environment and in the **Calling** Environment.
-This is what the environment chain looks like when `eval` begins the
+This is what the Environment Chain looks like when `eval` begins the
 lookup-and-substitute process on `rev(cmd2)` (`<w2_b>` is `with2_bad`'s
 Evaluation Environment):
 
@@ -556,7 +561,7 @@ Environment, which in this case is `with2_bad`'s **Calling** Environment, we
 used the `z` in the global environment.  Why?  Because the `with2_bad`'s
 **Function** Environment, and hence the Enclosure of its **Evaluation**
 Environments, is the global environment.  So `friendly_fun`'s Evaluation
-Environment (`<ffun>` below) is not part of the environment chain:
+Environment (`<ffun>` below) is not part of the Environment Chain:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-020.png'
@@ -666,9 +671,9 @@ mean_call <- function(cmd) {
 ```
 
 Let's pretend our functions here are in a hypothetical package `pkg` with no
-dependencies.  In that case, this is what the environment chain looks like as
-`mean_call` is injecting `mean` into the call template in the second line of
-the function[^strained-metaphor]:
+dependencies.  In that case, this is what the Environment Chain looks like as
+`mean_call` is injecting `mean` into the call template (`call`, shown as
+`NULL(NULL)`) in the second line of the function[^strained-metaphor]:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-022.png'
@@ -689,7 +694,7 @@ mean_call(cmd)
 ```
 
 This looks ugly, but by pre-resolving `mean` to the correct function we can
-safely `eval` the command in a different environment chain:
+safely `eval` the command in a different Environment Chain:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-023.png'
@@ -697,11 +702,17 @@ safely `eval` the command in a different environment chain:
   resolve correctly'
 />
 
-`<mbg>` is the Evaluation Environment of `mean_by_group`, but that environment
-chain is bypassed by `eval` to resolve `Sepal.Length`, `Sepal.Width`, and `/` in
+`<mbg>` is the Evaluation Environment of `mean_by_group`, but that Environment
+Chain is bypassed by `eval` to resolve `Sepal.Length`, `Sepal.Width`, and `/` in
 `iris` enclosed by the Calling Environment.
 
 # Conclusions
+
+<img
+  src='/post/2020-02-13-on-nse_files/images/four-2-small.jpg'
+  data-src-big='/post/2020-02-13-on-nse_files/images/four-2.jpg'
+  class='post-inset-image bgw-zoom-img'
+/>
 
 Geez, that was a lot less fun than I thought it was going to be when I started
 writing the post.  Trying to keep all those closely related but critically
@@ -711,9 +722,15 @@ similar effect on you, so if you managed to get this far I'll consider it a
 small victory.
 
 Unfortunately even the standard evaluation model in R is complex, so messing
-around with it for NSE is even more so.  This all compounded by the fact that
-things that work fine in the workspace stop working correctly in functions, and
-even then only in some circumstances.
+around with it for NSE is even more so.  It is particularly challenging
+because in many cases incorrect usage of NSE works fine, but then proceeds to
+break in the most bewildering ways under global usage.  Further compounding
+things is the challenging terminology (looking at you `parent.env` vs
+`parent.frame` vs `environment`).
+
+I do hope that whatever clarity this post might add on the topic is not
+terminally muddled by its length.  If you have any feedback I'd be happy to hear
+it.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -841,7 +858,7 @@ new BgFlipBook({
   <li>Names representing called functions are only resolved against names that
   are associated with functions.
   <li>Lookups from the global environment down are usually done against a
-  "global" hash table that replicates the semantics of the environment chain,
+  "global" hash table that replicates the semantics of the Environment Chain,
   but isn't actually a chain.
   <li>The base environment has an enclosure, although it is the empty
   environment which itself does not have an enclosure.
@@ -868,7 +885,7 @@ new BgFlipBook({
   speaking, what we call the "Function Enclosure" is "environment to use as the
   enclosure for the function evaluation environments".</span>
 [^env-vs-chain]: In some contexts the term "environment" is taken to mean the
-  entire environment chain.  In fact, the term "environment chain" is not a term
+  entire Environment Chain.  In fact, the term "Environment Chain" is not a term
   used by the R documentation.
 [^fun-components]: Functions in R that are defined with the `function` keyword
   (i.e. `fun <- function(<formals>) {<body>}` have three components: formals
@@ -924,5 +941,10 @@ new BgFlipBook({
   here as `[[<-` is a primitive, but please humor me.
 [^mostly-faithful]: I'm sure better nitpickers than me will find some spots I
   failed to do this in properly.
+[^last-env]: One other possibility is that a chain connects back on itself,
+  forming an infinite loop.  This doesn't usually happen unless people are
+  messing with environments in a way they shouldn't be.
+[^env-chain]: This is not a formal R term.  In the documentation the term
+  "environment" is often used as we use Environment Chain here.
 
 
