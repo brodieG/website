@@ -3,8 +3,8 @@ title: Quosures
 author: ~
 date: '2020-02-17'
 slug: quosures
-categories: []
-tags: []
+categories: [r]
+tags: [meta-program,rlang]
 image: /front-img/default.png
 imagerect: ~
 imagemrgvt: 0%
@@ -20,7 +20,287 @@ output:
 ```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
 
-# Header 1
+# Quosures?
+
+Quosures first showed up on the scene as part of `rlang` about three years ago
+to a collective &#x1F92F;.  There is good and bad &#x1F92F;, and quosures
+delivered both in spades.  The good: what they do is powerful, and how they do
+it at a minimum _seems_ magical.  The bad: new terminology and mechanics
+confused a lot of people.  Since then the developers have devoted substantial
+time and effort to make quosures and `rlang` in general more accessible.
+
+There are two obvious reasons to introduce new terminology: the existing
+terminology is bad, or there are new features that cannot be expressed in the
+old terminology.  I happen to agree that the existing terminology around
+evaluation in R is less clear than it could be, and that `rlang` brings along
+many interesting new concepts.  But I also believe it is better to work with
+precedent, lest we end up with a variation on:
+
+<!-- CC BY SA 2.5 -->
+<img src='https://imgs.xkcd.com/comics/standards.png' />
+
+There is a mountain range's worth of hills to die on arguing the rights and
+wrongs of `rlang`'s terminology and mechanics, but they are not that
+interesting.  Much more fun is what quosures do, and how they do it.
+
+# Limits of R's Evaluation Model
+
+If you are unfamiliar with R's evaluation model, and how it enables
+"Non-Standard Evaluation" (NSE), now is a good time to check out last week's
+[post on the topic][1].  To understand this post you'll need to know what
+environments are in R, the difference between Evaluation, Calling, and Function
+Environments, the meaning of Enclosure and Environment Chains, and what
+unevaluated R commands are and how they are created.  All these are discussed at
+length in that post.
+
+Towards the [end of the post][2] we run into an interesting quandary: we wish to
+evaluate different parts of a single R command under different Evaluation
+Environments[^eval-env].  This doesn't fit R's evaluation model as it only
+had one Evaluation Environment active at a time.  The problem arose in the
+context of `mean_by_grp`, a function that computes the mean of a user supplied
+command by groups of a data frame:
+
+```{r echo=FALSE}
+mean_call <- function(cmd) {
+  call <- quote(NULL(NULL))  # call template
+  call[[1L]] <- mean         # actual function object
+  call[[2L]] <- cmd
+  call
+}
+mean_by_grp <- function(data, cmd, grp) {
+  call_env <- parent.frame()
+  grp <- eval(substitute(grp), data, enclos=call_env)
+  data <- split(data, grp)
+  cmd <- mean_call(substitute(cmd))
+  res <- setNames(numeric(length(data)), names(data))
+
+  for(i in seq_along(data)) {
+    res[[i]] <- eval(cmd, data[[i]], enclos=call_env)
+  }
+  res
+}
+```
+```{r}
+M <- 1.2
+mean_by_grp(iris, Sepal.Length / Sepal.Width * M, Species)
+```
+
+Internally the function splits `iris` by `Species`, and runs the following
+command with each of the resulting pieces made part of the Environment Chain one
+at a time:
+
+<pre><code><span style='background-color: #aaffaa;'>mean</span>(<span
+style='background-color: #aaaaff;'>Sepal.Length / Sepal.Width * M</span>)</code></pre>
+
+Our problem, as the authors of of`mean_by_grp`, is to ensure that <code
+style='background-color: #aaffaa;'>mean</code> above resolves according to
+`mean_by_grp`'s Evaluation Environment, while <code style='background-color:
+#aaaaff;'>Sepal.Length / Sepal.Width * M</code> resolves in an Environment
+Chain that connects to the Calling Environment.  If we don't do the former then
+we risk conflict with user defined functions as in:
+
+```{r eval=FALSE}
+mean <- function(...) message("I'm a meanie.")
+mean_by_grp(iris, Sepal.Length / Sepal.Width * M, Species)
+```
+
+And if we don't do the latter we risk an error because `M` is not found, or
+worse an unintended `M` is found.
+
+As shown in the post this problem can be solved by pre-resolving `mean` to the
+function[^alternative] before the `mean(...)` command is evaluated, but knowing
+to do this requires arcane knowledge and has other shortcomings[^shortcomings].
+
+# Interlude `local`
+
+Functions generate an own Evaluation Environment to evaluate commands in their
+body.  Any names bound to that environment will only affect commands evaluated
+in that environment and any environments it encloses:
+
+```{r}
+a <- 1
+f <- function(num) {
+  a <- 100
+  a + num
+}
+f(2)
+a + 2
+```
+
+The `a` defined at the top level does not influence the calculations inside the
+function, and the `a` inside the function does not affect the `a` defined at the
+top level.  Most of the subtleties of NSE arise in situations where there are
+multiple potential Evaluation Environments.
+
+R provides the `local` function, which provides an alternate mechanism to
+functions for creating Evaluation Environments:
+
+```{r}
+a <- 1
+num <- 2
+local({
+  a <- 100
+  a + num
+})
+a + num
+```
+
+We'll be using `local` to generate Evaluation Environments to highlight
+interesting issues in NSE.
+
+# With Quosures
+
+Just as `quote` and `substitute` do, quosures capture unevaluated R commands.
+Additionally, quosures record the environment the command would have been
+evaluated it, had it not been captured.  Finally, they do not self-evaluate even
+when `eval`ed:
+
+```{r}
+library(rlang)
+a <- 1
+(qbase <- quote(a + 1))
+(qrlang <- quo(a + 1))   # create a quosure with quo
+eval(qbase)
+eval(qrlang)
+```
+
+`rlang` provides `eval_tidy` to evaluate quosures:
+
+```{r}
+eval_tidy(qrlang)
+```
+
+Things get more interesting when the environments start changing.  Let's quote
+some language inside alternate Evaluation Environments:
+
+```{r}
+a <- 1
+lang <- local({
+  a <- sample(100:200, 1)
+  list(
+    base=quote(a + 1),
+    rlang=quo(a + 1)
+  )
+})
+eval(lang[['base']])
+eval_tidy(lang[['rlang']])
+```
+
+The standard quoted language resolves `a` in the environment in which it is
+`eval`ed.  The quosure instead resolves `a` in the Evaluation Environment in
+which it was **created**.  Pretty neat.
+
+Let's build some NSE functions.  These compute the mean of a user-supplied
+command in the context of a user-supplied data frame:
+
+```{r}
+mean_with_base <- function(dat, cmd) {
+  call <- bquote(mean(.(substitute(cmd))))
+  eval(call, dat, parent.frame())
+}
+mean_with_rlang <- function(dat, cmd) {
+  call <- quo(mean({{cmd}}))
+  eval_tidy(call, dat)
+}
+mean_with_base(mtcars, cyl)
+mean_with_rlang(mtcars, cyl)
+```
+
+# Interlude (Back|Quasi)Quoting
+
+Previously when we constructed a command that combined a user-supplied command
+with our own, we did so [manually][2].  
+
+we manually wrapped commands in `mean`; here we use `bquote` for base
+and `{{}}` for `rlang`.  `bquote` is just like `quote`, except any commands
+within `.(...)` are evaluated and the result is injected at that position in the
+rest of the unevaluated command.  Compare:
+
+```{r}
+
+```
+
+
+Now, let's pretend that both of these were defined in a package
+
+
+
+
+
+the wrong one is
+
+The latter is important if the
+user happens to reference variables from their environment in their command.
+
+
+
+It is generated and run by `mean_by_grp`, a function that computes the mean of
+user-supplied commands within a `data.frame`
+
+
+provided by the user and is intended to resolve in an Environment Chain that
+passes through the Calling Environment.  On the other hand,  was added by our function to the
+user-supplied command, and we need to make sure that it resolves 
+
+
+Jkk
+Let
+
+This happens because we have created a
+function, `mean_by_grp`, that computes the mean of a user supplied command
+within groups of a data frame.  So we have 
+
+This was the command in question:
+
+
+
+to
+be resolved according to the Calling Environment.  We can only evaluate a
+command in a single environment, so we're stuck.
+
+blue 
+
+
+The problem is that we need <code style='background-color:
+#aaffaa;'>mean</code> to be resolved according to our function's Evaluation
+Environment, but 
+
+
+
+
+In the previous post we ran into an interesting situation
+
+I could bore you to tears with with my opinions about the rights and wrongs
+about `rlang`'s terminology, I'
+
+Jkk
+but that would not be very useful.  Instead, I'll
+bore you to tears 
+
+
+in
+
+many people were 
+
+I think 
+A big part of the bad &#x1f92f; I think stemmed from a desire
+to reset the terminology around standard and non-standard evaluation while at
+the same time 
+
+
+
+were many different types of
+ranging from "holy &
+one experienced I
+I think
+varied 
+
+Part of the challenge with them is that they are
+
+intended for use in
+a somewhat arcane part of R
+address a somewhat
+arcane 
 
 <!-- this needs to become a shortcode -->
 <img
@@ -122,6 +402,17 @@ eval_tidy(x)
 
 ## Session Info
 
+[1]: /2020/05/05/on-nse/
+[2]: /2020/05/05/on-nse/#call-assembly
 [22]: https://tidyeval.tidyverse.org/
 
+[^alternatives]: Another solution would be to compute the user
+  command by group first, and subsequently `lapply` `mean` over the resulting
+  values.  This is a better solution, except for that it side-steps the problem
+  we are trying to highlight, perhaps results in higher peak memory usage as we
+  must hold the user command evaluated for every group in memory, and it only
+  works if the user command contains no aggregating functions.
+[^shortcomings]: Likely the most problematic one is that if the user command
+  causes an error, the error backtrace will display the function in full rather
+  than the name of the function, which may be confusing.
 
