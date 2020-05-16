@@ -228,40 +228,210 @@ that makes the `rlang` version more powerful.
 
 # Interlude - Rant
 
-Feel free to skip this section, it is mostly a rant about names.  There is some
-irony that it's coming from the guy that was just complaining about
-philosophers...
+Feel free to skip this section; it is mostly a rant about names.  There is some
+irony that it's coming from the guy who a few paragraphs ago was just
+complaining about philosophers...
 
 I wish `rlang` had focused more on harmonizing with precedent in R over a more
 _tabula rasa_ approach.  I understand the appeal of the latter, but personally
-believe it more important to build on top of existing conventions where
-possible.
+believe it more important to build on existing conventions where possible.
+Maybe it would have bothered me less if Standard Sixteen was orthogonal to the
+precedent, but instead we end up with things like:
 
-Further exacerbating the issues associated with going for Standard Sixteen is
-that avoiding conflicts with precedent was low enough in priority to allow
-for things like:
-
-* `rlang::enquo` and `base::enquote` are completely different
-* `rlang::quo` is closer to `base::bquote` than `base::quote`
+* `rlang::enquo` being completely different to `base::enquote`.
+* `rlang::quo` is closer to `base::bquote` than `base::quote`.
 * `rlang::expr` is closest to `base::bquote`, but `base::expression` is
-  something else again
+  something else again.
+* `!!`, a completely new implementation of an existing concept that overloads an
+  existing operator.
 
 There are reasonable arguments for why things ended up where they are.  The
-existing names are not perfect.  I know the `rlang` team devoted a lot of time
-and effort coming up with names, including trying to work with precedent.  But I
-can't help but look at the result and think the balance of priorities is off.
+existing names are not perfect, and some are downright bad.  I know the `rlang`
+team devoted a lot of time and effort coming up with names, including trying to
+work with precedent.  But I can't help but look at the result and think the
+balance of priorities is off.  Obviously this is just my opinion, and getting it
+is the risk you take when you visit my blog.
 
-A big part of my reaction to all this is that I think **objectively** perfect
-names are both impossible and unnecessary.  Impossible because we cannot
-compress the entire semantics of functions into single words.  Unnecessary
-because we as humans are extremely good at anchoring semantics to arbitrary
-names.  That you can look at the collection of symbols that is this blogpost and
-understand (hopefully) what I'm ranting about is proof of this.
+A big part of my reaction is that I think **objectively** perfect names are both
+impossible and unnecessary.  Impossible because we cannot compress the entire
+semantics of functions into names.  Unnecessary because we as humans are
+good at keeping semantics anchored to arbitrary names once we learn them.  That
+language exists is proof enough of that.
 
-We are good at holding the name-anchor semantics, but it does take work to first
-establish them.  It's a lot easier to remember a language once learnt, than
-learn a new one.  This is why I think changing anchors, or worse knocking out an
-existing anchor to replace it with a new one, is counterproductive.
+One thing that is useful is when we add functions with similar semantics to
+existing ones, to echo the lexical roots **in the same way they are used in the
+language**.  If the concepts don't exist in the language, sure, let's try to
+hang on to an external reference.  If the existing names are really terrible,
+then let's make up or own **distinct** lexicon.
+
+Languages are mostly arbitrary.  The only reason they work is everyone agrees
+on the meanings of the symbols it comprises.  That agreement is the single most
+important thing about a language.  When extending a language building on that
+agreement should be paramount.
+
+This still leaves establishing the initial name-semantics association.  If we're
+implementing similar functionality to what already exists in the language we
+can give our users semantic hints by appropriate use of existing lexical roots.
+In some cases the existing names may be so bad that we wish to move on from
+them, and maybe we develop an orthogonal lexicon.  But using the same names or
+the same lexical roots in related fields in pursuit of **subjective** name
+perfection is counterproductive.  IMO.
+
+
+
+
+We could 
+
+Conversely, we must be careful not to 
+
+
+
+Jkk
+have a choice: we can build on the existing lexical roots to echo existing
+semantics for our users.
+
+Jkk
+, we can chose a
+distinct lexicon, or we can ignore prece
+optimize primarily around our view of what makes
+names perfect.
+
+
+So we
+have a choice: we can chose names that 
+
+the initial learning or refreshing 
+
+While we are good at holding the name-semantic anchors, it does take work to
+establish them.  There is value in picking names that provide clues about their
+semantics.  
+
+And the best way to do this is to reference existing semantics in
+the common language, which in this case is R.  The converse is that it is
+harmful to change the meaning of existing names, or to re-use existing lexical
+roots in different ways within the same subject area.  Again, IMO.
+
+The names need not be perfect, just good enough.  Objective perfection is not
+possible, and subjective perfection at the cost of conflict with 
+
+existing names
+is a dubious proposition.
+
+Naming things is hard, but the return on effort quickly becomes questionable
+once you're 
+Jkk
+
+it's also not worth spending a lot of effort on it
+once you get past 
+
+it's also very much a diminishing returns 
+
+
+eases the process of
+learning them.
+
+
+, so it does make sense to try to 
+.
+
+It's a lot easier to remember a language once learnt, than
+learn a new one.  So is it helpful to riff on existing names when semantics are
+related (e.g. `sub` and `gsub`).  
+
+There is no question some name are better than others, but really all we need is
+good enough.  **Objective** perfection is impossible, and subjective perfection
+is of limited value.
+
+so the best you can do is
+subjective perfection, which while still difficult to achieve has limited value.
+
+by virtue of being subjective.
+
+
+does not have that
+much value
+
+
+
+
+.  `865eeb074045` 
+or `b240b993d`
+
+Some names are indeed better than others.  After all, it wouldn't do to name
+functions 
+
+, although I'll take a hexcode 
+over a 
+a name that conflicts with existing "base" names.  They should be in
+a form we can reasonably remember, and if related to a particular concept, be
+evocative of that.  If the concept already exists in R, then working with R's
+terminology is best.  After all, if the lingua franca of R programmers is not R,
+what on earth is?
+
+
+
+
+On a related vein 
+
+Of course `rlang` is free to do whatever it wants with its names.  Even the
+notoriously finicky CRAN allows re-using existing names, whether those from the
+base set of packages or otherwise.  And there are probably many other packages
+that I'm not subjecting to my opinion that might be doing worse things
+(hopefully none of mine).  But `rlang` is authored by influential individuals in
+the R community and will affect how many learn about these topics, and we're
+ending up with two dialects that are less compatible than they could be.
+
+
+
+, and its a
+shame that learning that way will not combine as well with learning 
+
+
+.  
+
+
+If you want
+to claim 
+
+
+
+If you
+collaborate using R with others and learned the `rlang` way, but then run into
+code written the original R way you'll struggle.   And vice-versa.
+
+
+, 
+
+
+
+
+meta-programming.  It means that
+if you want to be fully conversant in meta-programming in R you need to learn
+both ways of doing it.
+
+
+
+
+
+
+Rstudio is extremely influential in the R
+world so what they do affects 
+
+
+like I am this one.
+
+
+Imagine you are the first major grower of Asian pears in the U.S.  You need a
+name for them.  Maybe call them pear-apples.  Nashi is fine too.  Even Asian
+apples could work.  But would you call them figs?  Or pomgrenati, even if it so
+happens that the trees that produce them are actually a cousin of pomegrenate
+trees?
+
+
+This is why I think changing anchors, or worse
+knocking out an
+existing anchor to replace it with a new one, is counterproductive.  
+
 
 
 
