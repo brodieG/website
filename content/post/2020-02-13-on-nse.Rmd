@@ -661,6 +661,7 @@ someone redefined `::` in the Calling Environment (and yes, they can).
 Another option is to manually substitute the actual function instead of the name
 of the function:
 
+<div id=call-assembly>
 ```{r}
 mean_call <- function(cmd) {
   call <- quote(NULL(NULL))  # call template
@@ -669,6 +670,7 @@ mean_call <- function(cmd) {
   call
 }
 ```
+</div>
 
 Let's pretend our functions here are in a hypothetical package `pkg` with no
 dependencies.  In that case, this is what the Environment Chain looks like as
@@ -738,16 +740,6 @@ it.
 
 # Appendix
 
-## References
-
-* Sections [2.1.11][35], [3][33], and [4][34] of the R Language Definition (or
-  really, the whole document, it's a must read).
-* [Tips on NSE in R][29] by Kun Ren.
-* [How R Searches And Finds Stuff][26] by Saruj Gupta.
-* The Original Ihaka and Gentleman [R Paper][30].
-* [Standard Nonstandard Evaluation Rules][27] by Thomas Lumley.
-* `?environment` in the R documentation.
-
 ## Acknowledgments
 
 The following  are post-specific acknowledgments.  This website owes many
@@ -764,6 +756,23 @@ possible.
       polygons.
     * [Tyler Morgan Wall][56] for [`rayrender`][53] with which I rendered the logos in
       beautiful path-traced glory.
+* Simon Urbanek for the [`png`
+  package](https://cran.r-project.org/web/packages/png/index.html) which I used
+  while post-processing the images used in the flipbooks.
+
+## References
+
+* Sections [2.1.11][35], [3][33], and [4][34] of the R Language Definition (or
+  really, the whole document, it's a must read).
+* [Tips on NSE in R][29] by Kun Ren.
+* [How R Searches And Finds Stuff][26] by Saruj Gupta.
+* The Original Ihaka and Gentleman [R Paper][30].
+* [Standard Nonstandard Evaluation Rules][27] by Thomas Lumley.
+* `?environment` in the R documentation.
+
+## Updates
+
+* 2020-05-06: `png` acknowledgment.
 
 ## Session Info
 
