@@ -292,9 +292,9 @@ unclass(quo(a + b))
 
 Quosures are formulas, which we can see both from the class, and also from the
 tilde (`~`) once we side-step the quosure print method.  Formulas are an odd
-duck in the R world: a form of captured command that cannot be evaluated and
-also carries around an environment to use as an Enclosure.  Mostly they are used
-to implement Domain Specific languages such as regression model or plot
+duck in the R world: a form of captured command that cannot be evaluated, and
+by the way it carries around an environment to use as an Enclosure.  Mostly they
+are used to implement Domain Specific languages such as regression model or plot
 specifications.  Because they can contain arbitrary R commands as well as
 environments they are appealing as a vehicle for quosures.
 
@@ -325,31 +325,34 @@ eval2 <- function(cmd) {
 ```
 
 `eval2` creates an environment that contains a self-evaluating version of `~`,
-and evaluates the command therein.  Let's try it:
+and evaluates the command therein.  We can recover the formula environment from
+the call to the formula, which is fortunate as otherwise this trick could not
+work.  Let's try it:
 
 ```{r}
 a <- 666
-cmd <- local({
+f1 <- local({
   a <- 42
   ~ a + 1
 })
-eval2(cmd)
+f1
+eval2(f1)
 ```
 
 With more emotion:
 
 ```{r}
-cmd2 <- local({
-  a <- 1000
-  ~ a * 3
+f2 <- local({
+  a <- 10
+  ~ a * 43
 })
-cmd3 <- bquote(.(cmd) / .(cmd2) + a)
-cmd3
-eval2(cmd3)
+bquote(.(f1) / .(f2))
+eval2(bquote(.(f1) / .(f2)))
+eval2(bquote(.(f1) / .(f2) + a))
 ```
 
 Ha, half-assed quosures.  These don't even support adding data to the
-Environment Chain, or deity-forbid actually using a formula as a formula, but we
+Environment Chain, or deity-forbid using a formula as a _formula_, but we
 do bottle that multiple-Environment-Chain magic in a handful of lines of code.
 
 
