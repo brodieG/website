@@ -548,9 +548,10 @@ clean things up a little: an equivalent to `substitute` that captures the
 Calling Environment like `enquo` does:
 
 ```{r}
-sub_q_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
+arg_q_with <- function(x, caller=parent.frame(2)) {
+  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), parent.frame())
   force(caller)
-  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), env)
+  # Wrong environment if promise was forwarded?
   bquote(with(.(caller), .(exp.s)))
 }
 ```
@@ -559,15 +560,7 @@ Now we can go back to our `mean_with_*` functions:
 
 ```{r}
 mean_with_bquo <- function(dat, cmd) {
-  env <- parent.frame()
-  # cmd <- bq_with(.(substitute(cmd)), env)
-  # cmd <- bquote(mean(.(cmd)))
-  # cmd <- mask(cmd, dat)
-  cmd <- mask(bquote(mean(.(bq_with(.(substitute(cmd)), env)))), dat)
-  eval(cmd)
-}
-mean_with_bquo <- function(dat, cmd) {
-  cmd <- sub_q_with(cmd)
+  cmd <- arg_q_with(cmd)
   cmd <- mask(bquote(mean(.(cmd))), dat)
   eval(cmd)
 }
@@ -584,16 +577,7 @@ local({
 
 ```
 
-
 ```{r}
-
-
-quo_arg_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
-  force(caller)
-  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), env)
-  bquote(base::with(.(caller), .(exp.s)))
-}
-
 a <- 17
 b <- 59
 w <- local({
@@ -609,33 +593,15 @@ exp
 eval(exp)
 
 w <- 1
-local({
+f <- local({
   w <- 2
-  f <- function(x) {
+  function(x) {
     w <- 5
     quo_arg_with(x)
   }
 })
 eval(f(w))
 ```
-
-
-
-
-
-One possible way `eval_tidy` could work is by traversing the captured command,
-finding each of the quosures, and "manually" evaluating them in their
-environments until only a command without quosures is .
-
-Let's peel the curtain bac a
-So how does
-
-
-I hate magic.  When something is magic it means I don't understand it.  Sure, I
-can't need to understand everything around me, but when there is something I'm
-working closely with, particularly related to programming,
-
-
 
 # Interlude - Rant
 
@@ -683,92 +649,6 @@ language; fractures in it reduce the value of the language as a whole.
 Okay, enough of that.  Now for the good stuff.
 
 
-
-
-## Quasi-quoi?
-
-Our problem, as the authors of of`mean_by_grp`, is to ensure that <code
-style='background-color: #aaffaa;'>mean</code> above resolves according to
-`mean_by_grp`'s Evaluation Environment, while <code style='background-color:
-#aaaaff;'>Sepal.Length / Sepal.Width * M</code> resolves in an Environment
-Chain that connects to the Calling Environment.  If we don't do the former then
-we risk conflict with user defined functions as in:
-
-
-the wrong one is
-
-The latter is important if the
-user happens to reference variables from their environment in their command.
-
-
-
-It is generated and run by `mean_by_grp`, a function that computes the mean of
-user-supplied commands within a `data.frame`
-
-
-provided by the user and is intended to resolve in an Environment Chain that
-passes through the Calling Environment.  On the other hand,  was added by our function to the
-user-supplied command, and we need to make sure that it resolves
-
-
-Jkk
-Let
-
-This happens because we have created a
-function, `mean_by_grp`, that computes the mean of a user supplied command
-within groups of a data frame.  So we have
-
-This was the command in question:
-
-
-
-to
-be resolved according to the Calling Environment.  We can only evaluate a
-command in a single environment, so we're stuck.
-
-blue
-
-
-The problem is that we need <code style='background-color:
-#aaffaa;'>mean</code> to be resolved according to our function's Evaluation
-Environment, but
-
-
-
-
-In the previous post we ran into an interesting situation
-
-I could bore you to tears with with my opinions about the rights and wrongs
-about `rlang`'s terminology, I'
-
-Jkk
-but that would not be very useful.  Instead, I'll
-bore you to tears
-
-
-in
-
-many people were
-
-I think
-A big part of the bad &#x1f92f; I think stemmed from a desire
-to reset the terminology around standard and non-standard evaluation while at
-the same time
-
-
-
-were many different types of
-ranging from "holy &
-one experienced I
-I think
-varied
-
-Part of the challenge with them is that they are
-
-intended for use in
-a somewhat arcane part of R
-address a somewhat
-arcane
 
 <!-- this needs to become a shortcode -->
 <img
@@ -829,6 +709,25 @@ eval_tidy(x)
 # Appendix
 
 ## Acknowledgments
+
+## Code
+
+
+Without substitute equivalent
+```{r}
+mean_with_bquo <- function(dat, cmd) {
+  env <- parent.frame()
+  cmd <- bq_with(.(substitute(cmd)), env)
+  cmd <- bquote(mean(.(cmd)))
+  cmd <- mask(cmd, dat)
+  eval(cmd)
+}
+# stress testing everything working properly
+mean_with_bquo <- function(dat, cmd) {
+  cmd <- mask(bquote(mean(.(bq_with(.(substitute(cmd)), env)))), dat)
+  eval(cmd)
+}
+```
 
 ## Session Info
 
