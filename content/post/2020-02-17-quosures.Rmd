@@ -388,11 +388,11 @@ the tree is fully evaluated and the result is returned.
 Which leads us to:
 
 ```{r}
-quo_with <- function(x, env=parent.frame()) {
+q_with <- function(x, env=parent.frame()) {
   force(env)  # otherwise parent.frame may be called in a different env
   bquote(with(.(env), .(substitute(x))))
 }
-quo_with(a + 1)
+q_with(a + 1)
 ```
 
 What the hell is that?  It's an unevaluated call to `with` with an
@@ -404,7 +404,7 @@ context of that environment.  Let's try it out:
 a <- 666
 q1 <- local({
   a <- 42
-  quo_with(a + 1)
+  q_with(a + 1)
 })
 q1
 eval(q1)
@@ -422,7 +422,7 @@ old.opt <- options(digits=4)
 ```{r}
 q2 <- local({
   a <- 10
-  quo_with(a * 43)
+  q_with(a * 43)
 })
 (q3 <- bquote(.(q1) / .(q2)))
 eval(q3)
@@ -446,7 +446,7 @@ Plus there are some remarkable benefits from the `with` approach:
 * We can use good-old `base::eval`; this is a big deal, we avoid a huge amount
   of complexity.
 * Semantics are pure; everything behaves exactly the same way it would outside
-  of `quo_with`.
+  of `q_with`.
 * Complete interoperability with existing meta-programming constructs (e.g.
   `bquote`).
 * WYSIWYG: the semantics of the commands are transparent.  Any useR familiar
@@ -472,10 +472,10 @@ this, but it's not a bad start.
 
 Two obvious features are missing: quasi-quotation (a.k.a. backquoting /
 partial-evaluation), and data masks.  First quasi-quotation, which we'll do with
-`bquo_with`.  Let's look at a usage example before the implementation:
+`bq_with`.  Let's look at a usage example before the implementation:
 
-```{r bquo_with, echo=FALSE}
-bquo_with <- function(x, env=parent.frame()) {
+```{r bq_with, echo=FALSE}
+bq_with <- function(x, env=parent.frame()) {
   caller <- parent.frame()
   exp <- substitute(x)          # a + .(a)         # user cmd
   exp <- bquote(bquote(.(exp))) # bquote(a + .(a)) # wrap in bquote
@@ -487,8 +487,8 @@ bquo_with <- function(x, env=parent.frame()) {
 ```{r}
 a <- 666
 q5 <- local({
-  q <- bquo_with(a + .(a))
-  a <- 42   # assign to `a` AFTER bquo_with!
+  q <- bq_with(a + .(a))
+  a <- 42   # assign to `a` AFTER bq_with!
   q
 })
 q5
@@ -498,12 +498,12 @@ eval(q5)
 The implementation is trickier (comments include what interim-steps
 would contain with the above inputs):
 
-```{r bquo_with, eval=FALSE}
+```{r bq_with, eval=FALSE}
 ```
 
 The odd-looking `bquote(bquote(.(exp)))` is used to generate a `bquote` command
 to evaluate in the Calling Environment.  But this is an implementation detail
-that the user of `bquo_with` need not worry about.
+that the user of `bq_with` need not worry about.
 
 Data masking requires us to add data, often a data frame, to the Evaluation
 Chain.  We will do that by replacing the environments embedded in the `with`
@@ -535,7 +535,7 @@ then we swap the data mask in.  Let's try it:
 ```{r}
 q6 <- local({
   a <- 42
-  quo_with(a + b + 1)
+  q_with(a + b + 1)
 })
 b <- 1
 eval(q6)
@@ -548,7 +548,7 @@ clean things up a little: an equivalent to `substitute` that captures the
 Calling Environment like `enquo` does:
 
 ```{r}
-sub_quo_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
+sub_q_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
   force(caller)
   exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), env)
   bquote(with(.(caller), .(exp.s)))
@@ -560,14 +560,14 @@ Now we can go back to our `mean_with_*` functions:
 ```{r}
 mean_with_bquo <- function(dat, cmd) {
   env <- parent.frame()
-  # cmd <- bquo_with(.(substitute(cmd)), env)
+  # cmd <- bq_with(.(substitute(cmd)), env)
   # cmd <- bquote(mean(.(cmd)))
   # cmd <- mask(cmd, dat)
-  cmd <- mask(bquote(mean(.(bquo_with(.(substitute(cmd)), env)))), dat)
+  cmd <- mask(bquote(mean(.(bq_with(.(substitute(cmd)), env)))), dat)
   eval(cmd)
 }
 mean_with_bquo <- function(dat, cmd) {
-  cmd <- sub_quo_with(cmd)
+  cmd <- sub_q_with(cmd)
   cmd <- mask(bquote(mean(.(cmd))), dat)
   eval(cmd)
 }
@@ -578,7 +578,7 @@ local({
   list(
     base=mean_with_base(mtcars, disp * l.per.cubic.i),
     rlang=mean_with_rlang(mtcars, disp * l.per.cubic.i),
-    bquo_with=mean_with_bquo(mtcars, disp * l.per.cubic.i)
+    bq_with=mean_with_bquo(mtcars, disp * l.per.cubic.i)
   )
 })
 
@@ -598,12 +598,12 @@ a <- 17
 b <- 59
 w <- local({
   b <- 1e6
-  quo_with(a + b)
+  q_with(a + b)
 })
 exp <- local({
   b <- 100
   x <- 3
-  quo_with(x + 1 + .(w))
+  q_with(x + 1 + .(w))
 })
 exp
 eval(exp)
