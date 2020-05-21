@@ -155,7 +155,7 @@ a <- 1
 ```
 
 Additionally as you can see above, quosures record the environment the command
-would have been evaluated it, had it not been captured.  Unlike typical
+would have been evaluated in, had it not been captured.  Unlike typical
 unevaluated commands, quosures do no resolve when the are `eval`ed:
 
 ```{r}
@@ -230,7 +230,7 @@ adds some pixie dust.
 # The Power Of Quosures
 
 Let's up the difficulty a little bit.  Bad NSE implementations often break when
-we use names mapped in to environments other than the global environment.  Let's 
+we use names mapped in environments other than the global environment.  Let's
 add a bad version of `l.per.cubic.i` to the global environment to see if our
 functions find the correct version in the Calling Environment:
 
@@ -426,6 +426,13 @@ q2 <- local({
 })
 (q3 <- bquote(.(q1) / .(q2)))
 eval(q3)
+```
+
+Each of the `a`'s is resolved in it's own environment.  We can even mix them
+with normal unevaluated commands.  The names outside of the `with`s resolve in
+the Evaluation Environment:
+
+```{r}
 (q4 <- bquote(.(q1) / .(q2) + a))
 eval(q4)
 ```
@@ -433,15 +440,50 @@ eval(q4)
 options(old.opt)
 ```
 
-Another benefit is that the semantics of the command are obvious to anyone
-familiar with `with` even absent any special print methods.  And there is no
-operator-precedence-anxiety.  And all that in two lines of code!
+But, we have quosures already, why bother with this madness?  Well, it's fun.
+Plus there are some remarkable benefits from the `with` approach:
 
+* We can use good-old `base::eval`; this is a big deal, we avoid a huge amount
+  of complexity.
+* Semantics are pure; everything behaves exactly the same way it would outside
+  of `quo_with`.
+* Complete interoperability with existing meta-programming constructs (e.g.
+  `bquote`).
+* WYSIWYG: the semantics of the commands are transparent.  Any useR familiar
+  with `with` knows what the commands will do.  Sure, they don't necessarily
+  know what's in the environments, but that's true of quosures too.
+* WYSIWYG 2: We don't need any special print methods, and operator precedence is
+  crystal-clear.
+
+All of this in two lines of code!  Yes, some will object to the aesthetics of
+the `with` calls everywhere, preferring the more demure `^` prefix, but the
+later relies on custom print methods which will cause confusion when they are
+defeated by things such as:
+
+```{r}
+q5 <- local(quo(a + 1))
+rlang::expr(a + !!q5)
+```
+
+Of course, we're not even close to replacing the full `rlang` functionality with
+this, but it's not a bad start.
+
+# Bells, Whistles
 
 Two obvious features are missing: quasi-quotation (a.k.a. backquoting /
-partial-evaluation), and data masks.  First backquoting, which we'll do with
+partial-evaluation), and data masks.  First quasi-quotation, which we'll do with
 `bquo_with`.  Let's look at a usage example before the implementation:
 
+```{r bquo_with, echo=FALSE}
+bquo_with <- function(x, env=parent.frame()) {
+  caller <- parent.frame()
+  exp <- substitute(x)          # a + .(a)         # user cmd
+  exp <- bquote(bquote(.(exp))) # bquote(a + .(a)) # wrap in bquote
+  exp <- eval(exp, caller)      # a + 666          # eval in call env
+  force(env)
+  bquote(with(.(env), .(exp)))
+}
+```
 ```{r}
 a <- 666
 q5 <- local({
@@ -456,19 +498,12 @@ eval(q5)
 The implementation is trickier (comments include what interim-steps
 would contain with the above inputs):
 
-```{r}
-bquo_with <- function(x, env=parent.frame()) {
-  force(env)
-  exp <- substitute(x)          # a + .(a)         # user cmd
-  exp <- bquote(bquote(.(exp))) # bquote(a + .(a)) # wrap in bquote
-  exp <- eval(exp, env)         # a + 666          # eval in call env
-  bquote(with(.(env), .(exp)))
-}
+```{r bquo_with, eval=FALSE}
 ```
 
-We need to generate a `bquote` command to evaluate in the Calling Environment,
-which leads to the odd-looking `bquote(bquote(.(exp)))`.  But this is an
-implementation detail that the user of `bquo_with` need not worry about.
+The odd-looking `bquote(bquote(.(exp)))` is used to generate a `bquote` command
+to evaluate in the Calling Environment.  But this is an implementation detail
+that the user of `bquo_with` need not worry about.
 
 Data masking requires us to add data, often a data frame, to the Evaluation
 Chain.  We will do that by replacing the environments embedded in the `with`
@@ -490,12 +525,12 @@ mask <- function(cmd, dat) {
 R commands are nested lists of sub-commands, so most of the function is
 recursion through those lists.  The key line is:
 
-```{r}
+```{r eval=FALSE}
       cmd[[2L]] <- list2env(mask, parent=cmd[[2L]])
 ```
 
-There we replace the existing environment with one derived from the data
-mask that is Enclosed by the replaced environment.  Let's try it:
+There we use the existing environment as the Enclosure to the data mask, and
+then we swap the data mask in.  Let's try it:
 
 ```{r}
 q6 <- local({
@@ -508,6 +543,46 @@ q7 <- mask(q6, list(b=1000))
 eval(q7)
 ```
 
+Okay, almost there, one last little thing.  This isn't necessary, but can help
+clean things up a little: an equivalent to `substitute` that captures the
+Calling Environment like `enquo` does:
+
+```{r}
+sub_quo_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
+  force(caller)
+  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), env)
+  bquote(with(.(caller), .(exp.s)))
+}
+```
+
+Now we can go back to our `mean_with_*` functions:
+
+```{r}
+mean_with_bquo <- function(dat, cmd) {
+  env <- parent.frame()
+  # cmd <- bquo_with(.(substitute(cmd)), env)
+  # cmd <- bquote(mean(.(cmd)))
+  # cmd <- mask(cmd, dat)
+  cmd <- mask(bquote(mean(.(bquo_with(.(substitute(cmd)), env)))), dat)
+  eval(cmd)
+}
+mean_with_bquo <- function(dat, cmd) {
+  cmd <- sub_quo_with(cmd)
+  cmd <- mask(bquote(mean(.(cmd))), dat)
+  eval(cmd)
+}
+l.per.cubic.i <- NA
+local({
+  mean <- function(...) 42
+  l.per.cubic.i <- 2.54^3 / 1000
+  list(
+    base=mean_with_base(mtcars, disp * l.per.cubic.i),
+    rlang=mean_with_rlang(mtcars, disp * l.per.cubic.i),
+    bquo_with=mean_with_bquo(mtcars, disp * l.per.cubic.i)
+  )
+})
+
+```
 
 
 ```{r}
