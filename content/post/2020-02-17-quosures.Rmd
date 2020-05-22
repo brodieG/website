@@ -548,8 +548,7 @@ clean things up a little: an equivalent to `substitute` that captures the
 Calling Environment like `enquo` does:
 
 ```{r}
-arg_q_with <- function(x, caller=parent.frame(2)) {
-  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), parent.frame())
+arg_bq_with <- function(x, caller=sys.frame(sys.parent(2))) {
   force(caller)
   # Wrong environment if promise was forwarded?
   bquote(with(.(caller), .(exp.s)))
