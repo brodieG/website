@@ -218,6 +218,10 @@ mean_with_rlang <- function(dat, cmd) {
   cmd <- quo(mean(!!cmd))          # wrap it in `mean`
   eval_tidy(cmd, dat)
 }
+mean_with_rlang2 <- function(dat, cmd) {
+  cmd <- quo(mean(!!enquo(cmd)))          # wrap it in `mean`
+  eval_tidy(cmd, dat)
+}
 mean_with_rlang(mtcars, disp * l.per.cubic.i)
 ```
 
@@ -257,8 +261,9 @@ local({
   mean <- function(...) 42
   l.per.cubic.i <- 2.54^3 / 1000
   list(
-    base=mean_with_base(mtcars, disp * l.per.cubic.i),
-    rlang=mean_with_rlang(mtcars, disp * l.per.cubic.i)
+    #base=mean_with_base(mtcars, disp * l.per.cubic.i),
+    #rlang=mean_with_rlang(mtcars, disp * l.per.cubic.i),
+    rlang2=mean_with_rlang2(mtcars, disp * l.per.cubic.i)
   )
 })
 ```
@@ -477,9 +482,9 @@ partial-evaluation), and data masks.  First quasi-quotation, which we'll do with
 ```{r bq_with, echo=FALSE}
 bq_with <- function(x, env=parent.frame()) {
   caller <- parent.frame()
-  exp <- substitute(x)          # a + .(a)         # user cmd
-  exp <- bquote(bquote(.(exp))) # bquote(a + .(a)) # wrap in bquote
-  exp <- eval(exp, caller)      # a + 666          # eval in call env
+  exp <- substitute(x)            # a + .(a)         # user cmd
+  exp <- bquote(.(bquote)(.(exp)))# bquote(a + .(a)) # wrap in bquote
+  exp <- eval(exp, caller)        # a + 666          # eval in call env
   force(env)
   bquote(with(.(env), .(exp)))
 }
@@ -550,8 +555,9 @@ Calling Environment like `enquo` does:
 ```{r}
 arg_bq_with <- function(x, caller=sys.frame(sys.parent(2))) {
   force(caller)
-  # Wrong environment if promise was forwarded?
-  bquote(with(.(caller), .(exp.s)))
+  cmd <- eval(bquote(.(substitute)(.(substitute(x)))), parent.frame())
+  cmd <- eval(bquote(.(bquote)(.(cmd))), caller)
+  bquote(with(.(caller), .(cmd)))
 }
 ```
 
@@ -559,22 +565,218 @@ Now we can go back to our `mean_with_*` functions:
 
 ```{r}
 mean_with_bquo <- function(dat, cmd) {
-  cmd <- arg_q_with(cmd)
-  cmd <- mask(bquote(mean(.(cmd))), dat)
+  cmd <- arg_bq_with(cmd)
+  cmd <- bquote(mean(.(cmd)))
+  cmd <- mask(cmd, dat)
   eval(cmd)
 }
+mean_with_bquo <- function(dat, cmd) {
+  cmd <- bquote(mean(.(arg_bq_with(cmd))))
+  cmd <- mask(cmd, dat)
+  eval(cmd)
+}
+```
+```{r eval=FALSE}
+a <- new.env()
+b <- new.env()
+str(
+  zz <- local({
+    local({
+      list(
+        bquote2(.(parent.frame())),
+        parent.frame(),
+        eval(quote(parent.frame())),
+        eval(quote(parent.frame(2))),
+        eval(quote(parent.frame(3))),
+        sys.frames()[sys.parents()]
+      )
+    }, a)
+  }, b)
+)
+```
+
+We use `bquote` to generate the `mean` call, but could also have used `bq_with`.
+It doesn't really matter since we're evaluating in the Function Evaluation
+Environment thus the two are equivalent.  So does it work?
+
+```{r}
+arg_bq_with <- function(x, caller=sys.frame(sys.parent(2))) {
+  force(caller)
+  cmd <- eval(bquote(.(substitute)(.(substitute(x)))), parent.frame())
+  cmd <- eval(bquote(.(bquote)(.(cmd))), caller)
+  bquote(with(.(caller), .(cmd)))
+}
+mean_with_bquo <- function(dat, cmd) {
+  cmd <- bquote(mean(.(arg_bq_with(cmd))))
+  cmd <- mask(cmd, dat)
+  eval(cmd)
+}
+f0 <- function() {
+  cmd <- bquote(.(f1()))
+  eval(cmd)
+}
+f1 <- function() {
+  list(sys.frame(sys.parent(2)), parent.frame(2))
+}
+
+
+f0 <- function() {
+  bquote(.(list(sys.frame(sys.parent()), parent.frame())))
+}
+
+# must be a function. `local` doesn't do it.
+f1 <- function() {
+  structure(
+    list(
+      sys.frame(sys.parent(2)), parent.frame(2),
+      sys.frame(sys.parent()), parent.frame(),
+      dat=list(fr=sys.frames(), par=sys.parents(), call=sys.calls()),
+      extra=list(parent.frame(3), parent.frame(4))
+    ),
+    class='env_record'
+  )
+}
+f0 <- function() {
+  evalq(f1())
+}
+res <- f0()
+
+print.env_record <- function(x, ...) {
+  env_capt <- function(x)
+      sub(".*environment: 0x([0-9a-f]*).*", "\\1", capture.output(print(x)))
+  frames <- sapply(x[[c('dat', 'fr')]], env_capt)
+  calls <- sapply(
+    x[[c('dat', 'call')]], function(x) {
+      attributes(x) <- NULL   # dump srcrefs
+      paste0(deparse(x), collapse="\n")
+    }
+  )
+  writeLines(
+    paste(
+      format(
+        c(
+          "sys.frame(sys.parent(2))", 
+          "parent.frame(2)",
+          "sys.frame(sys.parent())",
+          "parent.frame()"
+      ) ),
+      sapply(x[1:4], env_capt) 
+    )
+  )
+  writeLines("")
+  writeLines(
+    paste(
+      format(x[[c('dat', 'par')]]),
+      format(frames),
+      format(calls),
+      sep=" | "
+  ) )
+  writeLines("")
+  str(x[['extra']])
+}
+```
+
+This appears to show that `parent.frame` is just following the call stack,
+whatever it may be.
+
+```
+sys.frame(sys.parent(2)) <environment: R_GlobalEnv>
+parent.frame(2)          7fb38a676d38
+sys.frame(sys.parent())  7fb38a676b78
+parent.frame()           7fb38a676b78
+
+0 | 7fb38a676b78 | f0()       
+1 | 7fb38a676d38 | evalq(f1())
+2 | 7fb38a676b78 | evalq(f1())
+1 | 7fb38a6772e8 | f1()       
+```
+
+
+str(f0())
+
 l.per.cubic.i <- NA
 local({
   mean <- function(...) 42
   l.per.cubic.i <- 2.54^3 / 1000
   list(
-    base=mean_with_base(mtcars, disp * l.per.cubic.i),
-    rlang=mean_with_rlang(mtcars, disp * l.per.cubic.i),
+    # base=mean_with_base(mtcars, disp * l.per.cubic.i),
+    # rlang=mean_with_rlang(mtcars, disp * l.per.cubic.i),
     bq_with=mean_with_bquo(mtcars, disp * l.per.cubic.i)
   )
 })
 
+ef <- function(x) {
+  eval(substitute(x), parent.frame())
+}
+
+f0 <- function() {
+  f1 <- function() {
+    f2 <- function() {
+      list(
+        ef(sys.frame(sys.parent(2))),
+        ef(parent.frame(2))
+      )
+    }
+    f2()
+  }
+  f1()
+}
+f0()
+
+ef <- function(x) {
+  eval(substitute(x), parent.frame())
+}
+f0 <- function() {
+  f1 <- function() {
+    list(
+      ef(sys.frame(sys.parent(2))),
+      ef(parent.frame(2))
+    )
+  }
+  f1()
+}
+f0()
+
+f0 <- function() {
+  f1 <- function() {
+    list(
+      evalq(sys.frame(sys.parent(2))),
+      evalq(parent.frame(2))
+    )
+  }
+  f1()
+}
+f0()
+f0 <- function() {
+  f1 <- function(e) {
+    sp <- sys.parent()
+    list(
+      # evalq(sys.frame(sys.parent())),
+      # evalq(sys.frame(sp)),
+      # evalq(parent.frame()),
+      evalq(
+        list(
+          sys.frame(sys.parent()), parent.frame(),
+          sys.frame(sys.parent(2)), parent.frame(2)
+        )
+      ),
+      parent.frame(),
+      sys.frame(sys.parent()),
+      e,
+      sys.frames(),
+      sys.parents(),
+      evalq(list(sys.frames(), sys.parents(), sys.parent()))
+    )
+  }
+  e <- environment()
+  f1(e)
+}
+zz <- f0()
+str(zz)
+
 ```
+
+Yup!
 
 ```{r}
 a <- 17
@@ -586,7 +788,7 @@ w <- local({
 exp <- local({
   b <- 100
   x <- 3
-  q_with(x + 1 + .(w))
+  bq_with(x + 1 + .(w))
 })
 exp
 eval(exp)
@@ -596,9 +798,10 @@ f <- local({
   w <- 2
   function(x) {
     w <- 5
-    quo_arg_with(x)
+    arg_q_with(x)
   }
 })
+f(w)
 eval(f(w))
 ```
 
