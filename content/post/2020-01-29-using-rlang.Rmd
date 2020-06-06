@@ -396,20 +396,6 @@ DF2 %>%
   summarize(mean(val), n())
 ```
 
-From this we can see the rough correspondence between tidy and base NSE:
-
-* `enquos(...)` => `substitute(list(....))` and by extension:
-* `enquo(x)` => `substitute(x)`
-* `quo(fun(!!x))` => `bquote(fun(.(x)))`
-* `eval_tidy(call, data=.data)` => `eval(call, .data, parent.frame())`
-
-The problem with this is that the tidy functions re-use the same lexical roots
-as base, but mix-up the semantics.  For example base also has `enquote`, but
-that does something completely different from `rlang::enquo`.  Similarly base
-has `quote` and `bquote`, but `rlang::quo` is closer to `bquote` than `quote`,
-and in fact `rlang::expr` is the closest thing to `bquote`.  To further add to
-the confusing base also has `expression`, which is something different yet
-again.
 
 From this (and several other design decisions) I get the sense that building
 `rlang` in a way that is complementary to precedent in R proper ranked low
