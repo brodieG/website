@@ -36,6 +36,11 @@ process_components <- function(path, x=0, y=0) {
   invalid_cmd <- function(i, cmd) stop("Invalid ", cmd, " command at index ", i)
   x0 <- x
   y0 <- y
+  if(identical(toupper(path[[1]][[1]]), "M")) {
+    if(length(path[[1]][[2]]) != 2) invalid_cmd(1, path[[1]][[1]])
+    x0 <- path[[1]][[2]][1]
+    y0 <- path[[1]][[2]][2]
+  }
   for(i in seq_along(path)) {
     el <- path[[i]]
     if(!is.character(el[[1]]) || length(el[[1]]) != 1L) stop("Invalid command")
@@ -55,15 +60,15 @@ process_components <- function(path, x=0, y=0) {
             cumsum(el[[2]][c(TRUE,FALSE)]) + x,
             cumsum(el[[2]][c(FALSE,TRUE)]) + y
         ) )
-        x <- res[nrow(res), 1]
-        y <- res[nrow(res), 2]
+        x <- res[[2]][nrow(res[[2]]), 1]
+        y <- res[[2]][nrow(res[[2]]), 2]
         res
       },
       v=,h={
         if(length(el[[2]]) != 1) invalid_cmd(i, el[[1]])
         if(el[[1]] == 'v') y <- y + el[[2]]
         else x <- x + el[[2]]
-        list("L", matrix(c(x, y)), nrow=1)
+        list("L", matrix(c(x, y), nrow=1))
       },
       z=,Z={
         if(length(el[[2]])) invalid_cmd(i, el[[1]])
@@ -80,38 +85,33 @@ process_components <- function(path, x=0, y=0) {
       C={
         if(length(el[[2]]) %% 2) invalid_cmd(i, el[[1]])
         res <- list("C", matrix(el[[2]], ncol=2, byrow=TRUE))
-        x <- res[nrow(res), 1]
-        y <- res[nrow(res), 2]
+        x <- res[[2]][nrow(res[[2]]), 1]
+        y <- res[[2]][nrow(res[[2]]), 2]
         res
       },
-      V,H={
+      V=,H={
         if(length(el[[2]]) != 1) invalid_cmd(i, el[[1]])
         if(el[[1]] == 'V') y <- el[[2]]
         else x <- el[[2]]
-        list("L", matrix(c(x, y)), nrow=1)
+        list("L", matrix(c(x, y), nrow=1))
       },
       stop("unknown command ", i[[1]])
     )
   }
   path
 }
-# Split vectors by Zs
-
-closed_paths <- function(x) {
-  res <- list()
-  if(length(x)) {
-    y <- unname(split(x, cumsum(grepl("[zZ]", x))))
-    res <- c(y[1], lapply(y[-1], "[", -1))
-  }
-  res[lengths(res) > 0]
-}
 # Assumes all paths are closed
 
-parse_closed_path <- function(x) {
-  raw <- regmatches(x, gregexpr("-?[0-9.]+|[a-zA-Z]", x))
-  paths <- unlist(lapply(raw, closed_paths), recursive=FALSE)
-  comps <- lapply(paths, path_components)
-  comps
+parse_path <- function(x) {
+  if(!is.character(x) || length(x) != 1) stop("Input not character(1L)")
+  raw <- regmatches(x, gregexpr("-?[0-9.]+|[a-zA-Z]", x))[[1]]
+  raw <- unname(split(raw, cumsum(grepl("[a-zA-Z]", raw))))
+  cmds <- lapply(
+    raw, function(x) {
+      if(length(x)) list(x[1], as.numeric(x[-1]))
+      else list()
+  } )
+  process_components(cmds)
 }
 
 get_path <- function(dat) {
