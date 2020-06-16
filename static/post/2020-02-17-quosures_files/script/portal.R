@@ -32,33 +32,33 @@ outer <- c(3, 6, 7, 10, 13, 14, 3)
 hex <- hex[c(outer, 17:nrow(hex)),]
 attr(hex, 'starts') <- 8
 
+
 objs <- dplyr::bind_rows(
   lapply(
     paths[-c(1, length(paths))],
     extrude_path, material=gold, top=.1
   ),
   extrude_path(hex, material=diffuse('gray30'), top=.1),
-  extrude_path(
-    hex[1:7,], material=diffuse('black'), top=-2, bottom=-2.01,
-    scale=c(3,1,3)
-  )
+  bag
 )
+bricks <- dplyr::bind_rows(
+  xz_rect(y=.2, xwidth=.25, zwidth=.25, material=gold)
+)
+inside_light <- sphere(1, 1, -1.5, radius=.2, material=light(intensity=200))
+
 bg <- '#FFFFFF'
 render_scene(
   dplyr::bind_rows(
     group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
-    # xz_rect(xwidth=10, zwidth=10),
-    # generate_ground(
-    #   material=diffuse(checkercolor='grey70', checkerperiod=.5),
-    #   depth=0
-    # ),
+    bricks,
     sphere(z=5, y=2, x=5, radius=3, material=light(intensity=5)),
-    sphere(radius=10, material=diffuse(), flipped=TRUE)
+    sphere(radius=10, material=diffuse(), flipped=TRUE),
+    inside_light
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1),
   lookat=c(0,.5,0),
-  samples=2,
+  samples=50,
   clamp_value=5,
   fov=60,
   # fov=40,
@@ -98,13 +98,6 @@ comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
   vecs.n <- vecs / sqrt(colSums(vecs^2)) * depth
   hex.out <- hex.in + vecs.n
 
-  # use decido to generate the back hex.  Assume that the path winds around the
-  # contour and doesn't e.g. produce a figure 8.
-
-    # Find which direction polygon is wound by computing signed area,
-    # assumes non-intersecting polygon (side is a closed polygon).  CW
-    # outer polygon need to flip sides, as do CCW holes
-
   i <- seq_len(ncol(vecs.n) - 1L)
   ii <- seq_len(ncol(vecs.n) - 1L) + 1L   # i + 1
   area_s <- sum(hex.in[1,i] * hex.in[3,ii] - hex.in[1,ii] * hex.in[3,i]) / 2
@@ -113,9 +106,9 @@ comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
 
   # code adapted from rayrender
 
-  sides <- unist(
+  sides <- unlist(
     lapply(
-      seq_len(length(vecs.n) - 1L),
+      seq_len(ncol(vecs.n) - 1L),
       function(i) {
         list(
           triangle(
@@ -133,14 +126,18 @@ comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
   back.tris <- lapply(
     split(back.idx, col(back.idx)),
     function(i)
-      triangle(hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]], material=material)
+      triangle(
+        hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]], 
+        material=material
+      )
   )
-  dplyr::bind_rows(sides, back.tris)
+  dplyr::bind_rows(c(sides, back.tris))
 }
-bag <- comp_inside(
-  h2, 0, c(0,.5, 1), 2, diffuse(checkercolor='red', checkerperiod=.5)
+bag <- comp_inside(h2, 0, c(0, 1, 0), 2, diffuse(color='grey5'))
+render_scene(
+  bag, lookfrom=c(0,1,0.0000001), lookat=c(0,-2,0), aperture=0,
+  samples=100, fov=30
 )
-
 
 
 
