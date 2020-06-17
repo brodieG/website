@@ -5,7 +5,7 @@ library(svgchop)
 url <- '~/Downloads/rlang/rlang2.svg'
 
 library(rayrender)
-gold <- microfacet(
+gold_mat <- microfacet(
   roughness=0.1, eta=c(0.216,0.42833,1.3184), kappa=c(3.239,2.4599,1.8661)
 )
 zz <- parse_paths(url)
@@ -19,66 +19,18 @@ paths <- lapply(
     res
   }
 )
-
 extrude_path <- function(x, ...) {
   extruded_polygon(
     x, holes=if(length(attr(x, 'starts'))) attr(x, 'starts'), ...
   )
 }
-# Hex is a mess, we need to clean it up
-
-hex <- paths[[length(paths)]]
-outer <- c(3, 6, 7, 10, 13, 14, 3)
-hex <- hex[c(outer, 17:nrow(hex)),]
-attr(hex, 'starts') <- 8
-
-
-objs <- dplyr::bind_rows(
-  lapply(
-    paths[-c(1, length(paths))],
-    extrude_path, material=gold, top=.1
-  ),
-  extrude_path(hex, material=diffuse('gray30'), top=.1),
-  bag
-)
-bricks <- dplyr::bind_rows(
-  xz_rect(y=.2, xwidth=.25, zwidth=.25, material=gold)
-)
-inside_light <- sphere(1, 1, -1.5, radius=.2, material=light(intensity=200))
-
-bg <- '#FFFFFF'
-render_scene(
-  dplyr::bind_rows(
-    group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
-    bricks,
-    sphere(z=5, y=2, x=5, radius=3, material=light(intensity=5)),
-    sphere(radius=10, material=diffuse(), flipped=TRUE),
-    inside_light
-  ),
-  filename=next_file("~/Downloads/rlang/imgs/img-"),
-  lookfrom=c(0, .5, 1),
-  lookat=c(0,.5,0),
-  samples=50,
-  clamp_value=5,
-  fov=60,
-  # fov=40,
-  aperture=0
-)
-# objs <- dplyr::bind_rows(
-#   Map(
-#     extrude_path, rev(paths), top=c(.1, .05) ,
-#     bottom=c(-.1,-.05), material=list(gold)
-#   )
-# )
 
 # Generate the Rlang pocket.  Want two sets of hex coordinates, the front, back,
 # and want to generate triangles for the back and sides.  Need to compute from
 # our viewpoint and project out the back hexagon.
 #
 # Challenge, compute what elements in our full scene are actually inside.
-
-h2 <- hex[1:7,]
-
+#
 # @param depth how far from the hex edge to the corresponding vertex in the back
 #   hexagon.
 # @param y numeric(1L) y coord of original hexagon parallel to x-z plane
@@ -86,7 +38,10 @@ h2 <- hex[1:7,]
 # @param hex the coordinates of the hex, hex assumed closed, first coordinate is
 #   taken to be X, second Z, and the Y value is assumed to be 0.
 
-comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
+comp_inside <- function(
+  hex, y, obs, depth, material=diffuse(color='red'),
+  light_index=1
+) {
   vetr::vetr(
     structure(list(numeric(7), numeric(7)), class='data.frame'),
     numeric(1),
@@ -103,6 +58,7 @@ comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
   area_s <- sum(hex.in[1,i] * hex.in[3,ii] - hex.in[1,ii] * hex.in[3,i]) / 2
 
   ccw <- area_s >= 0  # treat degenerates as counter-clockwise
+  flip <- !ccw
 
   # code adapted from rayrender
 
@@ -110,14 +66,15 @@ comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
     lapply(
       seq_len(ncol(vecs.n) - 1L),
       function(i) {
+        if(i == light_index) material=light(intensity=10)
         list(
           triangle(
             v1=hex.in[,i], v2=hex.out[,i], v3=hex.out[,i+1],
-            material = material, reversed = ccw
+            material = material, reversed = flip
           ),
           triangle(
             v1=hex.in[,i], v2=hex.out[,i+1], v3=hex.in[,i+1],
-            material = material, reversed = ccw
+            material = material, reversed = flip
           )
     ) } ),
     recursive=FALSE
@@ -133,11 +90,140 @@ comp_inside <- function(hex, y, obs, depth, material=diffuse(color='red')) {
   )
   dplyr::bind_rows(c(sides, back.tris))
 }
-bag <- comp_inside(h2, 0, c(0, 1, 0), 2, diffuse(color='grey5'))
-render_scene(
-  bag, lookfrom=c(0,1,0.0000001), lookat=c(0,-2,0), aperture=0,
-  samples=100, fov=30
+# Hex is a mess, we need to clean it up
+
+hex <- paths[[length(paths)]]
+outer <- c(3, 6, 7, 10, 13, 14, 3)
+hex <- hex[c(outer, 17:nrow(hex)),]
+attr(hex, 'starts') <- 8
+
+# All a bit confusing because we do the extrusion in x-z plane, but then rotate.
+# Should have done everything directly in x-y plane...
+
+h2 <- hex[1:7,]
+brick.depth <- depth <- 3
+obs <- c(0, 1, 0)
+bag <- comp_inside(
+  h2, 0, obs, depth=depth, diffuse(color='grey5'), light_index=6
+)
+objs <- dplyr::bind_rows(
+  lapply(
+    paths[-c(1, length(paths))],
+    extrude_path, material=gold_mat, top=.1
+  ),
+  extrude_path(hex, material=diffuse('gray30'), top=.1),
+  #bag
+)
+n <- 10
+brick.start <- 0
+y.rise <- .6
+angle <- atan(y.rise / (depth + brick.start)) / pi * 180
+h <- sqrt(y.rise^2 + (depth + brick.start)^2)
+
+z.obs <- obs[2]
+
+# attempt to project our manual approximation of the path.  We need to find the
+# intersection of the paths from our observer through the control points onto
+# the path plane.
+
+box <- attr(zz, 'box')
+brick.path <- data.frame(
+  x=c(260, 530, 530, -100)/box[3] - .5,
+  y=1 - c(850, 430, 430,  388)/box[4]
+)
+brick.dots <- bezier_interp_even(brick.path, 20)
+b.p.obj <- dplyr::bind_rows(
+  lapply(
+    seq_along(brick.dots[[1]]),
+    function(i)
+      sphere(
+        radius=.025, x=brick.dots[[1]][i], y=brick.dots[[2]][i],
+        material=gold_mat
+) ) )
+# actual projected version
+# https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
+
+p0 <- c(0, 0, 0)
+p1 <- c(0, y.rise, -brick.depth)
+p2 <- c(1, y.rise, -brick.depth)
+p01 <- p1 - p0
+p02 <- p2 - p0
+la <- obs[c(1,3,2)] + c(0,.5,0)
+lab <- t(as.matrix(transform(brick.path, z=0))) - la
+
+p01xp02 <- c(
+   (p01[2] * p02[3] - p01[3] * p02[2]),
+  -(p01[1] * p02[3] - p01[3] * p02[1]),
+   (p01[1] * p02[2] - p01[2] * p02[1])
+)
+t <- sum(p01xp02 * (la - p0)) /
+     colSums(-lab * p01xp02)
+int <- la + lab * rep(t, each=3)
+int_obj <- dplyr::bind_rows(
+  lapply(
+    seq_len(ncol(int)),
+    function(i)
+      sphere(
+        x=int[1,i], y=int[2,i], z=int[3,i], radius=.2,
+        material=diffuse('green')
+      )
+  )
 )
 
-
+bpp <- within(
+  brick.path, {
+    z <- -y / tan((angle)/180 * pi)
+    x <- x * (z.obs - z) / z.obs
+  }
+)
+bpp.obj <- dplyr::bind_rows(
+  lapply(
+    seq_len(nrow(bpp)),
+    function(i) {
+      with(
+        bpp[i,,drop=FALSE],
+        sphere(x=x, y=y, z=z, radius=.2, material=diffuse('red'))
+      )
+    }
+) )
+bricks <- dplyr::bind_rows(
+  Map(
+    function(x,y,z) {
+      xz_rect(
+        y=y, z=z, x=x, xwidth=.75,
+        zwidth=(h * .9)/n, material=diffuse(gold),
+        angle=c(-angle,0,0)
+      )
+    },
+    x=rep(0, n),
+    z=seq(brick.start, -depth, length.out=n),
+    y=seq(0, .6, length.out=n)
+  )
+)
+bg <- '#FFFFFF'
+render_scene(
+  dplyr::bind_rows(
+    group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
+    # bricks,
+    b.p.obj,
+    int_obj,
+    sphere(z=5, y=2, x=5, radius=3, material=light(intensity=5)),
+    sphere(radius=10, material=diffuse(), flipped=TRUE),
+  ),
+  filename=next_file("~/Downloads/rlang/imgs/img-"),
+  lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
+  # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
+  # width=800, height=800,
+  samples=50,
+  clamp_value=5,
+  fov=90,
+  # fov=30,
+  aperture=0
+)
+# objs <- dplyr::bind_rows(
+#   Map(
+#     extrude_path, rev(paths), top=c(.1, .05) ,
+#     bottom=c(-.1,-.05), material=list(gold_mat)
+#   )
+# )
 
