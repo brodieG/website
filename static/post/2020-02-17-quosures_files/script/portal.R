@@ -84,7 +84,7 @@ comp_inside <- function(
     split(back.idx, col(back.idx)),
     function(i)
       triangle(
-        hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]], 
+        hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]],
         material=material
       )
   )
@@ -101,7 +101,8 @@ attr(hex, 'starts') <- 8
 # Should have done everything directly in x-y plane...
 
 h2 <- hex[1:7,]
-brick.depth <- depth <- 3
+brick.depth <- 3
+depth <- 5
 obs <- c(0, 1, 0)
 bag <- comp_inside(
   h2, 0, obs, depth=depth, diffuse(color='grey5'), light_index=6
@@ -112,13 +113,13 @@ objs <- dplyr::bind_rows(
     extrude_path, material=gold_mat, top=.1
   ),
   extrude_path(hex, material=diffuse('gray30'), top=.1),
-  #bag
+  bag
 )
 n <- 10
 brick.start <- 0
 y.rise <- .6
-angle <- atan(y.rise / (depth + brick.start)) / pi * 180
-h <- sqrt(y.rise^2 + (depth + brick.start)^2)
+angle <- atan(y.rise / (brick.depth + brick.start)) / pi * 180
+h <- sqrt(y.rise^2 + (brick.depth + brick.start)^2)
 
 z.obs <- obs[2]
 
@@ -143,13 +144,16 @@ b.p.obj <- dplyr::bind_rows(
 # actual projected version
 # https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
 
+brick.path.2 <- brick.path
+brick.path.2[2:3, 1] <- c(.18)
+
 p0 <- c(0, 0, 0)
 p1 <- c(0, y.rise, -brick.depth)
 p2 <- c(1, y.rise, -brick.depth)
 p01 <- p1 - p0
 p02 <- p2 - p0
 la <- obs[c(1,3,2)] + c(0,.5,0)
-lab <- t(as.matrix(transform(brick.path, z=0))) - la
+lab <- t(as.matrix(transform(brick.path.2, z=0))) - la
 
 p01xp02 <- c(
    (p01[2] * p02[3] - p01[3] * p02[2]),
@@ -159,13 +163,47 @@ p01xp02 <- c(
 t <- sum(p01xp02 * (la - p0)) /
      colSums(-lab * p01xp02)
 int <- la + lab * rep(t, each=3)
-int_obj <- dplyr::bind_rows(
+
+ang.rad <- angle / 180 * pi
+rx <- matrix(
+  c(1,0,0, 0,cos(ang.rad),sin(ang.rad), 0,-sin(ang.rad),cos(ang.rad)), 3
+)
+int.rot <- t(int) %*% rx
+rx %*% int
+
+# test without interpolation
+
+int.test <- dplyr::bind_rows(
   lapply(
     seq_len(ncol(int)),
     function(i)
       sphere(
-        x=int[1,i], y=int[2,i], z=int[3,i], radius=.2,
-        material=diffuse('green')
+        x=int[1,i], y=int[2,i], z=int[3,i],
+        radius=.2, material=diffuse(color='green')
+      )
+  )
+)
+# int.test.r <- t(int.test) %*% rx
+
+# rotate on x-axis
+
+# Interpolate and rotate back
+
+int.dots <- bezier_interp_even(list(x=int.rot[,1], y=int.rot[,3]), 100)
+int.dots.3d <- rx %*% rbind(int.dots[[1]], 0, int.dots[[2]])
+
+# Place each rung in between the points, compute angle from vector
+
+int.diff <- int.dots.3d[,-1] - int.dots.3d[,-ncol(int.dots.3d)]
+int.diff.n <- int.diff / rep(sqrt(colSums(int.diff ^ 2)), each=3)
+
+int.obj <- dplyr::bind_rows(
+  lapply(
+    seq_len(ncol(int.dots.3d)),
+    function(i)
+      sphere(
+        x=int.dots.3d[1,i], y=int.dots.3d[2,i], z=int.dots.3d[3,i],
+        radius=.1, material=gold_mat
       )
   )
 )
@@ -206,18 +244,20 @@ render_scene(
     group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     # bricks,
     b.p.obj,
-    int_obj,
+    int.obj,
+    int.test,
     sphere(z=5, y=2, x=5, radius=3, material=light(intensity=5)),
     sphere(radius=10, material=diffuse(), flipped=TRUE),
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
+  # lookfrom=c(2, .5, 1), lookat=c(0, .5, 0),
   # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
   # width=800, height=800,
-  samples=50,
+  samples=5,
   clamp_value=5,
+  # fov=60,
   fov=90,
-  # fov=30,
   aperture=0
 )
 # objs <- dplyr::bind_rows(
