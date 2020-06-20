@@ -142,12 +142,10 @@ b.p.obj <- dplyr::bind_rows(
         radius=.01, x=brick.dots[[1]][i], y=brick.dots[[2]][i],
         material=diffuse(color='blue')
 ) ) )
-# actual projected version
+# actual projected version; tweaks to origin path to match under perspective
 # https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
 
 brick.path.2 <- brick.path
-brick.path.2[2:3, 1] <- c(.16)
-brick.path.2[2:3, 2] <- c(.44)
 brick.path.2[2:3, 1] <- c(.18)
 brick.path.2[2:3, 2] <- c(.47)
 
@@ -193,8 +191,8 @@ int.test <- dplyr::bind_rows(
 
 # Interpolate and rotate back
 
-n <- 400
-int.dots <- bezier_interp_even(list(x=int.rot[,1], y=int.rot[,3]), n)
+n.rows <- 400
+int.dots <- bezier_interp_even(list(x=int.rot[,1], y=int.rot[,3]), n.rows)
 int.dots.3d <- rx %*% rbind(int.dots[[1]], 0, int.dots[[2]])
 
 # Place each rung in between the points, compute angle from vector
@@ -214,18 +212,53 @@ int.test <- dplyr::bind_rows(
   )
 )
 set.seed(1)
-x.off <- rnorm(n) * .025
+
+# a row of pavers
+
+off.raw <- rnorm(n.rows - 1) * .025         # noise in row position
+row.ang <- -asin(int.diff.n[1,])/pi*180     # angle in x/z
+row.ang2 <- -asin(int.diff.n[1,])/pi*180 - 90
+
+off.x <- -off.raw * int.diff.n[3,]
+off.z <- off.raw * int.diff.n[1,]
+
+# sum(int.diff.n[,1] * vec) == 0
+# a[1] * b[1] + a[2] * b[2] == 0
+
+paver.n <- 15
+paver.w <- 1/paver.n
+paver.x <- seq(-.5 + paver.w / 2, .5 - paver.w / 2, length.out=paver.n)
+
+make_paver_row <- function() {
+  dplyr::bind_rows(
+    lapply(
+      paver.x,
+      function(x) {
+        cylinder(
+          x=x, length=paver.w * .9, radius=.025,
+          material=diffuse(
+            rgb(sample(135:185, 1), sample(45:75, 1), 0, maxColorValue=255)
+          ),
+          angle=c(0, 0, 90)
+) } ) ) }
+# and a road of pavers
+
+paver.off <- seq(-.5, .5, length.out=paver.n + 1)
+
 int.diff.obj <- dplyr::bind_rows(
   lapply(
     seq_len(ncol(int.diff)),
-    function(i)
-      cylinder(
-        x=int.mid[1,i] + x.off[i], y=int.mid[2,i], z=int.mid[3,i],
-        radius=.025, material=diffuse(color=gold),
-        # angle=c(0, -30, 90),
-        angle=c(0, -asin(int.diff.n[1,i])/pi*180, 90),
-        order_rotation=c(3, 2, 1)
+    function(i) {
+      group_objects(
+        make_paver_row(),
+        group_translate=c(
+          int.mid[1,i] + off.x[i],
+          int.mid[2,i],
+          int.mid[3,i] + off.z[i]
+        ),
+        group_angle=c(0, row.ang[i], 0)
       )
+    }
   )
 )
 int.obj <- dplyr::bind_rows(
@@ -236,36 +269,6 @@ int.obj <- dplyr::bind_rows(
         x=int.dots.3d[1,i], y=int.dots.3d[2,i], z=int.dots.3d[3,i],
         radius=.1, material=diffuse(color='red')
       )
-  )
-)
-bpp <- within(
-  brick.path, {
-    z <- -y / tan((angle)/180 * pi)
-    x <- x * (z.obs - z) / z.obs
-  }
-)
-bpp.obj <- dplyr::bind_rows(
-  lapply(
-    seq_len(nrow(bpp)),
-    function(i) {
-      with(
-        bpp[i,,drop=FALSE],
-        sphere(x=x, y=y, z=z, radius=.2, material=diffuse('red'))
-      )
-    }
-) )
-bricks <- dplyr::bind_rows(
-  Map(
-    function(x,y,z) {
-      xz_rect(
-        y=y, z=z, x=x, xwidth=.75,
-        zwidth=(h * .9)/n, material=diffuse(gold),
-        angle=c(-angle,0,0)
-      )
-    },
-    x=rep(0, n),
-    z=seq(brick.start, -depth, length.out=n),
-    y=seq(0, .6, length.out=n)
   )
 )
 bg <- '#FFFFFF'
@@ -286,7 +289,7 @@ render_scene(
   # lookfrom=c(0, 12, -1), lookat=c(-3, .5, -5),
   # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
   # width=600, height=600, samples=100,
-  samples=100,
+  samples=5,
   clamp_value=5,
   fov=60,
   # fov=90,
