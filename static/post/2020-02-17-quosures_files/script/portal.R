@@ -191,7 +191,7 @@ int.test <- dplyr::bind_rows(
 
 # Interpolate and rotate back
 
-n.rows <- 400
+n.rows <- 600
 int.dots <- bezier_interp_even(list(x=int.rot[,1], y=int.rot[,3]), n.rows)
 int.dots.3d <- rx %*% rbind(int.dots[[1]], 0, int.dots[[2]])
 
@@ -211,10 +211,21 @@ int.test <- dplyr::bind_rows(
       )
   )
 )
-set.seed(1)
+
+# Need to generate a list of all object coordinates, project their centroid
+# along the "bag" and onto the outer hex, and if it is outside, remove it.
+
+# Project onto x-y
+# Collapse all coodinates into upper right (abs coordinates relative to
+# centerpoint, then inside bounding box but outside triangle.
+#
+# This means we'll need to compute the coordinates directly instead of relying
+# on the group object
+
 
 # a row of pavers
 
+set.seed(1)
 off.raw <- rnorm(n.rows - 1) * .025         # noise in row position
 row.ang <- -asin(int.diff.n[1,])/pi*180     # angle in x/z
 row.ang2 <- -asin(int.diff.n[1,])/pi*180 - 90
@@ -229,38 +240,58 @@ paver.n <- 15
 paver.w <- 1/paver.n
 paver.x <- seq(-.5 + paver.w / 2, .5 - paver.w / 2, length.out=paver.n)
 
-make_paver_row <- function() {
-  dplyr::bind_rows(
-    lapply(
-      paver.x,
-      function(x) {
-        cylinder(
-          x=x, length=paver.w * .9, radius=.025,
-          material=diffuse(
-            rgb(sample(135:185, 1), sample(45:75, 1), 0, maxColorValue=255)
-          ),
-          angle=c(0, 0, 90)
-) } ) ) }
-# and a road of pavers
-
-paver.off <- seq(-.5, .5, length.out=paver.n + 1)
-
-int.diff.obj <- dplyr::bind_rows(
+pv.x.all <- rbind(
+  rep(paver.x, ncol(int.mid)) + rep(off.raw, each=paver.n),
+  0,
+  0,
+  rep(row.ang/180*pi, each=paver.n)
+)
+pv.rot <- apply(
+  pv.x.all, 2,
+  function(coords) {
+    p <- -coords[4]
+    Ry <- matrix(c(cos(p), 0, -sin(p), 0, 1, 0, sin(p), 0, cos(p)), 3)
+    t(coords[-4]) %*% Ry
+  }
+)
+pv.all <- int.mid[,rep(seq_len(ncol(int.mid)), each=paver.n)] + pv.rot
+pv.all.n <- ncol(pv.all)
+pv.colors <- rgb(
+  sample(135:185, pv.all.n, replace=TRUE),
+  sample(45:75, pv.all.n, replace=TRUE),
+  0, maxColorValue=255
+)
+pv.all.obj <- dplyr::bind_rows(
   lapply(
-    seq_len(ncol(int.diff)),
+    seq_len(pv.all.n),
     function(i) {
-      group_objects(
-        make_paver_row(),
-        group_translate=c(
-          int.mid[1,i] + off.x[i],
-          int.mid[2,i],
-          int.mid[3,i] + off.z[i]
-        ),
-        group_angle=c(0, row.ang[i], 0)
+      cylinder(
+        x=pv.all[1,i], y=pv.all[2,i], z=pv.all[3,i],
+        length=paver.w * .9, radius=.035,
+        material=diffuse(color=pv.colors[i]),
+        angle=c(0, 0, 90)
       )
     }
-  )
-)
+) )
+
+# and a road of pavers
+
+# int.diff.obj <- dplyr::bind_rows(
+#   lapply(
+#     seq_len(ncol(int.diff)),
+#     function(i) {
+#       group_objects(
+#         make_paver_row(),
+#         group_translate=c(
+#           int.mid[1,i] + off.x[i],
+#           int.mid[2,i],
+#           int.mid[3,i] + off.z[i]
+#         ),
+#         group_angle=c(0, row.ang[i], 0)
+#       )
+#     }
+#   )
+# )
 int.obj <- dplyr::bind_rows(
   lapply(
     seq_len(ncol(int.dots.3d)),
@@ -277,7 +308,8 @@ render_scene(
     group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     # b.p.obj,
     # int.obj,
-    int.diff.obj,
+    # int.diff.obj,
+    pv.all.obj,
     # int.test,
     sphere(z=15, y=6, x=15, radius=6, material=light(intensity=3)),
     sphere(z=-15, y=6, x=-15, radius=6, material=light(intensity=10)),
