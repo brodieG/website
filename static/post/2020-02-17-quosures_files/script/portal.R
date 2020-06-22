@@ -198,7 +198,7 @@ int.mid <- int.dots.3d[,-ncol(int.dots.3d)] + int.diff/2
 # a row of pavers
 
 set.seed(1)
-off.raw <- rnorm(n.rows - 1) * .025         # noise in row position
+off.raw <- rnorm(n.rows - 1) * .03          # noise in row position
 row.ang <- -asin(int.diff.n[1,])/pi*180     # angle in x/z
 row.ang2 <- -asin(int.diff.n[1,])/pi*180 - 90
 
@@ -233,19 +233,59 @@ pv.colors <- rgb(
   sample(45:75, pv.all.n, replace=TRUE),
   0, maxColorValue=255
 )
+# determine which pavers are in-bounds, logo plane assumed to be at z==0
+# We use obs[2] b/c observer was originallly looking down Y axis, not Z
+
+pv.all.mult <- obs[2] / (obs[2] - pv.all[3,])
+pv.all.0 <- pv.all
+pv.all.0[1:2,] <- 
+  (pv.all.0[1:2,] - c(0, .5)) * rep(pv.all.mult, each=2)
+pv.all.save <- pv.all.0
+
+pv.all.0[1:2,] <- abs(pv.all.0[1:2,])
+
+# oob bounding box
+pv.oob <- pv.all.0[1,] > max(hex[['x']]) | pv.all.0[2,] > max(hex[['y']])
+
+# remaining oob triangle.
+# p coordinates of points to compute bcs on
+# v coordinates of corresponding triangles
+
+bary_M <- function(p, v) {
+  det <- (v[2,2]-v[3,2])*(v[1,1]-v[3,1]) +
+         (v[3,1]-v[2,1])*(v[1,2]-v[3,2])
+
+  l1 <- (
+          (v[2,2]-v[3,2]) * (p[,1]-v[3,1]) +
+          (v[3,1]-v[2,1]) * (p[,2]-v[3,2])
+        ) / det
+  l2 <- (
+          (v[3,2]-v[1,2]) * (p[,1]-v[3,1]) +
+          (v[1,1]-v[3,1]) * (p[,2]-v[3,2])
+        ) / det
+  l3 <- 1 - l1 - l2
+  cbind(l1, l2, l3)
+}
+v <- rbind(
+  as.matrix(subset(hex[1:7,], x > 0 & y > 0)),
+  vapply(hex[1:7,], max, 1)
+)
+p <- t(pv.all.0[1:2,])
+pv.oob <- pv.oob | rowSums(bary_M(p, v) > 0) == 3
+
+cyl.rad <- .035
 pv.all.obj <- dplyr::bind_rows(
   lapply(
-    seq_len(pv.all.n),
+    seq_len(pv.all.n)[!pv.oob],
     function(i) {
       cylinder(
-        x=pv.all[1,i], y=pv.all[2,i], z=pv.all[3,i],
-        length=paver.w * .9, radius=.035,
+        x=pv.all[1,i], y=pv.all[2,i] - cyl.rad/3, z=pv.all[3,i],
+        length=paver.w * .9, radius=cyl.rad,
         material=diffuse(color=pv.colors[i]),
-        angle=c(0, 0, 90)
-      )
-    }
-) )
-
+        angle=c(90, row.ang[(i - 1)%/%15 + 1], 90),
+        order_rotation=c(3, 1, 2),
+        phi_min=20, phi_max=180
+) } ) )
 # and a road of pavers
 
 int.obj <- dplyr::bind_rows(
@@ -270,13 +310,14 @@ render_scene(
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
+  # lookfrom=c(0, .5, 1), lookat=c(0, .25, 0),
   # lookfrom=c(0, 12, -1), lookat=c(-3, .5, -5),
   # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
-  # width=600, height=600, samples=100,
-  samples=5,
+  width=600, height=600, samples=100,
+  # samples=10,
   clamp_value=5,
   fov=60,
-  # fov=90,
+  # fov=15,
   aperture=0
 )
 # objs <- dplyr::bind_rows(
@@ -286,3 +327,12 @@ render_scene(
 #   )
 # )
 
+
+# krender_scene(
+# k  cylinder(
+# k    angle=c(90,0,-90), phi_min=0, phi_max=180, material=diffuse('red'),
+# k    order_rotation=c(3,2,1)
+# k  ),
+# k  lookfrom=c(5,0,5),
+# k  fov=30
+# k)
