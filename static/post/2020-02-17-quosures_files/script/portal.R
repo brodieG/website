@@ -286,34 +286,52 @@ pv.all.obj <- dplyr::bind_rows(
         order_rotation=c(3, 1, 2),
         phi_min=20, phi_max=180
 ) } ) )
-# and a road of pavers
+# Hexagons
 
-int.obj <- dplyr::bind_rows(
+coords <- decido::earcut(hex[1:7,])
+tc <- split(cbind(hex[1:7,][coords,], z=0), rep(1:4, each=3))
+tc <- lapply(tc, function(x) as.matrix(x)/2)
+
+make_star <- function(x, y, z) {
+  off <- c(x, y, z)
   lapply(
-    seq_len(ncol(int.dots.3d)),
-    function(i)
-      sphere(
-        x=int.dots.3d[1,i], y=int.dots.3d[2,i], z=int.dots.3d[3,i],
-        radius=.1, material=diffuse(color='red')
+    1:4,
+    function(i) {
+      triangle(
+        v1=tc[[i]][1,] + off, v2=tc[[i]][2,] + off, v3=tc[[i]][3,] + off,
+        material=diffuse(gold)
       )
+    }
   )
-)
+}
+nstars <- 200
+z <- runif(nstars, -20, -10)
+x <- runif(nstars, -.5, .5) * (1 - z) / 1.25
+y <- runif(nstars, -.5, .5) * (1 - z) / 1.25
+
+stars <- Map(make_star, x, y, z)
+
 bg <- '#FFFFFF'
 render_scene(
   dplyr::bind_rows(
     group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     pv.all.obj,
+    # sphere(z=15, y=6, x=15, radius=6, material=light(intensity=3)),
+    # sphere(z=-15, y=6, x=-15, radius=6, material=light(intensity=10)),
+    # sphere(radius=36, material=diffuse(), flipped=TRUE),
+    # sphere(z=-15, y=6, x=15, radius=6, material=light(intensity=10)),
     sphere(z=15, y=6, x=15, radius=6, material=light(intensity=3)),
     sphere(z=-15, y=6, x=-15, radius=6, material=light(intensity=10)),
-    sphere(radius=36, material=diffuse(), flipped=TRUE),
+    sphere(radius=72, material=diffuse(), flipped=TRUE),
     sphere(z=-15, y=6, x=15, radius=6, material=light(intensity=10)),
+    unlist(stars, recursive=FALSE),
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
-  # lookfrom=c(0, .5, 1), lookat=c(0, .25, 0),
+  # lookfrom=c(0, .5, .25), lookat=c(-1, .6, -2),
   # lookfrom=c(0, 12, -1), lookat=c(-3, .5, -5),
   # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
-  width=600, height=600, samples=100,
+  width=600, height=600, samples=200,
   # samples=10,
   clamp_value=5,
   fov=60,
