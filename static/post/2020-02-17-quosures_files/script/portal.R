@@ -19,8 +19,12 @@ paths <- lapply(
 # separate out the stars (not all polygons are stars)
 
 cl <- vapply(zz, '[[', '', 'class')
-stars <- paths[cl %in% c('st4734', 'st4733')]
-paths <- paths[!cl %in% c('st4734', 'st4733')]
+types <- attr(zz, 'type')
+stars <- paths[types == 'polygon' & cl %in% c('st4734', 'st4733')]
+# inner/outer hexagons, unused by us for now
+other <- paths[types == 'polygon' & (!cl %in% c('st4734', 'st4733'))]
+# Letters, and outside frame
+paths <- paths[types == 'path' & (!cl %in% c('st4734', 'st4733'))]
 
 # - Settings -------------------------------------------------------------------
 
@@ -67,16 +71,17 @@ back_hex <- function(hex, obs, depth) {
   data.frame(x=hex.out[1,], y=hex.out[3,])
 }
 comp_inside <- function(
-  hex, hex.back, light_index=1, material=diffuse(color='red')
+  hex, hex.back, depth, light_index=1, material=diffuse(color='red')
 ) {
   vetr::vetr(
     structure(list(numeric(7), numeric(7)), class='data.frame'),
     structure(list(numeric(7), numeric(7)), class='data.frame') &&
       nrow(.) == nrow(hex),
+    numeric(1),
     numeric(1)
   )
   hex.in <- rbind(hex[[1]], 0, hex[[2]])
-  hex.out <- rbind(hex.back[[1]], 0, hex.back[[2]])
+  hex.out <- rbind(hex.back[[1]], -depth, hex.back[[2]])
   vecs <- hex.in - obs
   vecs.n <- vecs / sqrt(colSums(vecs^2)) * depth
 
@@ -94,6 +99,7 @@ comp_inside <- function(
       seq_len(ncol(hex.in) - 1L),
       function(i) {
         if(i == light_index) material=light(intensity=5)
+        material=diffuse('green')
         list(
           triangle(
             v1=hex.in[,i], v2=hex.out[,i], v3=hex.out[,i+1],
@@ -112,7 +118,8 @@ comp_inside <- function(
     function(i)
       triangle(
         hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]],
-        material=material
+        # material=material
+        material=diffuse('white')
       )
   )
   dplyr::bind_rows(c(sides, back.tris))
@@ -129,7 +136,9 @@ attr(hex, 'starts') <- 8
 
 h2 <- hex[1:7,]
 h2.b <- back_hex(h2, obs, depth)
-bag <- comp_inside(h2, h2.b, diffuse(color='#010102'), light_index=6)
+bag.mat <- diffuse(color='#010102')
+bag.mat <- diffuse(color='red')
+bag <- comp_inside(h2, h2.b, depth=depth, bag.mat, light_index=6)
 
 objs <- dplyr::bind_rows(
   lapply(
@@ -330,7 +339,7 @@ buffer <- 1.1
 near <- obs[2] + brick.depth * buffer
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
 star.x <- vapply(stars, function(x) mean(x[['x']]), 1)
-star.y <- vapply(stars, function(x) mean(x[['y']]), 1)
+star.y <- -vapply(stars, function(x) mean(x[['y']]), 1)
 star.max <- which.max(star.widths)
 
 # determine baseline dimensions of largest star (all others will be
@@ -338,7 +347,11 @@ star.max <- which.max(star.widths)
 
 star.scale <- (obs[2] - star.z) / obs[2]
 star.dummy <- stars[[star.max]]
-star.dummy[] <- lapply(star.dummy, function(x) x - mean(x))
+star.dummy[] <- lapply(
+  star.dummy, function(x) (x - mean(x)) * star.scale[star.max]
+)
+# Split hex into triangles
+# could have used extrude_polygon with no extrusion
 
 coords <- decido::earcut(star.dummy)
 tc <- split(cbind(star.dummy[coords,], z=0), rep(1:4, each=3))
@@ -346,7 +359,6 @@ tc <- lapply(tc, function(x) as.matrix(x))
 
 make_star <- function(x, y, z, scale, tc) {
   off <- c(x * scale, y * scale, z)
-  tc <- lapply(tc, `*`, scale)
   lapply(
     1:4,
     function(i) {
@@ -358,7 +370,6 @@ stars.fin <- mapply(
   make_star, star.x, star.y, star.z, star.scale, MoreArgs=list(tc=tc),
   SIMPLIFY=FALSE
 )
-
 # - Render! --------------------------------------------------------------------
 
 bg <- '#FFFFFF'
@@ -371,7 +382,7 @@ l.y <- depth * .25
 
 render_scene(
   dplyr::bind_rows(
-    # group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
+    group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     pv.all.obj,
     sphere(radius=r.main, material=diffuse(), flipped=TRUE),
     sphere(z=l.z, y=l.y, x=l.x, radius=l.r, material=light(intensity=3)),
@@ -381,14 +392,11 @@ render_scene(
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
-  # lookfrom=c(0, .5, .25), lookat=c(-1, .6, -2),
-  # lookfrom=c(0, 12, -1), lookat=c(-3, .5, -5),
-  # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
+  # lookfrom=c(10, .5, -10), lookat=c(-1, .6, -2),
   # width=600, height=600, samples=200,
-  samples=10,
+  samples=5,
   clamp_value=5,
   fov=60,
-  # fov=15,
   aperture=0
 )
 # objs <- dplyr::bind_rows(
