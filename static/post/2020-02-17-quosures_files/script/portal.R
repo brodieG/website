@@ -1,32 +1,49 @@
 source('static/script/mesh-viz/viz-lib.R')
-
 library(svgchop)
-# url <- 'https://www.r-project.org/logo/Rlogo.svg'
-url <- '~/Downloads/rlang/rlang2.svg'
-
 library(rayrender)
-gold_mat <- microfacet(
-  roughness=0.1, eta=c(0.216,0.42833,1.3184), kappa=c(3.239,2.4599,1.8661)
-)
-gold <- "#BB5500"
-zz <- parse_paths(url)
+
+# - Logo Data ------------------------------------------------------------------
+
+url <- '~/Downloads/rlang/rlang2.svg'
+zz <- parse_svg(url)
 ww <- interp_paths(zz, normalize=TRUE)
 paths <- lapply(
   ww,
   function(x) {
-    res <- x[['d']]
+    res <- x[['coords']]
     res[[1]] <- res[[1]] - .5
     res[[2]] <- res[[2]] - .5
     res
   }
 )
+# separate out the stars (not all polygons are stars)
+
+cl <- vapply(zz, '[[', '', 'class')
+stars <- paths[cl %in% c('st4734', 'st4733')]
+paths <- paths[!cl %in% c('st4734', 'st4733')]
+
+# - Settings -------------------------------------------------------------------
+
+brick.depth <- 10
+depth <- 40
+
+# this is messed up, y and z are swapped due to original extrusion being on
+# floor
+
+obs <- c(0, 1, 0)
+
+gold_mat <- microfacet(
+  roughness=0.1, eta=c(0.216,0.42833,1.3184), kappa=c(3.239,2.4599,1.8661)
+)
+gold <- "#BB5500"
 extrude_path <- function(x, ...) {
   extruded_polygon(
     x, holes=if(length(attr(x, 'starts'))) attr(x, 'starts'), ...
   )
 }
+# - Compute Path ---------------------------------------------------------------
 
-# Generate the Rlang pocket.  Want two sets of hex coordinates, the front, back,
+# Generate the Rlang "Bag"  Want two sets of hex coordinates, the front, back,
 # and want to generate triangles for the back and sides.  Need to compute from
 # our viewpoint and project out the back hexagon.
 #
@@ -39,23 +56,32 @@ extrude_path <- function(x, ...) {
 # @param hex the coordinates of the hex, hex assumed closed, first coordinate is
 #   taken to be X, second Z, and the Y value is assumed to be 0.
 
-comp_inside <- function(
-  hex, y, obs, depth, material=diffuse(color='red'),
-  light_index=1
-) {
+back_hex <- function(hex, obs, depth) {
   vetr::vetr(
     structure(list(numeric(7), numeric(7)), class='data.frame'),
-    numeric(1),
-    numeric(3),
-    numeric(1)
   )
   hex.in <- rbind(hex[[1]], 0, hex[[2]])
   vecs <- hex.in - obs
   vecs.n <- vecs / sqrt(colSums(vecs^2)) * depth
   hex.out <- hex.in + vecs.n
+  data.frame(x=hex.out[1,], y=hex.out[3,])
+}
+comp_inside <- function(
+  hex, hex.back, light_index=1, material=diffuse(color='red')
+) {
+  vetr::vetr(
+    structure(list(numeric(7), numeric(7)), class='data.frame'),
+    structure(list(numeric(7), numeric(7)), class='data.frame') &&
+      nrow(.) == nrow(hex),
+    numeric(1)
+  )
+  hex.in <- rbind(hex[[1]], 0, hex[[2]])
+  hex.out <- rbind(hex.back[[1]], 0, hex.back[[2]])
+  vecs <- hex.in - obs
+  vecs.n <- vecs / sqrt(colSums(vecs^2)) * depth
 
-  i <- seq_len(ncol(vecs.n) - 1L)
-  ii <- seq_len(ncol(vecs.n) - 1L) + 1L   # i + 1
+  i <- seq_len(ncol(hex.in) - 1L)
+  ii <- seq_len(ncol(hex.in) - 1L) + 1L   # i + 1
   area_s <- sum(hex.in[1,i] * hex.in[3,ii] - hex.in[1,ii] * hex.in[3,i]) / 2
 
   ccw <- area_s >= 0  # treat degenerates as counter-clockwise
@@ -65,7 +91,7 @@ comp_inside <- function(
 
   sides <- unlist(
     lapply(
-      seq_len(ncol(vecs.n) - 1L),
+      seq_len(ncol(hex.in) - 1L),
       function(i) {
         if(i == light_index) material=light(intensity=5)
         list(
@@ -102,12 +128,9 @@ attr(hex, 'starts') <- 8
 # Should have done everything directly in x-y plane...
 
 h2 <- hex[1:7,]
-brick.depth <- 10
-depth <- 20
-obs <- c(0, 1, 0)
-bag <- comp_inside(
-  h2, 0, obs, depth=depth, diffuse(color='#010102'), light_index=6
-)
+h2.b <- back_hex(h2, obs, depth)
+bag <- comp_inside(h2, h2.b, diffuse(color='#010102'), light_index=6)
+
 objs <- dplyr::bind_rows(
   lapply(
     paths[-c(1, length(paths))],
@@ -193,7 +216,6 @@ int.mid <- int.dots.3d[,-ncol(int.dots.3d)] + int.diff/2
 #
 # This means we'll need to compute the coordinates directly instead of relying
 # on the group object
-
 
 # a row of pavers
 
@@ -286,53 +308,84 @@ pv.all.obj <- dplyr::bind_rows(
         order_rotation=c(3, 1, 2),
         phi_min=20, phi_max=180
 ) } ) )
-# Hexagons
+# - Process stars --------------------------------------------------------------
 
-coords <- decido::earcut(hex[1:7,])
-tc <- split(cbind(hex[1:7,][coords,], z=0), rep(1:4, each=3))
-tc <- lapply(tc, function(x) as.matrix(x)/2)
+# compute star area
 
-make_star <- function(x, y, z) {
-  off <- c(x, y, z)
+star.a <- vapply(
+  stars, function(x) {
+    i <- seq_len(nrow(x) - 1L)
+    ii <- seq_len(nrow(x) - 1L) + 1L   # i + 1
+    sum(x[i,1] * x[ii,2] - x[ii,1] * x[i,2]) / 2
+  },
+  0
+)
+# Based on depth of nearest star, and relative sizes, compute:
+# size of nearest star, distance of other stars.
+
+star.widths <- vapply(
+  stars, function(star) diff(range(star[['y']])), 0
+)
+buffer <- 1.1
+near <- obs[2] + brick.depth * buffer
+star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
+star.x <- vapply(stars, function(x) mean(x[['x']]), 1)
+star.y <- vapply(stars, function(x) mean(x[['y']]), 1)
+star.max <- which.max(star.widths)
+
+# determine baseline dimensions of largest star (all others will be
+# sized by distance)
+
+star.scale <- (obs[2] - star.z) / obs[2]
+star.dummy <- stars[[star.max]]
+star.dummy[] <- lapply(star.dummy, function(x) x - mean(x))
+
+coords <- decido::earcut(star.dummy)
+tc <- split(cbind(star.dummy[coords,], z=0), rep(1:4, each=3))
+tc <- lapply(tc, function(x) as.matrix(x))
+
+make_star <- function(x, y, z, scale, tc) {
+  off <- c(x * scale, y * scale, z)
+  tc <- lapply(tc, `*`, scale)
   lapply(
     1:4,
     function(i) {
       triangle(
         v1=tc[[i]][1,] + off, v2=tc[[i]][2,] + off, v3=tc[[i]][3,] + off,
-        material=diffuse(gold)
-      )
-    }
-  )
-}
-nstars <- 200
-z <- runif(nstars, -20, -10)
-x <- runif(nstars, -.5, .5) * (1 - z) / 1.25
-y <- runif(nstars, -.5, .5) * (1 - z) / 1.25
+        material=diffuse('black')# diffuse(gold)
+) } ) }
+stars.fin <- mapply(
+  make_star, star.x, star.y, star.z, star.scale, MoreArgs=list(tc=tc),
+  SIMPLIFY=FALSE
+)
 
-stars <- Map(make_star, x, y, z)
+# - Render! --------------------------------------------------------------------
 
 bg <- '#FFFFFF'
+r.m <- 1.5
+r.main <- sqrt((diff(range(h2.b)) * r.m / 2)^2 + (depth * r.m)^2)
+l.r <- r.main / 8
+l.z <- depth * .75
+l.x <- depth * .5
+l.y <- depth * .25
+
 render_scene(
   dplyr::bind_rows(
-    group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
+    # group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     pv.all.obj,
-    # sphere(z=15, y=6, x=15, radius=6, material=light(intensity=3)),
-    # sphere(z=-15, y=6, x=-15, radius=6, material=light(intensity=10)),
-    # sphere(radius=36, material=diffuse(), flipped=TRUE),
-    # sphere(z=-15, y=6, x=15, radius=6, material=light(intensity=10)),
-    sphere(z=15, y=6, x=15, radius=6, material=light(intensity=3)),
-    sphere(z=-15, y=6, x=-15, radius=6, material=light(intensity=10)),
-    sphere(radius=72, material=diffuse(), flipped=TRUE),
-    sphere(z=-15, y=6, x=15, radius=6, material=light(intensity=10)),
-    unlist(stars, recursive=FALSE),
+    sphere(radius=r.main, material=diffuse(), flipped=TRUE),
+    sphere(z=l.z, y=l.y, x=l.x, radius=l.r, material=light(intensity=3)),
+    sphere(z=-l.z, y=l.y, x=-l.x, radius=l.r, material=light(intensity=10)),
+    sphere(z=-l.z, y=l.y, x=l.x, radius=l.r, material=light(intensity=10)),
+    unlist(stars.fin, recursive=FALSE),
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
   # lookfrom=c(0, .5, .25), lookat=c(-1, .6, -2),
   # lookfrom=c(0, 12, -1), lookat=c(-3, .5, -5),
   # lookfrom=c(0, .5, 5), lookat=c(0, .5, 0),
-  width=600, height=600, samples=200,
-  # samples=10,
+  # width=600, height=600, samples=200,
+  samples=10,
   clamp_value=5,
   fov=60,
   # fov=15,
