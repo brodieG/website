@@ -28,11 +28,28 @@ other <- paths[types == 'polygon' & (!cl %in% c('st4734', 'st4733'))]
 letters <- paths[types == 'path' & cl == 'st4732']
 frame <- paths[types == 'path' & cl == 'st4736']
 
+# # Validation
+# lett2 <- ww[types == 'path' | (cl %in% c('st4734', 'st4733'))]
+# subpaths <- lapply(
+#   lett2, function(x) {
+#     if(!is.null(attr(x$coords, 'starts')))
+#       x$coords[attr(x$coords, 'starts'),] <- NA
+#     x$coords$y <- 1 - x$coords$y # need to flip y values
+#     x$coords$x <- x$coords$x 
+#     x$coords
+# } )
+# par(mai=numeric(4))
+# plot.new()
+# invisible(
+#   Map(
+#     polypath, subpaths, col=c('red'),
+#     border=NA, rule='evenodd'
+# ) )
 
 # - Settings -------------------------------------------------------------------
 
 brick.depth <- 10
-depth <- 40
+depth <- 60
 
 # this is messed up, y and z are swapped due to original extrusion being on
 # floor
@@ -69,7 +86,7 @@ back_hex <- function(hex, obs, depth) {
   )
   hex.in <- rbind(hex[[1]], 0, hex[[2]])
   vecs <- hex.in - obs
-  vecs.n <- vecs / sqrt(colSums(vecs^2)) * depth
+  vecs.n <- vecs / abs(vecs[2]) * depth  # normalize to distances along Z
   hex.out <- hex.in + vecs.n
   data.frame(x=hex.out[1,], y=hex.out[3,], z=hex.out[2,])
 }
@@ -129,6 +146,10 @@ hex <- frame[[1L]]
 outer <- c(3, 6, 7, 10, 13, 14, 3)
 hex <- hex[c(outer, 17:nrow(hex)),]
 attr(hex, 'starts') <- 8
+
+# hex3 <- hex + .5
+# hex3[8,] <- NA
+# polypath(hex3, rule='evenodd', col='green')
 
 # All a bit confusing because we do the extrusion in x-z plane, but then rotate.
 # Should have done everything directly in x-y plane...
@@ -337,8 +358,8 @@ star.widths <- vapply(
 buffer <- 1.1
 near <- obs[2] + brick.depth * buffer
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
-star.x <- vapply(stars, function(x) mean(x[['x']]), 1)
-star.y <- -vapply(stars, function(x) mean(x[['y']]), 1)
+star.x <- vapply(stars, function(x) mean(range(x[['x']])), 1)
+star.y <- -vapply(stars, function(x) mean(range(x[['y']])), 1)
 star.max <- which.max(star.widths)
 
 # determine baseline dimensions of largest star (all others will be
@@ -357,7 +378,7 @@ tc <- split(cbind(star.dummy[coords,], z=0), rep(1:4, each=3))
 tc <- lapply(tc, function(x) as.matrix(x))
 
 make_star <- function(x, y, z, scale, tc) {
-  off <- c(x * scale, y * scale, z)
+  off <- c(x * scale, y * scale + .5, z)
   lapply(
     1:4,
     function(i) {
@@ -391,10 +412,11 @@ render_scene(
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
   lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
+  # lookfrom=c(0, .5, .5), lookat=c(0, .5, 0),
   # lookfrom=c(0, .5, 1), lookat=c(0, 0, 0),
   # lookfrom=c(10, .5, -10), lookat=c(-1, .6, -2),
   # width=600, height=600, samples=200,
-  samples=5,
+  samples=50,
   clamp_value=5,
   fov=60,
   # fov=20,
