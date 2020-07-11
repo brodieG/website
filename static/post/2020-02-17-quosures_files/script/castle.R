@@ -1,12 +1,12 @@
 # no idea if these two are the right names
-set.seed(12)
+set.seed(16)
 nshaft <- 30
 phi <- rnorm(nshaft, 0, 40)
 theta <- sample(1:360, nshaft)
 lens <- pmax(rnorm(nshaft, .75, .3), .1)
 shaft.mat <- dielectric(attenuation=c(4, .2, 1))
 x <- y <- rep(Inf, nshaft)
-while(any(oob <- x^2 + y^2 > .5)) {
+while(any(oob <- x^2 + y^2 > .3)) {
   x[oob] <- rnorm(sum(oob), 0, .2)
   y[oob] <- rnorm(sum(oob), 0, .2)
 }
@@ -19,8 +19,9 @@ hexscale <- pmax(rnorm(nshaft, .1, .025), .025)
 
 # make kaleidoscope
 
-v1 <- cbind(hexb, 0)[,c(1,3,2)]
-v2 <- cbind(hexb[c(2:6, 1),], 0)[,c(1,3,2)]
+hexc <- hexb * 1.25
+v1 <- cbind(hexc, 0)[,c(1,3,2)]
+v2 <- cbind(hexc[c(2:6, 1),], 0)[,c(1,3,2)]
 v3 <- cbind(numeric(6), -1L, numeric(6))
 
 kalei <- lapply(
@@ -59,15 +60,15 @@ shafts <- lapply(
 render_scene(
   dplyr::bind_rows(
     shafts,
-    sphere(x=5, y=5, z=5, radius=2, material=light(intensity=20)),
-    sphere(z=-.25, material=light(intensity=2), radius=.25),
-    disk(radius=1.25, z=-.75, material=gold_mat),
-    disk(radius=1.25, z=-.75, angle=c(-90,0,0), material=diffuse(gold))
+    sphere(radius=.2, material=light(intensity=3), y=-.25),
+    kalei,
   ),
-  width=720, height=720, samples=50,
+  # width=720, height=720, samples=400,
+  samples=25,
   clamp_value=5,
   # lookfrom=c(0,3,7), lookat=c(0,.75,0),
-  lookfrom=c(0,5,5), lookat=c(0,0,0),
-  filename=next_file("~/Downloads/rlang/imgs/img-")
+  lookfrom=c(0,5,.000000001), lookat=c(0,0,0),
+  filename=next_file("~/Downloads/rlang/imgs/img-"),
+  fov=30
 )
 
