@@ -48,8 +48,8 @@ frame <- paths[types == 'path' & cl == 'st4736']
 
 # - Settings -------------------------------------------------------------------
 
-brick.depth <- 10
-depth <- 60
+brick.depth <- 14
+depth <- 20
 
 # this is messed up, y and z are swapped due to original extrusion being on
 # floor
@@ -157,7 +157,7 @@ attr(hex, 'starts') <- 8
 h2 <- hex[1:7,]
 h2.b <- back_hex(h2, obs, depth)
 bag.mat <- diffuse(color='#010102')
-# bag.mat <- diffuse(color='red')
+bag.mat <- diffuse(color='black')
 bag <- comp_inside(h2, h2.b, bag.mat, light_index=6)
 
 objs <- dplyr::bind_rows(
@@ -165,14 +165,17 @@ objs <- dplyr::bind_rows(
     letters,
     extrude_path, material=gold_mat, top=.025
   ),
-  extrude_path(hex, material=diffuse('gray10'), top=.025),
+  extrude_path(hex, material=diffuse('gray5'), top=.025),
   bag
 )
 n <- 10
-brick.start <- 0
-y.rise <- .6
-angle <- atan(y.rise / (brick.depth + brick.start)) / pi * 180
-h <- sqrt(y.rise^2 + (brick.depth + brick.start)^2)
+
+# brick.start/depth should really be negative
+
+brick.start <- 0.0
+y.rise <- .75
+angle <- atan(y.rise / (brick.depth - brick.start)) / pi * 180
+h <- sqrt(y.rise^2 + (brick.depth - brick.start)^2)
 
 z.obs <- obs[2]
 
@@ -199,34 +202,44 @@ b.p.obj <- dplyr::bind_rows(
 
 brick.path.2 <- brick.path
 brick.path.2[2:3, 1] <- c(.18)
-brick.path.2[2:3, 2] <- c(.47)
+# brick.path.2[2:3, 2] <- c(.47)
 
-p0 <- c(0, 0, 0)
+# define plane from points p0,1,2
+p0 <- c(0, 0, -brick.start)
 p1 <- c(0, y.rise, -brick.depth)
 p2 <- c(1, y.rise, -brick.depth)
 p01 <- p1 - p0
 p02 <- p2 - p0
+
+# lines from observer to plane z=0
 la <- obs[c(1,3,2)] + c(0,.5,0)
 lab <- t(as.matrix(transform(brick.path.2, z=0))) - la
 
+# cross prod: p01 x p02
 p01xp02 <- c(
    (p01[2] * p02[3] - p01[3] * p02[2]),
   -(p01[1] * p02[3] - p01[3] * p02[1]),
    (p01[1] * p02[2] - p01[2] * p02[1])
 )
-t <- sum(p01xp02 * (la - p0)) /
-     colSums(-lab * p01xp02)
+
+# Solve for t; careful, get in trouble when we don't intersect
+# the plane, i.e. if y.rise is too short for brick.depth
+t <- sum(p01xp02 * (la - p0)) /    # (p01 x p02) . (la - p0)
+     colSums(-lab * p01xp02)       #  -lab . (p01 x p02)
 int <- la + lab * rep(t, each=3)
 
 ang.rad <- angle / 180 * pi
 rx <- matrix(
-  c(1,0,0, 0,cos(ang.rad),sin(ang.rad), 0,-sin(ang.rad),cos(ang.rad)), 3
+  c(1, 0, 0, 
+    0,cos(ang.rad),sin(ang.rad), 
+    0,-sin(ang.rad),cos(ang.rad)
+  ), 3
 )
 int.rot <- t(int) %*% rx
 
 # Interpolate and rotate back
 
-n.rows <- 600
+n.rows <- 900
 int.dots <- bezier_interp_even(list(x=int.rot[,1], y=int.rot[,3]), n.rows)
 int.dots.3d <- rx %*% rbind(int.dots[[1]], 0, int.dots[[2]])
 
@@ -296,7 +309,10 @@ pv.all.save <- pv.all.0
 pv.all.0[1:2,] <- abs(pv.all.0[1:2,])
 
 # oob bounding box
-pv.oob <- pv.all.0[1,] > max(hex[['x']]) | pv.all.0[2,] > max(hex[['y']])
+hex.oob <- hex * .98
+
+pv.oob <-
+  pv.all.0[1,] > max(hex.oob[['x']]) | pv.all.0[2,] > max(hex.oob[['y']])
 
 # remaining oob triangle.
 # p coordinates of points to compute bcs on
@@ -318,8 +334,8 @@ bary_M <- function(p, v) {
   cbind(l1, l2, l3)
 }
 v <- rbind(
-  as.matrix(subset(hex[1:7,], x > 0 & y > 0)),
-  vapply(hex[1:7,], max, 1)
+  as.matrix(subset(hex.oob[1:7,], x > 0 & y > 0)),
+  vapply(hex.oob[1:7,], max, 1)
 )
 p <- t(pv.all.0[1:2,])
 pv.oob <- pv.oob | rowSums(bary_M(p, v) > 0) == 3
@@ -357,6 +373,7 @@ star.widths <- vapply(
 )
 buffer <- 1.1
 near <- obs[2] + brick.depth * buffer
+near <- 2
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
 star.x <- vapply(stars, function(x) mean(range(x[['x']])), 1)
 star.y <- -vapply(stars, function(x) mean(range(x[['y']])), 1)
@@ -390,6 +407,33 @@ stars.fin <- mapply(
   make_star, star.x, star.y, star.z, star.scale, MoreArgs=list(tc=tc),
   SIMPLIFY=FALSE
 )
+# - Castle ---------------------------------------------------------------------
+
+# # no idea if these two are the right names
+# nshaft <- 20
+# phi <- rnorm(nshaft, 90, 30)
+# theta <- sample(1:360, nshaft)
+# lens <- rlnorm(nshaft, .1, .5)
+# shaft.mat <- dielectric(attenuation=c(1.2, .2, 1.2))
+# 
+# # base hex
+# 
+# angles <- seq(0, 2 * pi - pi/3, length.out=6)
+# hexb <- cbind(sin(angles), cos(angles)) * .1
+# 
+# shafts <- lapply(
+#   seq_len(nshaft),
+#   function(i)
+#     extruded_polygon(
+#       hexb, top=lens[i], angle=c(phi[i], theta[i], 0), material=shaft.mat,
+#       material_id=1634
+#     )
+# )
+# render_scene(
+#   dplyr::bind_rows(shafts)
+# )
+# 
+
 # - Render! --------------------------------------------------------------------
 
 bg <- '#FFFFFF'
@@ -411,12 +455,13 @@ render_scene(
     unlist(stars.fin, recursive=FALSE),
   ),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
-  lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
-  # lookfrom=c(0, .5, .5), lookat=c(0, .5, 0),
+  # lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
+  lookfrom=c(0, .5, .75), lookat=c(0, .5, 0),
+  # lookfrom=c(0, .5, -3), lookat=c(-1, .7, -5),
   # lookfrom=c(0, .5, 1), lookat=c(0, 0, 0),
   # lookfrom=c(10, .5, -10), lookat=c(-1, .6, -2),
-  # width=600, height=600, samples=200,
-  samples=50,
+  width=720, height=720, samples=25,
+  # samples=20,
   clamp_value=5,
   fov=60,
   # fov=20,
