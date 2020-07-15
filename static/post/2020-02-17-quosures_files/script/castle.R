@@ -19,14 +19,19 @@ hexscale <- pmax(rnorm(nshaft, .1, .025), .025)
 
 # make kaleidoscope
 
-hexc <- hexb * 1.25
+hexc <- hexb * 1.50
 v1 <- cbind(hexc, 0)[,c(1,3,2)]
 v2 <- cbind(hexc[c(2:6, 1),], 0)[,c(1,3,2)]
 v3 <- cbind(numeric(6), -1L, numeric(6))
 
 kalei <- lapply(
   seq_len(nrow(v1)),
-  function(i) triangle(v1[i,], v2[i,], v3[i,], material=gold_mat)
+  function(i) 
+  triangle(
+    v1[i,], v2[i,], v3[i,], 
+    material=diffuse(gold)
+    # material=gold_mat
+  )
 )
 # render_scene(
 #   dplyr::bind_rows(
@@ -69,6 +74,6 @@ render_scene(
   # lookfrom=c(0,3,7), lookat=c(0,.75,0),
   lookfrom=c(0,5,.000000001), lookat=c(0,0,0),
   filename=next_file("~/Downloads/rlang/imgs/img-"),
-  fov=30
+  fov=40
 )
 

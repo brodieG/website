@@ -1,4 +1,6 @@
 source('static/script/mesh-viz/viz-lib.R')
+source('static/post/2020-02-17-quosures_files/script/helper.R')
+source('static/post/2020-02-17-quosures_files/script/bag.R')
 library(svgchop)
 library(rayrender)
 
@@ -35,7 +37,7 @@ frame <- paths[types == 'path' & cl == 'st4736']
 #     if(!is.null(attr(x$coords, 'starts')))
 #       x$coords[attr(x$coords, 'starts'),] <- NA
 #     x$coords$y <- 1 - x$coords$y # need to flip y values
-#     x$coords$x <- x$coords$x 
+#     x$coords$x <- x$coords$x
 #     x$coords
 # } )
 # par(mai=numeric(4))
@@ -45,7 +47,6 @@ frame <- paths[types == 'path' & cl == 'st4736']
 #     polypath, subpaths, col=c('red'),
 #     border=NA, rule='evenodd'
 # ) )
-
 # - Settings -------------------------------------------------------------------
 
 brick.depth <- 14
@@ -67,79 +68,6 @@ extrude_path <- function(x, ...) {
 }
 # - Compute Path ---------------------------------------------------------------
 
-# Generate the Rlang "Bag"  Want two sets of hex coordinates, the front, back,
-# and want to generate triangles for the back and sides.  Need to compute from
-# our viewpoint and project out the back hexagon.
-#
-# Challenge, compute what elements in our full scene are actually inside.
-#
-# @param depth how far from the hex edge to the corresponding vertex in the back
-#   hexagon.
-# @param y numeric(1L) y coord of original hexagon parallel to x-z plane
-# @param obs the observer coordinates (x,y,z)
-# @param hex the coordinates of the hex, hex assumed closed, first coordinate is
-#   taken to be X, second Z, and the Y value is assumed to be 0.
-
-back_hex <- function(hex, obs, depth) {
-  vetr::vetr(
-    structure(list(numeric(7), numeric(7)), class='data.frame'),
-  )
-  hex.in <- rbind(hex[[1]], 0, hex[[2]])
-  vecs <- hex.in - obs
-  vecs.n <- vecs / abs(vecs[2]) * depth  # normalize to distances along Z
-  hex.out <- hex.in + vecs.n
-  data.frame(x=hex.out[1,], y=hex.out[3,], z=hex.out[2,])
-}
-comp_inside <- function(
-  hex, hex.back, light_index=1, material=diffuse(color='red')
-) {
-  vetr::vetr(
-    structure(list(numeric(7), numeric(7)), class='data.frame'),
-    structure(list(numeric(7), numeric(7), numeric(7)), class='data.frame') &&
-      nrow(.) == nrow(hex),
-    numeric(1)
-  )
-  hex.in <- rbind(hex[[1]], 0, hex[[2]])
-  hex.out <- t(as.matrix(hex.back[c(1,3,2)]))
-
-  i <- seq_len(ncol(hex.in) - 1L)
-  ii <- seq_len(ncol(hex.in) - 1L) + 1L   # i + 1
-  area_s <- sum(hex.in[1,i] * hex.in[3,ii] - hex.in[1,ii] * hex.in[3,i]) / 2
-
-  ccw <- area_s >= 0  # treat degenerates as counter-clockwise
-  flip <- !ccw
-
-  # code adapted from rayrender
-
-  sides <- unlist(
-    lapply(
-      seq_len(ncol(hex.in) - 1L),
-      function(i) {
-        if(i == light_index) material=light(intensity=5)
-        list(
-          triangle(
-            v1=hex.in[,i], v2=hex.out[,i], v3=hex.out[,i+1],
-            material = material, reversed = flip
-          ),
-          triangle(
-            v1=hex.in[,i], v2=hex.out[,i+1], v3=hex.in[,i+1],
-            material = material, reversed = flip
-          )
-    ) } ),
-    recursive=FALSE
-  )
-  back.idx <- matrix(decido::earcut(hex), 3)
-  back.tris <- lapply(
-    split(back.idx, col(back.idx)),
-    function(i)
-      triangle(
-        hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]],
-        material=material
-        # material=diffuse('#553333')
-      )
-  )
-  dplyr::bind_rows(c(sides, back.tris))
-}
 # Hex is a mess, we need to clean it up
 
 hex <- frame[[1L]]
@@ -153,20 +81,40 @@ attr(hex, 'starts') <- 8
 
 # All a bit confusing because we do the extrusion in x-z plane, but then rotate.
 # Should have done everything directly in x-y plane...
+#
+# Originally this was mean to fit exactly so the bag would be hidden by the hex
+# logo rim, but now we let it spread wider since we added a wall.
 
 h2 <- hex[1:7,]
-h2.b <- back_hex(h2, obs, depth)
+h2.b <- back_hex(h2, obs * .3, -int[3,4] * 1.1)
 bag.mat <- diffuse(color='#010102')
 bag.mat <- diffuse(color='black')
 bag <- comp_inside(h2, h2.b, bag.mat, light_index=6)
 
+# Let's add a wall with a hex hole in it to look through.
+
+portal <- rbind(
+  matrix(c(-5,5, 5,5, 5,-5, -5,-5, -5,5), ncol=2, byrow=TRUE),
+  as.matrix(unname(h2)),
+  NULL
+)
+portal.rr1 <- extruded_polygon(
+  portal, holes=c(6), material=diffuse('white'), top=0.0001, bottom=0.0001,
+  angle=c(180,0,0)
+)
+portal.rr2 <- extruded_polygon(
+  portal, holes=c(6), material=diffuse('white'), top=0, flip_vertical=TRUE
+)
 objs <- dplyr::bind_rows(
   lapply(
     letters,
     extrude_path, material=gold_mat, top=.025
   ),
   extrude_path(hex, material=diffuse('gray5'), top=.025),
-  bag
+  portal.rr1,
+  # portal.rr2,
+  bag,
+  NULL
 )
 n <- 10
 
@@ -230,8 +178,8 @@ int <- la + lab * rep(t, each=3)
 
 ang.rad <- angle / 180 * pi
 rx <- matrix(
-  c(1, 0, 0, 
-    0,cos(ang.rad),sin(ang.rad), 
+  c(1, 0, 0,
+    0,cos(ang.rad),sin(ang.rad),
     0,-sin(ang.rad),cos(ang.rad)
   ), 3
 )
@@ -300,45 +248,46 @@ pv.colors <- rgb(
 # determine which pavers are in-bounds, logo plane assumed to be at z==0
 # We use obs[2] b/c observer was originallly looking down Y axis, not Z
 
-pv.all.mult <- obs[2] / (obs[2] - pv.all[3,])
-pv.all.0 <- pv.all
-pv.all.0[1:2,] <-
-  (pv.all.0[1:2,] - c(0, .5)) * rep(pv.all.mult, each=2)
-pv.all.save <- pv.all.0
-
-pv.all.0[1:2,] <- abs(pv.all.0[1:2,])
-
-# oob bounding box
-hex.oob <- hex * .98
-
-pv.oob <-
-  pv.all.0[1,] > max(hex.oob[['x']]) | pv.all.0[2,] > max(hex.oob[['y']])
-
-# remaining oob triangle.
-# p coordinates of points to compute bcs on
-# v coordinates of corresponding triangles
-
-bary_M <- function(p, v) {
-  det <- (v[2,2]-v[3,2])*(v[1,1]-v[3,1]) +
-         (v[3,1]-v[2,1])*(v[1,2]-v[3,2])
-
-  l1 <- (
-          (v[2,2]-v[3,2]) * (p[,1]-v[3,1]) +
-          (v[3,1]-v[2,1]) * (p[,2]-v[3,2])
-        ) / det
-  l2 <- (
-          (v[3,2]-v[1,2]) * (p[,1]-v[3,1]) +
-          (v[1,1]-v[3,1]) * (p[,2]-v[3,2])
-        ) / det
-  l3 <- 1 - l1 - l2
-  cbind(l1, l2, l3)
-}
-v <- rbind(
-  as.matrix(subset(hex.oob[1:7,], x > 0 & y > 0)),
-  vapply(hex.oob[1:7,], max, 1)
-)
-p <- t(pv.all.0[1:2,])
-pv.oob <- pv.oob | rowSums(bary_M(p, v) > 0) == 3
+# pv.all.mult <- obs[2] / (obs[2] - pv.all[3,])
+# pv.all.0 <- pv.all
+# pv.all.0[1:2,] <-
+#   (pv.all.0[1:2,] - c(0, .5)) * rep(pv.all.mult, each=2)
+# pv.all.save <- pv.all.0
+# 
+# pv.all.0[1:2,] <- abs(pv.all.0[1:2,])
+# 
+# # oob bounding box
+# hex.oob <- hex * .98
+# 
+# pv.oob <-
+#   pv.all.0[1,] > max(hex.oob[['x']]) | pv.all.0[2,] > max(hex.oob[['y']])
+# 
+# # remaining oob triangle.
+# # p coordinates of points to compute bcs on
+# # v coordinates of corresponding triangles
+# 
+# bary_M <- function(p, v) {
+#   det <- (v[2,2]-v[3,2])*(v[1,1]-v[3,1]) +
+#          (v[3,1]-v[2,1])*(v[1,2]-v[3,2])
+# 
+#   l1 <- (
+#           (v[2,2]-v[3,2]) * (p[,1]-v[3,1]) +
+#           (v[3,1]-v[2,1]) * (p[,2]-v[3,2])
+#         ) / det
+#   l2 <- (
+#           (v[3,2]-v[1,2]) * (p[,1]-v[3,1]) +
+#           (v[1,1]-v[3,1]) * (p[,2]-v[3,2])
+#         ) / det
+#   l3 <- 1 - l1 - l2
+#   cbind(l1, l2, l3)
+# }
+# v <- rbind(
+#   as.matrix(subset(hex.oob[1:7,], x > 0 & y > 0)),
+#   vapply(hex.oob[1:7,], max, 1)
+# )
+# p <- t(pv.all.0[1:2,])
+# pv.oob <- pv.oob | rowSums(bary_M(p, v) > 0) == 3
+pv.oob <- pv.all[3,] > -.05
 
 cyl.rad <- .035
 pv.all.obj <- dplyr::bind_rows(
@@ -353,6 +302,7 @@ pv.all.obj <- dplyr::bind_rows(
         order_rotation=c(3, 1, 2),
         phi_min=20, phi_max=180
 ) } ) )
+
 # - Process stars --------------------------------------------------------------
 
 # compute star area
@@ -373,7 +323,7 @@ star.widths <- vapply(
 )
 buffer <- 1.1
 near <- obs[2] + brick.depth * buffer
-near <- 2
+near <- .5
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
 star.x <- vapply(stars, function(x) mean(range(x[['x']])), 1)
 star.y <- -vapply(stars, function(x) mean(range(x[['y']])), 1)
@@ -409,64 +359,72 @@ stars.fin <- mapply(
 )
 # - Castle ---------------------------------------------------------------------
 
-# # no idea if these two are the right names
-# nshaft <- 20
-# phi <- rnorm(nshaft, 90, 30)
-# theta <- sample(1:360, nshaft)
-# lens <- rlnorm(nshaft, .1, .5)
-# shaft.mat <- dielectric(attenuation=c(1.2, .2, 1.2))
-# 
-# # base hex
-# 
-# angles <- seq(0, 2 * pi - pi/3, length.out=6)
-# hexb <- cbind(sin(angles), cos(angles)) * .1
-# 
-# shafts <- lapply(
-#   seq_len(nshaft),
-#   function(i)
-#     extruded_polygon(
-#       hexb, top=lens[i], angle=c(phi[i], theta[i], 0), material=shaft.mat,
-#       material_id=1634
-#     )
-# )
-# render_scene(
-#   dplyr::bind_rows(shafts)
-# )
-# 
+# See castle.R
+
+# - Containers -----------------------------------------------------------------
+
+# Need a sphere that will contain everything, a box for the `rlang` world.
+
+buff <- 1.01
+rad <- max(sqrt(rowSums(h2.b^2))) * buff
+bubble <- sphere(radius=rad, material=diffuse(), flipped=TRUE)
 
 # - Render! --------------------------------------------------------------------
 
-bg <- '#FFFFFF'
-r.m <- 1.5
-r.main <- sqrt((diff(range(h2.b[[2]])) * r.m / 2)^2 + (depth * r.m)^2)
-l.r <- r.main / 8
-l.z <- depth * .8
-l.x <- depth * .75
-l.y <- depth * .25
-
-render_scene(
-  dplyr::bind_rows(
-    group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
-    pv.all.obj,
-    sphere(radius=r.main, material=diffuse(), flipped=TRUE),
-    sphere(z=l.z, y=l.y, x=l.x, radius=l.r, material=light(intensity=3)),
-    sphere(z=-l.z, y=l.y, x=-l.x, radius=l.r, material=light(intensity=10)),
-    sphere(z=-l.z, y=l.y, x=l.x, radius=l.r, material=light(intensity=10)),
-    unlist(stars.fin, recursive=FALSE),
-  ),
-  filename=next_file("~/Downloads/rlang/imgs/img-"),
-  # lookfrom=c(0, .5, 1), lookat=c(0, .5, 0),
-  lookfrom=c(0, .5, .75), lookat=c(0, .5, 0),
-  # lookfrom=c(0, .5, -3), lookat=c(-1, .7, -5),
-  # lookfrom=c(0, .5, 1), lookat=c(0, 0, 0),
-  # lookfrom=c(10, .5, -10), lookat=c(-1, .6, -2),
-  width=720, height=720, samples=25,
-  # samples=20,
-  clamp_value=5,
-  fov=60,
-  # fov=20,
-  aperture=0
+l.r <- rad / 8
+l.d <- rad * .4
+l.b <- 8
+scene <- dplyr::bind_rows(
+  group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
+  pv.all.obj,
+  bubble,
+  sphere(z=l.d, x=l.d, radius=l.r, material=light(intensity=l.b)),
+  sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
+  unlist(stars.fin, recursive=FALSE),
 )
+# Make a path starting from obs and following the path.  A bit complicated
+# because we have to join smoothly to the point at x == 0 in the path.
+#
+# Find first zero point
+
+x0 <- rle(sign(int.dots.3d[1,]))[['lengths']][1]
+x01m <- abs(int.dots.3d[1,x0] / diff(int.dots.3d[1,x0 + 0:1]))
+dot0 <- int.dots.3d[,x0] + x01m * (int.dots.3d[,x0+1] - int.dots.3d[,x0])
+
+# Need smooth curvature in y from starting obs to the zero point.
+
+slope0 <- 0
+slope1 <- diff(int.dots.3d[2,x0+0:1])
+sfun <- splinefunH(c(0, 1 - dot0[3]), c(0, dot0[2]), c(slope0, slope1))
+z2 <- seq(0, 1 - dot0[3], length.out=10)
+ys <- sfun(z2)
+zs <- 1 - z2
+
+path.all <- cbind(
+  rbind(0, ys, zs), int.dots.3d[,-(seq_len(x0))]
+)
+path.int <- interp_along(path.all, c(0, .005, .01, .015, .02, .05))
+
+for(i in seq(1, ncol(path.int)-1, by=1)) {
+  a <- path.int[, i]
+  b <- path.int[, i+1]
+  lf <- a + c(0, .5, 0)
+  la <- b + c(0, .5, 0)
+
+  render_scene(
+    scene,
+    filename=next_file("~/Downloads/rlang/imgs/img-"),
+    lookfrom=lf, lookat=la,
+    # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
+    # width=720, height=720, samples=25,
+    samples=5,
+    clamp_value=5,
+    fov=60,
+    # fov=20,
+    aperture=0
+  )
+}
+
 # objs <- dplyr::bind_rows(
 #   Map(
 #     extrude_path, rev(paths), top=c(.1, .05) ,
