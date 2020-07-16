@@ -46,37 +46,37 @@ If you are unfamiliar with R's evaluation model, and how it enables
 [post on the topic][1].  To understand this post it might help to know what
 environments, "Enclosures" and "Environment Chains" are, the difference between
 "Evaluation", "Calling", "Function", and "function Evaluation" Environments, and
-what unevaluated commands are and how they are created.  All these are discussed
-at length in that post.
+what unevaluated expressions are and how they are created.  All these are
+discussed at length in that post.
 
 ## Quasi-quoi?
 
-As we saw previously it is possible to capture unevaluated R commands with
+As we saw previously it is possible to capture unevaluated R expressions with
 [`quote` and `substitute`][3].  We can also manipulate them:
 
 ```{r}
-mean_call <- function(cmd) {
+mean_call <- function(expr) {
   cmd2 <- quote(mean(NULL))     # create unevaled `mean(NULL)`
-  cmd2[[2]] <- substitute(cmd)  # sub in user expression
+  cmd2[[2]] <- substitute(expr)  # sub in user expression
   cmd2
 }
-(cmd <- mean_call(a + b))
+(expr <- mean_call(a + b))
 ```
 
-`mean_call` produced the unevaluated command `mean(a + b)`.  We can evaluate it
-with `eval`:
+`mean_call` produced the unevaluated expression `mean(a + b)`.  We can evaluate
+it with `eval`:
 
 ```{r}
 a <- 1
 b <- 2
-eval(cmd)
+eval(expr)
 ```
 
-The direct manipulation of the command is a little awkward.  Commands are
-recursive lists of sub-commands, so it can get difficult to keep track of the
+The direct manipulation of the expression is a little awkward.  Expressions are
+recursive lists of sub-expressions, so it can get difficult to keep track of the
 exact index to modify.  Thankfully R provides `bquote` to partially quote
-commands (or partially evaluate them, depending on your life outlook - I'm more
-of a command-half-evaluated guy).  Let's look first at a trivial example:
+expressions (or partially evaluate them, depending on your life outlook - I'm more
+of a expression-half-evaluated guy).  Let's look first at a trivial example:
 
 ```{r}
 bquote(mean(.(1 + 2)))
@@ -88,31 +88,31 @@ Compare to:
 quote(mean(1 + 2))
 ```
 
-`quote` captures the entire command unevaluated.  `bquote` allows whatever is
+`quote` captures the entire expression unevaluated.  `bquote` allows whatever is
 inside the `.(...)` to be evaluated.  We can use `bquote` to recreate
 `mean_call`:
 
 ```{r}
-mean_call2 <- function(cmd) {
-  bquote(mean(.(substitute(cmd))))
+mean_call2 <- function(expr) {
+  bquote(mean(.(substitute(expr))))
 }
 mean_call2(a + b)
 ```
 
 Wait, but that's an unevaluated call.  Didn't we promise partial evaluation?  We
 delivered, but it's not obvious because what was partially evaluated,
-`substitute(cmd)`, produced an unevaluated command!  We can see that by
+`substitute(expr)`, produced an unevaluated expression!  We can see that by
 comparing to an implementation that uses `quote` instead of `bquote`:
 
 ```{r}
-mean_call2a <- function(cmd) {
-  quote(mean(substitute(cmd)))
+mean_call2a <- function(expr) {
+  quote(mean(substitute(expr)))
 }
 mean_call2a(a + b)
 mean_call2(a + b)
 ```
 
-In this case we can see that `quote` does not evaluate `substitute(cmd)`,
+In this case we can see that `quote` does not evaluate `substitute(expr)`,
 whereas `bquote` does.
 
 How does this all relate to quasi-quotation?  Turns out partial evaluation
@@ -151,16 +151,16 @@ a + num
 ```
 
 The `a` defined at the top-level (`a <- 1`) is masked by the one defined
-inside the `local` Evaluation Environment (`a <- 100`), but only for commands
-evaluated in that environment.  This is akin to how commands in function bodies
-are evaluated in function Evaluation Environments.
+inside the `local` Evaluation Environment (`a <- 100`), but only for expressions
+evaluated in that environment.  This is akin to how expressions in function
+bodies are evaluated in function Evaluation Environments.
 
 We'll be using `local` to create interesting ad-hoc evaluation contexts.
 
 # About Them Quosures
 
 Just as `quote`, `substitute`, and `bquote`  do, quosures capture unevaluated
-R commands.
+R expressions.
 
 ```{r}
 library(rlang)
@@ -168,9 +168,9 @@ a <- 1
 (qrlang <- quo(a + 1))   # create a quosure with quo
 ```
 
-Additionally as you can see above, quosures record the environment the command
+Additionally as you can see above, quosures record the environment the expression
 would have been evaluated in, had it not been captured.  Unlike typical
-unevaluated commands, quosures do no resolve when they are `eval`ed:
+unevaluated expressions, quosures do no resolve when they are `eval`ed:
 
 ```{r}
 eval(qrlang)
@@ -184,7 +184,7 @@ eval_tidy(qrlang)
 ```
 
 Things are more interesting with more complex environments.  Let's compare
-commands captured with `quote` vs `quo` in an ad-hoc environment created with
+expressions captured with `quote` vs `quo` in an ad-hoc environment created with
 [`local`](#interlude-local):
 
 ```{r}
@@ -210,16 +210,16 @@ Let's build a simple NSE function to compute means in the context of of a
 user-supplied data frame.  First with base:
 
 ```{r}
-mean_in_data <- function(dat, cmd) {
-  cmd <- substitute(cmd)           # capture user command
-  cmd <- bquote(mean(.(cmd)))      # wrap it in `mean`
-  eval(cmd, dat, parent.frame())
+mean_in_data <- function(dat, expr) {
+  expr <- substitute(expr)           # capture user expression
+  expr <- bquote(mean(.(expr)))      # wrap it in `mean`
+  eval(expr, dat, parent.frame())
 }
 ```
 
 The key features are `substitute`, which we [discussed in the previous post][3],
 and evaluation in the Calling Environment with `parent.frame()` to ensure names
-used in `cmd` [resolve as intended][27] by the user of our function.
+used in `expr` [resolve as intended][27] by the user of our function.
 
 Let's use it to compute mean engine displacement of `mtcars` in liters:
 
@@ -239,10 +239,10 @@ environment(mean_in_data) <- baseenv()   # don't do this at home
 Next with `rlang`:
 
 ```{r mean_in_data_rl, echo=FALSE}
-mean_in_data_rl <- function(dat, cmd) {
-  cmd <- enquo(cmd)                # capture user command
-  cmd <- quo(mean(!!cmd))          # wrap it in `mean`
-  eval_tidy(cmd, dat)
+mean_in_data_rl <- function(dat, expr) {
+  expr <- enquo(expr)                # capture user expression
+  expr <- quo(mean(!!expr))          # wrap it in `mean`
+  eval_tidy(expr, dat)
 }
 ```
 ```{r echo=FALSE}
@@ -291,9 +291,9 @@ More recently[^v040] `rlang` introduced the "curly-curly" syntax to replace the
 `quo(!!enquo(arg))` pattern so we could have written instead:
 
 ```{r}
-mean_in_data_rl2 <- function(dat, cmd) {
-  cmd <- quo(mean({{cmd}}))     # notice: no enquo
-  eval_tidy(cmd, dat)
+mean_in_data_rl2 <- function(dat, expr) {
+  expr <- quo(mean({{expr}}))     # notice: no enquo
+  eval_tidy(expr, dat)
 }
 ```
 ```{r echo=FALSE}
@@ -311,9 +311,9 @@ interesting features.
 
 # The Power Of Quosures
 
-Bad NSE implementations often break when some of the names in a command are not
-mapped in the global environment.  Let's try to trigger failures by complicating
-the Evaluation Environment:
+Bad NSE implementations often break when some of the names in an expression are
+not mapped in the global environment.  Let's try to trigger failures by
+complicating the Evaluation Environment:
 
 ```{r}
 l.per.cubic.i <- NA                # global, decoy
@@ -346,7 +346,7 @@ local({
 defined our function in a package.  The very trick that allowed us
 to find the correct `l.per.cubic.i` (`eval` in `parent.frame()`) stabbed us in
 the back.  `rlang`'s version on the other hand works fine.  Ultimately the issue
-is that in the command generated by `mean_in_data*`:
+is that in the expression generated by `mean_in_data*`:
 
 <pre><code><span style='background-color: #aaffaa;'>mean</span>(<span
 style='background-color: #aaaaff;'>disp * l.per.cubic.i</span>)</code></pre>
@@ -360,7 +360,7 @@ time.
 With quosures, which retain the Evaluation Environments they are defined in,  it
 works right out of the box.  Of course we can fix the R version by
 pre-resolving `mean` as we did in [the prior post][2], but that's extra work.
-What sorcery allows `quosures` to evaluate a single command in multiple
+What sorcery allows `quosures` to evaluate a single expression in multiple
 environments, when R itself does not allow it?
 
 # Is It Magic?
@@ -374,22 +374,22 @@ unclass(quo(a + b))
 
 Quosures are formulas, which we can see both from the class, and also from the
 tilde (`~`), once we side-step the quosure print method.  Formulas are an odd
-duck in the R world: a form of self-quoting command that also captures the
+duck in the R world: a form of self-quoting expression that also captures the
 Evaluation Environment in which it is created.  Mostly they are used to
 implement domain specific languages such as model or plot specifications.
-Because they can contain arbitrary R commands as well as environments they are
-appealing as a vehicle for quosures.
+Because they can contain arbitrary R expressions as well as environments they
+are appealing as a vehicle for quosures.
 
 They do have a big draw-back for our purpose: the quoting is triggered by the
-`~`, but the `~` remains in the captured command.
+`~`, but the `~` remains in the captured expression.
 
 ```{r}
 ~a + b
 ```
 
-This means you cannot evaluate the captured command as evaluating it just leads
-to the command quoting itself again!  It's like those awful trick candles you
-just can't blow out:
+This means you cannot evaluate the captured expression as evaluating it just
+leads to the expression quoting itself again!  It's like those awful trick
+candles you just can't blow out:
 
 ```{r}
 eval(~a + b)
@@ -400,14 +400,14 @@ with an internal version that self-evaluates quosures.  Here is a
 hack re-implementation to demonstrate the concept:
 
 ```{r}
-eval_tidyish <- function(cmd) {
+eval_tidyish <- function(expr) {
   env <- new.env(parent=parent.frame())
   env[['~']] <- function(...) {# replace `~` with our version
     call <- sys.call()
     env <- environment(call)   # recover formula env from call
     eval(call[[2]], env)
   }
-  eval(cmd, env)
+  eval(expr, env)
 }
 ```
 ```{r echo=FALSE}
@@ -415,9 +415,9 @@ environment(eval_tidyish) <- baseenv()
 ```
 
 `eval_tidyish` creates an environment that contains a self-evaluating version of
-`~`, and evaluates the command therein.  We can recover the formula environment
-from the call to the formula, which is fortunate as otherwise this trick would
-not work.  Let's try it:
+`~`, and evaluates the expression therein.  We can recover the formula
+environment from the call to the formula, which is fortunate as otherwise this
+trick would not work.  Let's try it:
 
 ```{r}
 a <- 10
@@ -468,15 +468,15 @@ affected for some rare use-cases[^subtly-affected].  There is also the recovery
 of the formula environment from the call stack, which works but feels a bit
 uncomfortable to me[^uncomfortable].
 
-But R doesn't offer any other functions that hold unevaluated command and
+But R doesn't offer any other functions that hold unevaluated expression and
 Enclosures, so what are we to do?  Cheat, duh.
 
 In the previous post we [solved the two Environment Chain dilemma][2] by
 pre-resolving the function along one Environment Chain and embedding the result
-in the otherwise unevaluated command.  The key learning is that it is possible
-to embed non-language objects in commands.  It's not even really cheating.  R
-does this as it evaluates commands, evaluating leaves in the command tree until
-the tree is fully evaluated and the result is returned.
+in the otherwise unevaluated expression.  The key learning is that it is possible
+to embed non-language objects in expressions.  It's not even really cheating.  R
+does this as it evaluates expressions, evaluating leaves in the expression tree
+until the tree is fully evaluated and the result is returned.
 
 Which leads us to:
 
@@ -508,8 +508,8 @@ Note the `parent.frame()` call [must be made outside of `bquote`](#quote_w).
 
 What the hell is that?  It's an unevaluated call to `with` with an
 alive-and-kicking environment embedded as the `data` argument.  That means that
-when we evaluate the command, the provided sub-command will be evaluated in the
-context of that environment.  Let's try it out:
+when we evaluate the expression, the provided sub-expression will be evaluated
+in the context of that environment.  Let's try it out:
 
 ```{r}
 a <- 10
@@ -522,8 +522,8 @@ eval(q1)
 ```
 
 We successfully captured the `a <- 1/2` from the local environment, even though
-we evaluated the command in the top-level environment where the mapping is `a <-
-10`.
+we evaluated the expression in the top-level environment where the mapping is 
+`a <- 10`.
 
 Let's up the difficulty:
 
@@ -540,8 +540,8 @@ eval(q3)
 ```
 
 Each of the `a`'s is resolved in its own environment.  We can even mix them
-with normal unevaluated commands.  The names outside of the `with`s resolve in
-the Evaluation Environment:
+with normal unevaluated expressions.  The names outside of the `with`s resolve
+in the Evaluation Environment:
 
 ```{r}
 (q4 <- bquote(.(q1) / .(q2) + a))
@@ -559,8 +559,8 @@ And the `with` approach has benefits:
 * Semantics are pure; everything behaves exactly as usual in the R interpreter.
 * Complete interoperability with existing meta-programming constructs (e.g.
   `bquote`).
-* WYSIWYG: the semantics of the commands are transparent.  Any useR familiar
-  with `with` knows what the commands will do.  Sure, they don't necessarily
+* WYSIWYG: the semantics of the expressions are transparent.  Any useR familiar
+  with `with` knows what the expressions will do.  Sure, they don't necessarily
   know what's in the environments, but that's true of quosures too.
 * WYSIWYG 2: We don't need any special print methods, and operator precedence is
   crystal-clear.
@@ -590,8 +590,8 @@ partial-evaluation).  We'll implement it as `bquote_w`:
 ```{r bquote_w, echo=FALSE}
 bquote_w <- function(x) {
   caller <- parent.frame()
-  cmd <- eval(bquote(.(bquote)(.(substitute(x)))), caller)
-  bquote(with(.(caller), .(cmd)))
+  expr <- eval(bquote(.(bquote)(.(substitute(x)))), caller)
+  bquote(with(.(caller), .(expr)))
 }
 ```
 ```{r echo=FALSE}
@@ -628,19 +628,19 @@ appendix](#bquote_w).
 One of the most common uses of NSE is to allow user data to "mask" names in the
 Evaluation Chain.  This is typically done by turning the data into an
 environment with the previous Evaluation Chain as the Enclosure, and evaluating
-commands therein.  So let's do just that:
+expressions therein.  So let's do just that:
 
 ```{r}
-mask <- function(cmd, dat) {
-  if(is.language(cmd) && length(cmd) > 1L) {
-    # modify `with` commands that contain a live environment
-    if(cmd[[1L]] == as.name('with') && is.environment(cmd[[2L]])) {
-      cmd[[2L]] <- list2env(dat, parent=cmd[[2L]])
+mask <- function(expr, dat) {
+  if(is.language(expr) && length(expr) > 1L) {
+    # modify `with` expressions that contain a live environment
+    if(expr[[1L]] == as.name('with') && is.environment(expr[[2L]])) {
+      expr[[2L]] <- list2env(dat, parent=expr[[2L]])
     }
-    # recurse on each sub-command
-    cmd[2L:length(cmd)] <- lapply(cmd[2L:length(cmd)], mask, dat)
+    # recurse on each sub-expression
+    expr[2L:length(expr)] <- lapply(expr[2L:length(expr)], mask, dat)
   }
-  cmd
+  expr
 }
 ```
 ```{r echo=FALSE}
@@ -648,12 +648,12 @@ env_w[['mask']] <- mask
 environment(mask) <- env_w
 ```
 
-R commands are nested lists of sub-commands, and our quoted `with` statements
-are unevaluated R commands.   Most of the function recurses through those lists.
-The key line is:
+R expressions are nested lists of sub-expressions, and our quoted `with`
+statements are unevaluated R expressions.   Most of the function recurses
+through those lists.  The key line is:
 
 ```{r eval=FALSE}
-      cmd[[2L]] <- list2env(mask, parent=cmd[[2L]])
+      expr[[2L]] <- list2env(mask, parent=expr[[2L]])
 ```
 
 There we use the existing environment as the Enclosure to the data mask, and
@@ -680,9 +680,9 @@ Calling Environment like `enquo` does:
 substitute_w <- function(x) {
   caller <- parent.frame()
   caller2 <- sys.frame(sys.parent(2))   # see appendix for explanation
-  cmd <- eval(bquote(substitute(.(substitute(x)),.(caller))))
-  cmd <- eval(bquote(.(bquote)(.(cmd))), caller2)
-  bquote(with(.(caller2), .(cmd)))
+  expr <- eval(bquote(substitute(.(substitute(x)),.(caller))))
+  expr <- eval(bquote(.(bquote)(.(expr))), caller2)
+  bquote(with(.(caller2), .(expr)))
 }
 ```
 ```{r echo=FALSE}
@@ -711,10 +711,10 @@ dots.  This is why `rlang::enquo` does not deal with dots; you need
 Now we can go back to our `mean_in_data*` functions:
 
 ```{r mean_in_data_w, echo=FALSE}
-mean_in_data_w <- function(dat, cmd) {
-  cmd <- bquote(mean(.(substitute_w(cmd))))
-  cmd <- mask(cmd, dat)
-  eval(cmd)
+mean_in_data_w <- function(dat, expr) {
+  expr <- bquote(mean(.(substitute_w(expr))))
+  expr <- mask(expr, dat)
+  eval(expr)
 }
 ```
 ```{r echo=FALSE}
@@ -793,9 +793,9 @@ concepts (though not those discussed in this post).
 
 ### `quote_w`
 
-`bquote` uses `eval` internally to partially evaluate the sub-commands enclosed
-in `.(...)`, which will cause `parent.frame` to behave in unexpected ways.  More
-details in the [`substitute_w` section](#substitute_w).
+`bquote` uses `eval` internally to partially evaluate the sub-expressions
+enclosed in `.(...)`, which will cause `parent.frame` to behave in unexpected
+ways.  More details in the [`substitute_w` section](#substitute_w).
 
 ### `bquote_w`
 
@@ -808,57 +808,56 @@ We'll use the following use-case to illustrate how the function works:
 
 ```{r eval=FALSE}
 a <- b <- 2
-cmd <- local({
+expr <- local({
   a <- 1
   bquote_w(a + .(b))
 })
-cmd
-eval(cmd)
+expr
+eval(expr)
 ```
 
 And we'll spread `bquote_w` over more lines so that we may better annotate it:
 
 ```{r eval=FALSE}
-bquote_w <- function(x) {
-  caller <- parent.frame()
+bquote_w <- function(x) { caller <- parent.frame()
 
-  # Capture user command
+  # Capture user expression
 
-  cmd <- substitute(x)                 # cmd == a + .(b)
+  expr <- substitute(x)                 # expr == a + .(b)
 
-  # Wrap the command in `bquote`, using `bquote`.  We in-line `bquote`
-  # so in reality if you examined `cmd` below you would see the entire
+  # Wrap the expression in `bquote`, using `bquote`.  We in-line `bquote`
+  # so in reality if you examined `expr` below you would see the entire
   # `bquote` function definition crammed into the first element of
-  # the command.  This is necessary to avoid interference with a user
+  # the expression.  This is necessary to avoid interference with a user
   # defined `bquote`.
 
-  cmd <- bquote(.(bquote)(.(cmd)))     # cmd == (<bquote>)(a + .(b))
+  expr <- bquote(.(bquote)(.(expr)))     # expr == (<bquote>)(a + .(b))
 
-  # Evaluate the `bquote` command we created, in the calling frame so
+  # Evaluate the `bquote` expression we created, in the calling frame so
   # that the elements that need to be partially evaluated are
 
-  cmd <- eval(cmd, caller)             # cmd == a + 2
+  expr <- eval(expr, caller)             # expr == a + 2
 
   # Generate the quoted with
 
-  bquote(with(.(caller), .(cmd)))      # with(<caller>, a + 2)
+  bquote(with(.(caller), .(expr)))      # with(<caller>, a + 2)
 }
 ```
 
 ### `substitute_w`
 
-We'll use the following command to illustrate the annotated version of
+We'll use the following expression to illustrate the annotated version of
 `substitute_w`:
 
 ```{r}
 a <- b <- 2
 f <- function(x) substitute_w(x)
-cmd <- local({
+expr <- local({
   a <- 1
   f(a + .(b))
 })
-cmd
-eval(cmd)
+expr
+eval(expr)
 ```
 
 ```{r eval=FALSE}
@@ -869,20 +868,20 @@ substitute_w <- function(x) {
   caller <- parent.frame()
   caller2 <- sys.frame(sys.parent(2))
 
-  # Capture the user command by running substitute in the caller frame
-  # We inline the substitute function diretly into the command to avoid
+  # Capture the user expression by running substitute in the caller frame
+  # We inline the substitute function diretly into the expression to avoid
   # conflicts with a possible user-defined `substitute`
 
-  cmd <- substitute(x)                    # cmd == x
-  cmd <- bquote(.(substitute)(.(cmd)))    # cmd == (<substitute>)(x)
-  cmd <- eval(cmd, caller)                # cmd == a + .(b)
+  expr <- substitute(x)                    # expr == x
+  expr <- bquote(.(substitute)(.(expr)))    # expr == (<substitute>)(x)
+  expr <- eval(expr, caller)                # expr == a + .(b)
 
   # Do the partial evaluation in the caller of the caller, see the
   # bquote_w breakdown above for details
 
-  cmd <- bquote(.(bquote)(.(cmd)))        # cmd == (<bquote>)(a + .(b))
-  cmd <- eval(cmd, caller2)               # cmd == a + 2
-  bquote(with(.(caller2), .(cmd)))        # with(<caller2>, a + 2)
+  expr <- bquote(.(bquote)(.(expr)))        # expr == (<bquote>)(a + .(b))
+  expr <- eval(expr, caller2)               # expr == a + 2
+  bquote(with(.(caller2), .(expr)))        # with(<caller2>, a + 2)
 }
 ```
 
@@ -953,7 +952,7 @@ loaded via a namespace (and not attached):
   Authoritative Tiobe Assessment of Impact on Humanity.  Or maybe what I mean is
   that if you keep reading you'll overflow the document onto a different window
   or perhaps even a paper copy of something that is actually entertaining.
-[^shortcomings]: Likely the most problematic one is that if the user command
+[^shortcomings]: Likely the most problematic one is that if the user expression
   causes an error, the error backtrace will display the function in full rather
   than the name of the function, which may be confusing.
 [^resentment]: Oh no, I bear no resentment whatsoever to philosopher's whose
@@ -968,7 +967,7 @@ loaded via a namespace (and not attached):
   Calling Environment.
 [^subtly-affected]: [Until recently][23] it was not possible to reference a
   custom, non-quosure tilde defined as part of a quosure's Environment Chain.
-  While that works now (at least in the dev versions), commands such as
+  While that works now (at least in the dev versions), expressions such as
   `get("~")` will still retrieve the `rlang` tilde.
 [^mostly-reasonable]: Except maybe for the argument supporting `!!`, which from
   what I understand is based on the idea that it is inappropriate to represent
