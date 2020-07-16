@@ -36,19 +36,21 @@ neither here nor there.  What matters is that R allows it.  Not many languages
 give the programmer the power to implement, use, and abuse Non-Standard
 Evaluation ("NSE"), or anything like it.
 
-So what is NSE?  Very roughly, it is to programmatically modify a command or its
-meaning after it is issued but before it is executed.  For example in:
+So what is NSE?  Very roughly, it is to programmatically modify an expression or
+its meaning after it is issued but before it is executed.  You can think of an
+"expression" an R command you might type at the prompt or in an R
+script[^expr-vs-cmd].  For example in:
 
 ```{r}
 subset(mtcars, hp > 250)
 ```
 
-`subset` intercepts the command `hp > 250` before it is run, and changes its 
+`subset` intercepts the expression `hp > 250` before it is run, and changes its 
 meaning by allowing the name `hp` to resolve against columns from `mtcars`
 instead of just against objects in the workspace.  In other words, `subset`
-performs non-standard evaluation on the command `hp > 250`.
+performs non-standard evaluation on the expression `hp > 250`.
 
-Compare to what happens with a command that is evaluated in the standard way:
+Compare to what happens with an expression that is evaluated in the standard way:
 
 ```{r}
 mtcars[hp > 250,]
@@ -64,7 +66,7 @@ We get an error because `hp` is not defined in my workspace.
   class='post-inset-image'
 />
 
-When we type a simple command at the R prompt and hit ENTER, R computes its
+When we type a simple expression at the R prompt and hit ENTER, R computes its
 value (a.k.a. evaluates it):
 
 <div class='bgw-code-float'>
@@ -80,7 +82,7 @@ rev(w)    # reverse the order of `w`
 
 Ironically the process of evaluation in R is mostly about looking things up
 rather than computing them.  In our example, when we hit ENTER R first looks for
-the named objects in our command: `rev`, and `w`[^parens].  Lookups are done
+the named objects in our expression: `rev`, and `w`[^parens].  Lookups are done
 through data structures called environments, represented in blue in this
 flipbook:
 
@@ -127,14 +129,14 @@ After the lookup `rev(w)` becomes:
 `rev` is replaced by the definition of the function from the base environment,
 and `w` by the character vector from the workspace.  The workspace, also known
 as the global environment, is where name -> value mappings created at the
-R prompt are kept (e.g. `w <- c("am", "I", "global")`).  Our substituted command
+R prompt are kept (e.g. `w <- c("am", "I", "global")`).  Our substituted expression
 is a bit weird in appearance, but more useful to R as the names `rev` and `w`
 have no inherent meaning.
 
 > There is _a fair bit_ of hand waving here[^simple-model], but for the most
 > part the lookup-and-substitute model reflects observed R behavior.
 
-R is not yet done with our command.  More on this shortly, but first lets talk
+R is not yet done with our expression.  More on this shortly, but first lets talk
 about environments.
 
 # Environments
@@ -160,7 +162,7 @@ hits the empty environment, which does not have an Enclosure[^last-env].  We'll
 call an environment and the sequence of Enclosures it links to an "Environment
 Chain"[^env-chain].
 
-For commands typed at the prompt the Environment Chain usually starts at the
+For expressions typed at the prompt the Environment Chain usually starts at the
 global environment and links the environments of all the attached
 packages[^attached] (represented with the `...` below) through to the base
 package.  When searching for `rev`, R will work through this entire
@@ -181,12 +183,12 @@ stop the search:
 />
 
 <span id=eval-env>The first environment in the Environment Chain is called the
-"Evaluation Environment"[^env-vs-chain].  When we say that commands are
+"Evaluation Environment"[^env-vs-chain].  When we say that expressions are
 "evaluated in" the Evaluation Environment we mean that they are evaluated
 according to the Environment Chain that starts with that environment.</span>
 
-When evaluating commands at the R prompt, the Evaluation Environment is usually
-the global environment, so this may all seem moot.  However, commands can be
+When evaluating expressions at the R prompt, the Evaluation Environment is usually
+the global environment, so this may all seem moot.  However, expressions can be
 issued in different Evaluation Environments, as is the case when they are
 part of the body of a function.
 
@@ -197,21 +199,21 @@ part of the body of a function.
 
 After the initial substitution of `rev` and `w` for the function  and its
 argument, R will call (i.e "run") the function.  This means repeating the
-lookup-and-substitute process on any R commands contained in the body of the
+lookup-and-substitute process on any R expressions contained in the body of the
 function[^fun-components], though with some additional wrinkles.
 
-Most functions in R are "closures"[^closures].  They are so called because they
+Most functions in R are "closures".  They are so called because they
 carry a reference to a "Function Environment"[^fun-env-term] to use as an
 Enclosure.  The Function Environment is typically the Evaluation Environment the
 function was defined in[^fun-create].  <span id=primitives>Other functions like
 the basic arithmetic operators are "primitives".  They are entry points into
-statically compiled machine code, and contain no R commands or
+statically compiled machine code, and contain no R expressions or
 environments[^static-compile-funs].</span>
 
 <span id=fun-eval-env>Each time a closure is called a new environment is
 created, enclosed by the **Function** Environment, and with the function
 parameter -> value[^promises-actually] mappings as its Frame.  This new
-environment becomes the **Evaluation** Environment for the commands in the
+environment becomes the **Evaluation** Environment for the expressions in the
 function body:</span>
 
 <div id='flipbook2'></div>
@@ -219,7 +221,7 @@ function body:</span>
 Once the function **Evaluation** Environment is set up (`<rev>` in the
 diagram[^env-names]), R can proceed with the [lookup-and-substitute
 process](#flipbook1) on the body of the function.  In this case there is just
-the one command `UseMethod("rev")` in the body.
+the one expression `UseMethod("rev")` in the body.
 
 The key observation is that the Environment Chain changed.  It used to start
 at the global environment and pass through all the loaded packages (`<...>` in
@@ -238,7 +240,7 @@ the one used to evaluate the body of the `rev` function:
 
 <span id=calling> `<rev>` is now the Evaluation Environment.  In this context,
 the global environment becomes the "Calling Environment", so named because it
-was the active Evaluation Environment when `rev` was **called** via the command
+was the active Evaluation Environment when `rev` was **called** via the expression
 `rev(w)`.</span>
 
 The lookup-and-substitute-and-call-closures process will continue recursively
@@ -257,7 +259,7 @@ paper][32].
 It is possible for different environments in a chain to contain the same name.
 When this happens the object matched is the one from the first environment along
 the chain that contains that name.  Consider what happens if we nest our simple
-`rev(x)` command in a trivial function:
+`rev(x)` expression in a trivial function:
 
 <span id='fun'>
 ```{r}
@@ -319,20 +321,20 @@ Let's implement a version of `with` at the prompt to see how this might be
 done:
 
 ```{r}
-cmd  <- quote(rev(w))   # capture command
-Lenv <- list2env(L)     # convert list to env
-eval(cmd, envir=Lenv)   # invoke the evaluator
+expr  <- quote(rev(w))   # capture expression
+Lenv <- list2env(L)      # convert list to env
+eval(expr, envir=Lenv)   # invoke the evaluator
 ```
 
-`quote` captures a parsed R command before the evaluator gets to it.  Once
-captured the command no longer self-evaluates at the prompt:
+`quote` captures a parsed R expression before the evaluator gets to it.  Once
+captured the expression no longer self-evaluates at the prompt:
 
 ```{r}
-cmd    # we get command back, not result of evaluating it
+expr    # we get expression back, not result of evaluating it
 ```
 
 It may not seem like much, but it's a big deal R allows this: unevaluated R
-commands can be directly manipulated by R itself.  For now all we care about is
+expressions can be directly manipulated by R itself.  For now all we care about is
 that the evaluation is on hold, but you can do some interesting things with this
 as in the [RPN in R post][28].
 
@@ -352,7 +354,7 @@ parent.env(Lenv)   # parent.env == enclosure
 an Evaluation Environment:
 
 ```{r}
-eval(cmd, envir=Lenv)
+eval(expr, envir=Lenv)
 ```
 
 This is what the Environment Chain looks like right before substituting the
@@ -374,7 +376,7 @@ Now look at what happens if we add another environment to the chain with the
 ```{r}
 L2 <- list(rev=toupper)
 L2env <- list2env(L2, parent=Lenv)
-eval(cmd, envir=L2env)
+eval(expr, envir=L2env)
 ```
 
 We can change the meaning of both functions and values by modifying the
@@ -388,7 +390,7 @@ added a `rev` mapping to `Lenv`.
 />
 
 Manipulating the Environment Chain is not the only way to perform NSE.  Anything
-that changes the meaning of a command after it is issued relative to what would
+that changes the meaning of an expression after it is issued relative to what would
 have happened in standard evaluation is NSE.
 
 # NSE In Functions
@@ -402,9 +404,9 @@ with(L, rev(w))
 To our hack-at-the-prompt version:
 
 ```{r}
-cmd  <- quote(rev(w))
+expr  <- quote(rev(w))
 Lenv <- list2env(L)
-eval(cmd, envir=Lenv)
+eval(expr, envir=Lenv)
 ```
 
 It would be nice to implement `with` ourselves, but if we try to use `quote`
@@ -412,34 +414,34 @@ inside a function to get what someone types in as the argument to that function
 we are disappointed:
 
 ```{r}
-with2 <- function(dat, cmd) {
-  quote(cmd)                 # capture command
+with2 <- function(data, expr) {
+  quote(expr)                 # capture expression
   # rest of function will go here later
 }
 with2(L, rev(w))
 ```
 
-What we want to quote is the command supplied as the argument `cmd`, not the
-name `cmd`.  Thankfully R in its infinite flexibility provides a mechanism for
+What we want to quote is the expression supplied as the argument `expr`, not the
+name `expr`.  Thankfully R in its infinite flexibility provides a mechanism for
 doing this with `substitute`:
 
 ```{r}
-with2 <- function(dat, cmd) {
-  substitute(cmd)
+with2 <- function(data, expr) {
+  substitute(expr)
   # rest of function will go here later
 }
 with2(L, rev(w))
 ```
 
 When called within a function on a function parameter, `substitute` acts like
-`quote` except it substitutes the unevaluated command passed as the argument.
+`quote` except it substitutes the unevaluated expression passed as the argument.
 This allows us to implement `with`:
 
 ```{r}
-with2 <- function(dat, cmd) {
-  cmd2 <- substitute(cmd)
-  denv <- list2env(dat, parent=parent.frame())
-  eval(cmd2, envir=denv)
+with2 <- function(data, expr) {
+  expr2 <- substitute(expr)
+  denv <- list2env(data, parent=parent.frame())
+  eval(expr2, envir=denv)
 }
 with2(L, rev(w))
 ```
@@ -448,9 +450,9 @@ We can do a bit better because `eval` supports adding a list-like element to the
 Environment Chain out of the box, saving us the `list2env` step:
 
 ```{r}
-with2 <- function(L, cmd) {
-  cmd2 <- substitute(cmd)
-  eval(cmd2, L, enclos=parent.frame())
+with2 <- function(data, expr) {
+  expr2 <- substitute(expr)
+  eval(expr2, data, enclos=parent.frame())
 }
 with2(L, rev(w))
 ```
@@ -467,7 +469,7 @@ So, what's the `parent.frame()` business?
 `substitute` allows us to implement functions that perform NSE on their
 arguments.  This is a powerful feature, but with it comes a new class of
 potential errors.  Recall that functions create their own Evaluation
-Environments, but the commands that we capture and wish to re-evaluate refer to
+Environments, but the expressions that we capture and wish to re-evaluate refer to
 names in the [Calling Environment](#calling).  For things to work correctly we
 must hand craft an Environment Chain that connects to the Calling
 Environment at the correct point.
@@ -477,9 +479,9 @@ Environment.  `with2` uses `eval` to create an Environment Chain that starts
 with our list `L` and with the Calling Environment as the Enclosure:
 
 ```{r}
-with2 <- function(L, cmd) {
-  cmd2 <- substitute(cmd)
-  eval(cmd2, L, enclos=parent.frame()) #<< Calling Env as Enclosure
+with2 <- function(data, expr) {
+  expr2 <- substitute(expr)
+  eval(expr2, data, enclos=parent.frame()) #<< Calling Env as Enclosure
 }
 with2(L, rev(w))
 ```
@@ -487,9 +489,9 @@ with2(L, rev(w))
 Compare to what happens when we don't do this:
 
 ```{r}
-with2_bad <- function(L, cmd) {
-  cmd2 <- substitute(cmd)
-  eval(cmd2, L)
+with2_bad <- function(data, expr) {
+  expr2 <- substitute(expr)
+  eval(expr2, data)
 }
 with2_bad(L, rev(w))
 ```
@@ -497,29 +499,29 @@ with2_bad(L, rev(w))
 No problem right?  Except:
 
 ```{r}
-cmd2 <- c("pathological", "I", "am")
-with2_bad(L, rev(cmd2))
+expr2 <- c("pathological", "I", "am")
+with2_bad(L, rev(expr2))
 ```
 
 Wow, what the heck is that?  Instead of reversing `c("pathological", "I", "am")`
-we reversed the command `rev(cmd2)`.  Here is what `with2_bad` effectively did:
+we reversed the expression `rev(expr2)`.  Here is what `with2_bad` effectively did:
 
 ```{r}
-cmd2 <- quote(rev(cmd2))
-cmd2
-rev(cmd2)
+expr2 <- quote(rev(expr2))
+expr2
+rev(expr2)
 ```
 
-It's mind boggling enough that we can reverse an unevaluated R command,
+It's mind boggling enough that we can reverse an unevaluated R expression,
 but imagine you're the user and everything was perfectly fine until the fateful
-day you used the `cmd2` name in your command.  On the "Principle of Least
+day you used the `expr2` name in your expression.  On the "Principle of Least
 Surprise" scale this outcome is right there with finding a rat in your toilet
 bowl.
 
-So what happened?  We had a name clash with the `cmd2` symbol that exists both
+So what happened?  We had a name clash with the `expr2` symbol that exists both
 in `with2_bad`'s **Evaluation** Environment and in the **Calling** Environment.
 This is what the Environment Chain looks like when `eval` begins the
-lookup-and-substitute process on `rev(cmd2)` (`<w2_b>` is `with2_bad`'s
+lookup-and-substitute process on `rev(expr2)` (`<w2_b>` is `with2_bad`'s
 Evaluation Environment):
 
 <img
@@ -527,7 +529,7 @@ Evaluation Environment):
   alt='NSE in Evaluation Environment instead of Calling Env is bad.'
 />
 
-When evaluating with `with2_bad` as the enclosure `cmd2` resolves to the object
+When evaluating with `with2_bad` as the enclosure `expr2` resolves to the object
 in `with2_bad`, instead to the one in the global environment.
 
 As we saw earlier `with2` bypasses its Evaluation Environment when calling
@@ -541,8 +543,8 @@ As we saw earlier `with2` bypasses its Evaluation Environment when calling
 So it works as expected:
 
 ```{r}
-cmd2 <- c("pathological", "I", "am")
-with2(L, rev(cmd2))
+expr2 <- c("pathological", "I", "am")
+with2(L, rev(expr2))
 ```
 
 There are other ways things go wrong.  Suppose we wanted to use `with2_bad`
@@ -589,40 +591,40 @@ The chain is now as we want it to be:
 
 # Advanced NSE
 
-Since we can capture user commands, we can also edit them before we run
+Since we can capture user expressions, we can also edit them before we run
 them.  For example, suppose we want to write a function to sum things in the
 context of a data frame, by group.  It could look something like:
 
 ```{r}
-mean_call <- function(cmd) {
+mean_call <- function(expr) {
   call <- quote(mean(NULL))
-  call[[2L]] <- cmd
+  call[[2L]] <- expr
   call
 }
-mean_by_grp <- function(data, cmd, grp) {
+mean_by_grp <- function(data, expr, grp) {
   call_env <- parent.frame()
   grp <- eval(substitute(grp), data, enclos=call_env)
   data <- split(data, grp)
-  cmd <- mean_call(substitute(cmd))
+  expr <- mean_call(substitute(expr))
   res <- setNames(numeric(length(data)), names(data))
 
   for(i in seq_along(data)) {
-    res[[i]] <- eval(cmd, data[[i]], enclos=call_env)
+    res[[i]] <- eval(expr, data[[i]], enclos=call_env)
   }
   res
 }
 ```
 
-`mean_call` takes an unevaluated R command of the type produced by `quote` or
+`mean_call` takes an unevaluated R expression of the type produced by `quote` or
 `substitute` and wraps it in `mean`:
 
 ```{r}
-cmd <- quote(Sepal.Length / Sepal.Width)
-cmd
-mean_call(cmd)
+expr <- quote(Sepal.Length / Sepal.Width)
+expr
+mean_call(expr)
 ```
 
-`mean_by_grp` splits the data into groups and then evaluates the above command
+`mean_by_grp` splits the data into groups and then evaluates the above expression
 in the context of those groups:
 
 ```{r}
@@ -644,7 +646,7 @@ their names without interference from user objects.  But this doesn't work here
 because we explicitly bypass the normal Evaluation Environment and request
 evaluation in the Calling Environment.
 
-Let's examine the modified command `mean_call` produces:
+Let's examine the modified expression `mean_call` produces:
 
 <pre><code><span style='background-color: #aaffaa;'>mean</span>(<span
 style='background-color: #aaaaff;'>Sepal.Length/Sepal.Width</span>)</code></pre>
@@ -653,8 +655,8 @@ The problem is that we need <code style='background-color:
 #aaffaa;'>mean</code> to be resolved according to our function's Evaluation
 Environment, but <code style='background-color:
 #aaaaff;'>Sepal.Length/Sepal.Width</code> to be resolved according to the
-Calling Environment.  We can only evaluate a command in a single environment, so
-we're stuck.
+Calling Environment.  We can only evaluate an expression in a single
+environment, so we're stuck.
 
 We could use `base::mean` instead of `mean`, but this would still fail if
 someone redefined `::` in the Calling Environment (and yes, they can).
@@ -663,10 +665,10 @@ of the function:
 
 <div id=call-assembly>
 ```{r}
-mean_call <- function(cmd) {
+mean_call <- function(expr) {
   call <- quote(NULL(NULL))  # call template
   call[[1L]] <- mean         # actual function object
-  call[[2L]] <- cmd
+  call[[2L]] <- expr
   call
 }
 ```
@@ -689,14 +691,14 @@ version of `mean` defined in the global environment does not interfere.  We get:
 
 ```{r echo=FALSE}
 rm(mean)
-cmd <- quote(Sepal.Length/Sepal.Width)
+expr <- quote(Sepal.Length/Sepal.Width)
 ```
 ```{r}
-mean_call(cmd)
+mean_call(expr)
 ```
 
 This looks ugly, but by pre-resolving `mean` to the correct function we can
-safely `eval` the command in a different Environment Chain:
+safely `eval` the expression in a different Environment Chain:
 
 <img
   src='/post/2020-02-13-on-nse_files/images/flip-1/img-023.png'
@@ -769,10 +771,18 @@ possible.
 * The Original Ihaka and Gentleman [R Paper][30].
 * [Standard Nonstandard Evaluation Rules][27] by Thomas Lumley.
 * `?environment` in the R documentation.
+* [Advanced R 1st Edition - Environments][] by Hadley Wickham.
 
 ## Updates
 
 * 2020-05-06: `png` acknowledgment.
+* 2020-07-15:
+    * Changed "command" to "expression" to be more consistent with terminology
+      used in R's documentation (h/t Lionel Henry).  A related change was to
+      make the example function signatures more consistent with those of base.
+    * Added a link to "Advanced R, 1st Edition" to the references (h/t Lionel
+      Henry).
+    * Removed superflous footnote (h/t Michael Chirico).
 
 ## Session Info
 
@@ -847,10 +857,18 @@ new BgFlipBook({
 [55]: https://github.com/mdsumner
 [56]: https://github.com/tylermorganwall/
 
+[57]: http://adv-r.had.co.nz/Environments.html
+
 [260]: /about/#acknowledgments
 
-
-[^simple-model]: <span id='simple-model'>Items we gloss over include but are not
+[^expr-vs-cmd]: Originally I used "command" throughout the post to avoid
+  ambiguity with R's `expression` object, which roughly could be described as a
+  list of R commands.  The early drafts of this post switched between
+  "expression" and "command", but in the end I settled on "command".  Lionel
+  Henry convinced me to switch to "expression" as that is what the R
+  documentation uses despite the ambiguity.
+[^simple-model]: <span id='simple-model'>Items
+  we gloss over include but are not
   limited to:<ul>
   <li>Function parameters are [evaluated lazily][20] so they are only fetched
   when they are referenced within a function body as something other than an
@@ -873,16 +891,16 @@ new BgFlipBook({
   environment which itself does not have an enclosure.
   <li>And more.</ul></span>
 [^parens]: The parentheses in `rev(x)` are not considered "names".  They are
-  syntax tokens that are used to parse the command.  Opening parentheses that
+  syntax tokens that are used to parse the expression.  Opening parentheses that
   are not part of the syntax of a function call are names, as in `(1 + 2) * 3`.
 [^promises-actually]: <span id=promises-actually>In reality instead of the
-  values of the arguments, R stores the command passed as the argument along
+  values of the arguments, R stores the expression passed as the argument along
   with the environment to evaluate it in.  If the argument is used by the
-  function then the command is evaluated in its environment to produce the
+  function then the expression is evaluated in its environment to produce the
   value.  This is typically the same as if R had used the values directly, but
   there are some circumstances where behavior is changed due to this feature.
-  Values that are stored as the command used to generate them along with the
-  environment to evaluate that command are known as promises</span>
+  Values that are stored as the expression used to generate them along with the
+  environment to evaluate that expression are known as promises</span>
 [^pathological-pkg]: Well, it will unless you have loaded a pathological package
   that also defines a `rev` function, or if you yourself define a `rev` function
   in the global environment.
@@ -898,7 +916,7 @@ new BgFlipBook({
   used by the R documentation.
 [^fun-components]: Functions in R that are defined with the `function` keyword
   (i.e. `fun <- function(<formals>) {<body>}` have three components: formals
-  (a.k.a.  parameter list), body (a.k.a. the set of commands that the function
+  (a.k.a.  parameter list), body (a.k.a. the set of expressions that the function
   executes), and the Function Environment, which I prefer to call the [Function
   Enclosure](#fun-env-term).  See full details in the [R Language
   Definition][31].
@@ -912,13 +930,6 @@ new BgFlipBook({
   is no more R code until they return, except if for some reason the statically
   compiled routines themselves invoke the internal version of `eval` or similar
   to evaluate R code.
-[^closures]: Functions created with `function` in R are called "closures"
-  because they carry a link to an environment to use as an Enclosure to the
-  Evaluation Environment that will be used to evaluate the commands in the body
-  of the function.  There is also another class of functions call "primitives".
-  Primitives are entry points into statically compiled machine code.  These
-  functions don't contain any R commands, and as such do not require an
-  Enclosure to lookup names.
 [^value-copy]: R only copies objects when necessary to maintain the
   "pass-by-value" illusion.  See ["The Secret Lives Of R Objects"][31] for more
   details.
@@ -929,7 +940,7 @@ new BgFlipBook({
   relationship of environments in R is muddled.  In early days the term "parent"
   was used for enclosures, which is why `parent.env` returns the enclosure of an
   environment.  However, there is also the `parent.frame`, which is the
-  Calling Environment, i.e. the evaluation environment of the command that that
+  Calling Environment, i.e. the evaluation environment of the expression that that
   triggered the current evaluation.  Perhaps S's lack of lexical scope
   contributed to this infelicity.  Another oddity is that `environment(fun)`
   is used to retrieve the environment to use as an Enclosure, i.e. _similar_ in
