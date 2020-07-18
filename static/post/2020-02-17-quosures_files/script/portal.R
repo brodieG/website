@@ -75,49 +75,6 @@ outer <- c(3, 6, 7, 10, 13, 14, 3)
 hex <- hex[c(outer, 17:nrow(hex)),]
 attr(hex, 'starts') <- 8
 
-# hex3 <- hex + .5
-# hex3[8,] <- NA
-# polypath(hex3, rule='evenodd', col='green')
-
-# All a bit confusing because we do the extrusion in x-z plane, but then rotate.
-# Should have done everything directly in x-y plane...
-#
-# Originally this was mean to fit exactly so the bag would be hidden by the hex
-# logo rim, but now we let it spread wider since we added a wall.
-
-h2 <- hex[1:7,]
-h2.b <- back_hex(h2, obs * .3, -int[3,4] * 1.1)
-bag.mat <- diffuse(color='#010102')
-bag.mat <- diffuse(color='black')
-bag <- comp_inside(h2, h2.b, bag.mat, light_index=6)
-
-# Let's add a wall with a hex hole in it to look through.
-
-portal <- rbind(
-  matrix(c(-5,5, 5,5, 5,-5, -5,-5, -5,5), ncol=2, byrow=TRUE),
-  as.matrix(unname(h2)),
-  NULL
-)
-portal.rr1 <- extruded_polygon(
-  portal, holes=c(6), material=diffuse('white'), top=0.0001, bottom=0.0001,
-  angle=c(180,0,0)
-)
-portal.rr2 <- extruded_polygon(
-  portal, holes=c(6), material=diffuse('white'), top=0, flip_vertical=TRUE
-)
-objs <- dplyr::bind_rows(
-  lapply(
-    letters,
-    extrude_path, material=gold_mat, top=.025
-  ),
-  extrude_path(hex, material=diffuse('gray5'), top=.025),
-  portal.rr1,
-  # portal.rr2,
-  bag,
-  NULL
-)
-n <- 10
-
 # brick.start/depth should really be negative
 
 brick.start <- 0.0
@@ -302,6 +259,50 @@ pv.all.obj <- dplyr::bind_rows(
         order_rotation=c(3, 1, 2),
         phi_min=20, phi_max=180
 ) } ) )
+# - Portal ---------------------------------------------------------------------
+
+# hex3 <- hex + .5
+# hex3[8,] <- NA
+# polypath(hex3, rule='evenodd', col='green')
+
+# All a bit confusing because we do the extrusion in x-z plane, but then rotate.
+# Should have done everything directly in x-y plane...
+#
+# Originally this was mean to fit exactly so the bag would be hidden by the hex
+# logo rim, but now we let it spread wider since we added a wall.
+
+h2 <- hex[1:7,]
+h2.b <- back_hex(h2, obs * .3, -int[3,4] * 1.1)
+bag.mat <- diffuse(color='#010102')
+bag.mat <- diffuse(color='black')
+bag <- comp_inside(h2, h2.b, bag.mat, light_index=6)
+
+# Let's add a wall with a hex hole in it to look through.
+
+portal <- rbind(
+  matrix(c(-5,5, 5,5, 5,-5, -5,-5, -5,5), ncol=2, byrow=TRUE),
+  as.matrix(unname(h2)),
+  NULL
+)
+portal.rr1 <- extruded_polygon(
+  portal, holes=c(6), material=diffuse('white'), top=0.0001, bottom=0.0001,
+  angle=c(180,0,0)
+)
+portal.rr2 <- extruded_polygon(
+  portal, holes=c(6), material=diffuse('white'), top=0, flip_vertical=TRUE
+)
+objs <- dplyr::bind_rows(
+  lapply(
+    letters,
+    extrude_path, material=gold_mat, top=.025
+  ),
+  extrude_path(hex, material=diffuse('gray5'), top=.025),
+  portal.rr1,
+  # portal.rr2,
+  bag,
+  NULL
+)
+n <- 10
 
 # - Process stars --------------------------------------------------------------
 
@@ -322,8 +323,8 @@ star.widths <- vapply(
   stars, function(star) diff(range(star[['y']])), 0
 )
 buffer <- 1.1
-near <- obs[2] + brick.depth * buffer
-near <- .5
+# near <- obs[2] + brick.depth * buffer
+near <- 3
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
 star.x <- vapply(stars, function(x) mean(range(x[['x']])), 1)
 star.y <- -vapply(stars, function(x) mean(range(x[['y']])), 1)
@@ -391,19 +392,22 @@ x0 <- rle(sign(int.dots.3d[1,]))[['lengths']][1]
 x01m <- abs(int.dots.3d[1,x0] / diff(int.dots.3d[1,x0 + 0:1]))
 dot0 <- int.dots.3d[,x0] + x01m * (int.dots.3d[,x0+1] - int.dots.3d[,x0])
 
-# Need smooth curvature in y from starting obs to the zero point.
+# Need smooth curvature in y and x from starting obs to the x == 0 zero point.
 
+obs2 <- .75 * obs[2]  # the first step will be straight from obs to obs2
 slope0 <- 0
-slope1 <- diff(int.dots.3d[2,x0+0:1])
-sfun <- splinefunH(c(0, 1 - dot0[3]), c(0, dot0[2]), c(slope0, slope1))
-z2 <- seq(0, 1 - dot0[3], length.out=10)
-ys <- sfun(z2)
-zs <- 1 - z2
+slopey1 <- diff(int.dots.3d[2,x0+0:1])
+slopex1 <- diff(int.dots.3d[1,x0+0:1])
+sfuny <- splinefunH(c(0, obs2 - dot0[3]), c(0, dot0[2]), c(slope0, slopey1))
+sfunx <- splinefunH(c(0, obs2 - dot0[3]), c(0, dot0[1]), c(slope0, slopex1))
+z2 <- seq(0, obs2 - dot0[3], length.out=10)
+ys <- sfuny(z2)
+xs <- sfunx(z2)
+zs <- obs2 - z2
 
-path.all <- cbind(
-  rbind(0, ys, zs), int.dots.3d[,-(seq_len(x0))]
-)
-path.int <- interp_along(path.all, c(0, .005, .01, .015, .02, .05))
+path.start <- cbind(obs[c(1,3,2)], rbind(xs, ys, zs))
+path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
+path.int <- interp_along(path.all, seq(0, 1, length.out=30)^3 * .03)
 
 for(i in seq(1, ncol(path.int)-1, by=1)) {
   a <- path.int[, i]

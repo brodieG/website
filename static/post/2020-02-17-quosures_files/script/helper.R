@@ -28,6 +28,6 @@ interp_along <- function(points, targets) {
   low <- dsc[interval]
   high <- dsc[interval + 1]
   interp <- (targets - low) / (high - low)
-  points[,interval] + ds[interval] * interp
+  points[,interval] + ds[,interval] * rep(interp, each=3)
 }
 
