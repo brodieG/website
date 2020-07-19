@@ -69,6 +69,8 @@ extrude_path <- function(x, ...) {
 }
 # - Compute Path ---------------------------------------------------------------
 
+message("path")
+
 # Hex is a mess, we need to clean it up
 
 hex <- frame[[1L]]
@@ -258,6 +260,8 @@ pv.all.obj <- dplyr::bind_rows(
 ) } ) )
 # - Portal ---------------------------------------------------------------------
 
+message("portal")
+
 # hex3 <- hex + .5
 # hex3[8,] <- NA
 # polypath(hex3, rule='evenodd', col='green')
@@ -305,6 +309,8 @@ n <- 10
 
 # compute star area
 
+message("stars - basic")
+
 star.a <- vapply(
   stars, function(x) {
     i <- seq_len(nrow(x) - 1L)
@@ -321,7 +327,7 @@ star.widths <- vapply(
 )
 buffer <- 1.1
 # near <- obs[2] + brick.depth * buffer
-near <- 1
+near <- 3
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
 star.x <- vapply(stars, function(x) mean(range(x[['x']])), 1)
 star.y <- -vapply(stars, function(x) mean(range(x[['y']])), 1)
@@ -342,20 +348,21 @@ coords <- decido::earcut(star.dummy)
 tc <- split(cbind(star.dummy[coords,], z=0), rep(1:4, each=3))
 tc <- lapply(tc, function(x) as.matrix(x))
 
-make_star <- function(x, y, z, tc) {
+make_star <- function(x, y, z, tc, color='#FFFFDD') {
   off <- c(x, y, z)
   lapply(
     1:4,
     function(i) {
       triangle(
         v1=tc[[i]][1,] + off, v2=tc[[i]][2,] + off, v3=tc[[i]][3,] + off,
-        material=diffuse('#FFFFDD')
+        material=diffuse(color)
 ) } ) }
 # make original logo stars
 
+stars.xyz <- rbind(star.x * star.scale, star.y * star.scale + .5, star.z)
 stars.orig <- mapply(
-  make_star, star.x * star.scale, star.y * star.scale + .5, star.z,
-  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
+  make_star, stars.xyz[1,], stars.xyz[2,], stars.xyz[3,],
+  MoreArgs=list(tc=tc, color='red'), SIMPLIFY=FALSE
 )
 # Want to add stars along path, maybe once we exit the original frame, so need
 # to find where the road hits the frame.  At that point we'll add stars just at
@@ -368,27 +375,6 @@ stars.orig <- mapply(
 oof <- match(
   TRUE, int.dots.3d[1,] / (obs[2] - int.dots.3d[3,]) * obs[2] < min(hex[,1])
 )
-stars.extra.n <- 200
-
-# Distribute stars in a unit square subject to a spacing constraint
-
-set.seed(124)
-se.x <- se.y <- numeric(stars.extra.n)
-xseed <- runif(stars.extra.n * 20) - .5
-yseed <- runif(stars.extra.n * 20) - .5
-dmin <- .04
-j <- 1
-dmin2 <- dmin^2
-
-for(i in seq_len(stars.extra.n)) {
-  while(any((se.x - xseed[j]) ^ 2 + (se.y - yseed[j]) ^ 2 < dmin2))
-    j <- j + 1
-  se.x[i] <- xseed[j]
-  se.y[i] <- yseed[j]
-  j <- j + 1
-}
-plot(se.x, se.y)
-
 # Want the stars filling the FOV from an observer at some point on the road,
 # between x0 and oob (edge of frame seen from original pov), so closest point of
 # unit square is computed based on fov.  We'll compute along vector to terminus
@@ -402,28 +388,71 @@ pov <- int.dots.3d[,
     seq_len(ncol(int.dots.3d)) > x0
   )
 ]
-term <- int.dots.3d[, ncol(int.dots.3d)]
-pov.dist <- sqrt(sum((term - pov)^2))
-lv <- (term - pov) / pov.dist
-
-se.z.off <- -.5 / atan((fov/2)/180 * pi)
-se.z <- -runif(stars.extra.n) * (pov.dist - se.z.off) + se.z.off
-se.x <- se.x * se.z / se.z.off
-se.y <- se.y * se.z / se.z.off
-
-# Rotate and offset onto path, We want
-# to figure out what rotation will turn a vector straight down Z into our target
-# vector so we can then apply that to our stars.
+# We're going to "interlock" cones of stars, overlapping a little bit.  We also
+# need a wreath around the entrance so it we don't see the big gap when we
+# start.  It could be a cone with the hex cut-out
 #
-# Logic was originally set-up to allow rotating each star by its own vector, but
-# now we're rotating them all with one vector.
+# What's positive and negative is a bit of a mess.
+#
+# @param obs how far observer is from beginning of stars (should be positive)
 
-R <- 2 * (a + b) %*% t(a + b) / c(t(a + b) %*% (a + b)) - diag(3)
-s.e.c <- t(cbind(se.x, se.y, se.z) %*% R) + pov
+message("stars - extra")
 
+star_cone <- function(vec, offset, depth, n, obs, mult=1) {
+  se.x <- se.y <- numeric(n)
+  # * 20 may not be enough..., but also prevents infinite loop
+  xseed <- (runif(n * 20) - .5) * mult
+  yseed <- (runif(n * 20) - .5) * mult
+  dmin <- .04
+  j <- 1
+  dmin2 <- dmin^2
+
+  for(i in seq_len(n)) {
+    while(any((se.x - xseed[j]) ^ 2 + (se.y - yseed[j]) ^ 2 < dmin2))
+      j <- j + 1
+    se.x[i] <- xseed[j]
+    se.y[i] <- yseed[j]
+    j <- j + 1
+  }
+  # add random depth and scale by depth.
+
+  # se.z.off <- -(mult/2) / atan((fov/2)/180 * pi)
+  se.z.off <- -near * mult
+  se.z <- -runif(n) * (depth - se.z.off)
+  se.x2 <- se.x * se.z / se.z.off
+  se.y2 <- se.y * se.z / se.z.off
+
+  # rotate onto the provided vector and offset
+  # https://math.stackexchange.com/a/2672702 thanks Nico Schlomer
+
+  a <- c(0, 0, -1)
+  b <- c(vec)
+  R <- 2 * (a + b) %*% t(a + b) / c(t(a + b) %*% (a + b)) - diag(3)
+  t(cbind(se.x2, se.y2, se.z) %*% R) + offset
+}
+ncone <- 5
+cone.off <- (1 / ncone) / 4
+se.dots <- int.dots.3d[,(x0 + 1):ncol(int.dots.3d)]
+se.int <- seq(0, 1 - cone.off, length.out=ncone)
+se0 <- interp_along(se.dots, se.int)
+se1 <- interp_along(se.dots, se.int + cone.off)
+
+cones <- lapply(
+  seq_len(ncone),
+  function(i)
+    star_cone(se1[,i] - se0[,i], se0[,i], depth=10, n=50, obs=near, mult=1)
+)
+s.e.c <- do.call(cbind, cones)
+plot3d(
+  t(cbind(do.call(cbind, cones), int.dots.3d, stars.xyz)),
+  col=c(
+    rep(palette.colors(5, "R4"), each=50), rep('black', ncol(int.dots.3d)),
+    rep('red', ncol(stars.xyz))
+  )
+)
 stars.extra.obj <- mapply(
   make_star, s.e.c[1,], s.e.c[2,], s.e.c[3,],
-  MoreArgs=list(tc=lapply(tc, `*`, 10)), SIMPLIFY=FALSE
+  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
 )
 # - Castle ---------------------------------------------------------------------
 
@@ -480,7 +509,7 @@ path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 # 2 seconds in transit
 # 2 seconds into castle and fade to white
 
-frames <- 15
+frames <- 12
 coast <- 2/6
 frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
 frames.coast <- frames - 2 * frames.start
