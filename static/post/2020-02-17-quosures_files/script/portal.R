@@ -56,6 +56,7 @@ depth <- 20
 # floor
 
 obs <- c(0, 1, 0)
+fov <- 60
 
 gold_mat <- microfacet(
   roughness=0.1, eta=c(0.216,0.42833,1.3184), kappa=c(3.239,2.4599,1.8661)
@@ -367,56 +368,61 @@ stars.orig <- mapply(
 oof <- match(
   TRUE, int.dots.3d[1,] / (obs[2] - int.dots.3d[3,]) * obs[2] < min(hex[,1])
 )
-# Add a star evenly along the path.
-
 stars.extra.n <- 200
-stars.extra <- interp_along(
-  int.dots.3d[,oof:ncol(int.dots.3d)], seq(0, 1, length.out=stars.extra.n + 1)
-)
-# For each star, compute the vector perpendicular to the plane we want our star
-# to be in.
 
-stars.vec <- stars.extra[, -1L] - stars.extra[, -ncol(stars.extra)]
-stars.vec <- stars.vec / sqrt(colSums(stars.vec^2))
+# Distribute stars in a unit square subject to a spacing constraint
 
-star.angle <- seq(0, 16 * pi, length.out=stars.extra.n)
-stars.off <- rbind(
-  cos(star.angle),
-  sin(star.angle),
-  0
-) * 1
-# For rotation, we'll need a state for every star that includes rotation start
-# lag (how many frames in to start rotating), rotation speed, 
-# https://math.stackexchange.com/a/476311
+set.seed(124)
+se.x <- se.y <- numeric(stars.extra.n)
+xseed <- runif(stars.extra.n * 20) - .5
+yseed <- runif(stars.extra.n * 20) - .5
+dmin <- .04
+j <- 1
+dmin2 <- dmin^2
 
-a <- c(0, 0, -1)
-b <- stars.vec
-v <- vapply(
-  seq_len(ncol(stars.vec)),
-  function(i) xprod(a, stars.vec[,i]),
-  numeric(3)
-)
-v0 <- numeric(ncol(v))
-vx <- aperm(
-  array(
-    c(
-         v0,  -v[3,],  v[2,],
-       v[3,],     v0, -v[1,],
-      -v[2,],  v[1,],     v0
-    ),
-    c(ncol(v), 3, 3)
-  ),
-  c(2,3,1)
-)
-c <- colSums(a * b)
-R <- array(diag(3), c(3, 3, ncol(v))) + vx + vx^2 / (rep(c, each=9))
+for(i in seq_len(stars.extra.n)) {
+  while(any((se.x - xseed[j]) ^ 2 + (se.y - yseed[j]) ^ 2 < dmin2))
+    j <- j + 1
+  se.x[i] <- xseed[j]
+  se.y[i] <- yseed[j]
+  j <- j + 1
+}
+plot(se.x, se.y)
 
-stars.off.r <- vapply(
-  seq_len(ncol(v)), function(i) stars.off[,i] %*% R[,,i], numeric(3)
-)
-s.e.c <- stars.off.r + stars.extra[, -1]
+# Want the stars filling the FOV from an observer at some point on the road,
+# between x0 and oob (edge of frame seen from original pov), so closest point of
+# unit square is computed based on fov.  We'll compute along vector to terminus
+
+x0 <- sum(rle(sign(int.dots.3d[1,]))[['lengths']][1:2])
+pov.x <- min(hex[,1]) / 2
+pov <- int.dots.3d[,
+  match(
+    TRUE,
+    int.dots.3d[1,] * obs[2] / (obs[2] - int.dots.3d[3,]) < pov.x &
+    seq_len(ncol(int.dots.3d)) > x0
+  )
+]
+term <- int.dots.3d[, ncol(int.dots.3d)]
+pov.dist <- sqrt(sum((term - pov)^2))
+lv <- (term - pov) / pov.dist
+
+se.z.off <- -.5 / atan((fov/2)/180 * pi)
+se.z <- -runif(stars.extra.n) * (pov.dist - se.z.off) + se.z.off
+se.x <- se.x * se.z / se.z.off
+se.y <- se.y * se.z / se.z.off
+
+# Rotate and offset onto path, We want
+# to figure out what rotation will turn a vector straight down Z into our target
+# vector so we can then apply that to our stars.
+#
+# Logic was originally set-up to allow rotating each star by its own vector, but
+# now we're rotating them all with one vector.
+
+R <- 2 * (a + b) %*% t(a + b) / c(t(a + b) %*% (a + b)) - diag(3)
+s.e.c <- t(cbind(se.x, se.y, se.z) %*% R) + pov
+
 stars.extra.obj <- mapply(
-  make_star, s.e.c[1,], s.e.c[2,] + .5, s.e.c[3,],
+  make_star, s.e.c[1,], s.e.c[2,], s.e.c[3,],
   MoreArgs=list(tc=lapply(tc, `*`, 10)), SIMPLIFY=FALSE
 )
 # - Castle ---------------------------------------------------------------------
@@ -448,7 +454,6 @@ bubble <- sphere(radius=rad, material=diffuse(), flipped=TRUE)
 #
 # Find first second zero point after the road starts curving to the left.
 
-x0 <- sum(rle(sign(int.dots.3d[1,]))[['lengths']][1:2])
 x01m <- abs(int.dots.3d[1,x0] / diff(int.dots.3d[1,x0 + 0:1]))
 dot0 <- int.dots.3d[,x0] + x01m * (int.dots.3d[,x0+1] - int.dots.3d[,x0])
 
@@ -475,7 +480,7 @@ path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 # 2 seconds in transit
 # 2 seconds into castle and fade to white
 
-frames <- 30
+frames <- 15
 coast <- 2/6
 frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
 frames.coast <- frames - 2 * frames.start
@@ -495,6 +500,7 @@ l.b <- 8
 x0c <- int.dots.3d[,x0]
 oofc <- int.dots.3d[,oof]
 scene <- dplyr::bind_rows(
+  sphere(x=pov[1], y=pov[2], z=pov[3], material=diffuse('yellow'), radius=.5),
   sphere(x=oofc[1], y=oofc[2], z=oofc[3], material=diffuse('red'), radius=.5),
   sphere(x=x0c[1], y=x0c[2], z=x0c[3], material=diffuse('green'), radius=.5),
   group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
@@ -521,7 +527,7 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     # width=720, height=720, samples=25,
     samples=5,
     clamp_value=5,
-    fov=60,
+    fov=fov,        # this affects computations above
     # fov=20,
     aperture=0
   )
