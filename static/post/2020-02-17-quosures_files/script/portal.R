@@ -121,11 +121,7 @@ la <- obs[c(1,3,2)] + c(0,.5,0)
 lab <- t(as.matrix(transform(brick.path.2, z=0))) - la
 
 # cross prod: p01 x p02
-p01xp02 <- c(
-   (p01[2] * p02[3] - p01[3] * p02[2]),
-  -(p01[1] * p02[3] - p01[3] * p02[1]),
-   (p01[1] * p02[2] - p01[2] * p02[1])
-)
+p01xp02 <- xprod(p01, p02)
 
 # Solve for t; careful, get in trouble when we don't intersect
 # the plane, i.e. if y.rise is too short for brick.depth
@@ -210,23 +206,23 @@ pv.colors <- rgb(
 # pv.all.0[1:2,] <-
 #   (pv.all.0[1:2,] - c(0, .5)) * rep(pv.all.mult, each=2)
 # pv.all.save <- pv.all.0
-# 
+#
 # pv.all.0[1:2,] <- abs(pv.all.0[1:2,])
-# 
+#
 # # oob bounding box
 # hex.oob <- hex * .98
-# 
+#
 # pv.oob <-
 #   pv.all.0[1,] > max(hex.oob[['x']]) | pv.all.0[2,] > max(hex.oob[['y']])
-# 
+#
 # # remaining oob triangle.
 # # p coordinates of points to compute bcs on
 # # v coordinates of corresponding triangles
-# 
+#
 # bary_M <- function(p, v) {
 #   det <- (v[2,2]-v[3,2])*(v[1,1]-v[3,1]) +
 #          (v[3,1]-v[2,1])*(v[1,2]-v[3,2])
-# 
+#
 #   l1 <- (
 #           (v[2,2]-v[3,2]) * (p[,1]-v[3,1]) +
 #           (v[3,1]-v[2,1]) * (p[,2]-v[3,2])
@@ -324,7 +320,7 @@ star.widths <- vapply(
 )
 buffer <- 1.1
 # near <- obs[2] + brick.depth * buffer
-near <- 3
+near <- 1
 star.z <- (obs[2] - (max(star.widths) / star.widths) * near)
 star.x <- vapply(stars, function(x) mean(range(x[['x']])), 1)
 star.y <- -vapply(stars, function(x) mean(range(x[['y']])), 1)
@@ -345,8 +341,8 @@ coords <- decido::earcut(star.dummy)
 tc <- split(cbind(star.dummy[coords,], z=0), rep(1:4, each=3))
 tc <- lapply(tc, function(x) as.matrix(x))
 
-make_star <- function(x, y, z, scale, tc) {
-  off <- c(x * scale, y * scale + .5, z)
+make_star <- function(x, y, z, tc) {
+  off <- c(x, y, z)
   lapply(
     1:4,
     function(i) {
@@ -354,13 +350,88 @@ make_star <- function(x, y, z, scale, tc) {
         v1=tc[[i]][1,] + off, v2=tc[[i]][2,] + off, v3=tc[[i]][3,] + off,
         material=diffuse('#FFFFDD')
 ) } ) }
-stars.fin <- mapply(
-  make_star, star.x, star.y, star.z, star.scale, MoreArgs=list(tc=tc),
-  SIMPLIFY=FALSE
+# make original logo stars
+
+stars.orig <- mapply(
+  make_star, star.x * star.scale, star.y * star.scale + .5, star.z,
+  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
+)
+# Want to add stars along path, maybe once we exit the original frame, so need
+# to find where the road hits the frame.  At that point we'll add stars just at
+# the edge of the FOV, so more or less constant radius from the road in the
+# visible arc.
+
+# All we care about is the x distance normalized for depth, find first out of
+# frame point
+
+oof <- match(
+  TRUE, int.dots.3d[1,] / (obs[2] - int.dots.3d[3,]) * obs[2] < min(hex[,1])
+)
+# Add a star evenly along the path.
+
+stars.extra.n <- 200
+stars.extra <- interp_along(
+  int.dots.3d[,oof:ncol(int.dots.3d)], seq(0, 1, length.out=stars.extra.n + 1)
+)
+# For each star, compute the vector perpendicular to the plane we want our star
+# to be in.
+
+stars.vec <- stars.extra[, -1L] - stars.extra[, -ncol(stars.extra)]
+stars.vec <- stars.vec / sqrt(colSums(stars.vec^2))
+
+star.angle <- seq(0, 16 * pi, length.out=stars.extra.n)
+stars.off <- rbind(
+  cos(star.angle),
+  sin(star.angle),
+  0
+) * 1
+# For rotation, we'll need a state for every star that includes rotation start
+# lag (how many frames in to start rotating), rotation speed, 
+# https://math.stackexchange.com/a/476311
+
+a <- c(0, 0, -1)
+b <- stars.vec
+v <- vapply(
+  seq_len(ncol(stars.vec)),
+  function(i) xprod(a, stars.vec[,i]),
+  numeric(3)
+)
+v0 <- numeric(ncol(v))
+vx <- aperm(
+  array(
+    c(
+         v0,  -v[3,],  v[2,],
+       v[3,],     v0, -v[1,],
+      -v[2,],  v[1,],     v0
+    ),
+    c(ncol(v), 3, 3)
+  ),
+  c(2,3,1)
+)
+c <- colSums(a * b)
+R <- array(diag(3), c(3, 3, ncol(v))) + vx + vx^2 / (rep(c, each=9))
+
+stars.off.r <- vapply(
+  seq_len(ncol(v)), function(i) stars.off[,i] %*% R[,,i], numeric(3)
+)
+s.e.c <- stars.off.r + stars.extra[, -1]
+stars.extra.obj <- mapply(
+  make_star, s.e.c[1,], s.e.c[2,] + .5, s.e.c[3,],
+  MoreArgs=list(tc=lapply(tc, `*`, 10)), SIMPLIFY=FALSE
 )
 # - Castle ---------------------------------------------------------------------
 
 # See castle.R
+
+c.r <- 1
+c.xyz <- int.dots.3d[,ncol(int.dots.3d)]
+c.v <- c.xyz - int.dots.3d[,ncol(int.dots.3d) - 1]
+c.v <- c.v / sqrt(sum(c.v^2))
+c.xyz <- c.xyz + c.v * c.r
+
+castle <- sphere(
+  x=c.xyz[1], y=c.xyz[2], z=c.xyz[3], radius=c.r, material=light(intensity=2)
+)
 
 # - Containers -----------------------------------------------------------------
 
@@ -372,23 +443,12 @@ bubble <- sphere(radius=rad, material=diffuse(), flipped=TRUE)
 
 # - Render! --------------------------------------------------------------------
 
-l.r <- rad / 8
-l.d <- rad * .4
-l.b <- 8
-scene <- dplyr::bind_rows(
-  group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
-  pv.all.obj,
-  bubble,
-  sphere(z=l.d, x=l.d, radius=l.r, material=light(intensity=l.b)),
-  sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
-  unlist(stars.fin, recursive=FALSE),
-)
 # Make a path starting from obs and following the path.  A bit complicated
 # because we have to join smoothly to the point at x == 0 in the path.
 #
-# Find first zero point
+# Find first second zero point after the road starts curving to the left.
 
-x0 <- rle(sign(int.dots.3d[1,]))[['lengths']][1]
+x0 <- sum(rle(sign(int.dots.3d[1,]))[['lengths']][1:2])
 x01m <- abs(int.dots.3d[1,x0] / diff(int.dots.3d[1,x0 + 0:1]))
 dot0 <- int.dots.3d[,x0] + x01m * (int.dots.3d[,x0+1] - int.dots.3d[,x0])
 
@@ -396,8 +456,8 @@ dot0 <- int.dots.3d[,x0] + x01m * (int.dots.3d[,x0+1] - int.dots.3d[,x0])
 
 obs2 <- .75 * obs[2]  # the first step will be straight from obs to obs2
 slope0 <- 0
-slopey1 <- diff(int.dots.3d[2,x0+0:1])
-slopex1 <- diff(int.dots.3d[1,x0+0:1])
+slopey1 <- diff(int.dots.3d[2,x0+0:1])/diff(int.dots.3d[3,x0+1:0])
+slopex1 <- diff(int.dots.3d[1,x0+0:1])/diff(int.dots.3d[3,x0+1:0])
 sfuny <- splinefunH(c(0, obs2 - dot0[3]), c(0, dot0[2]), c(slope0, slopey1))
 sfunx <- splinefunH(c(0, obs2 - dot0[3]), c(0, dot0[1]), c(slope0, slopex1))
 z2 <- seq(0, obs2 - dot0[3], length.out=10)
@@ -407,7 +467,45 @@ zs <- obs2 - z2
 
 path.start <- cbind(obs[c(1,3,2)], rbind(xs, ys, zs))
 path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
-path.int <- interp_along(path.all, seq(0, 1, length.out=30)^3 * .03)
+
+# .5-1 second fade from white
+# .5 second pause
+# 1 second stars spin
+# 2 seconds into portal
+# 2 seconds in transit
+# 2 seconds into castle and fade to white
+
+frames <- 30
+coast <- 2/6
+frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
+frames.coast <- frames - 2 * frames.start
+coast.point <- .05
+frame.points <- c(
+  seq(0, 1, length.out=frames.start)^3 * coast.point,
+  seq(
+    coast.point, 1 - coast.point, length.out=frames.coast + 2
+  )[-c(1L, frames.coast + 2L)],
+  1 - rev(seq(0, 1, length.out=frames.start)^3 * coast.point)
+)
+path.int <- interp_along(path.all, frame.points)
+
+l.r <- rad / 8
+l.d <- rad * .4
+l.b <- 8
+x0c <- int.dots.3d[,x0]
+oofc <- int.dots.3d[,oof]
+scene <- dplyr::bind_rows(
+  sphere(x=oofc[1], y=oofc[2], z=oofc[3], material=diffuse('red'), radius=.5),
+  sphere(x=x0c[1], y=x0c[2], z=x0c[3], material=diffuse('green'), radius=.5),
+  group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
+  pv.all.obj,
+  bubble,
+  sphere(z=l.d, x=l.d, radius=l.r, material=light(intensity=l.b)),
+  sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
+  unlist(stars.orig, recursive=FALSE),
+  unlist(stars.extra.obj, recursive=FALSE),
+  castle
+)
 
 for(i in seq(1, ncol(path.int)-1, by=1)) {
   a <- path.int[, i]
@@ -417,7 +515,7 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
 
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/imgs/img-"),
+    filename=next_file("~/Downloads/rlang/video/img-"),
     lookfrom=lf, lookat=la,
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # width=720, height=720, samples=25,

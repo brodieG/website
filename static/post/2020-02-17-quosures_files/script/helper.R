@@ -30,4 +30,13 @@ interp_along <- function(points, targets) {
   interp <- (targets - low) / (high - low)
   points[,interval] + ds[,interval] * rep(interp, each=3)
 }
+# @param a 3d vector
+# @param b 3d vector
 
+xprod <- function(a, b) {
+  c(
+     (a[2] * b[3] - a[3] * b[2]),
+    -(a[1] * b[3] - a[3] * b[1]),
+     (a[1] * b[2] - a[2] * b[1])
+  )
+}
