@@ -362,7 +362,7 @@ make_star <- function(x, y, z, tc, color='#FFFFDD') {
 stars.xyz <- rbind(star.x * star.scale, star.y * star.scale + .5, star.z)
 stars.orig <- mapply(
   make_star, stars.xyz[1,], stars.xyz[2,], stars.xyz[3,],
-  MoreArgs=list(tc=tc, color='red'), SIMPLIFY=FALSE
+  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
 )
 # Want to add stars along path, maybe once we exit the original frame, so need
 # to find where the road hits the frame.  At that point we'll add stars just at
@@ -398,50 +398,92 @@ pov <- int.dots.3d[,
 
 message("stars - extra")
 
-star_cone <- function(vec, offset, depth, n, obs, mult=1) {
-  se.x <- se.y <- numeric(n)
+# Need to transition to layers
+
+star_cone <- function(
+  points, depth, layers, n, start, obs, mult=1
+) {
+  vetr::vetr(
+    matrix(numeric(), 3) && ncol(.) > 2,
+    NUM.1.POS, INT.1.POS.STR, INT.1.POS.STR, INT.1.POS.STR,
+    NUM.1.POS, NUM.1.POS
+  )
+  # generate random x/y vals
+
+  se.x <- se.y <- se.zi <- numeric(n)
   # * 20 may not be enough..., but also prevents infinite loop
+  zoffs <- seq(0, depth, length.out=layers)
   xseed <- (runif(n * 20) - .5) * mult
   yseed <- (runif(n * 20) - .5) * mult
+  zseedi <- sample(seq_along(zoffs), n * 20, replace=TRUE)
+  zseed <- zoffs[zseedi]
   dmin <- .04
   j <- 1
   dmin2 <- dmin^2
 
   for(i in seq_len(n)) {
-    while(any((se.x - xseed[j]) ^ 2 + (se.y - yseed[j]) ^ 2 < dmin2))
+    while(
+      any(
+        (se.x - xseed[j]) ^ 2 + (se.y - yseed[j]) ^ 2 < dmin2 |
+        (
+          (xseed[j] * (zseed[j] + obs)) ^ 2 +
+          (yseed[j] * (zseed[j] + obs)) ^ 2 < .35
+    ) ) )
       j <- j + 1
     se.x[i] <- xseed[j]
     se.y[i] <- yseed[j]
+    se.zi[i] <- zseedi[j]
     j <- j + 1
   }
-  # add random depth and scale by depth.
+  # figure out where layers will be
 
-  # se.z.off <- -(mult/2) / atan((fov/2)/180 * pi)
-  se.z.off <- -near * mult
-  se.z <- -runif(n) * (depth - se.z.off)
-  se.x2 <- se.x * se.z / se.z.off
-  se.y2 <- se.y * se.z / se.z.off
+  points <- points[,-seq_len(start)]
+  ds <- cumsum(sqrt(colSums((points[,-1] - points[,-ncol(points)])^2)))
+  if(max(ds) < depth) {
+    # not enough points, extend last vector until enough
+    vec.last <- points[, ncol(points)] - points[, ncol(points) - 1]
+    extra <- ceiling((depth - max(ds)) / sqrt(sum(vec.last ^ 2)))
+    points <- rbind(
+      points,
+      matrix(vec.last * rep(seq_len(extra), each=3), 3)
+    )
+  }
+  ds <- cumsum(sqrt(colSums((points[,-1] - points[,-ncol(points)])^2)))
+  ds.d <- match(TRUE, ds >= depth)
 
-  # rotate onto the provided vector and offset
-  # https://math.stackexchange.com/a/2672702 thanks Nico Schlomer
+  p1 <- interp_along(points[, seq_len(ds.d)], seq(.01, 1, length.out=layers))
+  p0 <- interp_along(points[, seq_len(ds.d)], seq(0, .99, length.out=layers))
+  vs <- p1 - p0
+  vs <- vs / sqrt(colSums(vs^2))
 
-  a <- c(0, 0, -1)
-  b <- c(vec)
-  R <- 2 * (a + b) %*% t(a + b) / c(t(a + b) %*% (a + b)) - diag(3)
-  t(cbind(se.x2, se.y2, se.z) %*% R) + offset
+  # Allocate points to layer
+
+  l <- split(seq_len(n), se.zi)
+  coords.l <- lapply(
+    seq_along(l),
+    function(i) {
+      z <- (i - 1) * depth / layers
+      z.off <- obs + z
+      l.c <- cbind(se.x[l[[i]]] * z.off, se.y[l[[i]]] * z.off, 0)
+
+      # rotate onto the provided vector and offset
+      # https://math.stackexchange.com/a/2672702 thanks Nico Schlomer
+
+      a <- c(0, 0, -1)
+      b <- vs[,i]
+      R <- 2 * (a + b) %*% t(a + b) / c(t(a + b) %*% (a + b)) - diag(3)
+      t(l.c %*% R) + p0[,i]
+  } )
+  list(coords=do.call(cbind, coords.l), end=start + ds.d)
 }
 ncone <- 5
-cone.off <- (1 / ncone) / 4
-se.dots <- int.dots.3d[,(x0 + 1):ncol(int.dots.3d)]
-se.int <- seq(0, 1 - cone.off, length.out=ncone)
-se0 <- interp_along(se.dots, se.int)
-se1 <- interp_along(se.dots, se.int + cone.off)
-
-cones <- lapply(
-  seq_len(ncone),
-  function(i)
-    star_cone(se1[,i] - se0[,i], se0[,i], depth=10, n=50, obs=near, mult=1)
-)
+cones <- vector('list', ncone)
+start <- x0 + 1
+for(i in seq_len(ncone)) {
+  tmp <- star_cone(int.dots.3d, depth=10, 5, 50, start, 3)
+  start <- tmp[['end']] + 1
+  cones[[i]] <- tmp[['coords']]
+}
 s.e.c <- do.call(cbind, cones)
 plot3d(
   t(cbind(do.call(cbind, cones), int.dots.3d, stars.xyz)),
@@ -509,7 +551,7 @@ path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 # 2 seconds in transit
 # 2 seconds into castle and fade to white
 
-frames <- 12
+frames <- 30
 coast <- 2/6
 frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
 frames.coast <- frames - 2 * frames.start
@@ -529,9 +571,9 @@ l.b <- 8
 x0c <- int.dots.3d[,x0]
 oofc <- int.dots.3d[,oof]
 scene <- dplyr::bind_rows(
-  sphere(x=pov[1], y=pov[2], z=pov[3], material=diffuse('yellow'), radius=.5),
-  sphere(x=oofc[1], y=oofc[2], z=oofc[3], material=diffuse('red'), radius=.5),
-  sphere(x=x0c[1], y=x0c[2], z=x0c[3], material=diffuse('green'), radius=.5),
+  # sphere(x=pov[1], y=pov[2], z=pov[3], material=diffuse('yellow'), radius=.5),
+  # sphere(x=oofc[1], y=oofc[2], z=oofc[3], material=diffuse('red'), radius=.5),
+  # sphere(x=x0c[1], y=x0c[2], z=x0c[3], material=diffuse('green'), radius=.5),
   group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
   pv.all.obj,
   bubble,
@@ -553,8 +595,7 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     filename=next_file("~/Downloads/rlang/video/img-"),
     lookfrom=lf, lookat=la,
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
-    # width=720, height=720, samples=25,
-    samples=5,
+    width=720, height=720, samples=100,
     clamp_value=5,
     fov=fov,        # this affects computations above
     # fov=20,
