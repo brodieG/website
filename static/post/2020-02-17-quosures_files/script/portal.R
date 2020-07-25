@@ -56,6 +56,7 @@ depth <- 20
 # floor
 
 obs <- c(0, 1, 0)
+obsz <- obs[c(1,3,2)]
 fov <- 60
 
 gold_mat <- microfacet(
@@ -120,11 +121,11 @@ p01 <- p1 - p0
 p02 <- p2 - p0
 
 # lines from observer to plane z=0
-la <- obs[c(1,3,2)] + c(0,.5,0)
+la <- obsz + c(0,.5,0)
 lab <- t(as.matrix(transform(brick.path.2, z=0))) - la
 
 # cross prod: p01 x p02
-p01xp02 <- xprod(p01, p02)
+p01xp02 <- c(xprod(p01, p02))
 
 # Solve for t; careful, get in trouble when we don't intersect
 # the plane, i.e. if y.rise is too short for brick.depth
@@ -348,22 +349,24 @@ coords <- decido::earcut(star.dummy)
 tc <- split(cbind(star.dummy[coords,], z=0), rep(1:4, each=3))
 tc <- lapply(tc, function(x) as.matrix(x))
 
-make_star <- function(x, y, z, tc, color='#FFFFDD') {
+make_star <- function(x, y, z, tc, angle=0, flip, color='#FFFFDD') {
   off <- c(x, y, z)
-  lapply(
+  raw <- lapply(
     1:4,
     function(i) {
       triangle(
-        v1=tc[[i]][1,] + off, v2=tc[[i]][2,] + off, v3=tc[[i]][3,] + off,
-        material=diffuse(color)
-) } ) }
+        v1=tc[[i]][1,], v2=tc[[i]][2,], v3=tc[[i]][3,],
+        material=diffuse(color), flipped=flip
+  ) } )
+  group_objects(
+    dplyr::bind_rows(raw), group_translate=off, group_angle=c(0, angle, 0),
+    pivot_point=numeric(3)
+  )
+}
 # make original logo stars
 
 stars.xyz <- rbind(star.x * star.scale, star.y * star.scale + .5, star.z)
-stars.orig <- mapply(
-  make_star, stars.xyz[1,], stars.xyz[2,], stars.xyz[3,],
-  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
-)
+#
 # Want to add stars along path, maybe once we exit the original frame, so need
 # to find where the road hits the frame.  At that point we'll add stars just at
 # the edge of the FOV, so more or less constant radius from the road in the
@@ -492,10 +495,7 @@ plot3d(
     rep('red', ncol(stars.xyz))
   )
 )
-stars.extra.obj <- mapply(
-  make_star, s.e.c[1,], s.e.c[2,], s.e.c[3,],
-  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
-)
+stars.all <- cbind(stars.xyz, s.e.c)
 # - Castle ---------------------------------------------------------------------
 
 # See castle.R
@@ -541,7 +541,7 @@ ys <- sfuny(z2)
 xs <- sfunx(z2)
 zs <- obs2 - z2
 
-path.start <- cbind(obs[c(1,3,2)], rbind(xs, ys, zs))
+path.start <- cbind(obsz, rbind(xs, ys, zs))
 path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 
 # .5-1 second fade from white
@@ -570,37 +570,65 @@ l.d <- rad * .4
 l.b <- 8
 x0c <- int.dots.3d[,x0]
 oofc <- int.dots.3d[,oof]
-scene <- dplyr::bind_rows(
-  # sphere(x=pov[1], y=pov[2], z=pov[3], material=diffuse('yellow'), radius=.5),
-  # sphere(x=oofc[1], y=oofc[2], z=oofc[3], material=diffuse('red'), radius=.5),
-  # sphere(x=x0c[1], y=x0c[2], z=x0c[3], material=diffuse('green'), radius=.5),
-  group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
-  pv.all.obj,
-  bubble,
-  sphere(z=l.d, x=l.d, radius=l.r, material=light(intensity=l.b)),
-  sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
-  unlist(stars.orig, recursive=FALSE),
-  unlist(stars.extra.obj, recursive=FALSE),
-  castle
+
+stars.xz <- rbind(stars.all[1,], 0, stars.all[3,])
+star.v0 <-  (stars.xz - obsz) / rep(sqrt(colSums((stars.xz - obsz)^2)), each=3)
+
+# give angle a direction based on the y value of the cross product
+
+star.angle.0 <- acos(colSums(star.v0 * -obsz)) / pi * 180 *
+  sign(xprod(star.v0, -obsz)[2,])
+
+star.meta <- rbind(
+  speed=pmax(0, dnorm(ncol(star.v0), 45, 30)),
+  angle=ifelse(
+    seq_len(ncol(star.v0)) > ncol(stars.xyz), star.angle.0 + 90, 0
+  )
 )
+duration <- 6   # in seconds
 
 for(i in seq(1, ncol(path.int)-1, by=1)) {
+  time <- duration * (i - 1) / (ncol(path.int) - 2)
   a <- path.int[, i]
   b <- path.int[, i+1]
   lf <- a + c(0, .5, 0)
   la <- b + c(0, .5, 0)
+  lv <- (la - lf) / sqrt(sum((la - lf)^2))
 
+  star.v0 <-  (stars.xz - lf) / rep(sqrt(colSums((stars.xz - lf)^2)), each=3)
+  star.angle <- acos(colSums(star.v0 * lv)) / pi * 180 *
+    sign(xprod(star.v0, lv)[2,])
+
+  # stars that are part of the second set should start at 90 degrees from the
+  # angle.  So the angle about the y axis should be start angle + 90 degrees.
+
+  stars <- mapply(
+    make_star, stars.all[1,], stars.all[2,], stars.all[3,],
+    star.meta['angle', ],
+    flip=(abs(star.meta['angle', ] - star.angle) > 90),
+    MoreArgs=list(tc=tc), SIMPLIFY=FALSE
+  )
+  scene <- dplyr::bind_rows(
+    group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
+    pv.all.obj,
+    bubble,
+    sphere(z=l.d, x=l.d, radius=l.r, material=light(intensity=l.b)),
+    sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
+    stars,
+    castle
+  )
   render_scene(
     scene,
     filename=next_file("~/Downloads/rlang/video/img-"),
     lookfrom=lf, lookat=la,
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
-    width=720, height=720, samples=100,
+    width=720, height=720, samples=200,
     clamp_value=5,
     fov=fov,        # this affects computations above
     # fov=20,
     aperture=0
   )
+  star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
 }
 
 # objs <- dplyr::bind_rows(
