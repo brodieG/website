@@ -414,7 +414,6 @@ star_cone <- function(
   yseed <- (runif(n * 20) - .5) * mult
   zseedi <- sample(seq_along(zoffs), n * 20, replace=TRUE)
   zseed <- zoffs[zseedi]
-  dmin <- .04 * mult
   j <- 1
   dmin2 <- dmin^2
 
@@ -495,19 +494,21 @@ s.e.c <- do.call(cbind, cones)
 
 star.width <- diff(range(do.call(rbind, tc)[,1]))
 frame.start <- -near
-set.seed(1)
+mult <- 5
+set.seed(2)
 star.frame.raw <- star_cone(
   rbind(0, 0, seq(frame.start, -near*3, length.out=4)),
   depth=near*3 + frame.start,
-  n=300, layers=5, start=1, obs=obsz[3] - frame.start, mult=2
+  n=600, layers=5, start=1, 
+  obs=obsz[3] - frame.start, mult=mult, dmin=.03 * mult
 )[['coords']]
-hex.oob <- hex[1:7,] * .90
+hex.oob <- hex[1:7,] * .92
 v <- rbind(
   as.matrix(subset(hex.oob, x > 0 & y > 0)),
   vapply(hex.oob, max, 1)
 )
-star.frame.xy <- star.frame.raw[1:2,] * 
-  rep(((obsz[3]) / (obsz[3] - star.frame.raw[3,])), each=2)
+star.frame.xy <- star.frame.raw[1:2,] /
+  rep((obsz[3] - star.frame.raw[3,]), each=2)
 star.oob <-
   star.frame.xy[1,] > max(hex.oob[,1]) |
   star.frame.xy[1,] < min(hex.oob[,1]) |
@@ -521,8 +522,8 @@ star.frame <- star.frame.raw[, star.oob] + c(0, .5, 0)
 stars.all <- cbind(stars.xyz, star.frame, s.e.c)
 # stars.all <- star.frame
 
-tmp <- t(star.frame.xy[1:2, star.oob])
-# tmp <- t(star.frame.raw[1:2,])
+tmp <- t(star.frame.xy[1:2, ])
+# tmp <- t(star.frame.xy[1:2,])
 plot(
   rbind(as.matrix(hex.oob), tmp), 
   col=c(rep('red', nrow(hex.oob)), rep('black', nrow(tmp)))
@@ -673,7 +674,7 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     lookfrom=lf, lookat=la,
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # width=720, height=720, samples=200,
-    samples=20,
+    samples=10,
     clamp_value=5,
     fov=fov,        # this affects computations above
     # fov=20,
@@ -681,7 +682,6 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
   )
   star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
   tmp[[i]] <- star.meta['angle',] + star.meta['speed',] * time
-  if(i > 4) break
 }
 
 # objs <- dplyr::bind_rows(
