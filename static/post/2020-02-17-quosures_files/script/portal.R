@@ -49,6 +49,15 @@ frame <- paths[types == 'path' & cl == 'st4736']
 # ) )
 # - Settings -------------------------------------------------------------------
 
+# There are several hard coded numbers and bad assumptions that may cause
+# problems if these settings are changed.  For example:
+#
+# We're terrible about signs of distances, particularly along the z axes.  Many
+# things that are in negative z territory (i.e. past the portal) are treated as
+# positive and then negated before final use.
+#
+# The distancec of the initial observer is assumed to be 1, and the portal at 0.
+
 brick.depth <- 14
 depth <- 20
 
@@ -223,21 +232,6 @@ pv.colors <- rgb(
 # # p coordinates of points to compute bcs on
 # # v coordinates of corresponding triangles
 #
-# bary_M <- function(p, v) {
-#   det <- (v[2,2]-v[3,2])*(v[1,1]-v[3,1]) +
-#          (v[3,1]-v[2,1])*(v[1,2]-v[3,2])
-#
-#   l1 <- (
-#           (v[2,2]-v[3,2]) * (p[,1]-v[3,1]) +
-#           (v[3,1]-v[2,1]) * (p[,2]-v[3,2])
-#         ) / det
-#   l2 <- (
-#           (v[3,2]-v[1,2]) * (p[,1]-v[3,1]) +
-#           (v[1,1]-v[3,1]) * (p[,2]-v[3,2])
-#         ) / det
-#   l3 <- 1 - l1 - l2
-#   cbind(l1, l2, l3)
-# }
 # v <- rbind(
 #   as.matrix(subset(hex.oob[1:7,], x > 0 & y > 0)),
 #   vapply(hex.oob[1:7,], max, 1)
@@ -404,10 +398,10 @@ message("stars - extra")
 # Need to transition to layers
 
 star_cone <- function(
-  points, depth, layers, n, start, obs, mult=1
+  points, depth, layers, n, start, obs, mult=1, dmin=.04 * mult
 ) {
   vetr::vetr(
-    matrix(numeric(), 3) && ncol(.) > 2,
+    matrix(numeric(), 3) && ncol(.) > 2 && ncol(.) > start,
     NUM.1.POS, INT.1.POS.STR, INT.1.POS.STR, INT.1.POS.STR,
     NUM.1.POS, NUM.1.POS
   )
@@ -420,7 +414,7 @@ star_cone <- function(
   yseed <- (runif(n * 20) - .5) * mult
   zseedi <- sample(seq_along(zoffs), n * 20, replace=TRUE)
   zseed <- zoffs[zseedi]
-  dmin <- .04
+  dmin <- .04 * mult
   j <- 1
   dmin2 <- dmin^2
 
@@ -440,22 +434,23 @@ star_cone <- function(
   }
   # figure out where layers will be
 
-  points <- points[,-seq_len(start)]
+  points <- points[,seq(start, ncol(points), 1L)]
   ds <- cumsum(sqrt(colSums((points[,-1] - points[,-ncol(points)])^2)))
   if(max(ds) < depth) {
     # not enough points, extend last vector until enough
     vec.last <- points[, ncol(points)] - points[, ncol(points) - 1]
     extra <- ceiling((depth - max(ds)) / sqrt(sum(vec.last ^ 2)))
-    points <- rbind(
+    points <- cbind(
       points,
-      matrix(vec.last * rep(seq_len(extra), each=3), 3)
+      matrix(vec.last * rep(seq_len(extra), each=3), 3) + points[, ncol(points)]
     )
   }
   ds <- cumsum(sqrt(colSums((points[,-1] - points[,-ncol(points)])^2)))
   ds.d <- match(TRUE, ds >= depth)
+  ds.i <- seq_len(ds.d + 1)
 
-  p1 <- interp_along(points[, seq_len(ds.d)], seq(.01, 1, length.out=layers))
-  p0 <- interp_along(points[, seq_len(ds.d)], seq(0, .99, length.out=layers))
+  p1 <- interp_along(points[, ds.i], seq(.001, 1, length.out=layers))
+  p0 <- interp_along(points[, ds.i], seq(0, .999, length.out=layers))
   vs <- p1 - p0
   vs <- vs / sqrt(colSums(vs^2))
 
@@ -465,9 +460,9 @@ star_cone <- function(
   coords.l <- lapply(
     seq_along(l),
     function(i) {
-      z <- (i - 1) * depth / layers
+      z <- zoffs[i]
       z.off <- obs + z
-      l.c <- cbind(se.x[l[[i]]] * z.off, se.y[l[[i]]] * z.off, 0)
+      l.c <- cbind(se.x[l[[i]]] / obs * z.off, se.y[l[[i]]] / obs * z.off, 0)
 
       # rotate onto the provided vector and offset
       # https://math.stackexchange.com/a/2672702 thanks Nico Schlomer
@@ -488,14 +483,60 @@ for(i in seq_len(ncone)) {
   cones[[i]] <- tmp[['coords']]
 }
 s.e.c <- do.call(cbind, cones)
-plot3d(
-  t(cbind(do.call(cbind, cones), int.dots.3d, stars.xyz)),
-  col=c(
-    rep(palette.colors(5, "R4"), each=50), rep('black', ncol(int.dots.3d)),
-    rep('red', ncol(stars.xyz))
-  )
+# plot3d(
+#   t(cbind(do.call(cbind, cones), int.dots.3d, stars.xyz)),
+#   col=c(
+#     rep(palette.colors(5, "R4"), each=50), rep('black', ncol(int.dots.3d)),
+#     rep('red', ncol(stars.xyz))
+#   )
+# )
+# compute framing stars which basically should be right outside the hexagon
+# between 0 + half star-width and `near`
+
+star.width <- diff(range(do.call(rbind, tc)[,1]))
+frame.start <- -near
+set.seed(1)
+star.frame.raw <- star_cone(
+  rbind(0, 0, seq(frame.start, -near*3, length.out=4)),
+  depth=near*3 + frame.start,
+  n=300, layers=5, start=1, obs=obsz[3] - frame.start, mult=2
+)[['coords']]
+hex.oob <- hex[1:7,] * .90
+v <- rbind(
+  as.matrix(subset(hex.oob, x > 0 & y > 0)),
+  vapply(hex.oob, max, 1)
 )
-stars.all <- cbind(stars.xyz, s.e.c)
+star.frame.xy <- star.frame.raw[1:2,] * 
+  rep(((obsz[3]) / (obsz[3] - star.frame.raw[3,])), each=2)
+star.oob <-
+  star.frame.xy[1,] > max(hex.oob[,1]) |
+  star.frame.xy[1,] < min(hex.oob[,1]) |
+  star.frame.xy[2,] > max(hex.oob[,2]) |
+  star.frame.xy[2,] < min(hex.oob[,2]) |
+  # a bit fidly, need to make sure the edge of a star not visible so
+  # don't allow coords very close to vertices, not formally correct
+  rowSums(bary_M(t(abs(star.frame.xy)), v) > .00) == 3
+
+star.frame <- star.frame.raw[, star.oob] + c(0, .5, 0)
+stars.all <- cbind(stars.xyz, star.frame, s.e.c)
+# stars.all <- star.frame
+
+tmp <- t(star.frame.xy[1:2, star.oob])
+# tmp <- t(star.frame.raw[1:2,])
+plot(
+  rbind(as.matrix(hex.oob), tmp), 
+  col=c(rep('red', nrow(hex.oob)), rep('black', nrow(tmp)))
+)
+lines(hex.oob, col='green')
+
+# plot3d(
+#   t(cbind(int.dots.3d[,1:50], stars.xyz, star.frame)),
+#   col=c(
+#     rep('black', 50),
+#     rep('gray', ncol(stars.xyz)), rep('red', ncol(star.frame))
+#   )
+# )
+
 # - Castle ---------------------------------------------------------------------
 
 # See castle.R
@@ -580,12 +621,15 @@ star.angle.0 <- acos(colSums(star.v0 * -obsz)) / pi * 180 *
   sign(xprod(star.v0, -obsz)[2,])
 
 star.meta <- rbind(
-  speed=pmax(0, dnorm(ncol(star.v0), 45, 30)),
+  speed=pmax(0, rnorm(ncol(star.v0), 45, 30)),
   angle=ifelse(
-    seq_len(ncol(star.v0)) > ncol(stars.xyz), star.angle.0 + 90, 0
+    seq_len(ncol(star.v0)) > ncol(stars.xyz) + ncol(star.frame),
+    star.angle.0 + 90, 0
   )
 )
 duration <- 6   # in seconds
+duration <- .0001   # in seconds
+tmp <- vector('list', ncol(path.int)-1)
 
 for(i in seq(1, ncol(path.int)-1, by=1)) {
   time <- duration * (i - 1) / (ncol(path.int) - 2)
@@ -608,6 +652,12 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     flip=(abs(star.meta['angle', ] - star.angle) > 90),
     MoreArgs=list(tc=tc), SIMPLIFY=FALSE
   )
+  # stars <- mapply(
+  #   make_star, star.frame[1,], star.frame[2,], star.frame[3,],
+  #   numeric(ncol(star.frame)),
+  #   flip=logical(ncol(star.frame)),
+  #   MoreArgs=list(tc=tc), SIMPLIFY=FALSE
+  # )
   scene <- dplyr::bind_rows(
     group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     pv.all.obj,
@@ -622,13 +672,16 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     filename=next_file("~/Downloads/rlang/video/img-"),
     lookfrom=lf, lookat=la,
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
-    width=720, height=720, samples=200,
+    # width=720, height=720, samples=200,
+    samples=20,
     clamp_value=5,
     fov=fov,        # this affects computations above
     # fov=20,
     aperture=0
   )
   star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
+  tmp[[i]] <- star.meta['angle',] + star.meta['speed',] * time
+  if(i > 4) break
 }
 
 # objs <- dplyr::bind_rows(
