@@ -398,7 +398,8 @@ message("stars - extra")
 # Need to transition to layers
 
 star_cone <- function(
-  points, depth, layers, n, start, obs, mult=1, dmin=.04 * mult
+  points, depth, layers, n, start, obs, mult=3, dmin=.04 * mult, 
+  empty=.5 * mult
 ) {
   vetr::vetr(
     matrix(numeric(), 3) && ncol(.) > 2 && ncol(.) > start,
@@ -423,7 +424,7 @@ star_cone <- function(
         (se.x - xseed[j]) ^ 2 + (se.y - yseed[j]) ^ 2 < dmin2 |
         (
           (xseed[j] * (zseed[j] + obs)) ^ 2 +
-          (yseed[j] * (zseed[j] + obs)) ^ 2 < .35
+          (yseed[j] * (zseed[j] + obs)) ^ 2 < empty
     ) ) )
       j <- j + 1
     se.x[i] <- xseed[j]
@@ -473,14 +474,15 @@ star_cone <- function(
   } )
   list(coords=do.call(cbind, coords.l), end=start + ds.d)
 }
-ncone <- 5
+ncone <- 6
 cones <- vector('list', ncone)
 start <- x0 + 1
 for(i in seq_len(ncone)) {
-  tmp <- star_cone(int.dots.3d, depth=10, 5, 50, start, 3)
+  tmp <- star_cone(int.dots.3d, depth=10, 5, 50, start, 3, mult=3, empty=1.2)
   start <- tmp[['end']] + 1
   cones[[i]] <- tmp[['coords']]
 }
+# plot3d(t(cones[[1]]))
 s.e.c <- do.call(cbind, cones)
 # plot3d(
 #   t(cbind(do.call(cbind, cones), int.dots.3d, stars.xyz)),
@@ -593,7 +595,7 @@ path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 # 2 seconds in transit
 # 2 seconds into castle and fade to white
 
-frames <- 30
+frames <- 10
 coast <- 2/6
 frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
 frames.coast <- frames - 2 * frames.start
@@ -628,12 +630,13 @@ star.meta <- rbind(
     star.angle.0 + 90, 0
   )
 )
-duration <- 6   # in seconds
-duration <- .0001   # in seconds
+duration <- 1   # in seconds
+# duration <- .0001   # in seconds
 tmp <- vector('list', ncol(path.int)-1)
 
 for(i in seq(1, ncol(path.int)-1, by=1)) {
   time <- duration * (i - 1) / (ncol(path.int) - 2)
+  i <- 1
   a <- path.int[, i]
   b <- path.int[, i+1]
   lf <- a + c(0, .5, 0)
@@ -671,13 +674,15 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
   render_scene(
     scene,
     filename=next_file("~/Downloads/rlang/video/img-"),
-    lookfrom=lf, lookat=la,
+    lookfrom=lf, 
+    # lookat=la,
+    lookat=c(0.1, .78, 0),
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # width=720, height=720, samples=200,
-    samples=10,
+    samples=25,
     clamp_value=5,
-    fov=fov,        # this affects computations above
-    # fov=20,
+    # fov=fov,        # this affects computations above
+    fov=10,
     aperture=0
   )
   star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
