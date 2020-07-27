@@ -21,7 +21,7 @@ comp_inside <- function(
     structure(list(numeric(7), numeric(7)), class='data.frame'),
     structure(list(numeric(7), numeric(7), numeric(7)), class='data.frame') &&
       nrow(.) == nrow(hex),
-    numeric(1)
+    numeric()
   )
   hex.in <- rbind(hex[[1]], 0, hex[[2]])
   hex.out <- t(as.matrix(hex.back[c(1,3,2)]))
@@ -39,7 +39,7 @@ comp_inside <- function(
     lapply(
       seq_len(ncol(hex.in) - 1L),
       function(i) {
-        if(i == light_index) material=light(intensity=5)
+        if(i %in% light_index) material=light(intensity=3)
         list(
           triangle(
             v1=hex.in[,i], v2=hex.out[,i], v3=hex.out[,i+1],

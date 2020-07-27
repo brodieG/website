@@ -268,10 +268,10 @@ message("portal")
 # logo rim, but now we let it spread wider since we added a wall.
 
 h2 <- hex[1:7,]
-h2.b <- back_hex(h2, obs * .3, -int[3,4] * 1.1)
+h2.b <- back_hex(h2, obs * .2, -int[3,4] * 1.1)
 bag.mat <- diffuse(color='#010102')
 bag.mat <- diffuse(color='black')
-bag <- comp_inside(h2, h2.b, bag.mat, light_index=6)
+bag <- comp_inside(h2, h2.b, bag.mat, light_index=c(1,6))
 
 # Let's add a wall with a hex hole in it to look through.
 
@@ -288,10 +288,10 @@ portal.rr2 <- extruded_polygon(
   portal, holes=c(6), material=diffuse('white'), top=0, flip_vertical=TRUE
 )
 objs <- dplyr::bind_rows(
-  lapply(
-    letters,
-    extrude_path, material=gold_mat, top=.025
-  ),
+  # lapply(
+  #   letters,
+  #   extrude_path, material=gold_mat, top=.025
+  # ),
   extrude_path(hex, material=diffuse('gray5'), top=.025),
   portal.rr1,
   # portal.rr2,
@@ -398,7 +398,7 @@ message("stars - extra")
 # Need to transition to layers
 
 star_cone <- function(
-  points, depth, layers, n, start, obs, mult=3, dmin=.04 * mult, 
+  points, depth, layers, n, start, obs, mult=3, dmin=.04 * mult,
   empty=.5 * mult
 ) {
   vetr::vetr(
@@ -501,7 +501,7 @@ set.seed(2)
 star.frame.raw <- star_cone(
   rbind(0, 0, seq(frame.start, -near*3, length.out=4)),
   depth=near*3 + frame.start,
-  n=600, layers=5, start=1, 
+  n=600, layers=5, start=1,
   obs=obsz[3] - frame.start, mult=mult, dmin=.03 * mult
 )[['coords']]
 hex.oob <- hex[1:7,] * .92
@@ -523,11 +523,12 @@ star.oob <-
 star.frame <- star.frame.raw[, star.oob] + c(0, .5, 0)
 stars.all <- cbind(stars.xyz, star.frame, s.e.c)
 # stars.all <- star.frame
+stars.all <- s.e.c
 
 tmp <- t(star.frame.xy[1:2, ])
 # tmp <- t(star.frame.xy[1:2,])
 plot(
-  rbind(as.matrix(hex.oob), tmp), 
+  rbind(as.matrix(hex.oob), tmp),
   col=c(rep('red', nrow(hex.oob)), rep('black', nrow(tmp)))
 )
 lines(hex.oob, col='green')
@@ -595,7 +596,7 @@ path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 # 2 seconds in transit
 # 2 seconds into castle and fade to white
 
-frames <- 10
+frames <- 30
 coast <- 2/6
 frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
 frames.coast <- frames - 2 * frames.start
@@ -636,7 +637,6 @@ tmp <- vector('list', ncol(path.int)-1)
 
 for(i in seq(1, ncol(path.int)-1, by=1)) {
   time <- duration * (i - 1) / (ncol(path.int) - 2)
-  i <- 1
   a <- path.int[, i]
   b <- path.int[, i+1]
   lf <- a + c(0, .5, 0)
@@ -674,15 +674,16 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
   render_scene(
     scene,
     filename=next_file("~/Downloads/rlang/video/img-"),
-    lookfrom=lf, 
-    # lookat=la,
-    lookat=c(0.1, .78, 0),
+    lookfrom=lf,
+    lookat=la,
+    # lookat=c(0.1, .78, 0),
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
+    # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     # width=720, height=720, samples=200,
     samples=25,
     clamp_value=5,
-    # fov=fov,        # this affects computations above
-    fov=10,
+    fov=fov,        # this affects computations above
+    # fov=90,
     aperture=0
   )
   star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
