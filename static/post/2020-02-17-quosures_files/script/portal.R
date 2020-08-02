@@ -685,6 +685,7 @@ for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
   lf <- a + c(0, .5, 0)
   la <- b + c(0, .5, 0)
   lv <- (la - lf) / sqrt(sum((la - lf)^2))
+  la <- lf + lv
 
   star.v0 <-  (stars.xz - lf) / rep(sqrt(colSums((stars.xz - lf)^2)), each=3)
   star.angle <- acos(colSums(star.v0 * lv)) / pi * 180 *
@@ -726,7 +727,7 @@ for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     # width=720, height=720, samples=200,
     # width=200, height=200, samples=1,
-    width=720, height=720,
+    # width=720, height=720,
     samples=20,
     clamp_value=5,
     fov=fov,        # this affects computations above
