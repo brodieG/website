@@ -288,10 +288,10 @@ portal.rr2 <- extruded_polygon(
   portal, holes=c(6), material=diffuse('white'), top=0, flip_vertical=TRUE
 )
 objs <- dplyr::bind_rows(
-  # lapply(
-  #   letters,
-  #   extrude_path, material=gold_mat, top=.025
-  # ),
+  lapply(
+    letters,
+    extrude_path, material=gold_mat, top=.025
+  ),
   extrude_path(hex, material=diffuse('gray5'), top=.025),
   portal.rr1,
   # portal.rr2,
@@ -498,7 +498,7 @@ star.width <- diff(range(do.call(rbind, tc)[,1]))
 frame.start <- -near
 mult <- 5
 set.seed(2)
-star.frame.raw <- star_cone(
+stars.frame.raw <- star_cone(
   rbind(0, 0, seq(frame.start, -near*3, length.out=4)),
   depth=near*3 + frame.start,
   n=600, layers=5, start=1,
@@ -509,24 +509,36 @@ v <- rbind(
   as.matrix(subset(hex.oob, x > 0 & y > 0)),
   vapply(hex.oob, max, 1)
 )
-star.frame.xy <- star.frame.raw[1:2,] /
-  rep((obsz[3] - star.frame.raw[3,]), each=2)
-star.oob <-
-  star.frame.xy[1,] > max(hex.oob[,1]) |
-  star.frame.xy[1,] < min(hex.oob[,1]) |
-  star.frame.xy[2,] > max(hex.oob[,2]) |
-  star.frame.xy[2,] < min(hex.oob[,2]) |
+stars.frame.xy <- stars.frame.raw[1:2,] /
+  rep((obsz[3] - stars.frame.raw[3,]), each=2)
+stars.oob <-
+  stars.frame.xy[1,] > max(hex.oob[,1]) |
+  stars.frame.xy[1,] < min(hex.oob[,1]) |
+  stars.frame.xy[2,] > max(hex.oob[,2]) |
+  stars.frame.xy[2,] < min(hex.oob[,2]) |
   # a bit fidly, need to make sure the edge of a star not visible so
   # don't allow coords very close to vertices, not formally correct
-  rowSums(bary_M(t(abs(star.frame.xy)), v) > .00) == 3
+  rowSums(bary_M(t(abs(stars.frame.xy)), v) > .00) == 3
 
-star.frame <- star.frame.raw[, star.oob] + c(0, .5, 0)
-stars.all <- cbind(stars.xyz, star.frame, s.e.c)
-# stars.all <- star.frame
-stars.all <- s.e.c
+stars.frame <- stars.frame.raw[, stars.oob] + c(0, .5, 0)
 
-tmp <- t(star.frame.xy[1:2, ])
-# tmp <- t(star.frame.xy[1:2,])
+stars.a <- stars.xyz
+stars.b <- stars.frame
+stars.c <- s.e.c
+stars.all <- cbind(stars.a, stars.b, stars.c)
+stars.types <- rep(
+  c('base', 'frame', 'extra'), c(ncol(stars.a), ncol(stars.b), ncol(stars.c))
+)
+stars.all <- cbind(stars.xyz, stars.frame, s.e.c)
+# stars.all <- stars.frame
+# z.off <- obsz[3] - s.e.c[3,]
+# s.e.c.vis <- (s.e.c[1,] / z.off > -.1) &
+#    (((s.e.c[2,] - .5) / z.off + .5)  > .5) &
+#    (((s.e.c[2,] - .5) / z.off + .5)  < .75)
+# stars.all <- s.e.c[, s.e.c.vis]
+
+tmp <- t(stars.frame.xy[1:2, ])
+# tmp <- t(stars.frame.xy[1:2,])
 plot(
   rbind(as.matrix(hex.oob), tmp),
   col=c(rep('red', nrow(hex.oob)), rep('black', nrow(tmp)))
@@ -534,26 +546,30 @@ plot(
 lines(hex.oob, col='green')
 
 # plot3d(
-#   t(cbind(int.dots.3d[,1:50], stars.xyz, star.frame)),
+#   t(cbind(int.dots.3d[,1:50], stars.xyz, stars.frame)),
 #   col=c(
 #     rep('black', 50),
-#     rep('gray', ncol(stars.xyz)), rep('red', ncol(star.frame))
+#     rep('gray', ncol(stars.xyz)), rep('red', ncol(stars.frame))
 #   )
 # )
 
 # - Castle ---------------------------------------------------------------------
 
-# See castle.R
+# See castle.R, the sourced code is all the castle stuff.  This is the position
 
-c.r <- 1
+source('static/post/2020-02-17-quosures_files/script/castle.R')
+
+c.r <- 1        # dist from end of road
+c.b.off <- .75  # background offset
 c.xyz <- int.dots.3d[,ncol(int.dots.3d)]
 c.v <- c.xyz - int.dots.3d[,ncol(int.dots.3d) - 1]
 c.v <- c.v / sqrt(sum(c.v^2))
 c.xyz <- c.xyz + c.v * c.r
-
-castle <- sphere(
-  x=c.xyz[1], y=c.xyz[2], z=c.xyz[3], radius=c.r, material=light(intensity=2)
-)
+c.v.xz <- c(c.v[c(1,3)], 0)[c(1,3,2)]
+c.v.xz <- c.v.xz / sqrt(sum(c.v.xz^2))
+c.angle.0 <- acos(sum(c(-1,0,0) * c.v.xz)) / pi * 180 *
+  sign(xprod(c(-1,0,0), c.v.xz)[2])
+c.near <- c.xyz - c.v * castle.size * 1.1
 
 # - Containers -----------------------------------------------------------------
 
@@ -587,7 +603,17 @@ xs <- sfunx(z2)
 zs <- obs2 - z2
 
 path.start <- cbind(obsz, rbind(xs, ys, zs))
-path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
+path.all <- cbind(
+  path.start,
+  int.dots.3d[,-(seq_len(x0))],
+  c.near
+)
+
+# Fade from white: 0.5s
+# Static:          1.0s
+# Stars Spin:      1.5s
+# In motion:         5s
+
 
 # .5-1 second fade from white
 # .5 second pause
@@ -596,23 +622,38 @@ path.all <- cbind(path.start, int.dots.3d[,-(seq_len(x0))])
 # 2 seconds in transit
 # 2 seconds into castle and fade to white
 
-frames <- 30
+# durations <- c(fade.f.white=.5, still=1.0, star.spin=1.5, transit=5)
+durations <- c(star.spin=1.5, transit=5)
+duration <- sum(durations)
+fps <- 30
+frames <- as.integer(duration * fps)
+frames <- frames + 1 # we don't render the last frame
+# fps <- frames / duration
+frames.transit <- c(start=20,coast=5,end=10)
 coast <- 2/6
-frames.start <- frames.end <- (frames * (1 - coast)) %/% 2
-frames.coast <- frames - 2 * frames.start
+frames.spin <- as.integer(durations['star.spin'] / duration * frames)
+frames.start <- floor(
+  (frames - frames.spin) * (frames.transit['start'] / sum(frames.transit))
+)
+frames.coast <- floor(
+  (frames - frames.spin) * (frames.transit['coast'] / sum(frames.transit))
+)
+frames.end <- frames - frames.spin - frames.start - frames.coast
 coast.point <- .05
 frame.points <- c(
   seq(0, 1, length.out=frames.start)^3 * coast.point,
   seq(
     coast.point, 1 - coast.point, length.out=frames.coast + 2
   )[-c(1L, frames.coast + 2L)],
-  1 - rev(seq(0, 1, length.out=frames.start)^3 * coast.point)
+  1 - rev(seq(0, 1, length.out=frames.end)^3 * coast.point)
 )
+# add the castle edge to this
+
 path.int <- interp_along(path.all, frame.points)
 
 l.r <- rad / 8
 l.d <- rad * .4
-l.b <- 8
+l.b <- 10
 x0c <- int.dots.3d[,x0]
 oofc <- int.dots.3d[,oof]
 
@@ -622,21 +663,23 @@ star.v0 <-  (stars.xz - obsz) / rep(sqrt(colSums((stars.xz - obsz)^2)), each=3)
 # give angle a direction based on the y value of the cross product
 
 star.angle.0 <- acos(colSums(star.v0 * -obsz)) / pi * 180 *
-  sign(xprod(star.v0, -obsz)[2,])
+  sign(xprod(star.v0, -obsz)[2,]) * -1
 
 star.meta <- rbind(
   speed=pmax(0, rnorm(ncol(star.v0), 45, 30)),
-  angle=ifelse(
-    seq_len(ncol(star.v0)) > ncol(stars.xyz) + ncol(star.frame),
-    star.angle.0 + 90, 0
-  )
+  angle=ifelse(stars.types == 'extra', star.angle.0 + 90, 0)
 )
-duration <- 1   # in seconds
 # duration <- .0001   # in seconds
 tmp <- vector('list', ncol(path.int)-1)
 
-for(i in seq(1, ncol(path.int)-1, by=1)) {
-  time <- duration * (i - 1) / (ncol(path.int) - 2)
+rps <- 1
+c.angles <- c(rev(seq(24, by=-360 / fps, length.out=frames - 1)), 0)
+
+for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
+  i <- max(1, j - frames.spin)
+  time <- duration * (j - 1) / (ncol(path.int) - 2)
+  c.angle <- c.angles[i]
+  writeLines(sprintf("Frame %04d %s", i, Sys.time()))
   a <- path.int[, i]
   b <- path.int[, i+1]
   lf <- a + c(0, .5, 0)
@@ -656,12 +699,6 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     flip=(abs(star.meta['angle', ] - star.angle) > 90),
     MoreArgs=list(tc=tc), SIMPLIFY=FALSE
   )
-  # stars <- mapply(
-  #   make_star, star.frame[1,], star.frame[2,], star.frame[3,],
-  #   numeric(ncol(star.frame)),
-  #   flip=logical(ncol(star.frame)),
-  #   MoreArgs=list(tc=tc), SIMPLIFY=FALSE
-  # )
   scene <- dplyr::bind_rows(
     group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
     pv.all.obj,
@@ -669,40 +706,43 @@ for(i in seq(1, ncol(path.int)-1, by=1)) {
     sphere(z=l.d, x=l.d, radius=l.r, material=light(intensity=l.b)),
     sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
     stars,
-    castle
+    group_objects(
+      castle_backdrop, group_translate=c.xyz + c.v * c.b.off + c(0, .25, 0),
+      group_angle=c(-10, c.angle.0 + 90, 0), pivot_point=numeric(3),
+      # group_order_rotation=c(2,1,3)
+    ),
+    group_objects(
+      make_castle(), group_translate=c.xyz + c(0, .30, 0),
+      group_angle=c(0, c.angle.0 + c.angle + 90, 0), pivot_point=numeric(3),
+      group_order_rotation=c(2,1,3)
+    )
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video/img-"),
-    lookfrom=lf,
-    lookat=la,
-    # lookat=c(0.1, .78, 0),
+    filename=next_file("~/Downloads/rlang/video2/img-"),
+    lookfrom=lf, lookat=la,
+    # lookat=c.xyz, lookfrom=c.xyz + c(0, 3, 3),
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     # width=720, height=720, samples=200,
-    samples=25,
+    # width=200, height=200, samples=1,
+    width=720, height=720,
+    samples=20,
     clamp_value=5,
     fov=fov,        # this affects computations above
-    # fov=90,
     aperture=0
   )
   star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
   tmp[[i]] <- star.meta['angle',] + star.meta['speed',] * time
 }
 
+
+
 # objs <- dplyr::bind_rows(
-#   Map(
-#     extrude_path, rev(paths), top=c(.1, .05) ,
-#     bottom=c(-.1,-.05), material=list(gold_mat)
-#   )
+#   make_star(0, 0, 0, 0, flip=FALSE, tc=tc),
+#   sphere(material=light(intensity=20), x=5, y=5, z=5, radius=3),
+# )
+# render_scene(
+#   objs, aperture=0, lookfrom=c(1,0,0),
 # )
 
-
-# krender_scene(
-# k  cylinder(
-# k    angle=c(90,0,-90), phi_min=0, phi_max=180, material=diffuse('red'),
-# k    order_rotation=c(3,2,1)
-# k  ),
-# k  lookfrom=c(5,0,5),
-# k  fov=30
-# k)

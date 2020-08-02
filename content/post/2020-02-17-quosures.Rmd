@@ -817,6 +817,17 @@ Additionally:
 * [R-core][50] for creating and maintaining a language so wonderful it allows
   crazy things like computing on the language.
 * [Lionel Henry][34] and [Hadley Wickham][35] for [`rlang`][36].
+* For the illustrations:
+    * [Tyler Morgan Wall][56] for [`rayrender`][53] which I used to render the
+      illustrations
+    * [Paul Murrell][54] for [`gridBezier`][51] which I used to turn the SVG
+      into a polygon outline.
+    * [Michael Sumner][55] for [`decido`][52] which I used to triangulate some
+      of the shapes in the scenes.
+    * Daniel Adler, Duncan Murdoch, etal. for `rgl` with which I mocked up the
+      scenes.
+    * The yellow brick road scene is based on the official
+      [`rlang` SVG logo][58], which is licensed [CC0][57].
 
 ## References
 
@@ -1009,6 +1020,63 @@ loaded via a namespace (and not attached):
 [36]: https://github.com/r-lib/rlang
 
 [50]: https://www.r-project.org/contributors.html
+[51]: https://cran.r-project.org/package=gridBezier
+[52]: https://cran.r-project.org/package=decido
+[53]: https://cran.r-project.org/package=rayrender
+
+[54]: https://github.com/pmur002/
+[55]: https://github.com/mdsumner
+[56]: https://github.com/tylermorganwall/
+[57]: https://creativecommons.org/publicdomain/zero/1.0/deed.en
+[58]: https://github.com/rstudio/hex-stickers/blob/master/SVG/rlang.svg
+
+
+
+[^expr-vs-cmd]: Originally I used "command" throughout the post to avoid
+  ambiguity with R's `expression` object, which roughly could be described as a
+  list of R commands.  The early drafts of this post switched between
+  "expression" and "command", but in the end I settled on "command".  Lionel
+  Henry convinced me to switch to "expression" as that is what the R
+  documentation uses despite the ambiguity.
+[^simple-model]: <span id='simple-model'>Items
+  we gloss over include but are not
+  limited to:<ul>
+  <li>Function parameters are [evaluated lazily][20] so they are only fetched
+  when they are referenced within a function body as something other than an
+  argument to a closure (e.g. as an argument to a primitive or other entry
+  points into statically compiled machine code, or simply as a stand-alone
+  reference to the name as in `force`).
+  <li>What is fetched is a pointer to the location in memory the R objects are
+  stored in, not the objects proper.  Since in R memory addresses are not
+  directly visible, we'll treat the pointers as if they are the actual R
+  objects they reference.
+  <li>The [byte-compiler][21] affects the nature of non-evaluated code
+  prefetching the objects names point to and performing other optimizations, and
+  generally bypassing many aspects of the "normal" evaluation process.
+  <li>Names representing called functions are only resolved against names that
+  are associated with functions.
+  <li>Lookups from the global environment down are usually done against a
+  "global" hash table that replicates the semantics of the Environment Chain,
+  but isn't actually a chain.
+  <li>The base environment has an enclosure, although it is the empty
+  environment which itself does not have an enclosure.
+  <li>And more.</ul></span>
+[^parens]: The parentheses in `rev(x)` are not considered "names".  They are
+  syntax tokens that are used to parse the expression.  Opening parentheses that
+  are not part of the syntax of a function call are names, as in `(1 + 2) * 3`.
+[^promises-actually]: <span id=promises-actually>In reality instead of the
+  values of the arguments, R stores the expression passed as the argument along
+  with the environment to evaluate it in.  If the argument is used by the
+  function then the expression is evaluated in its environment to produce the
+  value.  This is typically the same as if R had used the values directly, but
+  there are some circumstances where behavior is changed due to this feature.
+  Values that are stored as the expression used to generate them along with the
+  environment to evaluate that expression are known as promises</span>
+[^pathological-pkg]: Well, it will unless you have loaded a pathological package
+  that also defines a `rev` function, or if you yourself define a `rev` function
+  in the global environment.
+[^fun-env-term]: <span id=fun-env-term>I dislike the term "Function Environment"
+  as because there are two environments that could be considered the "function
 
 [^tidy-eval-recommend]: At the time of this writing the `rlang` authors suggest
   the [programming with `dplyr` vignette][7] for contemporary `rlang` /
