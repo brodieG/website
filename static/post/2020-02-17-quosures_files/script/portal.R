@@ -597,7 +597,7 @@ slopey1 <- diff(int.dots.3d[2,x0+0:1])/diff(int.dots.3d[3,x0+1:0])
 slopex1 <- diff(int.dots.3d[1,x0+0:1])/diff(int.dots.3d[3,x0+1:0])
 sfuny <- splinefunH(c(0, obs2 - dot0[3]), c(0, dot0[2]), c(slope0, slopey1))
 sfunx <- splinefunH(c(0, obs2 - dot0[3]), c(0, dot0[1]), c(slope0, slopex1))
-z2 <- seq(0, obs2 - dot0[3], length.out=10)
+z2 <- seq(0, obs2 - dot0[3], length.out=100)
 ys <- sfuny(z2)
 xs <- sfunx(z2)
 zs <- obs2 - z2
@@ -623,15 +623,18 @@ path.all <- cbind(
 # 2 seconds into castle and fade to white
 
 # durations <- c(fade.f.white=.5, still=1.0, star.spin=1.5, transit=5)
-durations <- c(star.spin=1.5, transit=5)
+durations <- c(star.spin=1.5, transit=8, explode=.5)
 duration <- sum(durations)
-fps <- 30
+fps <- 10
 frames <- as.integer(duration * fps)
 frames <- frames + 1 # we don't render the last frame
 # fps <- frames / duration
-frames.transit <- c(start=20,coast=5,end=10)
-coast <- 2/6
+frames.transit <- c(start=20,coast=10,end=10,death=10)
+# coast <- 2/6
+
 frames.spin <- as.integer(durations['star.spin'] / duration * frames)
+frames.spin <- 0
+
 frames.start <- floor(
   (frames - frames.spin) * (frames.transit['start'] / sum(frames.transit))
 )
@@ -639,14 +642,33 @@ frames.coast <- floor(
   (frames - frames.spin) * (frames.transit['coast'] / sum(frames.transit))
 )
 frames.end <- frames - frames.spin - frames.start - frames.coast
-coast.point <- .05
-frame.points <- c(
-  seq(0, 1, length.out=frames.start)^3 * coast.point,
-  seq(
-    coast.point, 1 - coast.point, length.out=frames.coast + 2
-  )[-c(1L, frames.coast + 2L)],
-  1 - rev(seq(0, 1, length.out=frames.end)^3 * coast.point)
-)
+# coast.point.start <- .05
+# coast.point.end <- .05
+
+point.pwr <- 5
+points.start <- c(0, diff(seq(0, 1, length.out=frames.start)^point.pwr))
+points.coast <- rep(points.start[length(points.start)], frames.coast)
+points.end <- rev(diff(seq(0, 1, length.out=frames.end + 1)^point.pwr))
+points.end <- points.end / points.end[1] * points.coast[1]
+frame.points <- cumsum(c(points.start, points.coast, points.end))
+plot(frame.points)
+
+# frame.points <- c(
+#   * coast.point.start,
+#   seq(
+#     coast.point.start, 1 - coast.point.end, length.out=frames.coast + 2
+#   )[-c(1L, frames.coast + 2L)],
+#   1 - rev(seq(0, 1, length.out=frames.end)^3 * coast.point.end)
+# )
+
+sfun.frames <- splinefunH(c(0, 1), c(0, 1), c(0, 0))
+frames.trans <- frames - frames.spin
+frame.points.raw <-
+  (cos(seq(pi, 2*pi, length.out=frames.trans)) + 1) / 2
+point.mult <- sin(seq(0, pi, length.out=frames.trans - 1))
+frame.points <- cumsum(c(0, diff(frame.points.raw) * (point.mult + 1) ^ 5))
+frame.points <- frame.points/max(frame.points)
+
 # add the castle edge to this
 
 path.int <- interp_along(path.all, frame.points)
@@ -720,15 +742,15 @@ for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video2/img-"),
+    filename=next_file("~/Downloads/rlang/video4/img-"),
     lookfrom=lf, lookat=la,
     # lookat=c.xyz, lookfrom=c.xyz + c(0, 3, 3),
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     # width=720, height=720, samples=200,
     # width=200, height=200, samples=1,
-    # width=720, height=720,
-    samples=20,
+    width=200, height=200,
+    samples=4,
     clamp_value=5,
     fov=fov,        # this affects computations above
     aperture=0
