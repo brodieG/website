@@ -605,16 +605,8 @@ zs <- obs2 - z2
 path.start <- cbind(obsz, rbind(xs, ys, zs))
 path.all <- cbind(
   path.start,
-  int.dots.3d[,-(seq_len(x0))],
-  c.near
+  int.dots.3d[,-(seq_len(x0))]
 )
-
-# Fade from white: 0.5s
-# Static:          1.0s
-# Stars Spin:      1.5s
-# In motion:         5s
-
-
 # .5-1 second fade from white
 # .5 second pause
 # 1 second stars spin
@@ -623,17 +615,17 @@ path.all <- cbind(
 # 2 seconds into castle and fade to white
 
 # durations <- c(fade.f.white=.5, still=1.0, star.spin=1.5, transit=5)
-durations <- c(star.spin=1.5, transit=8, explode=.5)
+durations <- c(star.spin=0.5, rest=8.5)
 duration <- sum(durations)
 fps <- 10
 frames <- as.integer(duration * fps)
 frames <- frames + 1 # we don't render the last frame
 # fps <- frames / duration
-frames.transit <- c(start=20,coast=10,end=10,death=10)
+frames.transit <- c(start=20,coast=1,end=10,death=5)
 # coast <- 2/6
 
 frames.spin <- as.integer(durations['star.spin'] / duration * frames)
-frames.spin <- 0
+# frames.spin <- 0
 
 frames.start <- floor(
   (frames - frames.spin) * (frames.transit['start'] / sum(frames.transit))
@@ -641,17 +633,30 @@ frames.start <- floor(
 frames.coast <- floor(
   (frames - frames.spin) * (frames.transit['coast'] / sum(frames.transit))
 )
-frames.end <- frames - frames.spin - frames.start - frames.coast
+frames.end <- floor(
+  (frames - frames.spin) * (frames.transit['end'] / sum(frames.transit))
+)
+frames.death <- frames - frames.spin - frames.start - frames.coast - frames.end
+frames.death.blend <- ceiling(frames.death * 2)
+frames.lookup <- ceiling(frames.end)
+stopifnot(
+  frames.lookup <= frames.end,
+  frames.death.blend <= frames.end + frames.death
+)
+
 # coast.point.start <- .05
 # coast.point.end <- .05
 
-point.pwr <- 5
-points.start <- c(0, diff(seq(0, 1, length.out=frames.start)^point.pwr))
+point.pwr <- 7
+point.x <- 1
+points.start <- c(0, diff(seq(0, point.x, length.out=frames.start)^point.pwr))
 points.coast <- rep(points.start[length(points.start)], frames.coast)
-points.end <- rev(diff(seq(0, 1, length.out=frames.end + 1)^point.pwr))
+points.end <- rev(diff(seq(0, point.x, length.out=frames.end + 1)^point.pwr))
 points.end <- points.end / points.end[1] * points.coast[1]
 frame.points <- cumsum(c(points.start, points.coast, points.end))
-plot(frame.points)
+frame.points <- frame.points / max(frame.points)
+points(frame.points, col='green')
+# plot(frame.points)
 
 # frame.points <- c(
 #   * coast.point.start,
@@ -660,18 +665,17 @@ plot(frame.points)
 #   )[-c(1L, frames.coast + 2L)],
 #   1 - rev(seq(0, 1, length.out=frames.end)^3 * coast.point.end)
 # )
+# 
+# sfun.frames <- splinefunH(c(0, 1), c(0, 1), c(0, 0))
+# frames.trans <- frames - frames.spin
+# frame.points.raw <-
+#   (cos(seq(pi, 2*pi, length.out=frames.trans)) + 1) / 2
+# point.mult <- sin(seq(0, pi, length.out=frames.trans - 1))
+# frame.points <- cumsum(c(0, diff(frame.points.raw) * (point.mult + 1) ^ 5))
+# frame.points <- frame.points/max(frame.points)
 
-sfun.frames <- splinefunH(c(0, 1), c(0, 1), c(0, 0))
-frames.trans <- frames - frames.spin
-frame.points.raw <-
-  (cos(seq(pi, 2*pi, length.out=frames.trans)) + 1) / 2
-point.mult <- sin(seq(0, pi, length.out=frames.trans - 1))
-frame.points <- cumsum(c(0, diff(frame.points.raw) * (point.mult + 1) ^ 5))
-frame.points <- frame.points/max(frame.points)
-
-# add the castle edge to this
-
-path.int <- interp_along(path.all, frame.points)
+path.int <- interp_along(path.all, frame.points * .98)
+path.int <- cbind(path.int, path.int[, rep(ncol(path.int), frames.death)])
 
 l.r <- rad / 8
 l.d <- rad * .4
@@ -688,18 +692,37 @@ star.angle.0 <- acos(colSums(star.v0 * -obsz)) / pi * 180 *
   sign(xprod(star.v0, -obsz)[2,]) * -1
 
 star.meta <- rbind(
-  speed=pmax(0, rnorm(ncol(star.v0), 45, 30)),
+  speed=pmax(0, rnorm(ncol(star.v0), 45, 15)),
   angle=ifelse(stars.types == 'extra', star.angle.0 + 90, 0)
 )
 # duration <- .0001   # in seconds
 tmp <- vector('list', ncol(path.int)-1)
 
-rps <- 1
-c.angles <- c(rev(seq(24, by=-360 / fps, length.out=frames - 1)), 0)
+# last castle stuff
 
+rps <- .25
+c.angles <- c(rev(seq(24, by=-360 / fps, length.out=frames - 1)), 0)
+c.size <- rep(castle.size, frames - 1)
+c.dist <- sqrt(sum((c.xyz - path.int[,ncol(path.int) - 1])^2))
+c.size[rev(seq(length(c.size), length.out=frames.death.blend, by=-1))] <-
+  seq(0, 1, length.out=frames.death.blend) ^ 3  * (c.dist - castle.size) * .99 +
+  castle.size
+
+lookup <- numeric(frames - 1)
+lookup[
+  seq(frames - frames.death - frames.lookup, length.out=frames.lookup, by=1)
+] <- (
+  splinefunH(c(0, 1), c(0, 1), c(0, 0))(seq(0, 1, length.out=frames.lookup))
+) ^ .5
+lookup <- cummax(lookup)
+
+# for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
+
+lv.last <- c(0, 0, -1)
+frames.all <- ncol(path.int)-1 + frames.spin
 for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
   i <- max(1, j - frames.spin)
-  time <- duration * (j - 1) / (ncol(path.int) - 2)
+  time <- duration * (j - 1) / (frames.all - 1)
   c.angle <- c.angles[i]
   writeLines(sprintf("Frame %04d %s", i, Sys.time()))
   a <- path.int[, i]
@@ -707,9 +730,13 @@ for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
   lf <- a + c(0, .5, 0)
   la <- b + c(0, .5, 0)
   lv <- (la - lf) / sqrt(sum((la - lf)^2))
+  if(anyNA(lv)) lv <- lv.last else lv.last <- lv
   la <- lf + lv
+  ld <- sqrt(sum((c.xyz - a)^2)) /
+    sqrt(sum((c.xyz - path.int[,ncol(path.int)])^2))
+  lu <- .3 / ld
 
-  star.v0 <-  (stars.xz - lf) / rep(sqrt(colSums((stars.xz - lf)^2)), each=3)
+  star.v0 <- (stars.xz - lf) / rep(sqrt(colSums((stars.xz - lf)^2)), each=3)
   star.angle <- acos(colSums(star.v0 * lv)) / pi * 180 *
     sign(xprod(star.v0, lv)[2,])
 
@@ -735,22 +762,23 @@ for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
       # group_order_rotation=c(2,1,3)
     ),
     group_objects(
-      make_castle(), group_translate=c.xyz + c(0, .30, 0),
+      make_castle(c.size[j]), group_translate=c.xyz + c(0, .30, 0),
       group_angle=c(0, c.angle.0 + c.angle + 90, 0), pivot_point=numeric(3),
       group_order_rotation=c(2,1,3)
     )
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video4/img-"),
-    lookfrom=lf, lookat=la,
+    filename=next_file("~/Downloads/rlang/video5/img-"),
+    lookfrom=lf, #lookat=la,
+    lookat=la+c(0,lu * lookup[i],0),
     # lookat=c.xyz, lookfrom=c.xyz + c(0, 3, 3),
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     # width=720, height=720, samples=200,
     # width=200, height=200, samples=1,
-    width=200, height=200,
-    samples=4,
+    # width=720, height=720,
+    samples=5,
     clamp_value=5,
     fov=fov,        # this affects computations above
     aperture=0

@@ -37,17 +37,17 @@ hexb <- cbind(sin(angles), cos(angles))
 hexscale <- pmax(rnorm(nshaft, .1, .025), .025)
 
 # # make kaleidoscope
-# 
+#
 # hexc <- hexb * 1.50
 # v1 <- cbind(hexc, 0)[,c(1,3,2)]
 # v2 <- cbind(hexc[c(2:6, 1),], 0)[,c(1,3,2)]
 # v3 <- cbind(numeric(6), -1L, numeric(6))
-# 
+#
 # kalei <- lapply(
 #   seq_len(nrow(v1)),
-#   function(i) 
+#   function(i)
 #   triangle(
-#     v1[i,], v2[i,], v3[i,], 
+#     v1[i,], v2[i,], v3[i,],
 #     material=diffuse(gold)
 #     # material=gold_mat
 #   )
@@ -74,18 +74,21 @@ castle_backdrop <- dplyr::bind_rows(
   #   material=diffuse(gold, checkerperiod=.25, checkercolor='white'), radius=1.75
   # ),
   # disk(
-  #   material=diffuse('green', checkerperiod=.25, checkercolor='white'), 
+  #   material=diffuse('green', checkerperiod=.25, checkercolor='white'),
   #   angle=c(-90, 0, 0), radius=1.75
   # )
 )
-castle.size <- .5
+castle.size <- .3
 make_castle <- (function(shafts) {
   force(shafts)
-  function() {
+  function(size) {
+    castle.size.init <- .3
     castle <- dplyr::bind_rows(
       shafts,
       sphere(
-        radius=castle.size, material=light(intensity=1), z=0, y=castle.size/2
+        radius=size,
+        material=light(intensity=1), z=0,
+        y=castle.size.init/2
       ),
     )
   }
