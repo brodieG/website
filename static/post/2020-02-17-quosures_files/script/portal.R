@@ -757,7 +757,7 @@ for(j in seq(1, 150, by=1)) {
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video6/img-"),
+    filename=next_file("~/Downloads/rlang/video7/img-"),
     # lookfrom=lf, #lookat=la,
     lookfrom=lf,
     lookat=la+c(0,lu * lookup[i], 0),
