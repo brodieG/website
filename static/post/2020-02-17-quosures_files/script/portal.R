@@ -704,7 +704,8 @@ lookup <- cummax(lookup)
 lv.last <- c(0, 0, -1)
 frames.all <- ncol(path.int)-1 + frames.spin
 
-for(j in seq(1, frames.all, by=1)) {
+# for(j in seq(1, frames.all, by=1)) {
+for(j in seq(1, 150, by=1)) {
   i <- max(1, j - frames.spin)
   time <- duration * (j - 1) / (frames.all - 1)
   c.angle <- c.angles[i]
