@@ -6,7 +6,7 @@ library(rayrender)
 
 # - Logo Data ------------------------------------------------------------------
 
-url <- '~/Downloads/rlang/rlang2.svg'
+url <- 'static/post/2020-02-17-quosures_files/illustration/rlang2.svg'
 zz <- parse_svg(url)
 ww <- interp_paths(zz, normalize=TRUE)
 paths <- lapply(
