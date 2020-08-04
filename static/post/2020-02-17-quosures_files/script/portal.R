@@ -707,7 +707,7 @@ frames.all <- ncol(path.int)-1 + frames.spin
 # for(j in seq(1, frames.all, by=1)) {
 for(j in seq(1, 150, by=1)) {
   i <- max(1, j - frames.spin)
-  time <- duration * (j - 1) / (frames.all - 1)
+  time <- duration * 1 / frames.all
   c.angle <- c.angles[i]
   writeLines(sprintf("Frame %04d %s", i, Sys.time()))
   a <- path.int[, i]
@@ -754,7 +754,7 @@ for(j in seq(1, 150, by=1)) {
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video5/img-"),
+    filename=next_file("~/Downloads/rlang/video6/img-"),
     # lookfrom=lf, #lookat=la,
     lookfrom=lf,
     lookat=la+c(0,lu * lookup[i], 0),
@@ -762,7 +762,8 @@ for(j in seq(1, 150, by=1)) {
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     width=720, height=720, samples=200,
-    # width=200, height=200, samples=10,
+    # width=200, height=200, 
+    # samples=10,
     # width=720, height=720,
     # samples=1,
     clamp_value=5,
