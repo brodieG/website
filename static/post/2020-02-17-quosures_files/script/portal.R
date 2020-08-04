@@ -615,13 +615,13 @@ path.all <- cbind(
 # 2 seconds into castle and fade to white
 
 # durations <- c(fade.f.white=.5, still=1.0, star.spin=1.5, transit=5)
-durations <- c(star.spin=0.5, rest=8.5)
+durations <- c(star.spin=0.5, rest=10)
 duration <- sum(durations)
-fps <- 10
+fps <- 30
 frames <- as.integer(duration * fps)
 frames <- frames + 1 # we don't render the last frame
 # fps <- frames / duration
-frames.transit <- c(start=20,coast=1,end=10,death=5)
+frames.transit <- c(start=20,coast=1,end=10,death=10)
 # coast <- 2/6
 
 frames.spin <- as.integer(durations['star.spin'] / duration * frames)
@@ -637,10 +637,10 @@ frames.end <- floor(
   (frames - frames.spin) * (frames.transit['end'] / sum(frames.transit))
 )
 frames.death <- frames - frames.spin - frames.start - frames.coast - frames.end
-frames.death.blend <- ceiling(frames.death * 2)
-frames.lookup <- ceiling(frames.end)
+frames.death.blend <- ceiling(frames.death * 1.1)
+frames.lookup <- frames - frames.death - 1L
 stopifnot(
-  frames.lookup <= frames.end,
+  frames.lookup < frames - frames.death,
   frames.death.blend <= frames.end + frames.death
 )
 
@@ -656,23 +656,6 @@ points.end <- points.end / points.end[1] * points.coast[1]
 frame.points <- cumsum(c(points.start, points.coast, points.end))
 frame.points <- frame.points / max(frame.points)
 points(frame.points, col='green')
-# plot(frame.points)
-
-# frame.points <- c(
-#   * coast.point.start,
-#   seq(
-#     coast.point.start, 1 - coast.point.end, length.out=frames.coast + 2
-#   )[-c(1L, frames.coast + 2L)],
-#   1 - rev(seq(0, 1, length.out=frames.end)^3 * coast.point.end)
-# )
-# 
-# sfun.frames <- splinefunH(c(0, 1), c(0, 1), c(0, 0))
-# frames.trans <- frames - frames.spin
-# frame.points.raw <-
-#   (cos(seq(pi, 2*pi, length.out=frames.trans)) + 1) / 2
-# point.mult <- sin(seq(0, pi, length.out=frames.trans - 1))
-# frame.points <- cumsum(c(0, diff(frame.points.raw) * (point.mult + 1) ^ 5))
-# frame.points <- frame.points/max(frame.points)
 
 path.int <- interp_along(path.all, frame.points * .98)
 path.int <- cbind(path.int, path.int[, rep(ncol(path.int), frames.death)])
@@ -700,15 +683,15 @@ tmp <- vector('list', ncol(path.int)-1)
 
 # last castle stuff
 
-rps <- .25
-c.angles <- c(rev(seq(24, by=-360 / fps, length.out=frames - 1)), 0)
+rps <- .2
+c.angles <- c(rev(seq(24, by=-360 / fps * rps, length.out=frames - 1)), 0)
 c.size <- rep(castle.size, frames - 1)
 c.dist <- sqrt(sum((c.xyz - path.int[,ncol(path.int) - 1])^2))
 c.size[rev(seq(length(c.size), length.out=frames.death.blend, by=-1))] <-
   seq(0, 1, length.out=frames.death.blend) ^ 3  * (c.dist - castle.size) * .99 +
   castle.size
 
-lookup <- numeric(frames - 1)
+lookup <- numeric(ncol(path.int) - 1)
 lookup[
   seq(frames - frames.death - frames.lookup, length.out=frames.lookup, by=1)
 ] <- (
@@ -720,7 +703,8 @@ lookup <- cummax(lookup)
 
 lv.last <- c(0, 0, -1)
 frames.all <- ncol(path.int)-1 + frames.spin
-for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
+
+for(j in seq(1, frames.all, by=1)) {
   i <- max(1, j - frames.spin)
   time <- duration * (j - 1) / (frames.all - 1)
   c.angle <- c.angles[i]
@@ -776,9 +760,9 @@ for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     # width=720, height=720, samples=200,
-    # width=200, height=200, samples=1,
+    width=200, height=200, samples=10,
     # width=720, height=720,
-    samples=5,
+    # samples=1,
     clamp_value=5,
     fov=fov,        # this affects computations above
     aperture=0
