@@ -504,7 +504,7 @@ stars.frame.raw <- star_cone(
   n=600, layers=5, start=1,
   obs=obsz[3] - frame.start, mult=mult, dmin=.03 * mult
 )[['coords']]
-hex.oob <- hex[1:7,] * .92
+hex.oob <- hex[1:7,] * .95
 v <- rbind(
   as.matrix(subset(hex.oob, x > 0 & y > 0)),
   vapply(hex.oob, max, 1)
@@ -755,8 +755,9 @@ for(j in seq(1, 150, by=1)) {
   render_scene(
     scene,
     filename=next_file("~/Downloads/rlang/video5/img-"),
-    lookfrom=lf, #lookat=la,
-    lookat=la+c(0,lu * lookup[i],0),
+    # lookfrom=lf, #lookat=la,
+    lookfrom=lf,
+    lookat=la+c(0,lu * lookup[i], 0),
     # lookat=c.xyz, lookfrom=c.xyz + c(0, 3, 3),
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
