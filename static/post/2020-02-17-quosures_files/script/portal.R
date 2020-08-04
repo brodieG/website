@@ -674,8 +674,11 @@ star.v0 <-  (stars.xz - obsz) / rep(sqrt(colSums((stars.xz - obsz)^2)), each=3)
 star.angle.0 <- acos(colSums(star.v0 * -obsz)) / pi * 180 *
   sign(xprod(star.v0, -obsz)[2,]) * -1
 
+# probably better to have a log normal type distro, but this one looks pretty
+# good.  Having a bunch of stars stuck / very slow not a bad look
+
 star.meta <- rbind(
-  speed=pmax(0, rnorm(ncol(star.v0), 45, 15)),
+  speed=pmax(0, rnorm(ncol(star.v0), 60, 45)),
   angle=ifelse(stars.types == 'extra', star.angle.0 + 90, 0)
 )
 # duration <- .0001   # in seconds
@@ -764,8 +767,6 @@ for(j in seq(1, 150, by=1)) {
     width=720, height=720, samples=200,
     # width=200, height=200, 
     # samples=10,
-    # width=720, height=720,
-    # samples=1,
     clamp_value=5,
     fov=fov,        # this affects computations above
     aperture=0
