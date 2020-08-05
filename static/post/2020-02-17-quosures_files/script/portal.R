@@ -734,7 +734,7 @@ for(j in seq(1, 150, by=1)) {
   star.rot <- star.meta['angle', ] + star.meta['speed',] * time
   stars <- mapply(
     make_star, stars.all[1,], stars.all[2,], stars.all[3,],
-    star.rot
+    star.rot,
     flip=(abs(star.rot - star.angle) > 90),
     MoreArgs=list(tc=tc), SIMPLIFY=FALSE
   )
