@@ -710,7 +710,7 @@ frames.all <- ncol(path.int)-1 + frames.spin
 # for(j in seq(1, frames.all, by=1)) {
 for(j in seq(1, 150, by=1)) {
   i <- max(1, j - frames.spin)
-  time <- duration * 1 / frames.all
+  time <- duration * (j - 1) / (frames.all - 1)
   c.angle <- c.angles[i]
   writeLines(sprintf("Frame %04d %s", i, Sys.time()))
   a <- path.int[, i]
@@ -731,10 +731,11 @@ for(j in seq(1, 150, by=1)) {
   # stars that are part of the second set should start at 90 degrees from the
   # angle.  So the angle about the y axis should be start angle + 90 degrees.
 
+  star.rot <- star.meta['angle', ] + star.meta['speed',] * time
   stars <- mapply(
     make_star, stars.all[1,], stars.all[2,], stars.all[3,],
-    star.meta['angle', ],
-    flip=(abs(star.meta['angle', ] - star.angle) > 90),
+    star.rot
+    flip=(abs(star.rot - star.angle) > 90),
     MoreArgs=list(tc=tc), SIMPLIFY=FALSE
   )
   scene <- dplyr::bind_rows(
@@ -771,8 +772,6 @@ for(j in seq(1, 150, by=1)) {
     fov=fov,        # this affects computations above
     aperture=0
   )
-  star.meta['angle',] <- star.meta['angle',] + star.meta['speed',] * time
-  tmp[[i]] <- star.meta['angle',] + star.meta['speed',] * time
 }
 
 
