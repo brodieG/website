@@ -704,21 +704,33 @@ lookup <- cummax(lookup)
 
 # for(j in seq(1, ncol(path.int)-1 + frames.spin, by=1)) {
 
+path.int.d <- path.int[,-1] - path.int[,-ncol(path.int)]
+path.int.d2 <- c.xyz - path.int
 lv.last <- c(0, 0, -1)
 frames.all <- ncol(path.int)-1 + frames.spin
 
-# for(j in seq(1, frames.all, by=1)) {
-for(j in seq(1, 150, by=1)) {
+# for(j in seq(270, frames.all, by=1)) {
+for(j in seq(142, 199, by=1)) {
   i <- max(1, j - frames.spin)
   time <- duration * (j - 1) / (frames.all - 1)
   c.angle <- c.angles[i]
-  writeLines(sprintf("Frame %04d %s", i, Sys.time()))
+  writeLines(sprintf("Frame %04d (%04d) %s", i, j, Sys.time()))
   a <- path.int[, i]
   b <- path.int[, i+1]
   lf <- a + c(0, .5, 0)
-  la <- b + c(0, .5, 0)
-  lv <- (la - lf) / sqrt(sum((la - lf)^2))
-  if(anyNA(lv)) lv <- lv.last else lv.last <- lv
+  # total hack for dealing for too short steps at beginning and end
+  if(sqrt(sum(a - path.int[,ncol(path.int)])^2) < 1e-3) {
+    # end
+    la <- c.xyz + c(0, .5, 0)
+  } else if (all(a == b)) {
+    # begining
+    la <- c(0, .5, -1)
+  } else {
+    # normal
+    la <- b + c(0, .5, 0)
+  }
+  lv <- (la - lf)
+  lv <- lv / sqrt(sum(lv^2))
   la <- lf + lv
   ld <- sqrt(sum((c.xyz - a)^2)) /
     sqrt(sum((c.xyz - path.int[,ncol(path.int)])^2))
@@ -758,7 +770,7 @@ for(j in seq(1, 150, by=1)) {
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video7/img-"),
+    filename=next_file("~/Downloads/rlang/video8/img-"),
     # lookfrom=lf, #lookat=la,
     lookfrom=lf,
     lookat=la+c(0,lu * lookup[i], 0),
@@ -766,8 +778,7 @@ for(j in seq(1, 150, by=1)) {
     # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     width=720, height=720, samples=200,
-    # width=200, height=200, 
-    # samples=10,
+    # width=200, height=200, samples=3,
     clamp_value=5,
     fov=fov,        # this affects computations above
     aperture=0
