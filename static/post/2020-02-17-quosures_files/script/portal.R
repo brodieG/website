@@ -710,7 +710,7 @@ lv.last <- c(0, 0, -1)
 frames.all <- ncol(path.int)-1 + frames.spin
 
 # for(j in seq(270, frames.all, by=1)) {
-for(j in seq(142, 199, by=1)) {
+for(j in 260:264) {
   i <- max(1, j - frames.spin)
   time <- duration * (j - 1) / (frames.all - 1)
   c.angle <- c.angles[i]
@@ -770,21 +770,19 @@ for(j in seq(142, 199, by=1)) {
   )
   render_scene(
     scene,
-    filename=next_file("~/Downloads/rlang/video8/img-"),
-    # lookfrom=lf, #lookat=la,
-    lookfrom=lf,
-    lookat=la+c(0,lu * lookup[i], 0),
+    filename=next_file("~/Downloads/rlang/video9/img-"),
+    lookfrom=lf, lookat=la+c(0,lu * lookup[i], 0),
     # lookat=c.xyz, lookfrom=c.xyz + c(0, 3, 3),
-    # lookfrom=c(20, .5, 2), lookat=c(0, .5, 0),
+    # lookfrom=c(0.6, .45, .75), lookat=c.xyz,
     # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
     width=720, height=720, samples=200,
+    # width=1000, height=1000, samples=300,
     # width=200, height=200, samples=3,
     clamp_value=5,
     fov=fov,        # this affects computations above
     aperture=0
   )
 }
-
 
 
 # objs <- dplyr::bind_rows(
