@@ -28,7 +28,7 @@ mean_in_data <- function(data, expr) {
 ```
 ```{r quote_w, echo=FALSE}
 quote_w <- function(x) {
-  caller <- parent.frame()
+  caller <- parent.frame()           # must be outside `bquote`
   bquote(with(.(caller), .(substitute(x))))
 }
 ```
@@ -135,16 +135,12 @@ time and effort to make quosures and `rlang` in general more accessible.
 Whether you love or hate `rlang`, one thing I would hope all but the surliest
 amongst us would agree on is that quosures are interesting.
 
-> This post is not a tutorial for `rlang`.  It is about understanding what
-> quosures are, what makes them interesting, and how they work.  As such usage
-> of `rlang` in this post will deviate from current recommended `rlang`
-> practices[^tidy-eval-recommend].
+> This post is not a tutorial for `rlang`, and it is not endorsed by the `rlang`
+> authors.  It is about understanding what quosures are, what makes them
+> interesting, and how they work.  As such usage of `rlang` in this post will
+> deviate from current recommended `rlang` practices[^tidy-eval-recommend].
 
 # Preface: Carriages, Horses, and Damn Philosophers...
-
-## Preface to the Preface
-
-I assure you, read far enough and you will be fascinated[^fascinated].
 
 ## Ghosts of Posts Past
 
@@ -164,7 +160,7 @@ As we saw previously it is possible to capture unevaluated R expressions with
 ```{r}
 mean_call <- function(expr) {
   cmd2 <- quote(mean(NULL))     # create unevaled `mean(NULL)`
-  cmd2[[2]] <- substitute(expr)  # sub in user expression
+  cmd2[[2]] <- substitute(expr) # sub in user expression
   cmd2
 }
 (expr <- mean_call(a + b))
@@ -293,7 +289,7 @@ eval_tidy(qrlang)
 
 Things are more interesting with more complex environments.  Let's compare
 expressions captured with `quote` vs `quo` in an ad-hoc environment created with
-[`local`](#interlude-local):
+[`local`](#eat-local):
 
 ```{r}
 a <- 1
@@ -542,7 +538,7 @@ eval_tidyish(quo(1 + 2))
 Formulas seem like a natural fit for quosure-like objects, but they are not.
 Their resistance to evaluation forces a custom evaluator along with a additional
 logic to preserve non-quosure `~` behavior, which even then remains subtly
-affected for some rare use-cases[^subtly-affected].  There is also the recovery
+affected in corner cases[^subtly-affected].  There is also the recovery
 of the formula environment from the call stack, which works but feels a bit
 uncomfortable to me[^uncomfortable].
 
@@ -556,15 +552,13 @@ to embed non-language objects in expressions.  It's not even really cheating.  R
 does this as it evaluates expressions, evaluating leaves in the expression tree
 until the tree is fully evaluated and the result is returned.
 
-Which leads us to:
+Which leads us to[^outside-bquote]:
 
 ```{r quote_w}
 ```
 ```{r}
 quote_w(a + 1)
 ```
-
-> The `parent.frame()` call [must be made outside of `bquote`](#quote_w).
 
 What the hell is that?  It's an unevaluated call to `with` with an
 alive-and-kicking environment embedded as the `data` argument.  That means that
@@ -971,7 +965,7 @@ the intended frame.  You also need to be careful about using
 sessionInfo()
 ```
 ```
-R version 4.0.0 Patched (2020-05-24 r78557)
+R version 4.0.2 (2020-06-22)
 Platform: x86_64-apple-darwin17.0 (64-bit)
 Running under: macOS Mojave 10.14.6
 
@@ -983,17 +977,15 @@ locale:
 [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
 
 attached base packages:
-[1] stats     graphics  grDevices utils     datasets  methods   base
-
-other attached packages:
-[1] rlang_0.4.6
+[1] stats     graphics  grDevices utils     datasets  methods   base     
 
 loaded via a namespace (and not attached):
- [1] Rcpp_1.0.4.6    bookdown_0.18   digest_0.6.25   later_1.0.0
- [5] mime_0.9        R6_2.4.1        jsonlite_1.6.1  magrittr_1.5
- [9] evaluate_0.14   blogdown_0.18   rstudioapi_0.11 promises_1.1.0
-[13] rmarkdown_2.1   tools_4.0.0     servr_0.16      httpuv_1.5.2
-[17] xfun_0.13       compiler_4.0.0  htmltools_0.4.0 knitr_1.28
+ [1] Rcpp_1.0.4.6    bookdown_0.18   digest_0.6.25   later_1.0.0    
+ [5] mime_0.9        R6_2.4.1        jsonlite_1.6.1  magrittr_1.5   
+ [9] evaluate_0.14   blogdown_0.18   stringi_1.4.6   rlang_0.4.7    
+[13] rstudioapi_0.11 promises_1.1.0  rmarkdown_2.1   tools_4.0.2    
+[17] servr_0.16      stringr_1.4.0   httpuv_1.5.2    xfun_0.13      
+[21] compiler_4.0.2  htmltools_0.4.0 knitr_1.28     
 ```
 
 [1]: /2020/05/05/on-nse/
@@ -1085,13 +1077,6 @@ loaded via a namespace (and not attached):
   environment as that is the one `eval_tidy` will default to anyway.  It is now
   expected that `quo` should rarely if ever be used.  See the [programming with
   `dplyr` vignette][7].
-[^fascinated]: You should absolutely trust that someone who feels compelled to
-  add a pre-preface with its own end-note can produce nothing but the most
-  riveting prose.  Even if it is about an arcane corner of a programming
-  language that desperately clings to its bottom-tier ranking in the
-  Authoritative Tiobe Assessment of Impact on Humanity.  Or maybe what I mean is
-  that if you keep reading you'll overflow the document onto a different window
-  or perhaps even a paper copy of something that is actually entertaining.
 [^shortcomings]: Likely the most problematic one is that if the user expression
   causes an error, the error backtrace will display the function in full rather
   than the name of the function, which may be confusing.
@@ -1144,15 +1129,15 @@ loaded via a namespace (and not attached):
   what portions of the API are okay to shoulder aside.  Why do I care?  Why not
   just live and let live?  Because I think it is better for the health of a
   language to avoid fragmentation, and I hope I can convince some to agree.
-  It's easier to collaborate if we all share the same language, and it seems
+  It's easier to collaborate if we all share the same foundations, and it seems
   natural to me that the _lingua franca_ should revolve around R itself, not
   third party extensions.  Obviously this is just my opinion.  CRAN, which is
   notorious for having strict standards for accepting third party packages
   imposes no requirements on overloading base functions, let alone lexical
   semantics, so there is nothing _technically_ wrong with doing those things.
   Lionel was gracious enough to discuss some of these issues with me, and I
-  tried to reflect some of his arguments, here but obviously my biases permeate
-  this footnote.
+  tried to reflect some of his arguments in this footnote, but obviously my
+  biases permeate.
 [^rlang-masking]: This masking is not quite the same as what `rlang` does as
   there the same mask environment is re-used for every quosure.
 [^capture-local]: This is the reason why `rlang` now encourages the use of
@@ -1165,3 +1150,6 @@ loaded via a namespace (and not attached):
 [^mask]: This is not entirely fair: for example what used to be called
   "overscope" became "mask", the latter a term base R uses.  There may be other
   examples.
+[^outside-bquote]: `bquote` uses `eval`, which sets two evaluation contexts in a
+  way that causes `parent.frame()` to behave in unpredictable ways.  To avoid
+  issues it is better to call `parent.frame()` [outside of `bquote`](#quote_w).
