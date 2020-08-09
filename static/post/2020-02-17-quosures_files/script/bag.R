@@ -15,13 +15,14 @@
 #   taken to be X, second Z, and the Y value is assumed to be 0.
 
 comp_inside <- function(
-  hex, hex.back, light_index=1, material=diffuse(color='red')
+  hex, hex.back, light_index=1, material=diffuse(color='red'), intensity=3
 ) {
   vetr::vetr(
     structure(list(numeric(7), numeric(7)), class='data.frame'),
     structure(list(numeric(7), numeric(7), numeric(7)), class='data.frame') &&
       nrow(.) == nrow(hex),
-    numeric()
+    numeric(),
+    intensity=NUM.1.POS
   )
   hex.in <- rbind(hex[[1]], 0, hex[[2]])
   hex.out <- t(as.matrix(hex.back[c(1,3,2)]))
@@ -39,7 +40,7 @@ comp_inside <- function(
     lapply(
       seq_len(ncol(hex.in) - 1L),
       function(i) {
-        if(i %in% light_index) material=light(intensity=3)
+        if(i %in% light_index) material=light(intensity=intensity)
         list(
           triangle(
             v1=hex.in[,i], v2=hex.out[,i], v3=hex.out[,i+1],
@@ -58,7 +59,8 @@ comp_inside <- function(
     function(i)
       triangle(
         hex.out[,i[1]], hex.out[,i[2]], hex.out[,i[3]],
-        material=material
+        material=if(any(light_index < 0)) light(intensity=intensity) else material,
+        flipped=TRUE
         # material=diffuse('#553333')
       )
   )

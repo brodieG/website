@@ -125,6 +125,14 @@ env_w[['mean_in_data_rl']] <- mean_in_data_rl
 
 # Quosures?
 
+<img
+  id='front-img'
+  src='/post/2020-02-17-quosures_files/images/rlang-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/rlang.png'
+  data-caption="Ceci n'est pas rlang."
+  class='post-inset-image bgw-zoom-img'
+/>
+
 Quosures first showed up on the scene as part of `rlang` about three years ago
 to a collective &#x1F92F;.  There is good and bad &#x1F92F;, and quosures
 delivered both in spades.  The good: what they do is powerful, and how they do
@@ -263,14 +271,23 @@ We'll be using `local` to create interesting ad-hoc evaluation contexts.
 
 # About Them Quosures
 
-Just as `quote`, `substitute`, and `bquote`  do, quosures capture unevaluated
-R expressions.
+<img
+  id='quos-img'
+  src='/post/2020-02-17-quosures_files/images/peek-around-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/peek-around.png'
+  class='post-inset-image bgw-zoom-img'
+/>
 
+Just as `quote`, `substitute`, and `bquote`  do, quosures capture unevaluated
+R expressions.  We may create them with `rlang::quo`:
+
+<div class='bgw-code-float'>
 ```{r}
 library(rlang)
 a <- 1
-(qrlang <- quo(a + 1))   # create a quosure with quo
+(qrlang <- quo(a + 1))
 ```
+</div>
 
 Additionally as you can see above, quosures record the environment the
 expression would have been evaluated in, had it not been captured.  Unlike
@@ -335,12 +352,13 @@ Next with `rlang`:
 mean_in_data_rl(mtcars, disp * l.per.cubic.i)
 ```
 
-The `rlang` team prioritized their vision for a new meta-programming interface
-over harmonizing with existing conventions and lexicon, so we get these
-inconsistencies:
+Unfortunately the `rlang` team prioritized their vision for a new
+meta-programming interface over harmonizing with existing conventions.  This
+results in re-use of lexical roots to mean different things, and also new
+symbology for existing concepts:
 
-* `rlang::quo` is used similarly to `base::bquote`, but is lexically
-  closer to `base::quote`, and at same time gives no indication of it's special
+*  `rlang::quo` is used similarly to `base::bquote`, but is lexically closer to
+  `base::quote`, and at same time gives no indication of it's special
   environment capture abilities.
 * `rlang::enquo` is used similarly to `base::substitute`, but bears no relation
   to `base::enquote`.  This clash with `base::enquote` is particularly confusing
@@ -439,12 +457,21 @@ environments, when R itself does not allow it?
 
 # Is It Magic?
 
+<img
+  id='castle-img'
+  src='/post/2020-02-17-quosures_files/images/castle-inside-2-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/castle-inside-2.png'
+  class='post-inset-image bgw-zoom-img'
+/>
+
 Let's peek behind the curtain:
 
+<div class='bgw-code-float'>
 ```{r}
 class(quo(a + b))
 unclass(quo(a + b))
 ```
+</div>
 
 Quosures are formulas, which we can see both from the class, and also from the
 tilde (`~`), once we side-step the quosure print method.  Formulas are an odd
@@ -534,6 +561,13 @@ eval_tidyish(quo(1 + 2))
 ```
 
 # Quosures _au Naturel_
+
+<img
+  id='r-img'
+  src='/post/2020-02-17-quosures_files/images/r-inside-2-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/r-inside-2.png'
+  class='post-inset-image bgw-zoom-img'
+/>
 
 Formulas seem like a natural fit for quosure-like objects, but they are not.
 Their resistance to evaluation forces a custom evaluator along with a additional
@@ -793,6 +827,14 @@ complexity trade off that come with `rlang`.  Situations with extensive
 meta-programming involving `...` argument forwarding will benefit most from
 `rlang`.
 
+<img
+  id='conclusion-img'
+  src='/post/2020-02-17-quosures_files/images/long-road-back-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/long-road-back.png'
+  class='bgw-zoom-img'
+/>
+
+
 <p id='feedback-cont'></p>
 
 # Appendix
@@ -822,6 +864,7 @@ Additionally:
       scenes.
     * The yellow brick road scene is based on the official
       [`rlang` SVG logo][58], which is licensed [CC0][57].
+    * PNG
 
 ## References
 
@@ -986,6 +1029,9 @@ loaded via a namespace (and not attached):
 [13] rstudioapi_0.11 promises_1.1.0  rmarkdown_2.1   tools_4.0.2    
 [17] servr_0.16      stringr_1.4.0   httpuv_1.5.2    xfun_0.13      
 [21] compiler_4.0.2  htmltools_0.4.0 knitr_1.28     
+```
+
+```{r child='../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis', cache=FALSE}
 ```
 
 [1]: /2020/05/05/on-nse/
