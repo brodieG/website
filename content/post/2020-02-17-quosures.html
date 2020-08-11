@@ -1,0 +1,983 @@
+---
+title: On Quosures
+author: ~
+date: '2020-08-11'
+slug: quosures
+categories: [r]
+tags: [meta-program,rlang]
+image: /post/2020-02-17-quosures_files/images/peek-around-small-pad.png
+imagerect: /post/2020-02-17-quosures_files/images/side-by-side-2-small.png
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: "Exploring Non-Standard Evaluation with rlang's Quosures."
+output:
+  blogdown::html_page:
+    keep_md: yes
+    md_extensions: +raw_attribute
+---
+
+
+
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
+<!--
+simulate a package evaluation chain to make sure we don't accidentally paper
+over bad look-ups that are "saved" by ending at the global environment,
+purposefully use baseenv() instead of strictly more correct asNamespace('base')
+-->
+<div id="quosures" class="section level1">
+<h1>Quosures?</h1>
+<p><img
+  id='front-img'
+  src='/post/2020-02-17-quosures_files/images/rlang-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/rlang.png'
+  data-caption="Ceci n'est pas rlang."
+  class='post-inset-image bgw-zoom-img'
+/></p>
+<p>Quosures first showed up on the scene as part of <code>rlang</code> about three years ago
+to a collective 🤯. There is good and bad 🤯, and quosures
+delivered both in spades. The good: what they do is powerful, and how they do
+it at a minimum <em>seems</em> magical. The bad: new terminology and mechanics
+confused a lot of people. Since then the developers have devoted substantial
+time and effort to make quosures and <code>rlang</code> in general more accessible.</p>
+<p>Whether you love or hate <code>rlang</code>, one thing I would hope all but the surliest
+amongst us would agree on is that quosures are interesting.</p>
+<blockquote>
+<p>This post is not a tutorial for <code>rlang</code>, and it is not endorsed by the <code>rlang</code>
+authors. It is about understanding what quosures are, what makes them
+interesting, and how they work in the context of <code>rlang</code>. Quosures started
+off as a prominent part of <code>rlang</code>, but have more recently been relegated to
+something closer to “implementation detail” status. They remain central to
+<code>rlang</code>, but are no longer emphasized in the documentation. Since usage of
+<code>rlang</code> in this post is expressly for the purposes of understanding quosures,
+it deviates from current recommended <code>rlang</code> practices<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>.</p>
+</blockquote>
+</div>
+<div id="preface-carriages-horses-and-damn-philosophers" class="section level1">
+<h1>Preface: Carriages, Horses, and Damn Philosophers…</h1>
+<div id="ghosts-of-posts-past" class="section level2">
+<h2>Ghosts of Posts Past</h2>
+<p>If you are unfamiliar with R’s evaluation model, and how it enables
+“Non-Standard Evaluation” (NSE), now is a good time to check out my previous
+<a href="/2020/05/05/on-nse/">post on the topic</a>. To understand this post it might help to know what
+environments, “Enclosures” and “Environment Chains” are, the difference between
+“Evaluation”, “Calling”, “Function”, and “function Evaluation” Environments, and
+what unevaluated expressions are and how they are created. All these are
+discussed at length in that post.</p>
+</div>
+<div id="quasi-quoi" class="section level2">
+<h2>Quasi-quoi?</h2>
+<p>As we saw previously it is possible to capture unevaluated R expressions with
+<a href="/2020/05/05/on-nse/#nse-in-functions"><code>quote</code> and <code>substitute</code></a>. We can also manipulate them:</p>
+<pre class="r"><code>mean_call &lt;- function(expr) {
+  cmd2 &lt;- quote(mean(NULL))     # create unevaled `mean(NULL)`
+  cmd2[[2]] &lt;- substitute(expr) # sub in user expression
+  cmd2
+}
+(expr &lt;- mean_call(a + b))</code></pre>
+<pre><code>mean(a + b)</code></pre>
+<p><code>mean_call</code> produced the unevaluated expression <code>mean(a + b)</code>. We can evaluate
+it with <code>eval</code>:</p>
+<pre class="r"><code>a &lt;- 1
+b &lt;- 2
+eval(expr)</code></pre>
+<pre><code>[1] 3</code></pre>
+<p>The direct manipulation of the expression is a little awkward. Expressions are
+recursive lists of sub-expressions, so it can get difficult to keep track of the
+exact index to modify. Thankfully R provides <code>bquote</code> to partially quote
+expressions (or partially evaluate them, depending on your life outlook - I’m
+more of a expression-half-evaluated guy). Let’s look first at a trivial
+example:</p>
+<pre class="r"><code>bquote(mean(.(1 + 2)))</code></pre>
+<pre><code>mean(3)</code></pre>
+<p>Compare to:</p>
+<pre class="r"><code>quote(mean(1 + 2))</code></pre>
+<pre><code>mean(1 + 2)</code></pre>
+<p><code>quote</code> captures the entire expression unevaluated. <code>bquote</code> allows whatever is
+inside the <code>.(...)</code> to be evaluated. We can use <code>bquote</code> to recreate
+<code>mean_call</code>:</p>
+<pre class="r"><code>mean_call2 &lt;- function(expr) {
+  bquote(mean(.(substitute(expr))))
+}
+mean_call2(a + b)</code></pre>
+<pre><code>mean(a + b)</code></pre>
+<p>Wait, but that’s an unevaluated call. Didn’t we promise partial evaluation? We
+delivered, but it’s not obvious because what was partially evaluated,
+<code>substitute(expr)</code>, produced an unevaluated expression! We can see that by
+comparing to an implementation that uses <code>quote</code> instead of <code>bquote</code>:</p>
+<pre class="r"><code>mean_call2a &lt;- function(expr) {
+  quote(mean(substitute(expr)))
+}
+mean_call2a(a + b)</code></pre>
+<pre><code>mean(substitute(expr))</code></pre>
+<pre class="r"><code>mean_call2(a + b)</code></pre>
+<pre><code>mean(a + b)</code></pre>
+<p>In this case we can see that <code>quote</code> does not evaluate <code>substitute(expr)</code>,
+whereas <code>bquote</code> does.</p>
+<p>If you were early on the <code>rlang</code> bandwagon you might have seen the term
+“quasi-quotation” bandied about. It turns out partial evaluation <strong>is</strong>
+quasi-quotation. It’s just that <a href="https://en.wikipedia.org/wiki/Quasi-quotation">quasi-quotation</a> was coined by the
+philosopher <a href="https://en.wikipedia.org/wiki/Willard_Van_Orman_Quine">Willard Van Orman Quine</a>, and philosophy without arcaneness is
+not philosophy<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>. Lisp adopted the terminology, <code>rlang</code> brought it
+explicitly to R, and the rest of us were left to scratch our heads.</p>
+<p>So what’s the etymology of R’s <code>bquote</code>? Turns out that in certain Lisp
+dialects such as Scheme the equivalent to the R <code>quote</code> function is a single
+quote <code>'</code>, and quasi-quoting (partial evaluation) is done with
+the “backquote” <code>`</code>. So R’s quasi-quoting function is named
+after the name of the <code>`</code>. I suspect a fair bit of confusion
+among R users could have been avoided simply by riffing off of the “backquote”
+or (partial) “evaluation” terminology, even though “quasi-quote” is the correct
+“formal” term outside of R.</p>
+</div>
+<div id="eat-local" class="section level2">
+<h2>Eat <code>local</code></h2>
+<p>One last thing before we get going for real. In order to stress test quosures
+and related elements we need to construct interesting Evaluation Environments.
+R provides the <code>local</code> function as a mechanism for doing exactly this:</p>
+<pre class="r"><code>a &lt;- 1
+num &lt;- 2
+local({
+  a &lt;- 100
+  a + num
+})</code></pre>
+<pre><code>[1] 102</code></pre>
+<pre class="r"><code>a + num</code></pre>
+<pre><code>[1] 3</code></pre>
+<p>The <code>a</code> defined at the top-level (<code>a &lt;- 1</code>) is masked by the one defined
+inside the <code>local</code> Evaluation Environment (<code>a &lt;- 100</code>), but only for expressions
+evaluated in that environment. This is akin to how expressions in function
+bodies are evaluated in function Evaluation Environments.</p>
+<p>We’ll be using <code>local</code> to create interesting ad-hoc evaluation contexts.</p>
+</div>
+</div>
+<div id="about-them-quosures" class="section level1">
+<h1>About Them Quosures</h1>
+<p><img
+  id='quos-img'
+  src='/post/2020-02-17-quosures_files/images/peek-around-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/peek-around.png'
+  class='post-inset-image bgw-zoom-img'
+/></p>
+<p>Just as <code>quote</code>, <code>substitute</code>, and <code>bquote</code> do, quosures capture unevaluated
+R expressions. We may create them with <code>rlang::quo</code>:</p>
+<div class="bgw-code-float">
+<pre class="r"><code>library(rlang)
+a &lt;- 1
+(qrlang &lt;- quo(a + 1))</code></pre>
+<PRE class="fansi fansi-output"><CODE><span style='font-weight: bold;'>&lt;quosure&gt;</span><span>
+expr: ^a + 1
+env:  global
+</span></CODE></PRE>
+</div>
+<p>Additionally as you can see above, quosures record the environment the
+expression would have been evaluated in, had it not been captured. Unlike
+typical unevaluated expressions, quosures do no resolve when they are <code>eval</code>ed:</p>
+<pre class="r"><code>eval(qrlang)</code></pre>
+<PRE class="fansi fansi-output"><CODE><span style='font-weight: bold;'>&lt;quosure&gt;</span><span>
+expr: ^a + 1
+env:  global
+</span></CODE></PRE>
+<p>We’ll see why this is in a little bit, but until then we can use <code>eval_tidy</code> to
+evaluate quosures:</p>
+<pre class="r"><code>eval_tidy(qrlang)</code></pre>
+<pre><code>[1] 2</code></pre>
+<p>Things are more interesting with more complex environments. Let’s compare
+expressions captured with <code>quote</code> vs <code>quo</code> in an ad-hoc environment created with
+<a href="#eat-local"><code>local</code></a>:</p>
+<pre class="r"><code>a &lt;- 1
+lang &lt;- local({
+  a &lt;- 100
+  list(
+    base=quote(a + 1),
+    rlang=quo(a + 1)
+  )
+})
+eval(lang[[&#39;base&#39;]])</code></pre>
+<pre><code>[1] 2</code></pre>
+<pre class="r"><code>eval_tidy(lang[[&#39;rlang&#39;]])</code></pre>
+<pre><code>[1] 101</code></pre>
+<p>Normal quoted language resolves <code>a</code> in the environment in which it is
+<code>eval</code>ed. The quosure instead resolves <code>a</code> in the Evaluation Environment in
+which it was <strong>created</strong>. Pretty neat.</p>
+</div>
+<div id="quosures-in-functions" class="section level1">
+<h1>Quosures in Functions</h1>
+<p>Let’s build a simple NSE function to compute means in the context of of a
+user-supplied data frame. First with base:</p>
+<pre class="r"><code>mean_in_data &lt;- function(data, expr) {
+  expr &lt;- substitute(expr)           # capture user expression
+  expr &lt;- bquote(mean(.(expr)))      # wrap it in `mean`
+  eval(expr, data, parent.frame())
+}</code></pre>
+<p>The key features are <code>substitute</code>, which we <a href="/2020/05/05/on-nse/#nse-in-functions">discussed in the previous post</a>,
+and evaluation in the Calling Environment with <code>parent.frame()</code> to ensure names
+used in <code>expr</code> <a href="/2020/05/05/on-nse/#environmental-dichotomy">resolve as intended</a> by the user of our function.</p>
+<p>We can use it to compute mean engine displacement of <code>mtcars</code> in liters:</p>
+<pre class="r"><code>l.per.cubic.i &lt;- 2.54^3 / 1000
+mean_in_data(mtcars, disp * l.per.cubic.i)</code></pre>
+<pre><code>[1] 3.78</code></pre>
+<p>Next with <code>rlang</code>:</p>
+<pre class="r"><code>mean_in_data_rl &lt;- function(data, expr) {
+  quosure &lt;- enquo(expr)           # capture user expression
+  quosure &lt;- quo(mean(!!quosure))  # wrap it in `mean`
+  eval_tidy(quosure, data)
+}</code></pre>
+<pre class="r"><code>mean_in_data_rl(mtcars, disp * l.per.cubic.i)</code></pre>
+<pre><code>[1] 3.78</code></pre>
+<p>While the parallels between the two implementations are clear when they are
+juxtaposed, they are not obvious from the function names alone. The <code>rlang</code>
+authors prioritized their own vision of a meta programming interface over
+harmonizing with the existing conventions, so we end up with the following
+oddities:</p>
+<ul>
+<li><code>rlang::quo</code> is used similarly to <code>base::bquote</code>, but is lexically closer to
+<code>base::quote</code>, and at same time gives no indication of its special
+environment capture abilities in its name.</li>
+<li><code>rlang::enquo</code> is used similarly to <code>base::substitute</code>, but bears no relation
+to <code>base::enquote</code>. This clash with <code>base::enquote</code> is particularly confusing
+to me given that the “en” gives no indication of how <code>enquo</code> is
+different from <code>quo</code> (my personal experience was that the lexical similarity
+between <code>quo</code> and <code>enquo</code> made it harder to figure out what was going on).</li>
+<li><code>rlang</code> designates partial evaluation with <code>!!</code> instead of <code>.()</code> as in
+base, which is probably the most controversial design decision.</li>
+</ul>
+<p>There are reasonable arguments for why things ended up how they
+did<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>. I know the <code>rlang</code> team devoted a lot of time and
+effort coming up with names, including trying to work with precedent. But when
+I look at the result I can’t help but think the balance of priorities is off.</p>
+<figure>
+<img class='aligncenter' src='https://imgs.xkcd.com/comics/standards.png' />
+<figcaption>
+<a href='https://xkcd.com/927/'>XKCD 927</a> —
+<a href='https://xkcd.com/license.html'>CC BY-NC 2.5</a>
+</figcaption>
+</figure>
+<p>Partly as a result the initial confusion when <code>rlang</code> was first released the
+authors have shifted to different terminology in it’s documentation and adjusted
+the interface somewhat. For example, the “curly-curly” operator was added
+replace the <code>quo(!!enquo(arg))</code> pattern so we could have written instead<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>:</p>
+<pre class="r"><code>mean_in_data_rl2 &lt;- function(data, expr) {
+  quosure &lt;- quo(mean({{expr}}))     # notice: no enquo
+  eval_tidy(quosure, data)
+}</code></pre>
+<p>This is a big improvement given it removes the <code>quo</code>/<code>enquo</code> confusion and
+keeps <code>!!</code> out of sight. We stick to the old method because it mirrors the
+steps used in base, and it is useful for pedagogical purposes to distinguish
+between argument substitution and partial evaluation.</p>
+<blockquote>
+<p>Contemporary <code>rlang</code> now also replaces <code>quo()</code> with <code>expr()</code><a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a>,</p>
+</blockquote>
+<p>While it’s great the <code>rlang</code> team has responded to feedback and tried to adapt
+it would have been nice to see a re-convergence towards existing R terminology
+rather than toward Standard Seventeen<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a>.</p>
+<p>So why bother with <code>rlang</code>, if all I’m going to do is belly-ache about function
+names? Well, along with the lexical malpractice (I kid, I kid) we get some very
+interesting features.</p>
+</div>
+<div id="the-power-of-quosures" class="section level1">
+<h1>The Power Of Quosures</h1>
+<p>Bad NSE implementations often break when some of the names in an expression are
+not uniquely mapped in the global environment. Let’s try to trigger failures by
+complicating the Evaluation Environment:</p>
+<pre class="r"><code>l.per.cubic.i &lt;- 1                 # decoy
+local({
+  l.per.cubic.i &lt;- 2.54^3 / 1000   # not global, real duck
+  list(
+    base=mean_in_data(mtcars, disp * l.per.cubic.i),
+    rlang=mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+  )
+})</code></pre>
+<pre><code>$base
+[1] 3.78
+
+$rlang
+[1] 3.78</code></pre>
+<p>A particularly poor implementation might have pulled in the <code>l.per.cubic.i</code> we
+added to the global environment, but neither is fooled here. Let’s raise the
+stakes a bit:</p>
+<pre class="r"><code>l.per.cubic.i &lt;- 1                      # decoy
+local({
+  mean &lt;- function(x) -base::mean(x)    # decoy
+  l.per.cubic.i &lt;- 2.54^3 / 1000
+  list(
+    base=mean_in_data(mtcars, disp * l.per.cubic.i),
+    rlang=mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+  )
+})</code></pre>
+<pre><code>$base
+[1] -3.78
+
+$rlang
+[1] 3.78</code></pre>
+<p>😱! We find the wrong <code>mean</code>. This would have happened even if we had
+defined our function in a package. The very trick that allowed us
+to find the correct <code>l.per.cubic.i</code> (<code>eval</code> in <code>parent.frame()</code>) stabbed us in
+the back. <code>rlang</code>’s version on the other hand works fine. Ultimately the issue
+is that in the expression generated by <code>mean_in_data*</code>:</p>
+<pre><code><span style='background-color: #aaffaa;'>mean</span>(<span
+style='background-color: #aaaaff;'>disp * l.per.cubic.i</span>)</code></pre>
+<p>We need <code style='background-color: #aaffaa;'>mean</code> to be resolved
+according to the Function Environment, but <code style='background-color:
+#aaaaff;'>disp * l.per.cubic.i</code> in the data enclosed by the Calling
+Environment. R, however, does not allow more than one Environment Chain at a
+time.</p>
+<p>With quosures, which retain the Evaluation Environments they are defined in, it
+works right out of the box. Of course we can fix the R version by
+pre-resolving <code>mean</code> as we did in <a href="/2020/05/05/on-nse/#call-assembly">the prior post</a>, but that’s extra work.
+What sorcery allows <code>quosures</code> to evaluate a single expression in multiple
+environments, when R itself does not allow it?</p>
+</div>
+<div id="is-it-magic" class="section level1">
+<h1>Is It Magic?</h1>
+<p><img
+  id='castle-img'
+  src='/post/2020-02-17-quosures_files/images/castle-inside-2-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/castle-inside-2.png'
+  class='post-inset-image bgw-zoom-img'
+/></p>
+<p>Let’s peek behind the curtain:</p>
+<div class="bgw-code-float">
+<pre class="r"><code>class(quo(a + b))</code></pre>
+<pre><code>[1] &quot;quosure&quot; &quot;formula&quot;</code></pre>
+<pre class="r"><code>unclass(quo(a + b))</code></pre>
+<pre><code>~a + b
+attr(,&quot;.Environment&quot;)
+&lt;environment: R_GlobalEnv&gt;</code></pre>
+</div>
+<p>Quosures are formulas, which we can see both from the class, and also from the
+tilde (<code>~</code>), once we side-step the quosure print method. Formulas are an odd
+duck in the R world: a form of self-quoting expression that also captures the
+Evaluation Environment in which it is created. Mostly they are used to
+implement domain specific languages such as model or plot specifications.
+Because they can contain arbitrary R expressions as well as environments they
+are appealing as a vehicle for quosures.</p>
+<p>They do have a big draw-back for our purpose: the quoting is triggered by the
+<code>~</code>, but the <code>~</code> remains in the captured expression.</p>
+<pre class="r"><code>~a + b</code></pre>
+<pre><code>~a + b</code></pre>
+<p>This means you cannot evaluate the captured expression as evaluating it just
+leads to the expression quoting itself again! It’s like those awful trick
+candles you just can’t blow out:</p>
+<pre class="r"><code>eval(~a + b)</code></pre>
+<pre><code>~a + b</code></pre>
+<p><code>eval_tidy</code> does something quite clever to force evaluation: it replaces <code>~</code>
+with an internal version that self-evaluates quosures. Here is a
+hack re-implementation to demonstrate the concept:</p>
+<pre class="r"><code>eval_tidyish &lt;- function(expr) {
+  env &lt;- new.env(parent=parent.frame())
+  env[[&#39;~&#39;]] &lt;- function(...) {# replace `~` with our version
+    call &lt;- sys.call()
+    env &lt;- environment(call)   # recover formula env from call
+    eval(call[[2]], env)
+  }
+  eval(expr, env)
+}</code></pre>
+<p><code>eval_tidyish</code> creates an environment that contains a self-evaluating version of
+<code>~</code>, and evaluates the expression therein. We can recover the formula
+environment from the call to the formula, which is fortunate as otherwise this
+trick would not work. Let’s try it:</p>
+<pre class="r"><code>a &lt;- 10
+q1 &lt;- local({
+  a &lt;- 1/2
+  ~ a * 2
+})
+q1</code></pre>
+<pre><code>~a * 2
+&lt;environment: 0x7f80bd209310&gt;</code></pre>
+<pre class="r"><code>eval_tidyish(q1)</code></pre>
+<pre><code>[1] 1</code></pre>
+<p>With more emotion:</p>
+<pre class="r"><code>q2 &lt;- local({
+  a &lt;- 1/8
+  ~ a + 1/8
+})
+bquote(.(q1) / .(q2))</code></pre>
+<pre><code>(~a * 2)/~a + 1/8</code></pre>
+<pre class="r"><code>eval_tidyish(bquote(.(q1) / .(q2)))</code></pre>
+<pre><code>[1] 4</code></pre>
+<pre class="r"><code>eval_tidyish(bquote(.(q1) / .(q2) + a))</code></pre>
+<pre><code>[1] 14</code></pre>
+<p>Half-assed quosures! These don’t even support adding data to the Environment
+Chain, deity-forbid using a formula as a <em>formula</em>, and they’ll give you a
+severe case of operator-precedence-anxiety. But we do bottle that
+multiple-Environment-Chain magic in a handful of lines of code.</p>
+<p>Aside: <code>eval_tidyish</code> will evaluate quosures, albeit with a once-per-session
+warning:</p>
+<pre class="r"><code>eval_tidyish(quo(1 + 2))</code></pre>
+<pre><code>[1] 3</code></pre>
+</div>
+<div id="quosures-au-naturel" class="section level1">
+<h1>Quosures <em>au Naturel</em></h1>
+<p><img
+  id='r-img'
+  src='/post/2020-02-17-quosures_files/images/r-inside-2-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/r-inside-2.png'
+  class='post-inset-image bgw-zoom-img'
+/></p>
+<p>Formulas seem like a natural fit for quosure-like objects, but they are not.
+Their resistance to evaluation forces a custom evaluator along with a additional
+logic to preserve non-quosure <code>~</code> behavior, which even then remains subtly
+affected in corner cases<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>. There is also the recovery
+of the formula environment from the call stack, which works but feels a bit
+uncomfortable to me<a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a>.</p>
+<p>But R doesn’t offer any other functions that hold unevaluated expression and
+Enclosures, so what are we to do? Cheat, duh.</p>
+<p>In the previous post we <a href="/2020/05/05/on-nse/#call-assembly">solved the two Environment Chain dilemma</a> by
+pre-resolving the function along one Environment Chain and embedding the result
+in the otherwise unevaluated expression. The key learning is that it is possible
+to embed non-language objects in expressions. It’s not even really cheating. R
+does this as it evaluates expressions, evaluating leaves in the expression tree
+until the tree is fully evaluated and the result is returned.</p>
+<p>Which leads us to<a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a>:</p>
+<pre class="r"><code>quote_w &lt;- function(x) {
+  caller &lt;- parent.frame()           # must be outside `bquote`
+  bquote(with(.(caller), .(substitute(x))))
+}</code></pre>
+<pre class="r"><code>quote_w(a + 1)</code></pre>
+<pre><code>with(&lt;environment&gt;, a + 1)</code></pre>
+<p>What the hell is that? It’s an unevaluated call to <code>with</code> with an
+alive-and-kicking environment embedded as the <code>data</code> argument. That means that
+when we evaluate the expression, the provided sub-expression will be evaluated
+in the context of that environment. Let’s try it out:</p>
+<pre class="r"><code>a &lt;- 10
+q1 &lt;- local({
+  a &lt;- 1/2
+  quote_w(a * 2)
+})
+q1</code></pre>
+<pre><code>with(&lt;environment&gt;, a * 2)</code></pre>
+<pre class="r"><code>eval(q1)</code></pre>
+<pre><code>[1] 1</code></pre>
+<p>We successfully captured the <code>a &lt;- 1/2</code> from the local environment, even though
+we evaluated the expression in the top-level environment where the mapping is
+<code>a &lt;- 10</code>.</p>
+<p>Let’s up the difficulty:</p>
+<pre class="r"><code>q2 &lt;- local({
+  a &lt;- 1/8
+  quote_w(a + 1/8)
+})
+(q3 &lt;- bquote(.(q1) / .(q2)))</code></pre>
+<pre><code>with(&lt;environment&gt;, a * 2)/with(&lt;environment&gt;, a + 1/8)</code></pre>
+<pre class="r"><code>eval(q3)</code></pre>
+<pre><code>[1] 4</code></pre>
+<p>Each of the <code>a</code>’s is resolved in its own environment. We can even mix them
+with normal unevaluated expressions. The names outside of the <code>with</code>s resolve
+in the Evaluation Environment:</p>
+<pre class="r"><code>(q4 &lt;- bquote(.(q1) / .(q2) + a))</code></pre>
+<pre><code>with(&lt;environment&gt;, a * 2)/with(&lt;environment&gt;, a + 1/8) + a</code></pre>
+<pre class="r"><code>eval(q4)</code></pre>
+<pre><code>[1] 14</code></pre>
+<p>Why bother with this madness when we have quosures already? Well, it’s fun.
+And the <code>with</code> approach has benefits:</p>
+<ul>
+<li>We can use good-old <code>base::eval</code>.</li>
+<li>Semantics are pure; everything behaves exactly as usual in the R interpreter.</li>
+<li>Complete interoperability with existing meta-programming constructs (e.g.
+<code>bquote</code>).</li>
+<li>WYSIWYG: the semantics of the expressions are transparent. Any useR familiar
+with <code>with</code> knows what the expressions will do. Sure, they don’t necessarily
+know what’s in the environments, but that’s true of quosures too.</li>
+<li>WYSIWYG 2: We don’t need any special print methods, and operator precedence is
+crystal-clear.</li>
+</ul>
+<p>All of this in <strong>two lines of code</strong>! It does say something about the baked in
+meta-programming capabilities of R that such thing is even possible.</p>
+<p>Yes, some will object to the aesthetics of the <code>with</code> calls everywhere,
+preferring the more demure <code>^</code> prefix, but the latter relies on custom print
+methods. We could add the same, but they are defeated by things such as:</p>
+<pre class="r"><code>q5 &lt;- quo(a + 1)
+rlang::expr(a + !!q5)</code></pre>
+<pre><code>a + ~a + 1</code></pre>
+<p>Of course, we’re not even close to replacing the full functionality of quosures
+with this, but it’s not a bad start.</p>
+</div>
+<div id="bells-whistles" class="section level1">
+<h1>Bells, Whistles</h1>
+<div id="substitute" class="section level2">
+<h2>Substitute</h2>
+<p>We need a counterpart to <code>substitute</code> that will capture the Calling Environment
+like <code>enquo</code> does:</p>
+<pre class="r"><code>substitute_w &lt;- function(x) {
+  caller &lt;- parent.frame()
+  caller2 &lt;- sys.frame(sys.parent(2))   # see appendix for explanation
+  expr &lt;- eval(bquote(substitute(.(substitute(x)),.(caller))))
+  expr &lt;- eval(bquote(.(bquote)(.(expr))), caller2)
+  bquote(with(.(caller2), .(expr)))
+}</code></pre>
+<p>There is some not-so-great 🤯 going on in there, but we’ll sweep that
+under the “implementation details” rug. The users of <code>substitute_w</code> need not
+be concerned with them. Check the appendix if you want <a href="#substitute_w">an
+explanation</a>. Part of the complexity stems from supports
+of backquoting (a.k.a. quasi-quotation / partial-evaluation). And
+despite this feature there are still only five lines of code in it.</p>
+<p>One problem with this implementation is that it might not get the correct
+environment for any dots (<code>...</code>) that are in the argument to <code>substitute_w</code>
+(e.g. as with <code>substitute_w(list(...))</code>). This is because <code>substitute</code> will
+replace dots recursively, unlike with other names. Each element of the dots
+once expanded may be associated with different environments on the call
+stack. A more thorough implementation would warn/error if it encountered any
+dots.</p>
+<p>The ability to associate environments to arguments forwarded via dots is a
+distinguishing feature of <code>rlang</code> that likely cannot be replicated efficiently
+with base R.</p>
+</div>
+<div id="back-quoting" class="section level2">
+<h2>Back-quoting</h2>
+<p>Since we implemented <code>substitute_w</code> with partial-evaluation support we don’t
+need a <code>bquote_w</code> for our purposes here, though there is an <a href="#bquote_w">implementation in
+the appendix</a>.</p>
+</div>
+<div id="masking" class="section level2">
+<h2>Masking</h2>
+<p>One of the most common uses of NSE is to allow user data to “mask” names in the
+Evaluation Chain. This is typically done by turning the data into an
+environment with the previous Evaluation Chain as the Enclosure, and evaluating
+expressions therein. So let’s do just that:</p>
+<pre class="r"><code>mask &lt;- function(expr, data) {
+  if(is.language(expr) &amp;&amp; length(expr) &gt; 1L) {
+    # modify `with` expressions that contain a live environment
+    if(expr[[1L]] == as.name(&#39;with&#39;) &amp;&amp; is.environment(expr[[2L]])) {
+      expr[[2L]] &lt;- list2env(data, parent=expr[[2L]])
+    }
+    # recurse on each sub-expression
+    expr[2L:length(expr)] &lt;- lapply(expr[2L:length(expr)], mask, data)
+  }
+  expr
+}</code></pre>
+<p>R expressions are nested lists of sub-expressions, and our quoted <code>with</code>
+statements are unevaluated R expressions. Most of the function recurses
+through those lists. The key line is:</p>
+<pre class="r"><code>      expr[[2L]] &lt;- list2env(data, parent=expr[[2L]])</code></pre>
+<p>There we use the existing environment as the Enclosure to the data mask, and
+then we swap the data mask in<a href="#fn10" class="footnote-ref" id="fnref10"><sup>10</sup></a>. Let’s try it:</p>
+<pre class="r"><code>q6 &lt;- local({
+  a &lt;- 1/2
+  quote_w(a + b + 2)
+})
+b &lt;- 1
+eval(q6)</code></pre>
+<pre><code>[1] 3.5</code></pre>
+<pre class="r"><code>q7 &lt;- mask(q6, list(b=10))
+eval(q7)</code></pre>
+<pre><code>[1] 12.5</code></pre>
+</div>
+</div>
+<div id="endgame" class="section level1">
+<h1>Endgame</h1>
+<p>Now we can go back to our <code>mean_in_data*</code> functions:</p>
+<pre class="r"><code>mean_in_data_w &lt;- function(data, expr) {
+  expr &lt;- bquote(mean(.(substitute_w(expr))))
+  expr &lt;- mask(expr, data)
+  eval(expr)
+}</code></pre>
+<pre class="r"><code>l.per.cubic.i &lt;- 1                      # decoy
+local({
+  mean &lt;- function(x) -base::mean(x)    # decoy
+  l.per.cubic.i &lt;- 2.54^3 / 1000
+  list(
+    base=mean_in_data(mtcars, disp * l.per.cubic.i),
+    rlang=mean_in_data_rl(mtcars, disp * l.per.cubic.i),
+    base_w=mean_in_data_w(mtcars, disp * l.per.cubic.i)
+  )
+})</code></pre>
+<pre><code>$base
+[1] -3.78
+
+$rlang
+[1] 3.78
+
+$base_w
+[1] 3.78</code></pre>
+<p>Beauty.</p>
+<p>Notice we use <code>bquote</code> to generate the <code>mean</code> call. This is safe to do because
+we evaluate <code>expr</code> in the same environment that call is created so we do not
+need to capture the local environment<a href="#fn11" class="footnote-ref" id="fnref11"><sup>11</sup></a>.</p>
+<p>Finally, for good measure, we’ll wrap all our functions inside another function
+to demonstrate argument forwarding.</p>
+<pre class="r"><code>mean_in_data_all &lt;- function(data, expr) {
+  l.per.cubic.i &lt;- 1                    # decoy
+  mean &lt;- function(x) -base::mean(x)    # decoy
+  list(
+    base=eval(bquote(mean_in_data(data, .(substitute(expr))))),
+    rlang=mean_in_data_rl(data, !!rlang::enquo(expr)),
+    base_w=mean_in_data_w(data, .(substitute_w(expr)))
+  )
+}</code></pre>
+<p>If you look closely you’ll notice that the base approach requires us to capture
+the user expression and forward it on by using
+<code>eval(bquote(.(substitute(expr))))</code>. On the other hand, for both the <code>_rl</code> and
+<code>_w</code> versions we can rely on the functions to do the partial evaluation of their
+arguments directly.</p>
+<p>In and of itself once you’re comfortable with “programming on the language”
+this is only a slight annoyance, but the result is wrong:</p>
+<pre class="r"><code>l.per.cubic.i &lt;- 2.54^3 / 1000
+mean_in_data_all(mtcars, disp * l.per.cubic.i)</code></pre>
+<pre><code>$base
+[1] -231
+
+$rlang
+[1] 3.78
+
+$base_w
+[1] 3.78</code></pre>
+<p>The naive implementation picks up both the decoy <code>mean</code> and <code>l.per.cubic.i</code>.
+This is a variation on the issue we had previously, in which we need different
+parts of the composite expression evaluated in different environments. With a
+little extra work, we can resolve this too, but it is nice we can build tools
+that handle the complexity for us.</p>
+<blockquote>
+<p>Equivalently for the <code>rlang</code> option we could have done
+<code>mean_in_data_rl(data, {{expr}})</code></p>
+</blockquote>
+</div>
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>This post is a side-effect of my trying to understand quosures in detail. The
+base R versions are intended as self-confirmation that indeed, I more or
+less get the concepts, at least enough to implement variations with
+(pun-intended) useful properties. I have no intention of publishing a meta
+programming package with quosure-like functionality. If you are tempted to use
+the code herein for your purposes, be aware that the testing I did is incomplete
+and the code has not been used outside of this post<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>.</p>
+<p>Does this mean I endorse <code>rlang</code> for meta-programming purposes? There are
+interesting and useful features therein, the overall quality of the package is
+excellent, and it has no run-time dependencies. One important feature that
+likely cannot be implemented efficiently in base R is <code>enquos</code> due to
+dots (<code>...</code>) potentially resolving to multiple environments. Situations with
+extensive meta-programming involving <code>...</code> argument forwarding will benefit most
+from <code>rlang</code>.</p>
+<p>My main reservation is the philosophy underlying the API which in my view
+prioritizes an internal aesthetic at the expense of harmony with the existing
+meta-programming facilities. Additionally, while the existing facilities are
+not perfect, they are still excellent, so I’m ambivalent about the feature /
+complexity trade off that come with <code>rlang</code>.</p>
+<p><img
+  id='conclusion-img'
+  src='/post/2020-02-17-quosures_files/images/long-road-back-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/long-road-back.png'
+  class='bgw-zoom-img'
+/></p>
+<p id="feedback-cont">
+</p>
+</div>
+<div id="appendix" class="section level1">
+<h1>Appendix</h1>
+<div id="acknowledgments" class="section level2">
+<h2>Acknowledgments</h2>
+<p>I’d like to thank Lionel Henry for all the work he’s done developing and
+implementing his ideas on meta-programming in R, and for being so gracious in
+discussing them with me and providing feedback on this post, particularly given
+that he knows I harbor somewhat adversarial views. I’ve learned a lot from
+looking at his code and from getting his perspectives on potential alternative
+implementations of some of the <code>rlang</code> concepts.</p>
+<p>Additionally:</p>
+<ul>
+<li><a href="https://www.r-project.org/contributors.html">R-core</a> for creating and maintaining a language so wonderful it allows
+crazy things like computing on the language.</li>
+<li><a href="https://github.com/lionel-">Lionel Henry</a> and <a href="https://github.com/hadley/">Hadley Wickham</a> for <a href="https://github.com/r-lib/rlang"><code>rlang</code></a>.</li>
+<li>For the illustrations:
+<ul>
+<li><a href="https://github.com/tylermorganwall/">Tyler Morgan Wall</a> for <a href="https://cran.r-project.org/package=rayrender"><code>rayrender</code></a> which I used to render the
+illustrations</li>
+<li><a href="https://github.com/pmur002/">Paul Murrell</a> for <a href="https://cran.r-project.org/package=gridBezier"><code>gridBezier</code></a> which I used to turn the SVG
+into a polygon outline.</li>
+<li><a href="https://github.com/mdsumner">Michael Sumner</a> for <a href="https://cran.r-project.org/package=decido"><code>decido</code></a> which I used to triangulate some
+of the shapes in the scenes.</li>
+<li>Daniel Adler, Duncan Murdoch, etal. for <a href="https://cran.r-project.org/package=rgl"><code>rgl</code></a> with which I mocked up
+the scenes.</li>
+<li>Simon Urbanek for the <a href="https://cran.r-project.org/web/packages/png/index.html">PNG
+package</a> which I
+used while post-processing many of the images in this post.</li>
+<li>The yellow brick road scene is based on the official
+<a href="https://github.com/rstudio/hex-stickers/blob/master/SVG/rlang.svg"><code>rlang</code> SVG logo</a>, which is licensed <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">CC0</a>.</li>
+</ul></li>
+</ul>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<ul>
+<li><a href="https://tidyeval.tidyverse.org/">TidyEval Bookdown</a>.</li>
+<li><a href="https://github.com/r-lib/rlang/issues/924">UseR 2017 Tidy Evaluation presentation</a>.</li>
+<li><a href="https://www.r-project.org/dsc/2017/slides/tidyeval-hygienic-fexprs.pdf">DSC 2017 Tidy Evaluation (Hygenic Fexprs)</a>.</li>
+<li><a href="https://github.com/WinVector/wrapr/blob/master/extras/MacrosInR.md">Macro Substitution in R</a>.</li>
+<li><a href="https://adv-r.hadley.nz/evaluation.html">Advanced R Chapter on Evaluation</a>.</li>
+<li><a href="https://dplyr.tidyverse.org/articles/programming.html">Programming <code>dplyr</code> vignette</a>.</li>
+<li>The previous post in this series <a href="/2020/05/05/on-nse/">on NSE</a>.</li>
+</ul>
+</div>
+<div id="implementation-details" class="section level2">
+<h2>Implementation Details</h2>
+<div id="quote_w" class="section level3">
+<h3><code>quote_w</code></h3>
+<p><code>bquote</code> uses <code>eval</code> internally to partially evaluate the sub-expressions
+enclosed in <code>.(...)</code>, which will cause <code>parent.frame</code> to behave in unexpected
+ways. More details in the <a href="#substitute_w"><code>substitute_w</code> section</a>.</p>
+</div>
+<div id="bquote_w" class="section level3">
+<h3><code>bquote_w</code></h3>
+<p>This is not strictly needed for our purposes, but I implemented originally when
+I intended for it to accept an <code>env</code> parameter, and use that combined with
+<code>substitute</code> instead of implementing <code>substitute_w</code>. I leave it here for
+completeness.</p>
+<pre class="r"><code>a &lt;- 10
+q5 &lt;- local({
+  q &lt;- bquote_w(a + .(a))
+  a &lt;- 1/2   # assign to `a` AFTER bquote_w!
+  q
+})
+q5</code></pre>
+<pre><code>with(&lt;environment&gt;, a + 10)</code></pre>
+<pre class="r"><code>eval(q5)</code></pre>
+<pre><code>[1] 10.5</code></pre>
+<p>We need to assign to <code>a</code> in <code>local</code> after the call to <code>bquote_w</code> as otherwise the
+partially evaluated <code>a</code> would be the <code>local</code> <code>a</code> and not the global one.</p>
+<p>The implementation is tricky:</p>
+<pre class="r"><code>bquote_w &lt;- function(x) {
+  caller &lt;- parent.frame()
+  expr &lt;- eval(bquote(.(bquote)(.(substitute(x)))), caller)
+  bquote(with(.(caller), .(expr)))
+}</code></pre>
+<p>We’ll use the following use-case to illustrate how the function works:</p>
+<pre class="r"><code>a &lt;- b &lt;- 2
+expr &lt;- local({
+  a &lt;- 1
+  bquote_w(a + .(b))
+})
+expr
+eval(expr)</code></pre>
+<p>And we’ll spread <code>bquote_w</code> over more lines so that we may better annotate it:</p>
+<pre class="r"><code>bquote_w &lt;- function(x) { caller &lt;- parent.frame()
+
+  # Capture user expression
+
+  expr &lt;- substitute(x)                 # expr == a + .(b)
+
+  # Wrap the expression in `bquote`, using `bquote`.  We in-line `bquote`
+  # so in reality if you examined `expr` below you would see the entire
+  # `bquote` function definition crammed into the first element of
+  # the expression.  This is necessary to avoid interference with a user
+  # defined `bquote`.
+
+  expr &lt;- bquote(.(bquote)(.(expr)))     # expr == (&lt;bquote&gt;)(a + .(b))
+
+  # Evaluate the `bquote` expression we created, in the calling frame so
+  # that the elements that need to be partially evaluated are
+
+  expr &lt;- eval(expr, caller)             # expr == a + 2
+
+  # Generate the quoted with
+
+  bquote(with(.(caller), .(expr)))      # with(&lt;caller&gt;, a + 2)
+}</code></pre>
+</div>
+<div id="substitute_w" class="section level3">
+<h3><code>substitute_w</code></h3>
+<p>We’ll use the following expression to illustrate the annotated version of
+<code>substitute_w</code>:</p>
+<pre class="r"><code>a &lt;- b &lt;- 2
+f &lt;- function(x) substitute_w(x)
+expr &lt;- local({
+  a &lt;- 1
+  f(a + .(b))
+})
+expr</code></pre>
+<pre><code>with(&lt;environment&gt;, a + 2)</code></pre>
+<pre class="r"><code>eval(expr)</code></pre>
+<pre><code>[1] 3</code></pre>
+<pre class="r"><code>substitute_w &lt;- function(x) {
+  # capture environments, we need the Calling Environment, and the
+  # Calling Environment of the Calling Environment
+
+  caller &lt;- parent.frame()
+  caller2 &lt;- sys.frame(sys.parent(2))
+
+  # Capture the user expression by running substitute in the caller
+  # frame. We inline the substitute function diretly into the
+  # expression to avoid conflicts with a possible user-defined
+  # `substitute`
+
+  expr &lt;- substitute(x)                  # x
+  expr &lt;- bquote(.(substitute)(.(expr))) # (&lt;substitute&gt;)(x)
+  expr &lt;- eval(expr, caller)             # a + .(b)
+
+  # Do the partial evaluation in the caller of the caller, see the
+  # bquote_w breakdown above for details
+
+  expr &lt;- bquote(.(bquote)(.(expr))) # (&lt;bquote&gt;)(a + .(b))
+  expr &lt;- eval(expr, caller2)        # a + 2
+  bquote(with(.(caller2), .(expr)))  # with(&lt;caller2&gt;, a + 2)
+}</code></pre>
+<p>Using <code>parent.frame</code> and similar in functions that are invoked with NSE is
+tricky. In particular, <code>parent.frame(2)</code> will not work as expected if
+<code>substitute_w</code> is invoked by <code>eval</code>, as would happen in e.g.
+<code>bquote(.(substitute_w(x)))</code>. So to ensure everything works correctly we use
+<code>sys.frame(sys.parent(2))</code>, which despite what the documentation claims (as of
+R4.0), has <a href="https://bugs.r-project.org/bugzilla/show_bug.cgi?id=15531">different semantics</a> to <code>parent.frame</code> which allows it to find
+the intended frame. You also need to be careful about using
+<a href="https://bugs.r-project.org/bugzilla/show_bug.cgi?id=17849"><code>sys.frame(sys.parent(1))</code></a> directly in an <code>eval</code> call (or inside the
+<code>.(...)</code> of a <code>bquote</code>).</p>
+</div>
+</div>
+<div id="session-info" class="section level2">
+<h2>Session Info</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 4.0.2 (2020-06-22)
+Platform: x86_64-apple-darwin17.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRblas.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.4.6    bookdown_0.18   digest_0.6.25   later_1.0.0    
+ [5] mime_0.9        R6_2.4.1        jsonlite_1.6.1  magrittr_1.5   
+ [9] evaluate_0.14   blogdown_0.18   stringi_1.4.6   rlang_0.4.7    
+[13] rstudioapi_0.11 promises_1.1.0  rmarkdown_2.1   tools_4.0.2    
+[17] servr_0.16      stringr_1.4.0   httpuv_1.5.2    xfun_0.13      
+[21] compiler_4.0.2  htmltools_0.4.0 knitr_1.28     </code></pre>
+<!--
+  ZoomImage HTML template, intended to be copied for use in actual instantiated
+  flipbooks
+
+  DO NOT INDENT more than 2 spaces!! Otherwise pandoc will think it is markdown
+  code.
+
+  The SVG bit is lazy; we should have just one we clone in JS
+-->
+<!--
+Container must be empty, elements will be put inside but placed absolutely, we just need it to be technically visible.
+-->
+<div id='bgw-zoom-img-container'></div>
+<!--
+Templates, will be copied and assembled in JS
+-->
+<div id='bgw-zoom-img-tpl-container' style='display: none'>
+
+<!--
+Outer part, shared by both figure-imgs and imgs, controls positioning and border frame around image.
+
+-->
+<div
+  id=bgw-zoom-frame-template class=bgw-zoom-frame
+  style='display: none'
+>
+<div class=bgw-zoom-bg>
+<div class=bgw-zoom-inner-frame>
+<svg
+  class=bgw-zoom-boxclose
+  viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+>
+  <circle cx="50" cy="50" r="45" stroke='white' stroke-width='5'/>
+<g transform="rotate(45, 50, 50)">
+  <rect width='70' height='15' x='15', y='42.5' rx='5' fill='white'/>
+  <rect height='70' width='15' y='15', x='42.5' rx='5' fill='white'/>
+</g>
+</svg>
+<div class=bgw-zoom-border>
+<!--
+  carefull messing with anything inside the figure as JS makes assumptions
+  about existing structure
+-->
+  <figure><img /><figcaption></figcaption></figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script type='text/javascript' src='/script/_lib/zoom-img/zoom-img.js'></script>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>At the time of this writing the <code>rlang</code> authors suggest
+the <a href="https://dplyr.tidyverse.org/articles/programming.html">programming with <code>dplyr</code> vignette</a> for contemporary <code>rlang</code> /
+tidy-eval usage.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>Oh no, I bear no resentment whatsoever to philosopher’s whose
+works were required readings for me back in the day.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>I actually like the name “quosure”, and I understand the
+desire to contract it to <code>quo</code>. However this contraction drops the
+semantically distinguishing part of the name as <code>quo</code> could just as easily be
+short for <code>quote</code>. <code>enquo</code> is a nice aesthetic variation on <code>quo</code>, but as
+noted previously it gives me no hint as to what it does. In an of itself
+that’s not terrible, except that there is <code>base::enquote</code>, which in contrast
+behaves as per its name. Then there is <code>!!</code>, which is the <code>rlang</code>
+counterpart to <code>bquote</code>’s <code>.()</code>. I understand the reasons for wanting
+something like <code>!!</code>: visually distinct to indicate that partial evaluation is
+done at quoting time, and not during final evaluation of the expression.
+Technically the distinction is there, but <code>!!</code> doesn’t convey that on its own.
+You have to read the documentation to know that. It is also a <em>very</em> fine
+distinction that will not matter in most cases, and more importantly, one that
+<code>!!</code> cannot convey alone. Since we must read the docs to know the semantics
+of <code>!!</code>, whether it is <code>UQ</code> or <code>!!</code> or <code>.()</code> becomes an aesthetic rather than
+semantic consideration. So why not <code>.()</code> as <code>bquote</code> uses? It is true that
+third party packages use it, but I don’t buy into the concept that just
+because a third party overloads a base R idiom that idiom is polluted and
+should not be used in its original sense. So while I see some value in
+wanting to indicate that <em>something</em> is different about the partial-evaluation
+action, it seems a secondary consideration on its face, and of even lesser one
+given that <code>.()</code> provides that distinction too. On one hand we have what I
+see as a minimal value-add, and on the other some real concerns: <code>!!</code>
+overloads an existing operator in an unusual way, requires alternate parsing
+to simulate a single symbol when there are two (strictly speaking the parsed
+expression is re-arranged via meta-programming, but the effect of that is the
+same as changing the parser rules), adds operator precedence ambiguity,
+creates a new idiom when there is an existing one in the base language, and
+granted with the benefit of hindsight, we can say has been the source of much
+confusion and consternation. Most of the concerns I raise here could be swept
+under the rug with the “those are rarely used components of the base R API
+anyway” argument, but I don’t think third parties should unilaterally decide
+what portions of the API are okay to shoulder aside. Why do I care? Why not
+just live and let live? Because I think it is better for the health of a
+language to avoid fragmentation, and I hope I can convince some to agree.
+It’s easier to collaborate if we all share the same foundations, and it seems
+natural to me that the <em>lingua franca</em> should revolve around R itself, not
+third party extensions. Obviously this is just my opinion. CRAN, which is
+notorious for having strict standards for accepting third party packages
+imposes no requirements on overloading base functions, let alone lexical
+semantics, so there is nothing <em>technically</em> wrong with doing those things.
+Lionel was gracious enough to discuss some of these issues with me, and I
+tried to reflect some of his arguments in this footnote, although I am
+presenting them as someone with a dog in the fight, so take all this with a
+grain of salt.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>In version 0.4.0 ~June 2019.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p>In cases like this one there is no value to capturing the local
+environment as that is the one <code>eval_tidy</code> will default to anyway. It is now
+expected that <code>quo</code> should rarely if ever be used. See the <a href="https://dplyr.tidyverse.org/articles/programming.html">programming with
+<code>dplyr</code> vignette</a>.<a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p>This is not entirely fair: for example what used to be called
+“overscope” became “mask”, the latter a term base R uses. There may be other
+examples. On the other hand there is now the use of “defuse” and similar to
+reference quoting. While those terms are evocative and as such have some
+value, I still think it would be better to just focus on the existing
+terminology in the language.<a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p><a href="https://github.com/r-lib/rlang/issues/924">It is not possible</a> to reference a custom, non-quosure
+tilde defined as part of a quosure’s Environment Chain.<a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p>I don’t think it is documented that the attributes of a call
+that was evaluated will be put along with the call onto the call stack.
+Maybe there is some implicit guarantee that this will always be the case. I
+wouldn’t have been surprised if only the actual call was put on the stack, or
+as part of some optimization that became the case in the future.<a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p><code>bquote</code> uses <code>eval</code>, which sets two evaluation contexts in a
+way that causes <code>parent.frame()</code> to behave in unpredictable ways. To avoid
+issues it is better to call <code>parent.frame()</code> <a href="#quote_w">outside of <code>bquote</code></a>.<a href="#fnref9" class="footnote-back">↩</a></p></li>
+<li id="fn10"><p>This masking is not quite the same as what <code>rlang</code> does as
+there the same mask environment is re-used for every quosure.<a href="#fnref10" class="footnote-back">↩</a></p></li>
+<li id="fn11"><p>This is the reason why <code>rlang</code> now encourages the use of
+<code>expr</code> over <code>quo</code>. It is rare to need to capture a local environment because
+in most cases where there are multiple environments in play, they can be
+captured with <code>enquo(s)</code> or <code>{{}}</code>.<a href="#fnref11" class="footnote-back">↩</a></p></li>
+<li id="fn12"><p><a href="/post/2020-02-17-quosures_files/script/tests.R">I tested</a> the cases in the post, a few variations, and some of
+the <code>rlang</code> tests that seemed relevant.<a href="#fnref12" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
