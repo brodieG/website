@@ -576,7 +576,7 @@ c.near <- c.xyz - c.v * castle.size * 1.1
 
 buff <- 1.01
 rad <- max(sqrt(rowSums(h2.b^2))) * buff
-bubble <- sphere(radius=rad, material=diffuse(), flipped=TRUE)
+bubble <- sphere(radius=rad, flipped=TRUE)
 
 # - Render! --------------------------------------------------------------------
 

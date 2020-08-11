@@ -1,17 +1,17 @@
 ---
-title: Quosures
+title: On Quosures
 author: ~
-date: '2020-02-17'
+date: '2020-08-11'
 slug: quosures
 categories: [r]
 tags: [meta-program,rlang]
-image: /front-img/default.png
-imagerect: ~
+image: /post/2020-02-17-quosures_files/images/peek-around-small-pad.png
+imagerect: /post/2020-02-17-quosures_files/images/side-by-side-2-small.png
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: "Exploring Non-Standard Evaluation with rlang's Quosures."
 output:
   blogdown::html_page:
     keep_md: yes
@@ -145,15 +145,19 @@ amongst us would agree on is that quosures are interesting.
 
 > This post is not a tutorial for `rlang`, and it is not endorsed by the `rlang`
 > authors.  It is about understanding what quosures are, what makes them
-> interesting, and how they work.  As such usage of `rlang` in this post will
-> deviate from current recommended `rlang` practices[^tidy-eval-recommend].
+> interesting, and how they work in the context of `rlang`.  Quosures started
+> off as a prominent part of `rlang`, but have more recently been relegated to
+> something closer to "implementation detail" status.  They remain central to
+> `rlang`, but are no longer emphasized in the documentation.  Since usage of
+> `rlang` in this post is expressly for the purposes of understanding quosures,
+> it deviates from current recommended `rlang` practices[^tidy-eval-recommend].
 
 # Preface: Carriages, Horses, and Damn Philosophers...
 
 ## Ghosts of Posts Past
 
 If you are unfamiliar with R's evaluation model, and how it enables
-"Non-Standard Evaluation" (NSE), now is a good time to check out the last post
+"Non-Standard Evaluation" (NSE), now is a good time to check out my previous
 [post on the topic][1].  To understand this post it might help to know what
 environments, "Enclosures" and "Environment Chains" are, the difference between
 "Evaluation", "Calling", "Function", and "function Evaluation" Environments, and
@@ -227,8 +231,9 @@ mean_call2(a + b)
 In this case we can see that `quote` does not evaluate `substitute(expr)`,
 whereas `bquote` does.
 
-How does this all relate to quasi-quotation?  Turns out partial evaluation
-**is** quasi-quotation.  It's just that [quasi-quotation][4] was coined by the
+If you were early on the `rlang` bandwagon you might have seen the term
+"quasi-quotation" bandied about.  It turns out partial evaluation **is**
+quasi-quotation.  It's just that [quasi-quotation][4] was coined by the
 philosopher [Willard Van Orman Quine][5], and philosophy without arcaneness is
 not philosophy[^resentment].  Lisp adopted the terminology, `rlang` brought it
 explicitly to R, and the rest of us were left to scratch our heads.
@@ -239,12 +244,8 @@ quote `'`, and quasi-quoting (partial evaluation) is done with
 the "backquote" <code>&#x60;</code>.  So R's quasi-quoting function is named
 after the name of the <code>&#x60;</code>.  I suspect a fair bit of confusion
 among R users could have been avoided simply by riffing off of the "backquote"
-terminology, even though "quasi-quote" is strictly more correct.
-
-More recently `rlang` has shifted to different terminology.  While it's
-great the `rlang` team has responded to feedback and tried to adapt it would
-have been nice to see a re-convergence towards existing R terminology rather
-than toward Standard Seventeen[^mask].
+or (partial) "evaluation" terminology, even though "quasi-quote" is the correct
+"formal" term outside of R.
 
 ## Eat `local`
 
@@ -337,7 +338,7 @@ The key features are `substitute`, which we [discussed in the previous post][3],
 and evaluation in the Calling Environment with `parent.frame()` to ensure names
 used in `expr` [resolve as intended][27] by the user of our function.
 
-Let's use it to compute mean engine displacement of `mtcars` in liters:
+We can use it to compute mean engine displacement of `mtcars` in liters:
 
 ```{r}
 l.per.cubic.i <- 2.54^3 / 1000
@@ -352,18 +353,20 @@ Next with `rlang`:
 mean_in_data_rl(mtcars, disp * l.per.cubic.i)
 ```
 
-Unfortunately the `rlang` team prioritized their vision for a new
-meta-programming interface over harmonizing with existing conventions.  This
-results in re-use of lexical roots to mean different things, and also new
-symbology for existing concepts:
+While the parallels between the two implementations are clear when they are
+juxtaposed, they are not obvious from the function names alone.  The `rlang`
+authors prioritized their own vision of a meta programming interface over
+harmonizing with the existing conventions, so we end up with the following
+oddities:
 
-*  `rlang::quo` is used similarly to `base::bquote`, but is lexically closer to
-  `base::quote`, and at same time gives no indication of it's special
-  environment capture abilities.
+* `rlang::quo` is used similarly to `base::bquote`, but is lexically closer to
+  `base::quote`, and at same time gives no indication of its special
+  environment capture abilities in its name.
 * `rlang::enquo` is used similarly to `base::substitute`, but bears no relation
   to `base::enquote`.  This clash with `base::enquote` is particularly confusing
-  to me given that the "en" gives (me?) no indication of how `enquo` is
-  different from `quo`.
+  to me given that the "en" gives no indication of how `enquo` is
+  different from `quo` (my personal experience was that the lexical similarity
+  between `quo` and `enquo` made it harder to figure out what was going on).
 * `rlang` designates partial evaluation with `!!` instead of `.()` as in
   base, which is probably the most controversial design decision.
 
@@ -380,8 +383,10 @@ I look at the result I can't help but think the balance of priorities is off.
 </figcaption>
 </figure>
 
-More recently[^v040] `rlang` introduced the "curly-curly" syntax to replace the
-`quo(!!enquo(arg))` pattern so we could have written instead:
+Partly as a result the initial confusion when `rlang` was first released the
+authors have shifted to different terminology in it's documentation and adjusted
+the interface somewhat.  For example, the "curly-curly" operator was added
+replace the `quo(!!enquo(arg))` pattern so we could have written instead[^v040]:
 
 ```{r}
 mean_in_data_rl2 <- function(data, expr) {
@@ -390,12 +395,16 @@ mean_in_data_rl2 <- function(data, expr) {
 }
 ```
 
-> Contemporary `rlang` now also replaces `quo()` with `expr()`[^quo-vs-expr].
-
 This is a big improvement given it removes the `quo`/`enquo` confusion and
 keeps `!!` out of sight.  We stick to the old method because it mirrors the
 steps used in base, and it is useful for pedagogical purposes to distinguish
 between argument substitution and partial evaluation.
+
+> Contemporary `rlang` now also replaces `quo()` with `expr()`[^quo-vs-expr],
+
+While it's great the `rlang` team has responded to feedback and tried to adapt
+it would have been nice to see a re-convergence towards existing R terminology
+rather than toward Standard Seventeen[^mask].
 
 So why bother with `rlang`, if all I'm going to do is belly-ache about function
 names?  Well, along with the lexical malpractice (I kid, I kid) we get some very
@@ -404,7 +413,7 @@ interesting features.
 # The Power Of Quosures
 
 Bad NSE implementations often break when some of the names in an expression are
-not mapped in the global environment.  Let's try to trigger failures by
+not uniquely mapped in the global environment.  Let's try to trigger failures by
 complicating the Evaluation Environment:
 
 ```{r}
@@ -811,21 +820,21 @@ less get the concepts, at least enough to implement variations with
 (pun-intended) useful properties.  I have no intention of publishing a meta
 programming package with quosure-like functionality.  If you are tempted to use
 the code herein for your purposes, be aware that the testing I did is incomplete
-and the code has not been used outside of this post.
+and the code has not been used outside of this post[^tests].
 
 Does this mean I endorse `rlang` for meta-programming purposes?  There are
 interesting and useful features therein, the overall quality of the package is
 excellent, and it has no run-time dependencies.  One important feature that
 likely cannot be implemented efficiently in base R is `enquos` due to
-dots (`...`) potentially resolving to multiple environments.
+dots (`...`) potentially resolving to multiple environments.  Situations with
+extensive meta-programming involving `...` argument forwarding will benefit most
+from `rlang`.
 
 My main reservation is the philosophy underlying the API which in my view
 prioritizes an internal aesthetic at the expense of harmony with the existing
 meta-programming facilities.  Additionally, while the existing facilities are
 not perfect, they are still excellent, so I'm ambivalent about the feature /
-complexity trade off that come with `rlang`.  Situations with extensive
-meta-programming involving `...` argument forwarding will benefit most from
-`rlang`.
+complexity trade off that come with `rlang`.
 
 <img
   id='conclusion-img'
@@ -860,11 +869,13 @@ Additionally:
       into a polygon outline.
     * [Michael Sumner][55] for [`decido`][52] which I used to triangulate some
       of the shapes in the scenes.
-    * Daniel Adler, Duncan Murdoch, etal. for `rgl` with which I mocked up the
-      scenes.
+    * Daniel Adler, Duncan Murdoch, etal. for [`rgl`][59] with which I mocked up
+      the scenes.
+    * Simon Urbanek for the [PNG
+      package](https://cran.r-project.org/web/packages/png/index.html) which I
+      used while post-processing many of the images in this post.
     * The yellow brick road scene is based on the official
       [`rlang` SVG logo][58], which is licensed [CC0][57].
-    * PNG
 
 ## References
 
@@ -1067,54 +1078,7 @@ loaded via a namespace (and not attached):
 [56]: https://github.com/tylermorganwall/
 [57]: https://creativecommons.org/publicdomain/zero/1.0/deed.en
 [58]: https://github.com/rstudio/hex-stickers/blob/master/SVG/rlang.svg
-
-
-
-[^expr-vs-cmd]: Originally I used "command" throughout the post to avoid
-  ambiguity with R's `expression` object, which roughly could be described as a
-  list of R commands.  The early drafts of this post switched between
-  "expression" and "command", but in the end I settled on "command".  Lionel
-  Henry convinced me to switch to "expression" as that is what the R
-  documentation uses despite the ambiguity.
-[^simple-model]: <span id='simple-model'>Items
-  we gloss over include but are not
-  limited to:<ul>
-  <li>Function parameters are [evaluated lazily][20] so they are only fetched
-  when they are referenced within a function body as something other than an
-  argument to a closure (e.g. as an argument to a primitive or other entry
-  points into statically compiled machine code, or simply as a stand-alone
-  reference to the name as in `force`).
-  <li>What is fetched is a pointer to the location in memory the R objects are
-  stored in, not the objects proper.  Since in R memory addresses are not
-  directly visible, we'll treat the pointers as if they are the actual R
-  objects they reference.
-  <li>The [byte-compiler][21] affects the nature of non-evaluated code
-  prefetching the objects names point to and performing other optimizations, and
-  generally bypassing many aspects of the "normal" evaluation process.
-  <li>Names representing called functions are only resolved against names that
-  are associated with functions.
-  <li>Lookups from the global environment down are usually done against a
-  "global" hash table that replicates the semantics of the Environment Chain,
-  but isn't actually a chain.
-  <li>The base environment has an enclosure, although it is the empty
-  environment which itself does not have an enclosure.
-  <li>And more.</ul></span>
-[^parens]: The parentheses in `rev(x)` are not considered "names".  They are
-  syntax tokens that are used to parse the expression.  Opening parentheses that
-  are not part of the syntax of a function call are names, as in `(1 + 2) * 3`.
-[^promises-actually]: <span id=promises-actually>In reality instead of the
-  values of the arguments, R stores the expression passed as the argument along
-  with the environment to evaluate it in.  If the argument is used by the
-  function then the expression is evaluated in its environment to produce the
-  value.  This is typically the same as if R had used the values directly, but
-  there are some circumstances where behavior is changed due to this feature.
-  Values that are stored as the expression used to generate them along with the
-  environment to evaluate that expression are known as promises</span>
-[^pathological-pkg]: Well, it will unless you have loaded a pathological package
-  that also defines a `rev` function, or if you yourself define a `rev` function
-  in the global environment.
-[^fun-env-term]: <span id=fun-env-term>I dislike the term "Function Environment"
-  as because there are two environments that could be considered the "function
+[59]: https://cran.r-project.org/package=rgl
 
 [^tidy-eval-recommend]: At the time of this writing the `rlang` authors suggest
   the [programming with `dplyr` vignette][7] for contemporary `rlang` /
@@ -1123,23 +1087,15 @@ loaded via a namespace (and not attached):
   environment as that is the one `eval_tidy` will default to anyway.  It is now
   expected that `quo` should rarely if ever be used.  See the [programming with
   `dplyr` vignette][7].
-[^shortcomings]: Likely the most problematic one is that if the user expression
-  causes an error, the error backtrace will display the function in full rather
-  than the name of the function, which may be confusing.
 [^resentment]: Oh no, I bear no resentment whatsoever to philosopher's whose
   works were required readings for me back in the day.
-[^uncomfortable]: I don't think it is documented that the attributes of call
+[^uncomfortable]: I don't think it is documented that the attributes of a call
   that was evaluated will be put along with the call onto the call stack.
   Maybe there is some implicit guarantee that this will always be the case.  I
   wouldn't have been surprised if only the actual call was put on the stack, or
   as part of some optimization that became the case in the future.
-[^odd-bquote]: We embed the actual `bquote` function rather than just the name
-  to avoid potential conflicts with re-mappings of the `bquote` name in the
-  Calling Environment.
-[^subtly-affected]: [Until recently][23] it was not possible to reference a
-  custom, non-quosure tilde defined as part of a quosure's Environment Chain.
-  While that works now (at least in the dev versions), expressions such as
-  `get("~")` will still retrieve the `rlang` tilde.
+[^subtly-affected]: [It is not possible][23] to reference a custom, non-quosure
+  tilde defined as part of a quosure's Environment Chain.
 [^mostly-reasonable]: I actually like the name "quosure", and I understand the
   desire to contract it to `quo`.  However this contraction drops the
   semantically distinguishing part of the name as `quo` could just as easily be
@@ -1182,8 +1138,9 @@ loaded via a namespace (and not attached):
   imposes no requirements on overloading base functions, let alone lexical
   semantics, so there is nothing _technically_ wrong with doing those things.
   Lionel was gracious enough to discuss some of these issues with me, and I
-  tried to reflect some of his arguments in this footnote, but obviously my
-  biases permeate.
+  tried to reflect some of his arguments in this footnote, although I am
+  presenting them as someone with a dog in the fight, so take all this with a
+  grain of salt.
 [^rlang-masking]: This masking is not quite the same as what `rlang` does as
   there the same mask environment is re-used for every quosure.
 [^capture-local]: This is the reason why `rlang` now encourages the use of
@@ -1195,7 +1152,10 @@ loaded via a namespace (and not attached):
   the `rlang` tests that seemed relevant.
 [^mask]: This is not entirely fair: for example what used to be called
   "overscope" became "mask", the latter a term base R uses.  There may be other
-  examples.
+  examples.  On the other hand there is now the use of "defuse" and similar to
+  reference quoting.  While those terms are evocative and as such have some
+  value, I still think it would be better to just focus on the existing
+  terminology in the language.
 [^outside-bquote]: `bquote` uses `eval`, which sets two evaluation contexts in a
   way that causes `parent.frame()` to behave in unpredictable ways.  To avoid
   issues it is better to call `parent.frame()` [outside of `bquote`](#quote_w).

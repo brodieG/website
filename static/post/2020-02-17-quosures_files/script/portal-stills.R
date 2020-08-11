@@ -116,9 +116,6 @@
 
 # - Side-by-Side ---------------------------------------------------------------
 
-
-stop()
-
 url <- 'https://www.r-project.org/logo/Rlogo.svg'
 zz <- parse_svg(url)
 ww <- lapply(
@@ -135,6 +132,23 @@ gray <- "grey20"
 hula <- extrude_path(ww[[1]], material=diffuse(gray), top=.05, bottom=-.05)
 R <- extrude_path(ww[[2]], material=diffuse(blue), top=.1, bottom=-.1)
 
+lf <-  c(-.5, .5, 1)
+la <- c(-.5, .5, 0)
+# lf <- path.int[, 150] + c(0,.5,0)
+la <- c.xyz + c(0,.8,0)
+lv <- la - lf
+lv <- lv / sqrt(sum(lv^2))
+
+star.v0 <- (stars.xz - lf) / rep(sqrt(colSums((stars.xz - lf)^2)), each=3)
+star.angle <- acos(colSums(star.v0 * lv)) / pi * 180 *
+  sign(xprod(star.v0, lv)[2,]) * -1
+stars <- mapply(
+  make_star, stars.all[1,], stars.all[2,], stars.all[3,],
+  star.angle,
+  flip=FALSE,
+  MoreArgs=list(tc=tc), SIMPLIFY=FALSE
+)
+
 scene <- dplyr::bind_rows(
   group_objects(objs, group_angle=c(-90,0,0), group_translate=c(0,.5,0)),
   pv.all.obj,
@@ -143,36 +157,23 @@ scene <- dplyr::bind_rows(
   sphere(z=l.d, x=-l.d, radius=l.r, material=light(intensity=l.b)),
   stars,
   group_objects(
-    castle_backdrop, group_translate=c.xyz + c.v * c.b.off + c(0, .25, 0),
-    group_angle=c(-10, c.angle.0 + 90, 0), pivot_point=numeric(3),
-    # group_order_rotation=c(2,1,3)
-  ),
-  group_objects(
-    dplyr::bind_rows(hula, R), group_translate=c.xyz + c(0, 1.5, 0),
-    group_angle=c(-90, c.angle.0 + c.angle + 90, 0), pivot_point=numeric(3),
-    group_scale=rep(3,3)
-
+    dplyr::bind_rows(hula, R), group_translate=c(-1, .5, 0),
+    group_angle=c(-90, 0, 0), pivot_point=numeric(3),
     # group_order_rotation=c(2,1,3)
   )
 )
 render_scene(
   scene,
   filename=next_file("~/Downloads/rlang/stills/img-"),
-  lookfrom=lf, lookat=la,
+  lookfrom=lf, lookat=-la,
   # lookat=c.xyz, lookfrom=c.xyz + c(0, 3, 3),
   # lookfrom=c(0.6, .45, .75), lookat=c.xyz,
   # lookfrom=c(0, 0, 0.1), lookat=c(0, 10, -3.0001),
   # width=720, height=720, samples=1,
-  width=1000, height=1000, samples=300,
-  # width=200, height=200, samples=3,
+  # width=1000, height=1000, samples=300,
+  width=200, height=200, samples=3,
   clamp_value=5,
-  fov=10,
+  fov=60,
   aperture=0
 )
-
-scene <- dplyr::bind_rows(hula, R)
-render_scene(
-  scene, aperture=0, lookfrom=c(0, 4, .0001)
-)
-
 
