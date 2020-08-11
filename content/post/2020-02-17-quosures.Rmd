@@ -1,17 +1,17 @@
 ---
-title: Quosures
+title: On Quosures
 author: ~
-date: '2020-02-17'
+date: '2020-08-11'
 slug: quosures
-categories: []
-tags: []
-image: /front-img/default.png
-imagerect: ~
+categories: [r]
+tags: [meta-program,rlang]
+image: /post/2020-02-17-quosures_files/images/peek-around-small-pad.png
+imagerect: /post/2020-02-17-quosures_files/images/side-by-side-2-small.png
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: "Exploring Non-Standard Evaluation with rlang's Quosures."
 output:
   blogdown::html_page:
     keep_md: yes
@@ -19,109 +19,1143 @@ output:
 ---
 ```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
 ```
+```{r mean_in_data, echo=FALSE}
+mean_in_data <- function(data, expr) {
+  expr <- substitute(expr)           # capture user expression
+  expr <- bquote(mean(.(expr)))      # wrap it in `mean`
+  eval(expr, data, parent.frame())
+}
+```
+```{r quote_w, echo=FALSE}
+quote_w <- function(x) {
+  caller <- parent.frame()           # must be outside `bquote`
+  bquote(with(.(caller), .(substitute(x))))
+}
+```
+```{r echo=FALSE, eval=FALSE}
+quote_w <- function(x) {
+  # testing sys.parent
+  # sys.frame(sys.parent(1)) doesn't work b/c it returns the do_eval env parent,
+  # which is the eval closure
+  bquote(with(.((function() sys.frame(sys.parent(2)))()), .(substitute(x))))
+}
+```
+```{r bquote_w, echo=FALSE}
+bquote_w <- function(x) {
+  caller <- parent.frame()
+  expr <- eval(bquote(.(bquote)(.(substitute(x)))), caller)
+  bquote(with(.(caller), .(expr)))
+}
+```
+```{r substitute_w, echo=FALSE}
+substitute_w <- function(x) {
+  caller <- parent.frame()
+  caller2 <- sys.frame(sys.parent(2))   # see appendix for explanation
+  expr <- eval(bquote(substitute(.(substitute(x)),.(caller))))
+  expr <- eval(bquote(.(bquote)(.(expr))), caller2)
+  bquote(with(.(caller2), .(expr)))
+}
+```
+```{r mask, echo=FALSE}
+mask <- function(expr, data) {
+  if(is.language(expr) && length(expr) > 1L) {
+    # modify `with` expressions that contain a live environment
+    if(expr[[1L]] == as.name('with') && is.environment(expr[[2L]])) {
+      expr[[2L]] <- list2env(data, parent=expr[[2L]])
+    }
+    # recurse on each sub-expression
+    expr[2L:length(expr)] <- lapply(expr[2L:length(expr)], mask, data)
+  }
+  expr
+}
+```
+```{r mean_in_data_w, echo=FALSE}
+mean_in_data_w <- function(data, expr) {
+  expr <- bquote(mean(.(substitute_w(expr))))
+  expr <- mask(expr, data)
+  eval(expr)
+}
+```
+```{r mean_in_data_rl, echo=FALSE}
+mean_in_data_rl <- function(data, expr) {
+  quosure <- enquo(expr)           # capture user expression
+  quosure <- quo(mean(!!quosure))  # wrap it in `mean`
+  eval_tidy(quosure, data)
+}
+```
+```{r echo=FALSE}
+environment(mean_in_data_rl) <- getNamespace('rlang')
+```
+```{r mean_in_data_all, echo=FALSE}
+mean_in_data_all <- function(data, expr) {
+  l.per.cubic.i <- 1                    # decoy
+  mean <- function(x) -base::mean(x)    # decoy
+  list(
+    base=eval(bquote(mean_in_data(data, .(substitute(expr))))),
+    rlang=mean_in_data_rl(data, !!rlang::enquo(expr)),
+    base_w=mean_in_data_w(data, .(substitute_w(expr)))
+  )
+}
+```
 
-# Header 1
+<!--
+simulate a package evaluation chain to make sure we don't accidentally paper
+over bad look-ups that are "saved" by ending at the global environment,
+purposefully use baseenv() instead of strictly more correct asNamespace('base')
+-->
+```{r pho_namespace, echo=FALSE}
+env_w <- new.env(parent=baseenv())
+environment(quote_w) <- env_w
+env_w[['quote_w']] <- quote_w
+environment(bquote_w) <- env_w
+env_w[['bquote_w']] <- bquote_w
+environment(substitute_w) <- env_w
+env_w[['substitute_w']] <- substitute_w
+environment(mask) <- env_w
+env_w[['mask']] <- mask
+environment(mean_in_data) <- env_w   # don't do this at home
+env_w[['mean_in_data']] <- mean_in_data
+environment(mean_in_data_w) <- env_w
+env_w[['mean_in_data_w']] <- mean_in_data_w
+environment(mean_in_data_all) <- env_w
+env_w[['mean_in_data_all']] <- mean_in_data_all
 
-<!-- this needs to become a shortcode -->
+env_w[['mean_in_data_rl']] <- mean_in_data_rl
+```
+
+# Quosures?
+
 <img
-  id='front-img' src='/front-img/default.png'
-  class='post-inset-image'
+  id='front-img'
+  src='/post/2020-02-17-quosures_files/images/rlang-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/rlang.png'
+  data-caption="Ceci n'est pas rlang."
+  class='post-inset-image bgw-zoom-img'
 />
 
-# Implementing Quosures with `with`?
+Quosures first showed up on the scene as part of `rlang` about three years ago
+to a collective &#x1F92F;.  There is good and bad &#x1F92F;, and quosures
+delivered both in spades.  The good: what they do is powerful, and how they do
+it at a minimum _seems_ magical.  The bad: new terminology and mechanics
+confused a lot of people.  Since then the developers have devoted substantial
+time and effort to make quosures and `rlang` in general more accessible.
 
-```{r eval=FALSE}
-quo_with <- function(x, env=parent.frame()) {
-  force(env)
-  exp <- eval(call('bquote', substitute(x)), parent.frame())
-  bquote(base::with(.(env), .(exp)))
+Whether you love or hate `rlang`, one thing I would hope all but the surliest
+amongst us would agree on is that quosures are interesting.
+
+> This post is not a tutorial for `rlang`, and it is not endorsed by the `rlang`
+> authors.  It is about understanding what quosures are, what makes them
+> interesting, and how they work in the context of `rlang`.  Quosures started
+> off as a prominent part of `rlang`, but have more recently been relegated to
+> something closer to "implementation detail" status.  They remain central to
+> `rlang`, but are no longer emphasized in the documentation.  Since usage of
+> `rlang` in this post is expressly for the purposes of understanding quosures,
+> it deviates from current recommended `rlang` practices[^tidy-eval-recommend].
+
+# Preface: Carriages, Horses, and Damn Philosophers...
+
+## Ghosts of Posts Past
+
+If you are unfamiliar with R's evaluation model, and how it enables
+"Non-Standard Evaluation" (NSE), now is a good time to check out my previous
+[post on the topic][1].  To understand this post it might help to know what
+environments, "Enclosures" and "Environment Chains" are, the difference between
+"Evaluation", "Calling", "Function", and "function Evaluation" Environments, and
+what unevaluated expressions are and how they are created.  All these are
+discussed at length in that post.
+
+## Quasi-quoi?
+
+As we saw previously it is possible to capture unevaluated R expressions with
+[`quote` and `substitute`][3].  We can also manipulate them:
+
+```{r}
+mean_call <- function(expr) {
+  cmd2 <- quote(mean(NULL))     # create unevaled `mean(NULL)`
+  cmd2[[2]] <- substitute(expr) # sub in user expression
+  cmd2
 }
-quo_arg_with <- function(x, env=parent.frame(), caller=parent.frame(2)) {
-  force(caller)
-  exp.s <- eval(bquote(.(substitute)(.(substitute(x)))), env)
-  bquote(base::with(.(caller), .(exp.s)))
+(expr <- mean_call(a + b))
+```
+
+`mean_call` produced the unevaluated expression `mean(a + b)`.  We can evaluate
+it with `eval`:
+
+```{r}
+a <- 1
+b <- 2
+eval(expr)
+```
+
+The direct manipulation of the expression is a little awkward.  Expressions are
+recursive lists of sub-expressions, so it can get difficult to keep track of the
+exact index to modify.  Thankfully R provides `bquote` to partially quote
+expressions (or partially evaluate them, depending on your life outlook - I'm
+more of a expression-half-evaluated guy).  Let's look first at a trivial
+example:
+
+```{r}
+bquote(mean(.(1 + 2)))
+```
+
+Compare to:
+
+```{r}
+quote(mean(1 + 2))
+```
+
+`quote` captures the entire expression unevaluated.  `bquote` allows whatever is
+inside the `.(...)` to be evaluated.  We can use `bquote` to recreate
+`mean_call`:
+
+```{r}
+mean_call2 <- function(expr) {
+  bquote(mean(.(substitute(expr))))
 }
+mean_call2(a + b)
+```
 
-a <- 17
-b <- 59
-w <- local({
-  b <- 1e6
-  quo_with(a + b)
-})
-exp <- local({
-  b <- 100
-  x <- 3
-  quo_with(x + 1 + .(w))
-})
-exp
-eval(exp)
+Wait, but that's an unevaluated call.  Didn't we promise partial evaluation?  We
+delivered, but it's not obvious because what was partially evaluated,
+`substitute(expr)`, produced an unevaluated expression!  We can see that by
+comparing to an implementation that uses `quote` instead of `bquote`:
 
-w <- 1
+```{r}
+mean_call2a <- function(expr) {
+  quote(mean(substitute(expr)))
+}
+mean_call2a(a + b)
+mean_call2(a + b)
+```
+
+In this case we can see that `quote` does not evaluate `substitute(expr)`,
+whereas `bquote` does.
+
+If you were early on the `rlang` bandwagon you might have seen the term
+"quasi-quotation" bandied about.  It turns out partial evaluation **is**
+quasi-quotation.  It's just that [quasi-quotation][4] was coined by the
+philosopher [Willard Van Orman Quine][5], and philosophy without arcaneness is
+not philosophy[^resentment].  Lisp adopted the terminology, `rlang` brought it
+explicitly to R, and the rest of us were left to scratch our heads.
+
+So what's the etymology of R's `bquote`?  Turns out that in certain Lisp
+dialects such as Scheme the equivalent to the R `quote` function is a single
+quote `'`, and quasi-quoting (partial evaluation) is done with
+the "backquote" <code>&#x60;</code>.  So R's quasi-quoting function is named
+after the name of the <code>&#x60;</code>.  I suspect a fair bit of confusion
+among R users could have been avoided simply by riffing off of the "backquote"
+or (partial) "evaluation" terminology, even though "quasi-quote" is the correct
+"formal" term outside of R.
+
+## Eat `local`
+
+One last thing before we get going for real.  In order to stress test quosures
+and related elements we need to construct interesting Evaluation Environments.
+R provides the `local` function as a mechanism for doing exactly this:
+
+```{r}
+a <- 1
+num <- 2
 local({
-  w <- 2
-  f <- function(x) {
-    w <- 5
-    quo_arg_with(x)
-  }
+  a <- 100
+  a + num
 })
-eval(f(w))
+a + num
 ```
 
-# What does it for self eval formula
+The `a` defined at the top-level (`a <- 1`) is masked by the one defined
+inside the `local` Evaluation Environment (`a <- 100`), but only for expressions
+evaluated in that environment.  This is akin to how expressions in function
+bodies are evaluated in function Evaluation Environments.
 
-* Override `~` in the mask environment
-* Need access to the actual formula somehow.  We can get the call with
-  `sys.call`.  And if the environment is attached to the unevaluated quosure
-  itself then it can be retrieved from `sys.call`, and it seems that's what
-  !! as that's how it works does?
+We'll be using `local` to create interesting ad-hoc evaluation contexts.
+
+# About Them Quosures
+
+<img
+  id='quos-img'
+  src='/post/2020-02-17-quosures_files/images/peek-around-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/peek-around.png'
+  class='post-inset-image bgw-zoom-img'
+/>
+
+Just as `quote`, `substitute`, and `bquote`  do, quosures capture unevaluated
+R expressions.  We may create them with `rlang::quo`:
+
+<div class='bgw-code-float'>
+```{r}
+library(rlang)
+a <- 1
+(qrlang <- quo(a + 1))
+```
+</div>
+
+Additionally as you can see above, quosures record the environment the
+expression would have been evaluated in, had it not been captured.  Unlike
+typical unevaluated expressions, quosures do no resolve when they are `eval`ed:
+
+```{r}
+eval(qrlang)
+```
+
+We'll see why this is in a little bit, but until then we can use `eval_tidy` to
+evaluate quosures:
+
+```{r}
+eval_tidy(qrlang)
+```
+
+Things are more interesting with more complex environments.  Let's compare
+expressions captured with `quote` vs `quo` in an ad-hoc environment created with
+[`local`](#eat-local):
+
+```{r}
+a <- 1
+lang <- local({
+  a <- 100
+  list(
+    base=quote(a + 1),
+    rlang=quo(a + 1)
+  )
+})
+eval(lang[['base']])
+eval_tidy(lang[['rlang']])
+```
+
+Normal quoted language resolves `a` in the environment in which it is
+`eval`ed.  The quosure instead resolves `a` in the Evaluation Environment in
+which it was **created**.  Pretty neat.
+
+# Quosures in Functions
+
+Let's build a simple NSE function to compute means in the context of of a
+user-supplied data frame.  First with base:
+
+```{r mean_in_data, eval=FALSE}
+```
+
+The key features are `substitute`, which we [discussed in the previous post][3],
+and evaluation in the Calling Environment with `parent.frame()` to ensure names
+used in `expr` [resolve as intended][27] by the user of our function.
+
+We can use it to compute mean engine displacement of `mtcars` in liters:
+
+```{r}
+l.per.cubic.i <- 2.54^3 / 1000
+mean_in_data(mtcars, disp * l.per.cubic.i)
+```
+
+Next with `rlang`:
+
+```{r mean_in_data_rl, eval=FALSE}
+```
+```{r}
+mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+```
+
+While the parallels between the two implementations are clear when they are
+juxtaposed, they are not obvious from the function names alone.  The `rlang`
+authors prioritized their own vision of a meta programming interface over
+harmonizing with the existing conventions, so we end up with the following
+oddities:
+
+* `rlang::quo` is used similarly to `base::bquote`, but is lexically closer to
+  `base::quote`, and at same time gives no indication of its special
+  environment capture abilities in its name.
+* `rlang::enquo` is used similarly to `base::substitute`, but bears no relation
+  to `base::enquote`.  This clash with `base::enquote` is particularly confusing
+  to me given that the "en" gives no indication of how `enquo` is
+  different from `quo` (my personal experience was that the lexical similarity
+  between `quo` and `enquo` made it harder to figure out what was going on).
+* `rlang` designates partial evaluation with `!!` instead of `.()` as in
+  base, which is probably the most controversial design decision.
+
+There are reasonable arguments for why things ended up how they
+did[^mostly-reasonable].  I know the `rlang` team devoted a lot of time and
+effort coming up with names, including trying to work with precedent.  But when
+I look at the result I can't help but think the balance of priorities is off.
+
+<figure>
+<img class='aligncenter' src='https://imgs.xkcd.com/comics/standards.png' />
+<figcaption>
+<a href='https://xkcd.com/927/'>XKCD 927</a> &mdash;
+<a href='https://xkcd.com/license.html'>CC BY-NC 2.5</a>
+</figcaption>
+</figure>
+
+Partly as a result the initial confusion when `rlang` was first released the
+authors have shifted to different terminology in it's documentation and adjusted
+the interface somewhat.  For example, the "curly-curly" operator was added
+replace the `quo(!!enquo(arg))` pattern so we could have written instead[^v040]:
+
+```{r}
+mean_in_data_rl2 <- function(data, expr) {
+  quosure <- quo(mean({{expr}}))     # notice: no enquo
+  eval_tidy(quosure, data)
+}
+```
+
+This is a big improvement given it removes the `quo`/`enquo` confusion and
+keeps `!!` out of sight.  We stick to the old method because it mirrors the
+steps used in base, and it is useful for pedagogical purposes to distinguish
+between argument substitution and partial evaluation.
+
+> Contemporary `rlang` now also replaces `quo()` with `expr()`[^quo-vs-expr],
+
+While it's great the `rlang` team has responded to feedback and tried to adapt
+it would have been nice to see a re-convergence towards existing R terminology
+rather than toward Standard Seventeen[^mask].
+
+So why bother with `rlang`, if all I'm going to do is belly-ache about function
+names?  Well, along with the lexical malpractice (I kid, I kid) we get some very
+interesting features.
+
+# The Power Of Quosures
+
+Bad NSE implementations often break when some of the names in an expression are
+not uniquely mapped in the global environment.  Let's try to trigger failures by
+complicating the Evaluation Environment:
+
+```{r}
+l.per.cubic.i <- 1                 # decoy
+local({
+  l.per.cubic.i <- 2.54^3 / 1000   # not global, real duck
+  list(
+    base=mean_in_data(mtcars, disp * l.per.cubic.i),
+    rlang=mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+  )
+})
+```
+
+A particularly poor implementation might have pulled in the `l.per.cubic.i` we
+added to the global environment, but neither is fooled here.  Let's raise the
+stakes a bit:
+
+```{r}
+l.per.cubic.i <- 1                      # decoy
+local({
+  mean <- function(x) -base::mean(x)    # decoy
+  l.per.cubic.i <- 2.54^3 / 1000
+  list(
+    base=mean_in_data(mtcars, disp * l.per.cubic.i),
+    rlang=mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+  )
+})
+```
+
+&#x1f631;!  We find the wrong `mean`.  This would have happened even if we had
+defined our function in a package.  The very trick that allowed us
+to find the correct `l.per.cubic.i` (`eval` in `parent.frame()`) stabbed us in
+the back.  `rlang`'s version on the other hand works fine.  Ultimately the issue
+is that in the expression generated by `mean_in_data*`:
+
+<pre><code><span style='background-color: #aaffaa;'>mean</span>(<span
+style='background-color: #aaaaff;'>disp * l.per.cubic.i</span>)</code></pre>
+
+We need <code style='background-color: #aaffaa;'>mean</code> to be resolved
+according to the Function Environment, but <code style='background-color:
+#aaaaff;'>disp * l.per.cubic.i</code> in the data enclosed by the Calling
+Environment.  R, however, does not allow more than one Environment Chain at a
+time.
+
+With quosures, which retain the Evaluation Environments they are defined in,  it
+works right out of the box.  Of course we can fix the R version by
+pre-resolving `mean` as we did in [the prior post][2], but that's extra work.
+What sorcery allows `quosures` to evaluate a single expression in multiple
+environments, when R itself does not allow it?
+
+# Is It Magic?
+
+<img
+  id='castle-img'
+  src='/post/2020-02-17-quosures_files/images/castle-inside-2-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/castle-inside-2.png'
+  class='post-inset-image bgw-zoom-img'
+/>
+
+Let's peek behind the curtain:
+
+<div class='bgw-code-float'>
+```{r}
+class(quo(a + b))
+unclass(quo(a + b))
+```
+</div>
+
+Quosures are formulas, which we can see both from the class, and also from the
+tilde (`~`), once we side-step the quosure print method.  Formulas are an odd
+duck in the R world: a form of self-quoting expression that also captures the
+Evaluation Environment in which it is created.  Mostly they are used to
+implement domain specific languages such as model or plot specifications.
+Because they can contain arbitrary R expressions as well as environments they
+are appealing as a vehicle for quosures.
+
+They do have a big draw-back for our purpose: the quoting is triggered by the
+`~`, but the `~` remains in the captured expression.
+
+```{r}
+~a + b
+```
+
+This means you cannot evaluate the captured expression as evaluating it just
+leads to the expression quoting itself again!  It's like those awful trick
+candles you just can't blow out:
+
+```{r}
+eval(~a + b)
+```
+
+`eval_tidy` does something quite clever to force evaluation: it replaces `~`
+with an internal version that self-evaluates quosures.  Here is a
+hack re-implementation to demonstrate the concept:
+
+```{r}
+eval_tidyish <- function(expr) {
+  env <- new.env(parent=parent.frame())
+  env[['~']] <- function(...) {# replace `~` with our version
+    call <- sys.call()
+    env <- environment(call)   # recover formula env from call
+    eval(call[[2]], env)
+  }
+  eval(expr, env)
+}
+```
+```{r echo=FALSE}
+environment(eval_tidyish) <- baseenv()
+```
+
+`eval_tidyish` creates an environment that contains a self-evaluating version of
+`~`, and evaluates the expression therein.  We can recover the formula
+environment from the call to the formula, which is fortunate as otherwise this
+trick would not work.  Let's try it:
+
+```{r}
+a <- 10
+q1 <- local({
+  a <- 1/2
+  ~ a * 2
+})
+q1
+eval_tidyish(q1)
+```
+
+With more emotion:
+
+```{r echo=FALSE}
+old.opt <- options(digits=4)
+```
+```{r}
+q2 <- local({
+  a <- 1/8
+  ~ a + 1/8
+})
+bquote(.(q1) / .(q2))
+eval_tidyish(bquote(.(q1) / .(q2)))
+eval_tidyish(bquote(.(q1) / .(q2) + a))
+```
+```{r echo=FALSE}
+options(old.opt)
+```
+
+Half-assed quosures!  These don't even support adding data to the Environment
+Chain, deity-forbid using a formula as a _formula_, and they'll give you a
+severe case of operator-precedence-anxiety.  But we do bottle that
+multiple-Environment-Chain magic in a handful of lines of code.
+
+Aside: `eval_tidyish` will evaluate quosures, albeit with a once-per-session
+warning:
+
+```{r}
+eval_tidyish(quo(1 + 2))
+```
+
+# Quosures _au Naturel_
+
+<img
+  id='r-img'
+  src='/post/2020-02-17-quosures_files/images/r-inside-2-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/r-inside-2.png'
+  class='post-inset-image bgw-zoom-img'
+/>
+
+Formulas seem like a natural fit for quosure-like objects, but they are not.
+Their resistance to evaluation forces a custom evaluator along with a additional
+logic to preserve non-quosure `~` behavior, which even then remains subtly
+affected in corner cases[^subtly-affected].  There is also the recovery
+of the formula environment from the call stack, which works but feels a bit
+uncomfortable to me[^uncomfortable].
+
+But R doesn't offer any other functions that hold unevaluated expression and
+Enclosures, so what are we to do?  Cheat, duh.
+
+In the previous post we [solved the two Environment Chain dilemma][2] by
+pre-resolving the function along one Environment Chain and embedding the result
+in the otherwise unevaluated expression.  The key learning is that it is possible
+to embed non-language objects in expressions.  It's not even really cheating.  R
+does this as it evaluates expressions, evaluating leaves in the expression tree
+until the tree is fully evaluated and the result is returned.
+
+Which leads us to[^outside-bquote]:
+
+```{r quote_w}
+```
+```{r}
+quote_w(a + 1)
+```
+
+What the hell is that?  It's an unevaluated call to `with` with an
+alive-and-kicking environment embedded as the `data` argument.  That means that
+when we evaluate the expression, the provided sub-expression will be evaluated
+in the context of that environment.  Let's try it out:
+
+```{r}
+a <- 10
+q1 <- local({
+  a <- 1/2
+  quote_w(a * 2)
+})
+q1
+eval(q1)
+```
+
+We successfully captured the `a <- 1/2` from the local environment, even though
+we evaluated the expression in the top-level environment where the mapping is
+`a <- 10`.
+
+Let's up the difficulty:
+
+```{r echo=FALSE}
+old.opt <- options(digits=4)
+```
+```{r}
+q2 <- local({
+  a <- 1/8
+  quote_w(a + 1/8)
+})
+(q3 <- bquote(.(q1) / .(q2)))
+eval(q3)
+```
+
+Each of the `a`'s is resolved in its own environment.  We can even mix them
+with normal unevaluated expressions.  The names outside of the `with`s resolve
+in the Evaluation Environment:
+
+```{r}
+(q4 <- bquote(.(q1) / .(q2) + a))
+eval(q4)
+```
+```{r echo=FALSE}
+options(old.opt)
+```
+
+Why bother with this madness when we have quosures already?  Well, it's fun.
+And the `with` approach has benefits:
+
+* We can use good-old `base::eval`.
+* Semantics are pure; everything behaves exactly as usual in the R interpreter.
+* Complete interoperability with existing meta-programming constructs (e.g.
+  `bquote`).
+* WYSIWYG: the semantics of the expressions are transparent.  Any useR familiar
+  with `with` knows what the expressions will do.  Sure, they don't necessarily
+  know what's in the environments, but that's true of quosures too.
+* WYSIWYG 2: We don't need any special print methods, and operator precedence is
+  crystal-clear.
+
+All of this in **two lines of code**!  It does say something about the baked in
+meta-programming capabilities of R that such thing is even possible.
+
+Yes, some will object to the aesthetics of the `with` calls everywhere,
+preferring the more demure `^` prefix, but the latter relies on custom print
+methods.  We could add the same, but they are defeated by things such as:
+
+```{r}
+q5 <- quo(a + 1)
+rlang::expr(a + !!q5)
+```
+
+Of course, we're not even close to replacing the full functionality of quosures
+with this, but it's not a bad start.
+
+# Bells, Whistles
+
+## Substitute
+
+We need a counterpart to `substitute` that will capture the Calling Environment
+like `enquo` does:
+
+```{r substitute_w, eval=FALSE}
+```
+
+There is some not-so-great &#x1F92F; going on in there, but we'll sweep that
+under the "implementation details" rug.  The users of `substitute_w` need not
+be concerned with them. Check the appendix if you want [an
+explanation](#substitute_w).  Part of the complexity stems from supports
+of backquoting (a.k.a.  quasi-quotation / partial-evaluation).  And
+despite this feature there are still only five lines of code in it.
+
+One problem with this implementation is that it might not get the correct
+environment for any dots (`...`) that are in the argument to `substitute_w`
+(e.g. as with `substitute_w(list(...))`).  This is because `substitute` will
+replace dots recursively, unlike with other names.  Each element of the dots
+once expanded may be associated with different environments on the call
+stack.  A more thorough implementation would warn/error if it encountered any
+dots.
+
+The ability to associate environments to arguments forwarded via dots is a
+distinguishing feature of `rlang` that likely cannot be replicated efficiently
+with base R.
+
+## Back-quoting
+
+Since we implemented `substitute_w` with partial-evaluation support we don't
+need a `bquote_w` for our purposes here, though there is an [implementation in
+the appendix](#bquote_w).
+
+## Masking
+
+One of the most common uses of NSE is to allow user data to "mask" names in the
+Evaluation Chain.  This is typically done by turning the data into an
+environment with the previous Evaluation Chain as the Enclosure, and evaluating
+expressions therein.  So let's do just that:
+
+```{r}
+mask <- function(expr, data) {
+  if(is.language(expr) && length(expr) > 1L) {
+    # modify `with` expressions that contain a live environment
+    if(expr[[1L]] == as.name('with') && is.environment(expr[[2L]])) {
+      expr[[2L]] <- list2env(data, parent=expr[[2L]])
+    }
+    # recurse on each sub-expression
+    expr[2L:length(expr)] <- lapply(expr[2L:length(expr)], mask, data)
+  }
+  expr
+}
+```
+```{r echo=FALSE}
+environment(mask) <- env_w
+env_w[['mask']] <- mask
+```
+
+R expressions are nested lists of sub-expressions, and our quoted `with`
+statements are unevaluated R expressions.   Most of the function recurses
+through those lists.  The key line is:
 
 ```{r eval=FALSE}
-
-`~` <- function(...) {
-  call <- sys.call()
-  env <- parent.frame()
-  is.quo <- function(x)
-    is.call(x) && is.environment(attr(x, '.Environment')) &&
-    inherits(x, 'bquosure')
-  if(!is.quo(call)) {
-    tilde <- get('~', mode='function', envir=env)
-    eval(bquote(.(tilde))(...), env)
-  } else {
-    eval(substitute(list(...))[[3]], attr(x, '.Environment'))
-  }
-}
-
-library(rlang)
-`~` <- function(...) stop('boom')
-~ 1 + 1
-x <- quo(~1 + 1)
-eval_tidy(x)
-rm(`~`)
-x <- quo(~1 + 1)
-eval_tidy(x)
-
-
-
+      expr[[2L]] <- list2env(data, parent=expr[[2L]])
 ```
 
-# Original Garbage
+There we use the existing environment as the Enclosure to the data mask, and
+then we swap the data mask in[^rlang-masking].  Let's try it:
 
-# References
+```{r}
+q6 <- local({
+  a <- 1/2
+  quote_w(a + b + 2)
+})
+b <- 1
+eval(q6)
+q7 <- mask(q6, list(b=10))
+eval(q7)
+```
 
-* [TidyEval Bookdown][21]
+# Endgame
+
+Now we can go back to our `mean_in_data*` functions:
+
+```{r mean_in_data_w, eval=FALSE, collapse=TRUE}
+```
+```{r}
+l.per.cubic.i <- 1                      # decoy
+local({
+  mean <- function(x) -base::mean(x)    # decoy
+  l.per.cubic.i <- 2.54^3 / 1000
+  list(
+    base=mean_in_data(mtcars, disp * l.per.cubic.i),
+    rlang=mean_in_data_rl(mtcars, disp * l.per.cubic.i),
+    base_w=mean_in_data_w(mtcars, disp * l.per.cubic.i)
+  )
+})
+```
+
+Beauty.
+
+Notice we use `bquote` to generate the `mean` call.  This is safe to do because
+we evaluate `expr` in the same environment that call is created so we do not
+need to capture the local environment[^capture-local].
+
+Finally, for good measure, we'll wrap all our functions inside another function
+to demonstrate argument forwarding.
+
+```{r mean_in_data_all, eval=FALSE}
+```
+
+If you look closely you'll notice that the base approach requires us to capture
+the user expression and forward it on by using
+`eval(bquote(.(substitute(expr))))`.  On the other hand, for both the `_rl` and
+`_w` versions we can rely on the functions to do the partial evaluation of their
+arguments directly.
+
+In and of itself once you're comfortable with "programming on the language"
+this is only a slight annoyance, but the result is wrong:
+
+```{r}
+l.per.cubic.i <- 2.54^3 / 1000
+mean_in_data_all(mtcars, disp * l.per.cubic.i)
+```
+
+The naive implementation picks up both the decoy `mean` and `l.per.cubic.i`.
+This is a variation on the issue we had previously, in which we need different
+parts of the composite expression evaluated in different environments.  With a
+little extra work, we can resolve this too, but it is nice we can build tools
+that handle the complexity for us.
+
+> Equivalently for the `rlang` option we could have done
+> `mean_in_data_rl(data, {{expr}})`
 
 # Conclusions
 
-<!-- this needs to become a shortcode -->
-<!-- this is populated by JS in feedback.html partial -->
+This post is a side-effect of my trying to understand quosures in detail.  The
+base R versions are intended as self-confirmation that indeed, I more or
+less get the concepts, at least enough to implement variations with
+(pun-intended) useful properties.  I have no intention of publishing a meta
+programming package with quosure-like functionality.  If you are tempted to use
+the code herein for your purposes, be aware that the testing I did is incomplete
+and the code has not been used outside of this post[^tests].
+
+Does this mean I endorse `rlang` for meta-programming purposes?  There are
+interesting and useful features therein, the overall quality of the package is
+excellent, and it has no run-time dependencies.  One important feature that
+likely cannot be implemented efficiently in base R is `enquos` due to
+dots (`...`) potentially resolving to multiple environments.  Situations with
+extensive meta-programming involving `...` argument forwarding will benefit most
+from `rlang`.
+
+My main reservation is the philosophy underlying the API which in my view
+prioritizes an internal aesthetic at the expense of harmony with the existing
+meta-programming facilities.  Additionally, while the existing facilities are
+not perfect, they are still excellent, so I'm ambivalent about the feature /
+complexity trade off that come with `rlang`.
+
+<img
+  id='conclusion-img'
+  src='/post/2020-02-17-quosures_files/images/long-road-back-small.png'
+  data-src-big='/post/2020-02-17-quosures_files/images/long-road-back.png'
+  class='bgw-zoom-img'
+/>
+
+
 <p id='feedback-cont'></p>
 
 # Appendix
 
 ## Acknowledgments
 
+I'd like to thank Lionel Henry for all the work he's done developing and
+implementing his ideas on meta-programming in R, and for being so gracious in
+discussing them with me and providing feedback on this post, particularly given
+that he knows I harbor somewhat adversarial views.  I've learned a lot from
+looking at his code and from getting his perspectives on potential alternative
+implementations of some of the `rlang` concepts.
+
+Additionally:
+
+* [R-core][50] for creating and maintaining a language so wonderful it allows
+  crazy things like computing on the language.
+* [Lionel Henry][34] and [Hadley Wickham][35] for [`rlang`][36].
+* For the illustrations:
+    * [Tyler Morgan Wall][56] for [`rayrender`][53] which I used to render the
+      illustrations
+    * [Paul Murrell][54] for [`gridBezier`][51] which I used to turn the SVG
+      into a polygon outline.
+    * [Michael Sumner][55] for [`decido`][52] which I used to triangulate some
+      of the shapes in the scenes.
+    * Daniel Adler, Duncan Murdoch, etal. for [`rgl`][59] with which I mocked up
+      the scenes.
+    * Simon Urbanek for the [PNG
+      package](https://cran.r-project.org/web/packages/png/index.html) which I
+      used while post-processing many of the images in this post.
+    * The yellow brick road scene is based on the official
+      [`rlang` SVG logo][58], which is licensed [CC0][57].
+
+## References
+
+* [TidyEval Bookdown][22].
+* [UseR 2017 Tidy Evaluation presentation][23].
+* [DSC 2017 Tidy Evaluation (Hygenic Fexprs)][24].
+* [Macro Substitution in R][32].
+* [Advanced R Chapter on Evaluation][33].
+* [Programming `dplyr` vignette][7].
+* The previous post in this series [on NSE][1].
+
+## Implementation Details
+
+### `quote_w`
+
+`bquote` uses `eval` internally to partially evaluate the sub-expressions
+enclosed in `.(...)`, which will cause `parent.frame` to behave in unexpected
+ways.  More details in the [`substitute_w` section](#substitute_w).
+
+### `bquote_w`
+
+This is not strictly needed for our purposes, but I implemented originally when
+I intended for it to accept an `env` parameter, and use that combined with
+`substitute` instead of implementing `substitute_w`.  I leave it here for
+completeness.
+
+```{r}
+a <- 10
+q5 <- local({
+  q <- bquote_w(a + .(a))
+  a <- 1/2   # assign to `a` AFTER bquote_w!
+  q
+})
+q5
+eval(q5)
+```
+
+We need to assign to `a` in `local` after the call to `bquote_w` as otherwise the
+partially evaluated `a` would be the `local` `a` and not the global one.
+
+The implementation is tricky:
+
+```{r bquote_w, eval=FALSE}
+```
+
+We'll use the following use-case to illustrate how the function works:
+
+```{r eval=FALSE}
+a <- b <- 2
+expr <- local({
+  a <- 1
+  bquote_w(a + .(b))
+})
+expr
+eval(expr)
+```
+
+And we'll spread `bquote_w` over more lines so that we may better annotate it:
+
+```{r eval=FALSE}
+bquote_w <- function(x) { caller <- parent.frame()
+
+  # Capture user expression
+
+  expr <- substitute(x)                 # expr == a + .(b)
+
+  # Wrap the expression in `bquote`, using `bquote`.  We in-line `bquote`
+  # so in reality if you examined `expr` below you would see the entire
+  # `bquote` function definition crammed into the first element of
+  # the expression.  This is necessary to avoid interference with a user
+  # defined `bquote`.
+
+  expr <- bquote(.(bquote)(.(expr)))     # expr == (<bquote>)(a + .(b))
+
+  # Evaluate the `bquote` expression we created, in the calling frame so
+  # that the elements that need to be partially evaluated are
+
+  expr <- eval(expr, caller)             # expr == a + 2
+
+  # Generate the quoted with
+
+  bquote(with(.(caller), .(expr)))      # with(<caller>, a + 2)
+}
+```
+
+### `substitute_w`
+
+We'll use the following expression to illustrate the annotated version of
+`substitute_w`:
+
+```{r}
+a <- b <- 2
+f <- function(x) substitute_w(x)
+expr <- local({
+  a <- 1
+  f(a + .(b))
+})
+expr
+eval(expr)
+```
+
+```{r eval=FALSE}
+substitute_w <- function(x) {
+  # capture environments, we need the Calling Environment, and the
+  # Calling Environment of the Calling Environment
+
+  caller <- parent.frame()
+  caller2 <- sys.frame(sys.parent(2))
+
+  # Capture the user expression by running substitute in the caller
+  # frame. We inline the substitute function diretly into the
+  # expression to avoid conflicts with a possible user-defined
+  # `substitute`
+
+  expr <- substitute(x)                  # x
+  expr <- bquote(.(substitute)(.(expr))) # (<substitute>)(x)
+  expr <- eval(expr, caller)             # a + .(b)
+
+  # Do the partial evaluation in the caller of the caller, see the
+  # bquote_w breakdown above for details
+
+  expr <- bquote(.(bquote)(.(expr))) # (<bquote>)(a + .(b))
+  expr <- eval(expr, caller2)        # a + 2
+  bquote(with(.(caller2), .(expr)))  # with(<caller2>, a + 2)
+}
+```
+
+Using `parent.frame` and similar in functions that are invoked with NSE is
+tricky. In particular, `parent.frame(2)` will not work as expected if
+`substitute_w` is invoked by `eval`, as would happen in e.g.
+`bquote(.(substitute_w(x)))`.  So to ensure everything works correctly we use
+`sys.frame(sys.parent(2))`, which despite what the documentation claims (as of
+R4.0), has [different semantics][29] to `parent.frame` which allows it to find
+the intended frame.  You also need to be careful about using
+[`sys.frame(sys.parent(1))`][30] directly in an `eval` call (or inside the
+`.(...)` of a `bquote`).
+
 ## Session Info
 
+```{r eval=FALSE}
+sessionInfo()
+```
+```
+R version 4.0.2 (2020-06-22)
+Platform: x86_64-apple-darwin17.0 (64-bit)
+Running under: macOS Mojave 10.14.6
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRblas.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.4.6    bookdown_0.18   digest_0.6.25   later_1.0.0    
+ [5] mime_0.9        R6_2.4.1        jsonlite_1.6.1  magrittr_1.5   
+ [9] evaluate_0.14   blogdown_0.18   stringi_1.4.6   rlang_0.4.7    
+[13] rstudioapi_0.11 promises_1.1.0  rmarkdown_2.1   tools_4.0.2    
+[17] servr_0.16      stringr_1.4.0   httpuv_1.5.2    xfun_0.13      
+[21] compiler_4.0.2  htmltools_0.4.0 knitr_1.28     
+```
+
+```{r child='../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis', cache=FALSE}
+```
+
+[1]: /2020/05/05/on-nse/
+[2]: /2020/05/05/on-nse/#call-assembly
+[3]: /2020/05/05/on-nse/#nse-in-functions
+[4]: https://en.wikipedia.org/wiki/Quasi-quotation
+[5]: https://en.wikipedia.org/wiki/Willard_Van_Orman_Quine
+[6]: https://www.cs.unm.edu/~williams/cs491/quasiquote.ps
+[7]: https://dplyr.tidyverse.org/articles/programming.html
 [22]: https://tidyeval.tidyverse.org/
+[23]: https://github.com/r-lib/rlang/issues/924
+[24]: https://www.r-project.org/dsc/2017/slides/tidyeval-hygienic-fexprs.pdf
+[25]: https://schd.ws/hosted_files/user2017/43/tidyeval-user.pdf
+[26]: https://blog.obeautifulcode.com/R/How-R-Searches-And-Finds-Stuff/
+[27]: /2020/05/05/on-nse/#environmental-dichotomy
+[28]: /2020/05/05/on-nse/#in-functions
+[29]: https://bugs.r-project.org/bugzilla/show_bug.cgi?id=15531
+[30]: https://bugs.r-project.org/bugzilla/show_bug.cgi?id=17849
+[31]: /post/2020-02-17-quosures_files/script/tests.R
+[32]: https://github.com/WinVector/wrapr/blob/master/extras/MacrosInR.md
+[33]: https://adv-r.hadley.nz/evaluation.html
+[34]: https://github.com/lionel-
+[35]: https://github.com/hadley/
+[36]: https://github.com/r-lib/rlang
 
+[50]: https://www.r-project.org/contributors.html
+[51]: https://cran.r-project.org/package=gridBezier
+[52]: https://cran.r-project.org/package=decido
+[53]: https://cran.r-project.org/package=rayrender
 
+[54]: https://github.com/pmur002/
+[55]: https://github.com/mdsumner
+[56]: https://github.com/tylermorganwall/
+[57]: https://creativecommons.org/publicdomain/zero/1.0/deed.en
+[58]: https://github.com/rstudio/hex-stickers/blob/master/SVG/rlang.svg
+[59]: https://cran.r-project.org/package=rgl
+
+[^tidy-eval-recommend]: At the time of this writing the `rlang` authors suggest
+  the [programming with `dplyr` vignette][7] for contemporary `rlang` /
+  tidy-eval usage.
+[^quo-vs-expr]: In cases like this one there is no value to capturing the local
+  environment as that is the one `eval_tidy` will default to anyway.  It is now
+  expected that `quo` should rarely if ever be used.  See the [programming with
+  `dplyr` vignette][7].
+[^resentment]: Oh no, I bear no resentment whatsoever to philosopher's whose
+  works were required readings for me back in the day.
+[^uncomfortable]: I don't think it is documented that the attributes of a call
+  that was evaluated will be put along with the call onto the call stack.
+  Maybe there is some implicit guarantee that this will always be the case.  I
+  wouldn't have been surprised if only the actual call was put on the stack, or
+  as part of some optimization that became the case in the future.
+[^subtly-affected]: [It is not possible][23] to reference a custom, non-quosure
+  tilde defined as part of a quosure's Environment Chain.
+[^mostly-reasonable]: I actually like the name "quosure", and I understand the
+  desire to contract it to `quo`.  However this contraction drops the
+  semantically distinguishing part of the name as `quo` could just as easily be
+  short for `quote`.  `enquo` is a nice aesthetic variation on `quo`, but as
+  noted previously it gives me no hint as to what it does.  In an of itself
+  that's not terrible, except that there is `base::enquote`, which in contrast
+  behaves as per its name.  Then there is `!!`, which is the `rlang`
+  counterpart to `bquote`'s `.()`.  I understand the reasons for wanting
+  something like `!!`: visually distinct to indicate that partial evaluation is
+  done at quoting time, and not during final evaluation of the expression.
+  Technically the distinction is there, but `!!` doesn't convey that on its own.
+  You have to read the documentation to know that.  It is also a _very_ fine
+  distinction that will not matter in most cases, and more importantly, one that
+  `!!` cannot convey alone.  Since we must read the docs to know the semantics
+  of `!!`, whether it is `UQ` or `!!` or `.()` becomes an aesthetic rather than
+  semantic consideration.  So why not `.()` as `bquote` uses?  It is true that
+  third party packages use it, but I don't buy into the concept that just
+  because a third party overloads a base R idiom that idiom is polluted and
+  should not be used in its original sense.  So while I see some value in
+  wanting to indicate that _something_ is different about the partial-evaluation
+  action, it seems a secondary consideration on its face, and of even lesser one
+  given that `.()` provides that distinction too.  On one hand we have what I
+  see as a minimal value-add, and on the other some real concerns: `!!`
+  overloads an existing operator in an unusual way, requires alternate parsing
+  to simulate a single symbol when there are two (strictly speaking the parsed
+  expression is re-arranged via meta-programming, but the effect of that is the
+  same as changing the parser rules), adds operator precedence ambiguity,
+  creates a new idiom when there is an existing one in the base language, and
+  granted with the benefit of hindsight, we can say has been the source of much
+  confusion and consternation.  Most of the concerns I raise here could be swept
+  under the rug with the "those are rarely used components of the base R API
+  anyway" argument, but I don't think third parties should unilaterally decide
+  what portions of the API are okay to shoulder aside.  Why do I care?  Why not
+  just live and let live?  Because I think it is better for the health of a
+  language to avoid fragmentation, and I hope I can convince some to agree.
+  It's easier to collaborate if we all share the same foundations, and it seems
+  natural to me that the _lingua franca_ should revolve around R itself, not
+  third party extensions.  Obviously this is just my opinion.  CRAN, which is
+  notorious for having strict standards for accepting third party packages
+  imposes no requirements on overloading base functions, let alone lexical
+  semantics, so there is nothing _technically_ wrong with doing those things.
+  Lionel was gracious enough to discuss some of these issues with me, and I
+  tried to reflect some of his arguments in this footnote, although I am
+  presenting them as someone with a dog in the fight, so take all this with a
+  grain of salt.
+[^rlang-masking]: This masking is not quite the same as what `rlang` does as
+  there the same mask environment is re-used for every quosure.
+[^capture-local]: This is the reason why `rlang` now encourages the use of
+  `expr` over `quo`.  It is rare to need to capture a local environment because
+  in most cases where there are multiple environments in play, they can be
+  captured with `enquo(s)` or `{{}}`.
+[^v040]: In version 0.4.0 ~June 2019.
+[^tests]: [I tested][31] the cases in the post, a few variations, and some of
+  the `rlang` tests that seemed relevant.
+[^mask]: This is not entirely fair: for example what used to be called
+  "overscope" became "mask", the latter a term base R uses.  There may be other
+  examples.  On the other hand there is now the use of "defuse" and similar to
+  reference quoting.  While those terms are evocative and as such have some
+  value, I still think it would be better to just focus on the existing
+  terminology in the language.
+[^outside-bquote]: `bquote` uses `eval`, which sets two evaluation contexts in a
+  way that causes `parent.frame()` to behave in unpredictable ways.  To avoid
+  issues it is better to call `parent.frame()` [outside of `bquote`](#quote_w).

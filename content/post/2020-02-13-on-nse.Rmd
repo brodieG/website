@@ -782,7 +782,7 @@ possible.
       make the example function signatures more consistent with those of base.
     * Added a link to "Advanced R, 1st Edition" to the references (h/t Lionel
       Henry).
-    * Removed superflous footnote (h/t Michael Chirico).
+    * Removed superfluous footnote (h/t Michael Chirico).
 
 ## Session Info
 

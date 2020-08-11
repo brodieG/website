@@ -110,7 +110,7 @@ DF %>%
   group_by_runs0('grp') %>%
   summarize(mean(val))
 ```
-<!--
+
 Tada!  Well, kind of.  `group_by_runs` has very different semantics to
 `group_by`.  We have to give it a column name as a string instead of being able
 to provide one or more arbitrary R expressions.  Hardly a proper tidy function.
@@ -231,7 +231,7 @@ en.exp <- enquo(run.exp)
 
 
 The
-recently added `{{` "operator",
+recently added <code>&#x7b;&#x7b;</code> "operator",
 henceforth, makes this relatively straightforward:
 
 ```{r}
@@ -277,13 +277,13 @@ group_by_runs <- function(.data, ...)
 ```
 
 In [Level 1](#level-1) we got away with simply "tunneling" the NSE arguments
-directly to `group_by` with `{{}}` and letting it do all the fancy footwork.
+directly to `group_by` with `&#x7b;&#x7b;&#x7d;&#x7d` and letting it do all the fancy footwork.
 Unfortunately this does not work:
 
 ```{r}
 group_by_runs <- function(.data, ...) {
   group_by(
-    .data,
+    .datal
     rle.ids=rle_id(c(interaction({{...}}))),  # no worky
     ...                                       # all good
 ) }
@@ -292,8 +292,8 @@ group_by_runs <- function(.data, ...) {
 You can pass dots naked to "enquoting" functions like `group_by`, `mutate`,
 etc., so long as they are at the top level of the call.  So the very last set of
 dots in the above function is legal.  But we can't pass the naked dots nested in
-a call, and we can't tunnel them with the (`{{`). I sense the
-(`{{{`) in our near-future, along with chaos in the nascent
+a call, and we can't tunnel them with the (`&#x7b;&#x7b;`). I sense the
+(`&#x7b&#x7b;&#x7b;`) in our near-future, along with chaos in the nascent
 rlinguist vim community[^vim-folds].
 
 The solution is to peel back the freshly applied veneer and
@@ -316,7 +316,7 @@ Every R NSE implementation involves this step in some form.  The
 also does this.  The novel concept `rlang` adds is that
 freshly quoted expressions must immediately be "unquoted" with `!!` for single
 variables or `!!!` for `...` variables so that they may be used.  A bold
-strategy that has now been partially walked back with `{{`, at least for single
+strategy that has now been partially walked back with `&#x7b;&#x7b;`, at least for single
 variables.  More on this in a bit.
 
 Let's see what this does:
@@ -396,20 +396,6 @@ DF2 %>%
   summarize(mean(val), n())
 ```
 
-From this we can see the rough correspondence between tidy and base NSE:
-
-* `enquos(...)` => `substitute(list(....))` and by extension:
-* `enquo(x)` => `substitute(x)`
-* `quo(fun(!!x))` => `bquote(fun(.(x)))`
-* `eval_tidy(call, data=.data)` => `eval(call, .data, parent.frame())`
-
-The problem with this is that the tidy functions re-use the same lexical roots
-as base, but mix-up the semantics.  For example base also has `enquote`, but
-that does something completely different from `rlang::enquo`.  Similarly base
-has `quote` and `bquote`, but `rlang::quo` is closer to `bquote` than `quote`,
-and in fact `rlang::expr` is the closest thing to `bquote`.  To further add to
-the confusing base also has `expression`, which is something different yet
-again.
 
 From this (and several other design decisions) I get the sense that building
 `rlang` in a way that is complementary to precedent in R proper ranked low
@@ -614,7 +600,7 @@ why unquoting was made such a prominent part of the `rlang` user interface.  I
 have seen dozens of uses of `enquo` followed immediately by `!!`, and no cases
 of `enquo`sures that should remained unevaluted.  They exist[^uneval-quosure],
 but the design is geared to the rare rather than the predominant use case.
-Sorry, couldn't keep the lid completely on it.  At least the new `{{}}`
+Sorry, couldn't keep the lid completely on it.  At least the new `&#x7b;&#x7b;&#x7d;&#x7d`
 moustache operator makes takes some of the edge off.
 
 
@@ -850,4 +836,5 @@ The special thing about closures
 [4]: https://speakerdeck.com/lionelhenry/interactivity-and-programming-in-the-tidyverse
 [5]: https://speakerdeck.com/lionelhenry/reusing-tidyverse-code
 [6]: https://cran.r-project.org/doc/manuals/R-lang.html#Promise-objects
+
 
