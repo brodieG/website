@@ -384,7 +384,7 @@ I look at the result I can't help but think the balance of priorities is off.
 </figure>
 
 Partly as a result the initial confusion when `rlang` was first released the
-authors have shifted to different terminology in it's documentation and adjusted
+authors have shifted to different terminology in its documentation and adjusted
 the interface somewhat.  For example, the "curly-curly" operator was added
 replace the `quo(!!enquo(arg))` pattern so we could have written instead[^v040]:
 
@@ -871,11 +871,11 @@ Additionally:
       of the shapes in the scenes.
     * Daniel Adler, Duncan Murdoch, etal. for [`rgl`][59] with which I mocked up
       the scenes.
-    * Simon Urbanek for the [PNG
-      package](https://cran.r-project.org/web/packages/png/index.html) which I
+    * Simon Urbanek for the [PNG package][61] which I
       used while post-processing many of the images in this post.
     * The yellow brick road scene is based on the official
       [`rlang` SVG logo][58], which is licensed [CC0][57].
+* [Dirk Eddelbuettel][62] for copy edits.
 
 ## References
 
@@ -886,6 +886,10 @@ Additionally:
 * [Advanced R Chapter on Evaluation][33].
 * [Programming `dplyr` vignette][7].
 * The previous post in this series [on NSE][1].
+
+## Updates
+
+* 2020-08-11: typo fixes.
 
 ## Implementation Details
 
@@ -1079,6 +1083,8 @@ loaded via a namespace (and not attached):
 [57]: https://creativecommons.org/publicdomain/zero/1.0/deed.en
 [58]: https://github.com/rstudio/hex-stickers/blob/master/SVG/rlang.svg
 [59]: https://cran.r-project.org/package=rgl
+[61]: https://cran.r-project.org/web/packages/png/index.html
+[62]: https://github.com/eddelbuettel
 
 [^tidy-eval-recommend]: At the time of this writing the `rlang` authors suggest
   the [programming with `dplyr` vignette][7] for contemporary `rlang` /

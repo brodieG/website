@@ -256,7 +256,7 @@ I look at the result I can’t help but think the balance of priorities is off.<
 </figcaption>
 </figure>
 <p>Partly as a result the initial confusion when <code>rlang</code> was first released the
-authors have shifted to different terminology in it’s documentation and adjusted
+authors have shifted to different terminology in its documentation and adjusted
 the interface somewhat. For example, the “curly-curly” operator was added
 replace the <code>quo(!!enquo(arg))</code> pattern so we could have written instead<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>:</p>
 <pre class="r"><code>mean_in_data_rl2 &lt;- function(data, expr) {
@@ -386,7 +386,7 @@ q1 &lt;- local({
 })
 q1</code></pre>
 <pre><code>~a * 2
-&lt;environment: 0x7f80bd209310&gt;</code></pre>
+&lt;environment: 0x7f9c8795b498&gt;</code></pre>
 <pre class="r"><code>eval_tidyish(q1)</code></pre>
 <pre><code>[1] 1</code></pre>
 <p>With more emotion:</p>
@@ -688,12 +688,12 @@ into a polygon outline.</li>
 of the shapes in the scenes.</li>
 <li>Daniel Adler, Duncan Murdoch, etal. for <a href="https://cran.r-project.org/package=rgl"><code>rgl</code></a> with which I mocked up
 the scenes.</li>
-<li>Simon Urbanek for the <a href="https://cran.r-project.org/web/packages/png/index.html">PNG
-package</a> which I
+<li>Simon Urbanek for the <a href="https://cran.r-project.org/web/packages/png/index.html">PNG package</a> which I
 used while post-processing many of the images in this post.</li>
 <li>The yellow brick road scene is based on the official
 <a href="https://github.com/rstudio/hex-stickers/blob/master/SVG/rlang.svg"><code>rlang</code> SVG logo</a>, which is licensed <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">CC0</a>.</li>
 </ul></li>
+<li><a href="https://github.com/eddelbuettel">Dirk Eddelbuettel</a> for copy edits.</li>
 </ul>
 </div>
 <div id="references" class="section level2">
@@ -706,6 +706,12 @@ used while post-processing many of the images in this post.</li>
 <li><a href="https://adv-r.hadley.nz/evaluation.html">Advanced R Chapter on Evaluation</a>.</li>
 <li><a href="https://dplyr.tidyverse.org/articles/programming.html">Programming <code>dplyr</code> vignette</a>.</li>
 <li>The previous post in this series <a href="/2020/05/05/on-nse/">on NSE</a>.</li>
+</ul>
+</div>
+<div id="updates" class="section level2">
+<h2>Updates</h2>
+<ul>
+<li>2020-08-11: typo fixes.</li>
 </ul>
 </div>
 <div id="implementation-details" class="section level2">
