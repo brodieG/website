@@ -11,18 +11,9 @@ analysis and visualization.  I program primarily in R, but have learned enough C
 to understand the R internals and write the occasional R extension in C.  My
 claim to fame is that I am a minor contributor to the R sources.
 
-<a
-  href="https://twitter.com/brodiegaslam?ref_src=twsrc%5Etfw"
-  class="twitter-follow-button"
-  data-show-screen-name="false"
-  data-show-count="false"
->
-Follow
-</a> me for updates and/or new post notifications.  Check out my
-[Github](https://github.com/brodieG) account for the R packages I develop and
-maintain.
-
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+[Follow me on twitter](https://twitter.com/BrodieGaslam) me for updates and/or
+new post notifications.  Check out my [Github](https://github.com/brodieG)
+account for the R packages I develop and maintain.
 
 # Site
 
