@@ -13,18 +13,8 @@ rep_each <- function(x, each) {
     res
   } else x[0]
 }
-# given root of file (including dir), create new incremented file.
-#
-# next_file('~/Downloads/rlang/img-')
-
-next_file <- function(x) {
-  dir <- dirname(x)
-  f <- basename(x)
-  fl <- list.files(dir, full.names=TRUE, pattern=f)
-  fnum <- max(as.integer(sub(".*?(\\d+)\\.png", "\\1", fl, perl=TRUE)), 0)
-  if(is.na(fnum) || !is.finite(fnum)) stop("file num error")
-  file.path(dir, paste0(f, sprintf("%03d", fnum + 1), ".png", collapse=""))
-}
+source('')
+source('static/script/_lib/rayrender.R')  # for next_file
 
 # - Plot Helper Tools ----------------------------------------------------------
 
