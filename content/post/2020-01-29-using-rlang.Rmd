@@ -231,7 +231,7 @@ en.exp <- enquo(run.exp)
 
 
 The
-recently added <code>&#x7b;&#x7b;</code> "operator",
+recently added <code>&#x7b;&#x7b;&#x7d;&#x7d;</code> "operator",
 henceforth, makes this relatively straightforward:
 
 ```{r}
@@ -241,8 +241,6 @@ group_by_runs1 <- function(.data, run.exp) {
 }
 DF %>% group_by_runs1(paste0(runs, tolower(runs)))
 ```
-
-
 
 # Level 2
 
@@ -277,8 +275,8 @@ group_by_runs <- function(.data, ...)
 ```
 
 In [Level 1](#level-1) we got away with simply "tunneling" the NSE arguments
-directly to `group_by` with `&#x7b;&#x7b;&#x7d;&#x7d` and letting it do all the fancy footwork.
-Unfortunately this does not work:
+directly to `group_by` with <code>&#x7b;&#x7b;&#x7d;&#x7d;</code> and letting it
+do all the fancy footwork.  Unfortunately this does not work:
 
 ```{r}
 group_by_runs <- function(.data, ...) {
@@ -292,9 +290,11 @@ group_by_runs <- function(.data, ...) {
 You can pass dots naked to "enquoting" functions like `group_by`, `mutate`,
 etc., so long as they are at the top level of the call.  So the very last set of
 dots in the above function is legal.  But we can't pass the naked dots nested in
-a call, and we can't tunnel them with the (`&#x7b;&#x7b;`). I sense the
-(`&#x7b&#x7b;&#x7b;`) in our near-future, along with chaos in the nascent
-rlinguist vim community[^vim-folds].
+<!--
+a call, and we can't tunnel them with the (<code>&#x7b;&#x7b;</code>). I sense
+the (<code>&#x7b;&#x7b;&#x7b;</code>) in our near-future, along with chaos in the
+-->
+nascent rlinguist vim community[^vim-folds].
 
 The solution is to peel back the freshly applied veneer and
 examine the `rlang` quote/unquote process:
@@ -312,12 +312,12 @@ We explicitly capture (quote) the expressions passed by our user via dots with:
 dots <- enquos(...)
 ```
 
-Every R NSE implementation involves this step in some form.  The
-also does this.  The novel concept `rlang` adds is that
-freshly quoted expressions must immediately be "unquoted" with `!!` for single
-variables or `!!!` for `...` variables so that they may be used.  A bold
-strategy that has now been partially walked back with `&#x7b;&#x7b;`, at least for single
-variables.  More on this in a bit.
+Every R NSE implementation involves this step in some form.  The also does this.
+The novel concept `rlang` adds is that freshly quoted expressions must
+immediately be "unquoted" with `!!` for single variables or `!!!` for `...`
+variables so that they may be used.  A bold strategy that has now been partially
+walked back with `&#x7b;&#x7b;`, at least for single variables.  More on this in
+a bit.
 
 Let's see what this does:
 
@@ -397,28 +397,6 @@ DF2 %>%
 ```
 
 
-From this (and several other design decisions) I get the sense that building
-`rlang` in a way that is complementary to precedent in R proper ranked low
-on the list of priorities.  It would have been reasonably easy to come up with
-complimentary names, or failing that more orthogonal ones.  Instead we have a
-new NSE syntax that is hostile to the precedent.  I do believe this was not the
-intent, but I find it
-
-
-
-
-
-.  There is also `base::expression`, and you'd be forgiven to think
-it might be similar to but the latter is actually the closest
-thing to `bquote` in `rlang`.  `rlang::exprs` is probably the closest analogue
-to `expression`.
-
-I understand the appeal of tabula-rasa.  I don't expect that conforming to
-existing standards that are flawed should overrule everything.  But I do believe
-that if the tidy philosophy prioritized complementing rather than replacing base
-R when it does not **substantively** compromise the mission the tidyverse would
-be less divisive than it is today.
-
 ```{r eval=FALSE}
 library(rlang)
 library(dplyr)
@@ -487,30 +465,6 @@ function(x) {
 
 ```
 
-
-made extending and complementing existing semantics
-an important part of design decisions frictions in the R community would be
-lessened.
-
-
-
-,
-
-seemingly below closely hewing to principles of obscure, AFAICT mostly dead, CS
-theory on fexprs.
-
-
-was considered overwhelmingly more important.  Obviously I don't know
-what Lionel
-and Hadley were thinking when they put this together, but this model of
-priorities is what I can make consistent with the observed results.  Either
-aligning to the existing semantics or creating a distinct lexicon would have
-been better, and neither would have been harder.  Instead the translation of
-experience in base NSE to `rlang` and vice versa is perversely hindered by the
-mixed semantics[^not-end-of-world].
-
-
-
 Another `rlang` mechanism that I still can't get my head around is that captured
 expressions are protected from evaluation.  This is a new-to-R feature, possibly
 resurrected from a long dead language to haunt us at our terminals.  When I'm
@@ -545,133 +499,31 @@ function(.data, x) {
 `UQ` can just set a hypothetical "armed" internal attribute of the quosure such
 that it is subject to evaluation in the eventual `eval_tidy` call.
 
-
-
-
-
-
-Jkk
-I have a
-tough time with.
-
-Thing is R an incredibly flexible language.  You can make it
-do just about anything you want, ill-advised or not.  The only substantive limit
-is the parser.  Yet this is something that the parser had to be
-here we have something that cannot be interpreted correctly
-by the parser being .
-
-
-something that I could
-only bring myself to do if I gave exactly zero fucks about
-
-another result that I
-can only explain
-
-
-
-The absurdity of this pattern led to the
-
-
-
-I've been
-able to think of some cases where this is usefu
-can think
-of some cases
-
-Jkk
-need to be separately marked for evaluation in order to evaluate.
-This is a new feature, and it is directly
-
-as in base you just evaluate the expression.  This
-feature is directly responsible for
-
-
-
-followed by the immediate unquote, i.e. they why are we doing this
-
-
-
-I can only attribute to ideological purity is the
-need to
+Thing is R an incredibly flexible language.  You can make it do just about
+anything you want, ill-advised or not.  The only substantive limit is the
+parser.  Yet this is something that the parser had to be here we have something
+that cannot be interpreted correctly by the parser being .
 
 And voilà!  Aaargh.  I can't completely suppress it.  I still don't understand
-
 why unquoting was made such a prominent part of the `rlang` user interface.  I
 have seen dozens of uses of `enquo` followed immediately by `!!`, and no cases
 of `enquo`sures that should remained unevaluted.  They exist[^uneval-quosure],
 but the design is geared to the rare rather than the predominant use case.
-Sorry, couldn't keep the lid completely on it.  At least the new `&#x7b;&#x7b;&#x7d;&#x7d`
-moustache operator makes takes some of the edge off.
+Sorry, couldn't keep the lid completely on it.  At least the new
+`&#x7b;&#x7b;&#x7d;&#x7d` moustache operator makes takes some of the edge off.
 
 
-
-
-
-it is harder for experienced base NSE programmers to understand
-`rlang`, and where `rlinguists` will similarly struggle with base NSE.
-
-
-experienced base R NSE programmers trying to use `rlang` are
-befuddled, and likely vice-versa
 
 <div style='background-color: red;'>check old conversions on SO</div>
 
-
-
-Maybe the original names weren't great, but using names that are
-lexically close, semantically different, and in the same subfield interferes
-with the existing language constructs.
-
-This makes It appear as if minimal
-consideration is given to future `rlinguists` who may have to work with base
-NSE, or vice versa.  If this paragraph sounds a little faint and distorted it's
-because I'm screaming it from that hill over yonder, the one I'm still waiting
-to die on[^conf-update].
-
-
-One of my beefs[^beef] with `rlang` is that it prioritizes **internal**
-consistency and adherence to obscure CS principles at the expense of precedent
-in R.  For example `base::substitute` does roughly what `enquo` does, but
-`base::enquote` does something completely different.  `base::bquote` does
-roughly what `expr` does, but `base::expression` does something different yet
-again.
-
-
-
-kk
-And herein lies my major philosophical beef with `rlang` and to a lesser extent
-the `tidyverse` in general .
-
-
 Note about whether in package or not to find `interaction`?  But that's a
 problem with tidy version too.
-
 
 ```{r}
 DF2 %>%
   group_by_runs_base(grp, grp2) %>%
   summarize(mean(val), n())
 ```
-
-
-
-And this brings me to my major philosophical beef with `rlang` and the
-`tidyverse`
-
-
-
-We could
-try to avoid going this way
-
-One
-solution
-
-
-We've had to cram a reasonably complex
-
-
-
-I like that `rlang` added the double-mo-perator
 
 In the first line we capture the user expression (`paste0(runs, tolower(runs))`)
 without evaluating it so that we may later evaluate it in a different context.
@@ -799,7 +651,7 @@ DF %>%
   group_by_runs1a(runs) %>%
   summarize(mean(vals), n())
 ```
--->
+
 ## Acknowledgments
 
 ## Session Info
@@ -824,11 +676,6 @@ DF %>%
   distinguish it from "buitin" and "special" functions which are the other two
   types of functions.
 
-e distinction is made because
-  R also has functions that are not closures
-
-The special thing about closures
-  is that they have their own lexically scoped environments
 
 [1]: https://twitter.com/MilesMcBain/status/1222343645170262016?s=20
 [2]: https://disney.fandom.com/wiki/Dug
