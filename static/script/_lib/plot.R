@@ -10,16 +10,17 @@
 #  occupied by provided gtable when rendered.
 
 gtable_dim <- function(gtable, din=par()[['din']]) {
-  gw <- gtable::gtable_width(gtable)
-  gh <- gtable::gtable_height(gtable)
+  # for R > 4.0 only
+  gw <- unclass(gtable::gtable_width(gtable))[[1]][[2]]
+  gh <- unclass(gtable::gtable_height(gtable))[[1]][[2]]
 
-  wisnull <- grepl('\\d*null$', as.character(gw$arg1))
-  wknown <- Reduce('+', grid::convertX(gw$arg1[!wisnull], 'inches'))
-  wnull <- as.numeric(Reduce('+', gw$arg1[wisnull]))
+  wisnull <- grid::unitType(gw) == 'null'
+  wknown <- Reduce('+', grid::convertX(gw[!wisnull], 'inches'))
+  wnull <- as.numeric(Reduce('+', gw[wisnull]))
 
-  hisnull <- grepl('\\d*null$', as.character(gh$arg1))
-  hknown <- Reduce('+', grid::convertX(gh$arg1[!hisnull], 'inches'))
-  hnull <- as.numeric(Reduce('+', gh$arg1[hisnull]))
+  hisnull <- grid::unitType(gh) == 'null'
+  hknown <- Reduce('+', grid::convertX(gh[!hisnull], 'inches'))
+  hnull <- as.numeric(Reduce('+', gh[hisnull]))
 
   null.size <- min(
     c((din[1] - wknown) / wnull,

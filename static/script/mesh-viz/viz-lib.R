@@ -13,8 +13,6 @@ rep_each <- function(x, each) {
     res
   } else x[0]
 }
-source('')
-source('static/script/_lib/rayrender.R')  # for next_file
 
 # - Plot Helper Tools ----------------------------------------------------------
 

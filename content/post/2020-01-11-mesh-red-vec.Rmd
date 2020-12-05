@@ -33,7 +33,7 @@ thm.blnk <- list(
 )
 ```
 
-# Header 1
+# Vectorize The Absolute $#!+ Out Of This
 
 <!-- this needs to become a shortcode -->
 <img
@@ -41,9 +41,9 @@ thm.blnk <- list(
   class='post-inset-image'
 />
 
-# Vectorize The Absolute $#!+ Out Of This
-
-<div style='background-color: red;'>Update all links to split post</div>
+About a [year ago][1] I wrote about ([&commat;mourner][5]) fantastic [observable
+notebook][6] on adapting the Will Evans etal.  Right-Triangulated Irregular
+Networks [(RTIN) algorithm][8] 
 
 I wish I could tell you that I carefully figured out all the intricacies of the
 algorithm before I set off on my initial vectorization attempt, that I didn't
@@ -65,10 +65,12 @@ vertical/horizontal ones "Axis":<span id='sqr-vs-dia'></span>
 
 ```{r echo=FALSE}
 source('../../static/script/_lib/plot.R')
+source('../../static/script/_lib/rayrender.R')  # for next_file
 source('../../static/script/mesh-viz/viz-lib.R')
 source('../../static/script/mesh-viz/rtin-vec.R')
 source('../../static/script/mesh-viz/rtin-vec2.R')
 source('../../static/script/mesh-viz/extract-vec.R')
+
 # source('static/script/mesh-viz/viz-lib.R')
 # source('static/script/mesh-viz/rtin-vec.R')
 err <- matrix(0, 9, 9)
@@ -108,7 +110,7 @@ would prevent us from fully tiling the grid without breaking up triangles.
 On the other hand the "Axis" triangulation, the one with the diagonal
 hypotenuses, has multiple possible tilings:
 
-```{r echo=FALSE}
+```{r fig.width=9, echo=FALSE}
 # should have used the offsets for this, but we hadn't written that yet.
 raw1 <- c(03,19,01, 03,19,21, 03,23,21, 03,23,05)
 raw2 <- raw1 + rep(c(2,-2), each=length(raw1)/2)
@@ -139,9 +141,11 @@ pdim <- gtable_dim(ggplotGrob(p))
 old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
 do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
 ```
+<div class=bgw-wide-window>
 ```{r fake-squares, echo=FALSE}
 p
 ```
+</div>
 
 We show just three alternate tilings, although there are `$2^{16}$`.  All of
 them perfectly cover the grid with equal sized triangles.  "Faux Diagonal 1" is
@@ -149,6 +153,7 @@ even a pretty convincing replica.  Unfortunately only one of them fits exactly
 into the next level of coarseness, "Axis" [shown previously](#sqr-vs-dia),
 seen here in a green outline:
 
+<div class=bgw-wide-window>
 ```{r fake-diamonds-outline, echo=FALSE}
 bad.1 <- ids_to_df(c(11,13,15,17) + rep(0:3 * 18, each=4), err)
 bad.2 <- ids_to_df(c(11,13,15,17) + rep(c(0, 36), each=4), err)
@@ -166,6 +171,7 @@ p + geom_polygon(
 )
 do.call(knitr::opts_chunk$set, old.opt)
 ```
+</div>
 
 It is only with "Diagonal" that every edge of the parent approximation level
 completely overlaps with edges of the child.  Every other arrangement has at
@@ -313,7 +319,8 @@ approximation errors in the right hand panel:
 
 <video id=mesh-anim-vec style='display: block; margin: 0 auto;' controls loop>
 <source
-  src='/post/2019-08-23-mesh-reduction-1_files/images/out-vec.mp4'
+static
+  src='/post/2020-01-11-mesh-red-vec_files/images/out-vec.mp4'
   type="video/mp4"
 />
 </video>
@@ -830,6 +837,15 @@ new BgFlipBook({
   imgPad: "0000", fps: fps, loop: false
 })
 </script>
+
+[1]: /2020/01/27/mesh-reduction-1/
+[5]: https://twitter.com/mourner
+[6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+[7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
+[8]: https://www.cs.ubc.ca/~will/papers/rtin.pdf
+[6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+[10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20
+[11]: https://github.com/brodieG/rtini/blob/v0.1.0/R/error.R#L98
 
 [^step-count]: We're under-counting as the calls used in the vectorized version
   end to be more complex, and we also have `init_offsets` that hides some calls.
