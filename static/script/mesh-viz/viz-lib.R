@@ -134,11 +134,21 @@ scale_mesh <- function(mesh, scale=rep(1, 4)) {
 }
 # Convert list-matrix mesh into obj text format, relying on list matrix
 # being in counter-clockwise direction outwards
+#
+# @param mesh a mesh list-matrix, with 3 columns for just coords, or 6 if
+#   including r g b colors.  Cols are x, y, z, [r, g, b], rows are vertices.
+#   Some old matrices used to have one additional element for texture measuring
+#   just brightness.  Those will need to drop that column or replicate it into
+#   the channels.
 
 mesh_to_obj <- function(mesh, center=NULL) {
-  # first step is convert to array, drop texture for now
+  vetr(
+    matrix(list(), 3) && ncol(.) %in% c(3,6), numeric(3) || NULL
+  )
+  # first step is convert to array
 
-  mesh.arr <- array(unlist(mesh[1:3, 1:3]), c(length(mesh[[1]]), 3, 3))
+  arr.dim <- c(length(mesh[[1]]), dim(mesh))
+  mesh.arr <- array(unlist(mesh[1:3, ]), arr.dim)
 
   if(!is.null(center)) {
     # we need to re-order the faces so their normals all point away from the
@@ -157,11 +167,16 @@ mesh_to_obj <- function(mesh, center=NULL) {
 
     mesh.arr[flip,2:3,] <- mesh.arr[flip,3:2,]
   }
-  mesh.v <- matrix(aperm(mesh.arr, c(3, 2, 1)), nrow=3)
-  v.chr <- paste('v', mesh.v[1,], mesh.v[2,], mesh.v[3,], collapse="\n")
+  # we're splitting by rows; not efficient
+  mesh.v <- matrix(aperm(mesh.arr, c(3, 2, 1)), nrow=ncol(mesh))
+  v.dat <- c(
+    list('v'), asplit(mesh.v[1:3,], 1),
+    if(nrow(mesh.v) > 3) asplit(mesh.v[4:6,], 1),
+    list(collapse="\n")
+  )
+  v.chr <- do.call(paste, v.dat)
 
   # faces are easy because we've repeated the vertices so no shared vertices
-
   mesh.f <-matrix(seq_len(length(mesh[[1]]) * 3), nrow=3)
   f.chr <- paste('f', mesh.f[1,], mesh.f[2,], mesh.f[3,], collapse="\n")
 
@@ -531,8 +546,19 @@ mesh_to_seg <- function(
 # Given a surface mesh, return an enclosed version of it.  Assumes the surface
 # is in x-y, with depth given in Z.  The logic is messed up because originally
 # it assumed the depth was Y, so there is a bunch of remapping back and forth.
+#
+# Note: `vcolor` doesn't seem to work right.
+#
+# @param vcolor NULL or numeric(3) in [0-1], a single color to use for all
+#   vertices.
 
-mesh_skirt <- function(mesh, y.lo=min(unlist(mesh[, 'z']))) {
+mesh_skirt <- function(
+  mesh, y.lo=min(unlist(mesh[, 'z'])), vcolor=NULL
+) {
+  vetr(
+    mesh=matrix(list(), 3),
+    vcolor=numeric(3) && all_bw(., 0, 1) && .(ncol(mesh) == 6) || NULL
+  )
   # Y is taken to be the depth, but the input has it as Z, so need to remap
   xu <- unlist(mesh[,'x'])
   zu <- unlist(mesh[,'y'])
@@ -559,24 +585,37 @@ mesh_skirt <- function(mesh, y.lo=min(unlist(mesh[, 'z']))) {
   xz.lo <- vertex_arrange(xu, zu, yu, z.lo)
   xz.hi <- vertex_arrange(xu, zu, yu, z.hi)
 
-  to_mesh <- function(v, w, y, y.lo) {
+  to_mesh <- function(v, w, y, y.lo, vcolor) {
     lv <- length(v)
     y.lo.r <- rep(y.lo, lv - 1)
 
     L <- matrix(
-      list(
-        c(v[-lv], v[-1]), c(v[-lv], v[-1]), c(v[-1], v[-lv]),
-        c(y[-lv], y.lo.r), c(y.lo.r, y[-1]),  c(y[-1], y.lo.r),
-        rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2)
-      ),
+      c(
+        list(
+          # x coords
+          c(v[-lv], v[-1]), c(v[-lv], v[-1]), c(v[-1], v[-lv]),
+          # y coords
+          c(y[-lv], y.lo.r), c(y.lo.r, y[-1]),  c(y[-1], y.lo.r),
+          # z coords
+          rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2)
+        ),
+        if(!is.null(vcolor)) {
+          r <- replicate(3, rep(vcolor[1], lv), simplify=FALSE)
+          g <- replicate(3, rep(vcolor[2], lv), simplify=FALSE)
+          b <- replicate(3, rep(vcolor[3], lv), simplify=FALSE)
+          c(r, g, b)
+      } ),
       3
-    )
-  }
-  mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo)[,3:1][,c(1,3,2)]
-  mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo)[,3:1][,c(1,3,2)]
-  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo)[,c(1,3,2)]
-  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo)[,c(1,3,2)]
-  mesh2 <- mesh[,1:3]
+  ) }
+  # Need to reorder cols due to y/z confusion from whence the code came
+  coli <- if(!is.null(vcolor)) 4:6
+  reord <- c(1,3,2,coli)
+
+  mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo, vcolor)[,c(3:1,coli)][,reord]
+  mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo, vcolor)[,c(3:1,coli)][,reord]
+  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo, vcolor)[,reord]
+  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo, vcolor)[,reord]
+  mesh2 <- mesh[,c(1:3,coli)]
   mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
   mesh3 <- mesh2
 }
