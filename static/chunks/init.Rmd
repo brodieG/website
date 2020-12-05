@@ -1,10 +1,11 @@
 
 ```{r echo=FALSE}
 options(digits=3, crayon.enabled=TRUE)
+fig.width.default <- 6.77
 knitr::opts_chunk$set(
   comment = "", 
   fig.align='center', 
-  error=TRUE, fig.width=6.77, fig.retina=2
+  error=TRUE, fig.width=fig.width.default, fig.retina=2
 )
 plot_hook <- knitr::knit_hooks$get('plot')
 plot_hook_bgw <- function(x, options) {

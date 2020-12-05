@@ -7,7 +7,7 @@ theme = "hugo-nederburg"
 baseURL = "/"
 title = "Brodie Gaslam"
 languageCode = "en-us"
-ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "_files$", "_cache$"]
+ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "_cache$"]
 
 # Enable comments by entering your Disqus shortname
 disqusShortname = ""
@@ -25,6 +25,7 @@ summaryLength = 10     # num words in summary
 [params]
     title = "Brodie Gaslam"  # needed for use with $.Params "title"
     websiteURL = "https://www.brodieg.com"
+    mainSections = ["post"]
 
     # options for highlight.js (version, additional languages, and theme)
     highlightjsVersion = "9.12.0"
