@@ -194,10 +194,12 @@ ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   y <- (ids - 1) %% dim(map)[1]
   z <- map[c(ids)]
 
-  x <- x / (dim(map)[2] - 1) * scale[1]
-  y <- y / (dim(map)[1] - 1) * scale[2]
-  z <- if(flatten) numeric(length(z))
-       else (z - min(map)) / (diff(range(map))) * scale[3]
+  if(length(scale)) {
+    x <- x / (dim(map)[2] - 1) * scale[1]
+    y <- y / (dim(map)[1] - 1) * scale[2]
+    z <- (z - min(map)) / (diff(range(map))) * scale[3]
+  }
+  if(flatten) z <- numeric(length(z))
   list(x=x, y=y, z=z)
 }
 mesh_to_xyz <- function(mesh, map, scale) {
