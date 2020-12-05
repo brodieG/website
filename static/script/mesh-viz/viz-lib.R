@@ -526,6 +526,62 @@ mesh_to_seg <- function(
 ) {
   xyz_to_seg(mesh_to_xyz(mesh, map, scale), material, radius, angle, translate)
 }
+# Draw vertical polygon sides to enclose a mesh surface
+#
+# Given a surface mesh, return an enclosed version of it.  Assumes the surface
+# is in x-y, with depth given in Z.  The logic is messed up because originally
+# it assumed the depth was Y, so there is a bunch of remapping back and forth.
+
+mesh_skirt <- function(mesh, y.lo=min(unlist(mesh[, 'z']))) {
+  # Y is taken to be the depth, but the input has it as Z, so need to remap
+  xu <- unlist(mesh[,'x'])
+  zu <- unlist(mesh[,'y'])
+  yu <- unlist(mesh[,'z'])
+
+  x.lo <- min(xu)
+  x.hi <- max(xu)
+  z.lo <- min(zu)
+  z.hi <- max(zu)
+  if(y.lo > min(yu)) stop('need lower y')
+
+  vertex_arrange <-function(a, b, y, lo) {
+    which.a <- b == lo
+    base.a <- a[which.a]
+    o <- order(base.a)
+    ao <- base.a[o]
+    d <- duplicated(ao)
+    aou <- ao[!d]
+    you <- y[which.a][o][!d]
+    list(aou, you)
+  }
+  zx.lo <- vertex_arrange(zu, xu, yu, x.lo)
+  zx.hi <- vertex_arrange(zu, xu, yu, x.hi)
+  xz.lo <- vertex_arrange(xu, zu, yu, z.lo)
+  xz.hi <- vertex_arrange(xu, zu, yu, z.hi)
+
+  to_mesh <- function(v, w, y, y.lo) {
+    lv <- length(v)
+    y.lo.r <- rep(y.lo, lv - 1)
+
+    L <- matrix(
+      list(
+        c(v[-lv], v[-1]), c(v[-lv], v[-1]), c(v[-1], v[-lv]),
+        c(y[-lv], y.lo.r), c(y.lo.r, y[-1]),  c(y[-1], y.lo.r),
+        rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2)
+      ),
+      3
+    )
+  }
+  mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo)[,3:1][,c(1,3,2)]
+  mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo)[,3:1][,c(1,3,2)]
+  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo)[,c(1,3,2)]
+  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo)[,c(1,3,2)]
+  mesh2 <- mesh[,1:3]
+  mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
+  mesh3 <- mesh2
+}
+
+
 # Adaptation of rayender::segment
 
 cubement <- function (start = c(0, -1, 0), end = c(0, 1, 0), 
