@@ -179,6 +179,8 @@ mesh_to_obj <- function(mesh, center=NULL) {
 # We need `map` to get row/col counts, but also to have access to the full
 # height map so whe nwe scale we scale relative to the full heightmap, not the
 # portion of it captured by `tris`.
+#
+# Set `scale` to NULL or length zero to not change coordinates
 
 ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
