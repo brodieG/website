@@ -811,7 +811,6 @@ new BgFlipBook({
 [7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
 [8]: https://www.cs.ubc.ca/~will/papers/rtin.pdf
 [9]: /2019/10/30/visualizing-algorithms/
-[10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20
 [11]: https://github.com/brodieG/rtini/blob/v0.1.0/R/error.R#L98
 [12]: https://en.wikipedia.org/wiki/Louvre_Pyramid
 [13]: https://twitter.com/mdsumner

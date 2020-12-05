@@ -41,10 +41,6 @@ thm.blnk <- list(
   class='post-inset-image'
 />
 
-About a [year ago][1] I wrote about ([&commat;mourner][5]) fantastic [observable
-notebook][6] on adapting the Will Evans etal.  Right-Triangulated Irregular
-Networks [(RTIN) algorithm][8] 
-
 I wish I could tell you that I carefully figured out all the intricacies of the
 algorithm before I set off on my initial vectorization attempt, that I didn't
 waste hours going cross-eyed at triangles poorly drawn on scraps of paper, and
@@ -52,6 +48,10 @@ that I didn't produce algorithms which closer inspection showed to be [laughably
 incorrect][10].  Instead I'll have to be content with telling you that I did get
 this to work eventually.  A victory that had it wasted lives like it wasted my
 time would supplant those of Pyrrhus in the history books[^grandiloquence].
+
+> This is as follow up post to [last year's review][1] of ([&commat;mourner][5])
+> fantastic [observable notebook][6] on adapting the Will Evans etal.
+> Right-Triangulated Irregular Networks [(RTIN) algorithm][8].
 
 While I was generally aware that there is more to the problem than generating
 equal sized triangles, I underestimated the degrees of freedom available and
@@ -426,7 +426,7 @@ Our vectorized algorithm got through the 17 x 17 map in 240 R-level
 steps[^step-count].  The original one requires 40,962 for the same map!  The
 vectorized algorithm R-level call count will grow with `$log{n}$` where `n` is
 the number of rows/cols in the map.  The original transliteration will grow with
-`$n^2 .log(n)$`$.  There are a similar number of calculations overall, but as
+`$n^2 .log(n)$`.  There are a similar number of calculations overall, but as
 you can see in the animation the vectorized version "batches" many of them into
 single R-level calls to minimize the R interpreter overhead.  So yes, despite
 the `for` loops our code is very vectorized, and it shows up in the timings:
@@ -463,11 +463,11 @@ for use in the vectorized operations.
 # Follies in Optimization
 
 If you've read any of my previous blog posts you probably realize by now that I
-have a bit of a thing &lt;cough&gt;unhealthy obsession&lt;/cough&gt; for making
-my R code run fast.  I wouldn't put what's coming next into the "premature
-optimization is the root of all evil" category, but rational people will
-justifiable question why anyone would spend as much time as I have trying to
-make something that doesn't need to be any faster, faster.
+have a bit of a thing &lt;cough&gt;_unhealthy obsession_&lt;/cough&gt; for
+making my R code run fast.  I wouldn't put what's coming next into the
+"premature optimization is the root of all evil" category, but rational people
+will justifiable question why anyone would spend as much time as I have trying
+to make something that doesn't need to be any faster, faster.
 
 Well, I have an itch I want to scratch and I will go ahead and scratch it,
 rationality be damned.
