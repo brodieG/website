@@ -1,4 +1,7 @@
 source('static/script/_lib/rayrender.R')
+library(rayrender)
+library(ambient)    # for water patterns
+
 eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
@@ -9,7 +12,7 @@ sea <- 50                 # sea level
 
 # For each depth = 0 point we want to find distane to the nearest ground point
 # to use that as depth.  We're going to do brute force that by breaking up the
-# map into smaller pieces.  This is not a general solution but will do for us. 
+# map into smaller pieces.  This is not a general solution but will do for us.
 # Could generate 75e6 nrow matrices with the current problem size (derwent)
 
 # Take 2, find all the edges by looking at the 4 squares around each land square
@@ -21,21 +24,21 @@ sea <- 50                 # sea level
 # landi <- which(land, arr.ind=TRUE)
 # idx2 <- landi[rep(seq_len(nrow(landi)), each=nrow(idx)), ] +
 #   do.call(rbind, replicate(nrow(landi), idx, simplify=FALSE))
-# 
+#
 # # Use NAs to track oob, we'll make them land later
 # idx2[idx2 == 0L] <- NA
 # idx2[idx2[,1] > nrow(land), 1] <- NA
 # idx2[idx2[,2] > ncol(land), 2] <- NA
 # land.adj <- matrix(land[idx2], nrow(idx))
 # land.adj[is.na(land.adj)] <- TRUE
-# 
+#
 # # Compute which lands are adjacent to water
 # land.adj.water <- which(colSums(land.adj) < nrow(idx))
-# 
+#
 # # Too many, so sample randomly a subset that should be good enough
 # set.seed(123)
 # land.adj.w2 <- sample(land.adj.water, length(land.adj.water) / 2)
-# 
+#
 # lc <- t(landi[land.adj.w2,])
 # wc <- t(which(!land, arr.ind=TRUE))
 # wlcc <- expand.grid(w=seq_len(ncol(wc)), l=seq_len(ncol(lc)))
@@ -46,35 +49,10 @@ sea <- 50                 # sea level
 # depth.dat <- sqrt(colSums((wc - lc[,nearl]) ^ 2))
 # depth[t(wc)] <- (depth.dat - min(depth.dat)) / diff(range(depth.dat))
 # saveRDS(depth, '~/Downloads/derwent/depth2.RDS')
-# 
-# der2 <- der - sea
-# depth2 <- readRDS('~/Downloads/derwent/depth2.RDS')
-# depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 3
-
-# - Water ----------------------------------------------------------------------
-# Adapted from:
-# https://gist.github.com/tylermorganwall/7f31a10f22dc5912cc86b8b312f6f335
-
-library(rayrender)
-library(ambient)
-
-i <- 1
-cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
-# fbase <- 0.1
-fbase <- 0.025
-amb <- gen_simplex(cxy[,1],cxy[,2],z=i/30,frequency = fbase, seed = 1) +
-  gen_simplex(cxy[,1],cxy[,2],z=i/30,frequency = fbase * 2, seed = 2)/2 +
-  gen_simplex(cxy[,1],cxy[,2],z=i/30,frequency = fbase * 4, seed = 3)/4 
-amb <- (amb - min(amb)) / diff(range(amb))
-att <- c(1,.7,0.3) * 4
-water <- dielectric(
-  # color='#E0F5FF', 
-  refraction=1.33,
-  bump_texture=matrix(amb, nrow(der), ncol(der)),
-  bump_intensity=6,
-  attenuation = att
-)
-water2 <- dielectric(refraction=1.33, attenuation = att)
+#
+der2 <- der - sea
+depth2 <- readRDS('~/Downloads/derwent/depth2.RDS')
+depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
 # - Mesh -----------------------------------------------------------------------
 
@@ -89,7 +67,7 @@ err <- rtini_error(der2)
 # Add back the tolerance, but then a little step so water boundary at sharper
 # angle
 
-der2[!is.na(depth2)] <- der2[!is.na(depth2)] + (tol * 1.1) - 20
+der2[!is.na(depth2)] <- der2[!is.na(depth2)] + (tol * 1.1) - 5
 ids <- rtini_extract(err, tol=tol)
 
 tris <- rbind(do.call(cbind, ids), NA)
@@ -106,13 +84,13 @@ xyz2 <- xyz
 max.xy <- max(unlist(xyz[c('x', 'y')]))
 xyz$x <- (xyz$x - mean(range(xyz$x))) / max.xy
 xyz$y <- (xyz$y - mean(range(xyz$y))) / max.xy
-xyz$z <- xyz$z / max(der) / 2
+xyz$z <- xyz$z / max(der) / 3
 
 # Make sure these are all counterclockwise by checking triangle area sign.
 # Assumes nothing steeper than vertical.
 
 i <- 1:3
-ii <- c(2:3,1) 
+ii <- c(2:3,1)
 base <- matrix(rep(seq(0, length(xyz[[1]]) - 1, by=3), each=3), 3)
 iv <- i + base
 iiv <- ii + base
@@ -153,50 +131,136 @@ xang <- 80
 xw <- diff(range(xyz$x)) * .999
 zw <- .999
 ymin <- min(unlist(mesh[, 'z']))
-water.obj <- group_objects(
-  dplyr::bind_rows(
-    xz_rect(material=water,  xwidth=xw, y=0, zwidth=zw),
-    xz_rect(material=water2, xwidth=xw, y=ymin, flipped=TRUE, zwidth=zw),
-    xy_rect(
-      material=water2, xwidth=xw, y=ymin/2, z=-zw/2, ywidth=-ymin, flipped=TRUE
+
+# - Water ----------------------------------------------------------------------
+# Adapted from:
+# https://gist.github.com/tylermorganwall/7f31a10f22dc5912cc86b8b312f6f335
+
+cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
+steps <- 1
+for(i in seq(0, 360, length.out=steps + 1)[-(steps + 1)]) {
+  ang <- i
+  writeLines(sprintf('Frame %d %s', i, Sys.time()))
+  #i <- ang <- angs[j]
+  fbase <- .025
+  amb <- gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase, seed = 1) +
+    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 2, seed = 2)/2 +
+    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 4, seed = 3)/4 +
+    0
+  amb <- (amb - min(amb)) / diff(range(amb))
+
+  att <- c(1,.7,0.3) * 4
+  water <- dielectric(
+    # color='#E0F5FF',
+    refraction=1.33,
+    bump_texture=matrix(amb, nrow(der), ncol(der)),
+    # bump_intensity=6,
+    bump_intensity=3,
+    attenuation = att
+  )
+  water2 <- dielectric(refraction=1.33, attenuation = att)
+
+  water.obj <- group_objects(
+    dplyr::bind_rows(
+      xz_rect(material=water,  xwidth=xw, y=0, zwidth=zw),
+      xz_rect(material=water2, xwidth=xw, y=ymin, flipped=TRUE, zwidth=zw),
+      xy_rect(
+        material=water2, xwidth=xw, y=ymin/2, z=-zw/2, ywidth=-ymin, flipped=TRUE
+      ),
+      xy_rect(material=water2, xwidth=xw, y=ymin/2, z=zw/2,  ywidth=-ymin),
+      yz_rect(
+        material=water2, y=ymin/2, x=xw/2,  ywidth=-ymin, zwidth=zw,
+        flipped=TRUE
+      ),
+      yz_rect(material=water2, y=ymin/2, x=-xw/2, ywidth=-ymin, zwidth=zw),
     ),
-    xy_rect(material=water2, xwidth=xw, y=ymin/2, z=zw/2,  ywidth=-ymin),
-    yz_rect(
-      material=water2, y=ymin/2, x=xw/2,  ywidth=-ymin, zwidth=zw, 
-      flipped=TRUE
+    pivot_point=numeric(3),
+    group_angle=c(0, ang, 0)
+  )
+  # water.obj <- cube(
+  #   xwidth=xw, zwidth=zw, ywidth=-ymin, y=ymin/2, angle=c(0, ang, 0),
+  #   material=diffuse('lightblue')
+  # )
+  scene <- dplyr::bind_rows(
+    sphere(y=5, z=3, x=2, radius=1, material=light(intensity=30)),
+    group_objects(
+      obj_model(f, vertex_colors=TRUE),
+      pivot_point=numeric(3), group_angle=c(90, ang, 180),
+      group_order_rotation=c(3, 1, 2),
     ),
-    yz_rect(material=water2, y=ymin/2, x=-xw/2, ywidth=-ymin, zwidth=zw),
-  ),
-  pivot_point=numeric(3),
-  group_angle=c(xang - 90, 0, 0)
-)
-scene <- dplyr::bind_rows(
-  # sphere(y=5, z=5, x=2, radius=1, material=light(intensity=40)),
-  sphere(y=5, z=3, x=2, radius=1, material=light(intensity=40)),
-  group_objects(
-    obj_model(f, vertex_colors=TRUE),
-    pivot_point=numeric(3), group_angle=c(xang, 0, 180),
-    group_order_rotation=c(3, 1, 2),
-  ),
-  water.obj,
-  generate_studio(
-    width=10, height=10,
-    distance=-5, curvature=1, depth=-2,
-    # material=diffuse(checkercolor='gray50', checkerperiod=.25)
+    water.obj,
+    xz_rect(
+      xwidth=6, zwidth=6, y=6,
+      material=diffuse('lightblue'), flipped=TRUE,
+      angle=c(25, 0, 0)
+    ),
+    # generate_studio(
+    #   width=20, height=20,
+    #   distance=-5, curvature=1, depth=-2,
+    #   # material=light(intensity=.975)
+    #   # material=diffuse(checkercolor='gray50', checkerperiod=.25)
+    # )
+  )
+  dmult <- 4
+  render_scene(
+    scene,
+    # fov=75 / dmult,
+    fov=80,
+    # width=1200, height=800, samples=200,
+    width=400, height=400, samples=25,
+    # lookat=c(0, 0, 0.15),
+    # lookfrom=c(0, 0.5, 0.8) * dmult,
+    lookfrom=c(.15, 0.01, .3),          # on lake
+    # lookfrom=c(0, 0, 10),
+    aperture=0,
+    clamp_value=5,
+    # ambient_light=TRUE,
+    # debug_channel='normals',
+    filename=next_file('~/Downloads/derwent/vmov-1/img-001.png')
+    # filename=next_file('~/Downloads/derwent/v1/img-000.png')
+  )
+}
+stop()
+
+# - Perlin Experiments ---------------------------------------------------------
+
+steps <- 360
+angs <- seq(0, 360, length.out=steps + 1)
+hzs <- c(.2, .1, .05, .025)
+for(j in seq_len(steps)) {
+  png(next_file('~/Downloads/derwent/perlin3/img-000.png'))
+  par(mai=numeric(4))
+  i <- ang <- angs[j]
+  cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
+  # fbase <- 0.05
+  # fbase <- hzs[j]
+  fbase <- .025
+  amb <- gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase, seed = 1) +
+    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 2, seed = 2)/2 +
+    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 4, seed = 3)/4 +
+    0
+
+  amb <- (amb - min(amb)) / diff(range(amb))
+  plot(as.raster(array(amb, dim=dim(der))))
+  dev.off()
+}
+stop()
+x <- list.files('~/Downloads/derwent/perlin3', pattern='^img', full.names=TRUE)
+file.copy(
+  x[c(-1,-length(x))],
+  file.path(
+    dirname(x[[1]]),
+    sprintf("img-%03d.png", rev(seq_len(length(x) - 2) + length(x)))
   )
 )
-render_scene(
-  scene,
-  fov=90,
-  # width=1200, height=800, samples=200,
-  width=600, height=400, samples=20,
-  lookat=c(0, 0, 0),
-  lookfrom=c(0, 0.15, .8),
-  # lookfrom=c(0, -1.5, 1.5),
-  # lookfrom=c(3, 0, 0),
-  aperture=0,
-  clamp_value=5,
-  # debug_channel='normals',
-  filename=next_file('~/Downloads/derwent/v1/img-000.png')
-)
 
+
+  file.path('~/Downloads/derwent/perlin3', x[1:30]),
+  '~/Downloads/derwent/perlin2'
+)
+a <- list.files('~/Downloads/derwent/perlin2', pattern='^img', full.names=TRUE)[-c(1,30)]
+b <- file.path(
+  '~/Downloads/derwent/perlin2',
+
+)
+file.copy(a, b)
