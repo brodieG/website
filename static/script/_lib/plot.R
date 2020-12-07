@@ -54,7 +54,7 @@ ease_in_smooth_out <- function(n, f.in, end=c(.5, .5)) {
 
   pinxin <- seq(0, 1, length.out=nin)
   pinx <- pinxin * end[1]
-  piny <- f.in(pinxin) * end[1]
+  piny <- f.in(pinxin) * end[2]
 
   pout <- if(nout) {
     # use a quadratic bezier to connect end point
