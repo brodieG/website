@@ -31,54 +31,54 @@ gtable_dim <- function(gtable, din=par()[['din']]) {
 
 # Produce an Easing Path
 #
-# Given two functions will interpolate `n` points using `fin` for `[0,
-# domain[1]]` and `fout` for `[1 - domain[2], 1]`.  If sum `domain` is less than
-# one, then the interpolation will be filled in with a Hermite spline matching
-# the end and beginning slopes of the functions.
+# Eases in with `fin`, and eases out at using a quadratic bezier that slope
+# matches to `end`.
 #
 # @param n numeric how many points to output.
-# @param fin a function that accepts monotonically increasing inputs in [0-1]
-#    and maps them into monotonically increasing output in [0-1].
-# @param fout like fin, except that it's output will be used reversed to define
-#   the "easing out" part of the result.
-# @param domain numeric(2) how much of the output domain should be allocated
-#    respectively to points derived from `fin` and `fout`.  The sum of the two
-#    values should be less than or equal to one, with each value greater than
-#    or equal to zero.  If the sum of the two is less than one, the balance of
-#    the domain will be used to join the `fin` and `fout` portion of the outputs
-#    matching the slopes of the two with a Hermite spline.
-# @value numeric `n` values in [0-1] spaced according to the inputs.
+# @param f.in a function that accepts monotonically increasing inputs in [0-1]
+#   and maps them into monotonically increasing output in [0-1].
+# @end numeric(2) coordinates in ([0-1],[0-1]) to end the portion of the easing
+#   curve defined by `fin`.
+# @return numeric `n` values in [0-1] spaced according to the inputs.
 
-ease_in_out <- function(n, fin, fout, domain=c(.5, .5)) {
-  vetr(
-    INT.1.POS.STR, is.function(.), is.function(.),
-    numeric(2) && all_bw(., 0, 1) && sum(.) <= 1
-  )
-  mid <- 1 - sum(domain)
-  nin <- round(n * domain[1])
-  nout <- round(n * domain[2])
-  nmid <- n - nin - nout
+ease_in_smooth_out <- function(n, f.in, end=c(.5, .5)) {
+  vetr(INT.1.POS.STR, is.function(.), numeric(2) && all_bw(., 0, 1))
 
-  if((nin < 2 || nout < 2) && nmid > 0) stop("Insufficient points")
+  xend <- end[1]
+  yend <- end[2]
+
+  nin <- round(n * end[1])
+  nout <- n - nin
+
+  if(nin < 2 && nout) stop("Insufficient points")
 
   pinxin <- seq(0, 1, length.out=nin)
-  pinx <- pinxin * domain[1]
-  pin <- fin(pinxin) * domain[1]
+  pinx <- pinxin * end[1]
+  piny <- f.in(pinxin) * end[1]
 
-  poutxin <- rev(seq(0, 1, length.out=nout))
-  poutx <- 1 - poutxin * domain[2]
-  pout <- 1 - fout(poutxin) * domain[2]
+  pout <- if(nout) {
+    # use a quadratic bezier to connect end point
+    last2 <- length(piny) - 1:0
+    slopeend <- diff(piny[last2]) / diff(pinx[last2])
 
-  pmid <- if(nmid) {
-    mxin <- c(pinx[length(pinx)], poutx[1])
-    myin <- c(pin[length(pin)], pout[1])
-    slope1 <- diff(pin[length(pin) - 1:0]) / diff(pinx[length(pinx) - 1:0])
-    slope2 <- diff(pout[1:2]) / diff(poutx[1:2])
+    p0 <- end
+    p1 <- c(end[1] + (1 - end[2]) / slopeend, 1)
+    p2 <- c(1, 1)
 
-    mx <- seq(pinx[length(pinx)], poutx[1], length.out=nmid)
-    my <- splinefunH(mxin, myin, c(slope1, slope2))(mx)
-    list(x=mx, y=my)
+    # adapted from (vectorized):
+    # https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B%C3%A9zier_curves
+
+    qbez <- function(t, p0, p1, p2) {
+      t <- t(t)
+      t(p0 %*% (1 - t) + p1 %*% t) * rep((1 - t), 2) +
+        t(p1 %*% (1 - t) + p2 %*% t) *  rep(t, 2)
+    }
+    pout.raw <- qbez(seq(0, 1, length.out=nout * 5), p0, p1, p2)
+
+    # Approximate to regular intervals along x
+    poutx <- seq(end[1], 1, length.out=nout + 1)[-1]
+    approx(pout.raw, xout=poutx)
   } else list(x=numeric(), y=numeric())
 
-  list(x=c(pinx, pmid[['x']], poutx), y=c(pin, pmid[['y']], pout))
+  list(x=c(pinx, pout[['x']]), y=c(piny, pout[['y']]))
 }
