@@ -1,4 +1,5 @@
 source('static/script/_lib/rayrender.R')
+source('static/script/_lib/plot.R')
 library(rayrender)
 library(ambient)    # for water patterns
 
@@ -131,34 +132,113 @@ xang <- 80
 xw <- diff(range(xyz$x)) * .999
 zw <- .999
 ymin <- min(unlist(mesh[, 'z']))
-
-# - Water ----------------------------------------------------------------------
-# Adapted from:
-# https://gist.github.com/tylermorganwall/7f31a10f22dc5912cc86b8b312f6f335
-
 cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
-steps <- 1
-for(i in seq(0, 360, length.out=steps + 1)[-(steps + 1)]) {
-  ang <- i
-  writeLines(sprintf('Frame %d %s', i, Sys.time()))
-  #i <- ang <- angs[j]
-  fbase <- .025
-  amb <- gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase, seed = 1) +
-    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 2, seed = 2)/2 +
-    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 4, seed = 3)/4 +
-    0
-  amb <- (amb - min(amb)) / diff(range(amb))
+steps <- 360
+stopifnot(!steps %% 2)
 
+# Camera Path, will be decomposed in move-in-out of starting point along with
+# rotation of the object.
+
+la0 <- numeric(3)
+la1 <- c(0, 0, 0.05)
+
+lf0 <- c(.15, 0.01, .3)
+lf1 <- c(0, 0.5, 0.9) * 4
+
+step.half <- steps / 2 + 1
+in.out.a <- ease_in_smooth_out(step.half, function(x) x ^ 5, c(.85,.85))$y
+in.out <- c(in.out.a[-length(in.out.a)], rev(in.out.a[-1]))
+around <- c(in.out.a[-length(in.out.a)], -rev(in.out.a[-1]) + 2)
+in.out.l <- c(
+  seq(0, 1, length.out=step.half)[-step.half],
+  seq(1, 0, length.out=step.half)[-step.half]
+)
+
+# Camera effective distance, the ratio of distance * fov, is a bit tricky
+# because we have specific effective distances in mind, but also want
+# constraints on what the initial and final distance and FOV values are (at
+# least FOV), and we want the two to change indepedantly while their product
+# changes monotonically.
+
+efd.s <- 4
+efd.e <- 12
+
+# fov: (m*x + a)
+# dist: (n*x + b)
+# Subject to x in [0,1]
+# effdist: (m*x + a) * (n*x + b)
+# m * n = -3
+# a * b = efd.s                          | x = 0
+# m * n + a * n + b * m + efd.s = efd.e  | x = 1
+
+# Fix some of the degrees of freedom.
+b <- 1/2
+a <- efd.s / b
+mn <- -3        # `n` unknown, but we fix m * n to mn
+
+# Solve using quadratic equation.  Above reformulates to:
+#   a * n^2 - (efd.e - efd.s - mn) * n + b * mn = 0
+# and need to solve for n (note `mn` is a constant)
+A <- a
+B <- -(efd.e - efd.s - mn)
+C <- b * mn
+n <- (-B + sqrt(B^2 - 4 * A * C)) / (2 * A)
+m <- mn / n
+
+# Now need to convert magnification factors into actual fov and distance
+# multipliers from the base distance.  Let's fix the starting and ending fovs
+# and let the rest fall out ouf it
+
+fovm0 <- a
+fovm1 <- m + a
+fov0 <- 80
+fov1 <- fov0 / fovm0 * fovm1
+
+distm0 <- b
+distm1 <- n + b
+dist0 <- sqrt(sum((lf0 - la0)^2))
+dist1 <- dist0 / distm0 * distm1
+
+lav <- la1 - la0
+lfv <- lf1 - lf0
+la <- la0 + matrix(lav) %*% t(in.out)
+lf.raw <- lf0 + matrix(lfv) %*% t(in.out)
+
+# Adjust distances
+ld <- sqrt(colSums((lf.raw - la) ^ 2))
+lf <- la + (lf.raw - la) / rep(ld, each=3) *
+  rep((((ld - dist0) * (dist1 - dist0) / max(ld - dist0)) + dist0), each=3)
+
+angs <- around / 2 * 360
+
+dist <- sqrt(colSums((lf - la) ^ 2))
+dist.r <- dist / dist[1]
+
+fovs <- fov0 - (fov0 - fov1) * in.out
+
+for(i in seq_len(steps)) {
+  ang <- angs[i]
+  # ang <- 0
+  angc <- ((i - 1) / steps + 1) * 360   # constant speed angle
+  writeLines(sprintf('Frame %d %s', i, Sys.time()))
+
+  # Water, adapted from:
+  # https://gist.github.com/tylermorganwall/7f31a10f22dc5912cc86b8b312f6f335
+  fbase <- .025
+  amb <- gen_simplex(cxy[,1], cxy[,2], z=angc, frequency = fbase, seed = 1) +
+    gen_simplex(cxy[,1], cxy[,2], z=angc, frequency = fbase * 2, seed = 2) / 2 +
+    gen_simplex(cxy[,1], cxy[,2], z=angc, frequency = fbase * 4, seed = 3) / 4
+  amb <- (amb - min(amb)) / diff(range(amb))
   att <- c(1,.7,0.3) * 4
-  water <- dielectric(
-    # color='#E0F5FF',
-    refraction=1.33,
+  ref <- 1.33
+  water <- dielectric( # color='#E0F5FF',
+    refraction=ref,
     bump_texture=matrix(amb, nrow(der), ncol(der)),
-    # bump_intensity=6,
     bump_intensity=3,
-    attenuation = att
+    attenuation=att
   )
-  water2 <- dielectric(refraction=1.33, attenuation = att)
+  water2 <- dielectric(refraction=ref, attenuation = att)
+  water <- water2 <- diffuse(color='#E0F5FF')
 
   water.obj <- group_objects(
     dplyr::bind_rows(
@@ -181,6 +261,8 @@ for(i in seq(0, 360, length.out=steps + 1)[-(steps + 1)]) {
   #   xwidth=xw, zwidth=zw, ywidth=-ymin, y=ymin/2, angle=c(0, ang, 0),
   #   material=diffuse('lightblue')
   # )
+
+  # Assemble scene
   scene <- dplyr::bind_rows(
     sphere(y=5, z=3, x=2, radius=1, material=light(intensity=30)),
     group_objects(
@@ -189,6 +271,7 @@ for(i in seq(0, 360, length.out=steps + 1)[-(steps + 1)]) {
       group_order_rotation=c(3, 1, 2),
     ),
     water.obj,
+    # "sky" reflector
     xz_rect(
       xwidth=6, zwidth=6, y=6,
       material=diffuse('lightblue'), flipped=TRUE,
@@ -201,26 +284,22 @@ for(i in seq(0, 360, length.out=steps + 1)[-(steps + 1)]) {
     #   # material=diffuse(checkercolor='gray50', checkerperiod=.25)
     # )
   )
-  dmult <- 4
-  render_scene(
+  render_preview(
     scene,
-    # fov=75 / dmult,
-    fov=80,
-    # width=1200, height=800, samples=200,
-    width=400, height=400, samples=25,
-    # lookat=c(0, 0, 0.15),
-    # lookfrom=c(0, 0.5, 0.8) * dmult,
-    lookfrom=c(.15, 0.01, .3),          # on lake
-    # lookfrom=c(0, 0, 10),
+    fov=fovs[i],
+    width=800, height=800, samples=100,
+    # width=1200, height=1200, samples=400,
+    # width=400, height=400, samples=25,
+    lookat=la[,i],
+    lookfrom=lf[,i],
     aperture=0,
     clamp_value=5,
-    # ambient_light=TRUE,
     # debug_channel='normals',
     filename=next_file('~/Downloads/derwent/vmov-1/img-001.png')
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
-stop()
+stop('done render')
 
 # - Perlin Experiments ---------------------------------------------------------
 
@@ -255,12 +334,4 @@ file.copy(
 )
 
 
-  file.path('~/Downloads/derwent/perlin3', x[1:30]),
-  '~/Downloads/derwent/perlin2'
-)
-a <- list.files('~/Downloads/derwent/perlin2', pattern='^img', full.names=TRUE)[-c(1,30)]
-b <- file.path(
-  '~/Downloads/derwent/perlin2',
-
-)
 file.copy(a, b)
