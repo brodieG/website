@@ -1,5 +1,6 @@
 source('static/script/_lib/rayrender.R')
 source('static/script/_lib/plot.R')
+
 library(rayrender)
 library(ambient)    # for water patterns
 
@@ -8,6 +9,9 @@ eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 der <- elmat1[-1,]
 sea <- 50                 # sea level
+
+# To actually extract meshes with variable tolerances
+source('static/post/2020-01-11-mesh-red-vec_files/script/mesh-build.R')
 
 # - Depth ----------------------------------------------------------------------
 
@@ -50,15 +54,19 @@ sea <- 50                 # sea level
 # depth.dat <- sqrt(colSums((wc - lc[,nearl]) ^ 2))
 # depth[t(wc)] <- (depth.dat - min(depth.dat)) / diff(range(depth.dat))
 # saveRDS(depth, '~/Downloads/derwent/depth2.RDS')
-#
+
 der2 <- der - sea
 depth2 <- readRDS('~/Downloads/derwent/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
+steps <- 360
+stopifnot(!steps %% 4)
+step.half <- steps / 2 + 1
+step.qrt <- (step.half - 1) / 2 + 1
+
 # - Mesh -----------------------------------------------------------------------
 
 library(rtini)
-tol <- 10
 
 # Force the water boundary to break to smallest tris
 der2[!is.na(depth2)] <- -depth.vals - (tol * 1.1)
@@ -69,62 +77,55 @@ err <- rtini_error(der2)
 # angle
 
 der2[!is.na(depth2)] <- der2[!is.na(depth2)] + (tol * 1.1) - 5
-ids <- rtini_extract(err, tol=tol)
 
-tris <- rbind(do.call(cbind, ids), NA)
-# plot.new()
-# polygon(
-#   x=((tris - 1) %/% nrow(err)) / (ncol(err) - 1),
-#   y=((tris - 1) %% nrow(err)) / (nrow(err) - 1),
-#   col='grey90'
-# )
+if(!exists('meshes') || 0) {
+  # Pre-extract meshes and store them as we're likely to have many duplicate ones
+  mesh.dir <- tempfile()  # remember to unlink this
+  dir.create(mesh.dir)
 
-source('static/script/mesh-viz/viz-lib.R')
-xyz <- ids_to_xyz(ids, der2, scale=NULL)
-xyz2 <- xyz
-max.xy <- max(unlist(xyz[c('x', 'y')]))
-xyz$x <- (xyz$x - mean(range(xyz$x))) / max.xy
-xyz$y <- (xyz$y - mean(range(xyz$y))) / max.xy
-xyz$z <- xyz$z / max(der) / 3
+  # We wish to build an approximate model of tolerance to number of polygons
+  # produced
 
-# Make sure these are all counterclockwise by checking triangle area sign.
-# Assumes nothing steeper than vertical.
+  writeLines('Estimating polys')
+  err.approx <- sort(unique(as.integer(err[is.finite(err)] * 100)/100))
+  err.breaks <- vapply(err.approx, function(x) sum(err > x), 0)
+  interesting <- log(
+    abs(diff(err.breaks)[-1]/diff(err.breaks)[-length(err.breaks) + 1])
+  ) > 5
+  tols.test <- rev(c(0, err.approx[which(interesting)], 600))
+  polys <- vapply(
+    tols.test,
+    function(tol) {
+      ids <- rtini_extract(err, tol=tol)
+      sum(vapply(ids, ncol, 0))
+    },
+    0
+  )
+  in.out.l.2 <- c(
+    seq(0, 1, length.out=step.qrt)[-step.qrt],
+    seq(1, 0, length.out=step.qrt)[-step.qrt]
+  )
+  tol.max <- 600
+  polys.tar <- 2^(
+    (1 - c(in.out.l.2, in.out.l.2)) *
+    diff(log2(range(polys))) + min(log2(polys))
+  )
+  tols <- tols.test[findInterval(polys.tar + 1, polys, left.open=TRUE)]
 
-i <- 1:3
-ii <- c(2:3,1)
-base <- matrix(rep(seq(0, length(xyz[[1]]) - 1, by=3), each=3), 3)
-iv <- i + base
-iiv <- ii + base
-area_s <- with(xyz, colSums(matrix((x[iv] * y[iiv] - x[iiv] * y[iv]) / 2, 3)))
-ccw <- area_s >= 0  # treat degenerates as counter-clockwise
-if(!all(ccw)) stop('bad triangle winding')
+  tol.breaks <- vapply(tols, function(x) sum(err > x), 0)
+  tol.break.u <- unique(tol.breaks)
+  tol.break.w <- match(tol.breaks, tol.break.u)
 
-# Add color depending on Z value
-pos.col <- c(col2rgb('lightgreen') / 255)
-neg.col <- c(col2rgb('grey95') / 255)
-mesh0 <- xyz_to_mesh(xyz)
-mesh1 <- mesh_skirt(mesh0, vcolor=NULL)
-mesh.col <- matrix(
-  unlist(
-    lapply(
-      mesh1[, 'z'],
-      function(x) {
-        res <- matrix(numeric(), 3, length(x))
-        res[, x > 0] <- pos.col
-        res[, x < 0] <- neg.col
-        asplit(res, 1)
-      }
-    ),
-    recursive=FALSE
-  ),
-  nrow=3,
-  byrow=TRUE
-)
-mesh <- cbind(mesh1, mesh.col)
-
-obj <- mesh_to_obj(mesh)
-f <- tempfile()
-writeLines(obj, f)
+  for(i in seq_along(tol.break.u)) {
+    mesh.f <- sprintf("mesh-%04d.obj", i)
+    cat(sprintf("\rbuilding mesh %s (%s)", mesh.f, as.character(Sys.time())))
+    build_der_mesh(
+      der2, err, tols[i], file=file.path(mesh.dir, mesh.f)
+    )
+  }
+  meshes <- list.files(mesh.dir, full.names=TRUE)
+  cat("\n")
+}
 
 # - Scene & Render -------------------------------------------------------------
 
@@ -133,8 +134,6 @@ xw <- diff(range(xyz$x)) * .999
 zw <- .999
 ymin <- min(unlist(mesh[, 'z']))
 cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
-steps <- 360
-stopifnot(!steps %% 2)
 
 # Camera Path, will be decomposed in move-in-out of starting point along with
 # rotation of the object.
@@ -142,11 +141,11 @@ stopifnot(!steps %% 2)
 la0 <- numeric(3)
 la1 <- c(0, 0, 0.05)
 
-lf0 <- c(.15, 0.01, .3)
+# lf0 <- c(.15, 0.01, .3)
+lf0 <- c(0, .01, .3)
 lf1 <- c(0, 0.5, 0.9) * 4
 
-step.half <- steps / 2 + 1
-in.out.a <- ease_in_smooth_out(step.half, function(x) x ^ 5, c(.85,.85))$y
+in.out.a <- ease_in_smooth_out(step.half, function(x) x ^ 5, c(.75,.75))$y
 in.out <- c(in.out.a[-length(in.out.a)], rev(in.out.a[-1]))
 around <- c(in.out.a[-length(in.out.a)], -rev(in.out.a[-1]) + 2)
 in.out.l <- c(
@@ -161,7 +160,7 @@ in.out.l <- c(
 # changes monotonically.
 
 efd.s <- 4
-efd.e <- 12
+efd.e <- 14
 
 # fov: (m*x + a)
 # dist: (n*x + b)
@@ -204,19 +203,23 @@ lfv <- lf1 - lf0
 la <- la0 + matrix(lav) %*% t(in.out)
 lf.raw <- lf0 + matrix(lfv) %*% t(in.out)
 
-# Adjust distances
+# Adjust distances to match overall desired zoom levels spec'ed in efd.s and
+# efd.e (effective distance)
 ld <- sqrt(colSums((lf.raw - la) ^ 2))
 lf <- la + (lf.raw - la) / rep(ld, each=3) *
   rep((((ld - dist0) * (dist1 - dist0) / max(ld - dist0)) + dist0), each=3)
-
-angs <- around / 2 * 360
-
 dist <- sqrt(colSums((lf - la) ^ 2))
 dist.r <- dist / dist[1]
 
 fovs <- fov0 - (fov0 - fov1) * in.out
 
+angs.base <- -(cos(seq(0, pi, length.out=steps)) - 1) * .5
+angs.base <- cumsum(c(0, diff(angs.base)^2))
+angs <- angs.base / max(angs.base) * 360
+
 for(i in seq_len(steps)) {
+  j <- i
+
   ang <- angs[i]
   # ang <- 0
   angc <- ((i - 1) / steps + 1) * 360   # constant speed angle
@@ -257,16 +260,11 @@ for(i in seq_len(steps)) {
     pivot_point=numeric(3),
     group_angle=c(0, ang, 0)
   )
-  # water.obj <- cube(
-  #   xwidth=xw, zwidth=zw, ywidth=-ymin, y=ymin/2, angle=c(0, ang, 0),
-  #   material=diffuse('lightblue')
-  # )
-
   # Assemble scene
   scene <- dplyr::bind_rows(
     sphere(y=5, z=3, x=2, radius=1, material=light(intensity=30)),
     group_objects(
-      obj_model(f, vertex_colors=TRUE),
+      obj_model(meshes[tol.break.w[i]], vertex_colors=TRUE),
       pivot_point=numeric(3), group_angle=c(90, ang, 180),
       group_order_rotation=c(3, 1, 2),
     ),
@@ -274,7 +272,7 @@ for(i in seq_len(steps)) {
     # "sky" reflector
     xz_rect(
       xwidth=6, zwidth=6, y=6,
-      material=diffuse('lightblue'), flipped=TRUE,
+      material=diffuse('deepskyblue'), flipped=TRUE,
       angle=c(25, 0, 0)
     ),
     # generate_studio(
@@ -287,18 +285,20 @@ for(i in seq_len(steps)) {
   render_preview(
     scene,
     fov=fovs[i],
-    width=800, height=800, samples=100,
+    # width=800, height=800, samples=100,
     # width=1200, height=1200, samples=400,
+    width=600, height=600, samples=10,
     # width=400, height=400, samples=25,
     lookat=la[,i],
     lookfrom=lf[,i],
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
-    filename=next_file('~/Downloads/derwent/vmov-1/img-001.png')
+    filename=next_file('~/Downloads/derwent/vmov-4/img-001.png')
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
+unlink(mesh.dir)
 stop('done render')
 
 # - Perlin Experiments ---------------------------------------------------------
@@ -332,6 +332,5 @@ file.copy(
     sprintf("img-%03d.png", rev(seq_len(length(x) - 2) + length(x)))
   )
 )
-
 
 file.copy(a, b)
