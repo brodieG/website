@@ -236,12 +236,14 @@ angs.base <- cumsum(c(0, diff(angs.base)^2))
 angs <- angs.base / max(angs.base) * 360
 
 step.i <- matrix(seq_len(steps), 8, byrow=TRUE)
+angsc <- (((step.i - 1) / steps) * 360 + 202) %% 360
 
 for(i in 137) { # c(step.i)) {
   j <- i
   ti <- i
 
   ang <- angs[i]
+  angc <- angsc[i]
   # angle to use for wave pattern, offset to an angle were we won't notice the
   # repeat happening (i.e. when looking far from water / behind mountains).
   angc <- (((i - 1) / steps) * 360 + 202) %% 360  # constant speed angle
@@ -305,18 +307,22 @@ for(i in 137) { # c(step.i)) {
     #   # material=diffuse('deepskyblue'), flipped=TRUE,
     #   angle=c(25, 0, 0)
     # ),
-    cube(angle=c(0, ang, 0), y=.3, scale=.2),
-    generate_studio(material=light(intensity=.97))
+    generate_studio(
+      material=light(intensity=1, importance_sample=FALSE),
+      width=6, height=6, distance=-5
+    )
   )
   render_scene(
     scene,
+    # fov=90,
     fov=fovs[i],
     # width=800, height=800, samples=100,
     # width=1200, height=1200, samples=400,
-    width=600, height=600, samples=100,
+    width=600, height=600, samples=20,
     # width=400, height=400, samples=25,
     lookat=la[,i],
     lookfrom=lf[,i],
+    # lookfrom=c(-.08, -.02, .47),
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
