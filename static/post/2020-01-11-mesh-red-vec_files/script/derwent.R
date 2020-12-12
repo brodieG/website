@@ -227,13 +227,16 @@ angs.base <- -(cos(seq(0, pi, length.out=steps)) - 1) * .5
 angs.base <- cumsum(c(0, diff(angs.base)^2))
 angs <- angs.base / max(angs.base) * 360
 
-for(i in seq_len(steps)) {
+step.i <- matrix(seq_len(steps), 8, byrow=TRUE)
+
+for(i in c(step.i)) {
   j <- i
   ti <- i
 
   ang <- angs[i]
-  # ang <- 0
-  angc <- ((i - 1) / steps + 1) * 360   # constant speed angle
+  # angle to use for wave pattern, offset to an angle were we won't notice the
+  # repeat happening (i.e. when looking far from water / behind mountains).
+  angc <- (((i - 1) / steps) * 360 + 202) %% 360  # constant speed angle
   writeLines(sprintf('Frame %d %s', i, Sys.time()))
 
   # Water, adapted from:
@@ -302,7 +305,8 @@ for(i in seq_len(steps)) {
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
-    filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
+    # filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
+    filename=sprintf('~/Downloads/derwent/vmov-5/img-%3d.png', i)
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
