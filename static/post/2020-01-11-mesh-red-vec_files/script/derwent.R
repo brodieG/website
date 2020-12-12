@@ -56,7 +56,7 @@ source('static/post/2020-01-11-mesh-red-vec_files/script/mesh-build.R')
 # saveRDS(depth, '~/Downloads/derwent/depth2.RDS')
 
 der2 <- der - sea
-depth2 <- readRDS('~/Downloads/derwent/depth2.RDS')
+depth2 <- readRDS('static/post/2020-01-11-mesh-red-vec_files/data/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
 steps <- 360
