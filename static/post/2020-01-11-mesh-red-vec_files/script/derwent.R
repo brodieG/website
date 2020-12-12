@@ -4,7 +4,7 @@ source('static/script/_lib/plot.R')
 library(rayrender)
 library(ambient)    # for water patterns
 
-eltif <- raster::raster("~/Downloads/dem_01.tif")
+eltif <- raster::raster("D:Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 der <- elmat1[-1,]
@@ -59,7 +59,7 @@ der2 <- der - sea
 depth2 <- readRDS('static/post/2020-01-11-mesh-red-vec_files/data/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
-steps <- 8
+steps <- 360
 stopifnot(!steps %% 4)
 step.half <- steps / 2 + 1
 step.qrt <- (step.half - 1) / 2 + 1
@@ -263,7 +263,7 @@ for(i in c(step.i)) {
     attenuation=att
   )
   water2 <- dielectric(refraction=ref, attenuation = att)
-  water <- water2 <- diffuse(color='#E0F5FF')
+  # water <- water2 <- diffuse(color='#E0F5FF')
 
   water.obj <- group_objects(
     dplyr::bind_rows(
@@ -301,20 +301,20 @@ for(i in c(step.i)) {
       angle=c(25, 0, 0)
     ),
   )
-  render_preview(
+  render_scene(
     scene,
     fov=fovs[i],
     # width=800, height=800, samples=100,
     # width=1200, height=1200, samples=400,
-    width=600, height=600, samples=10,
-    # width=400, height=400, samples=25,
+    # width=600, height=600, samples=10,
+    width=800, height=800, samples=200,
     lookat=la[,i],
     lookfrom=lf[,i],
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
     # filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
-    filename=sprintf('~/Downloads/derwent/vmov-5/img-%03d.png', i)
+    filename=sprintf('D:Downloads/rtini/img-%03d.png', i)
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
