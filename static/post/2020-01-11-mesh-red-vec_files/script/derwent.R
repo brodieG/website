@@ -59,7 +59,7 @@ der2 <- der - sea
 depth2 <- readRDS('static/post/2020-01-11-mesh-red-vec_files/data/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
-steps <- 360
+steps <- 8
 stopifnot(!steps %% 4)
 step.half <- steps / 2 + 1
 step.qrt <- (step.half - 1) / 2 + 1
@@ -238,7 +238,7 @@ angs <- angs.base / max(angs.base) * 360
 step.i <- matrix(seq_len(steps), 8, byrow=TRUE)
 angsc <- (((step.i - 1) / steps) * 360 + 202) %% 360
 
-for(i in 137) { # c(step.i)) {
+for(i in c(step.i)) { # c(step.i)) {
   j <- i
   ti <- i
 
@@ -301,16 +301,16 @@ for(i in 137) { # c(step.i)) {
     ),
     water.obj,
     # "sky" reflector
-    # xz_rect(
-    #   xwidth=6, zwidth=6, y=6,
-    #   material=diffuse(), flipped=TRUE,
-    #   # material=diffuse('deepskyblue'), flipped=TRUE,
-    #   angle=c(25, 0, 0)
-    # ),
-    generate_studio(
-      material=light(intensity=1, importance_sample=FALSE),
-      width=6, height=6, distance=-5
-    )
+    xz_rect(
+      xwidth=6, zwidth=6, y=6,
+      # material=diffuse(), flipped=TRUE,
+      material=diffuse('deepskyblue'), flipped=TRUE,
+      angle=c(25, 0, 0)
+    ),
+    # generate_studio(
+    #   material=light(intensity=1, importance_sample=FALSE),
+    #   width=6, height=6, distance=-5
+    # )
   )
   render_scene(
     scene,

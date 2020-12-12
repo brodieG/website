@@ -129,6 +129,7 @@ min(which(tri.js.257==0))
 
 */
 
+/*
 {
   a = performance.now();
   // errors = comp_errors(ter_1025, 1025, 1024);
@@ -136,7 +137,6 @@ min(which(tri.js.257==0))
   err_1025 = comp_errors(ter_1025, 1025, 1024);
   performance.now() - a;
 }
-/*
 ter_257:
 Chrome: 35.7, 25.96, 23.50, 24.134, 
 20.66, 20.195, 20.62, 20.29, 19.46, 19.32, 19.72, 26.69, 20.14
@@ -161,6 +161,7 @@ ter_8193:
 */
 
 
+/*
 {
   a = performance.now();
   //coords = updatedGeometry(errors, 257, 256, tol);
@@ -169,14 +170,12 @@ ter_8193:
   tri_1025 = updatedGeometry(err_1025, 1025, 1024, 95);
   performance.now() - a;
 }
-/*
 tri_1025, with tol=50:
 75.9, 71.0, 68.0, 75.5, 76.8 
+library(V8)
+ct <- v8()
+ct$source('static/post/2020-01-11-mesh-red-vec_files/script/prototype.js')
 */
 
-
-err_1025 = comp_errors(ter_1025, 1025, 1024);
-tri_1025 = updatedGeometry(err_1025, 1025, 1024, 10);
-tri_257 = updatedGeometry(err_1025, 1025, 1024, 10);
 
 /* Error: Accessing TypedArray data over Xrays is slow, and forbidden in order to encourage performant code. To copy TypedArrays across origin boundaries, consider using Components.utils.cloneInto(). */
