@@ -530,7 +530,7 @@ tris_to_cube <- function(
   angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
 ) {
   xyz_to_cube(
-    ids_to_xyz(tris, map, scale, flatten), 
+    ids_to_xyz(tris, map, scale, flatten),
     material, xwidth, zwidth, angle, translate
   )
 }
@@ -547,6 +547,8 @@ mesh_to_seg <- function(
 # is in x-y, with depth given in Z.  The logic is messed up because originally
 # it assumed the depth was Y, so there is a bunch of remapping back and forth.
 #
+# Assumes that the mesh is a square aligned exactly with the x-y axis.
+#
 # Note: `vcolor` doesn't seem to work right.
 #
 # @param vcolor NULL or numeric(3) in [0-1], a single color to use for all
@@ -560,6 +562,7 @@ mesh_skirt <- function(
     vcolor=numeric(3) && all_bw(., 0, 1) && .(ncol(mesh) == 6) || NULL
   )
   # Y is taken to be the depth, but the input has it as Z, so need to remap
+  # i.e. code internally assumes surface is in x-z
   xu <- unlist(mesh[,'x'])
   zu <- unlist(mesh[,'y'])
   yu <- unlist(mesh[,'z'])
@@ -570,14 +573,17 @@ mesh_skirt <- function(
   z.hi <- max(zu)
   if(y.lo > min(yu)) stop('need lower y')
 
-  vertex_arrange <-function(a, b, y, lo) {
-    which.a <- b == lo
-    base.a <- a[which.a]
+  # retrieve all vertices that match one of the boundaries (`base`).  This
+  # returns the values along the coordinate that is not the boundary along
+  # with the corresponding depth values
+  vertex_arrange <-function(a, b, y, base) {
+    which.a <- b == base     # which are on boundary
+    base.a <- a[which.a]     # values of the 'a' coordinate (x or z depending)
     o <- order(base.a)
     ao <- base.a[o]
     d <- duplicated(ao)
-    aou <- ao[!d]
-    you <- y[which.a][o][!d]
+    aou <- ao[!d]            # unique vertices, ordered
+    you <- y[which.a][o][!d] # corresponding depth values
     list(aou, you)
   }
   zx.lo <- vertex_arrange(zu, xu, yu, x.lo)
@@ -585,19 +591,37 @@ mesh_skirt <- function(
   xz.lo <- vertex_arrange(xu, zu, yu, z.lo)
   xz.hi <- vertex_arrange(xu, zu, yu, z.hi)
 
-  to_mesh <- function(v, w, y, y.lo, vcolor) {
+  to_mesh <- function(v, w, y, y.lo, vcolor, flip=FALSE) {
     lv <- length(v)
     y.lo.r <- rep(y.lo, lv - 1)
+
+    # We build a mesh spanning from y to y.lo.r with triangles
+    # A and B, so two triangles per edge along the surface.
+    # w remains constant.
+    #
+    #    v
+    #  y +--+  Surface of mesh
+    #    |\B|
+    #    |A\|
+    #    +--+  Bottom (y.lo.r)
 
     L <- matrix(
       c(
         list(
-          # x coords
-          c(v[-lv], v[-1]), c(v[-lv], v[-1]), c(v[-1], v[-lv]),
+          # triang A    triang B
+
+          # v coords  (either x or z, depending on face we're doing)
+          c(v[-lv],     v[-1]),     # vertex 1
+          c(v[-lv],     v[-1]),     # vertex 2
+          c(v[-1],      v[-lv]),    # vertex 3
           # y coords
-          c(y[-lv], y.lo.r), c(y.lo.r, y[-1]),  c(y[-1], y.lo.r),
-          # z coords
-          rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2), rep(w, (lv - 1) * 2)
+          c(y[-lv],     y.lo.r),    # vertex 1
+          c(y.lo.r,     y[-1]),     # vertex 2
+          c(y[-1],      y.lo.r),    # vertex 3
+          # w coords  (either x or z, depending)
+          rep(w, (lv - 1) * 2),     # vertex 1
+          rep(w, (lv - 1) * 2),     # vertex 2
+          rep(w, (lv - 1) * 2)      # vertex 3
         ),
         if(!is.null(vcolor)) {
           r <- replicate(3, rep(vcolor[1], lv), simplify=FALSE)
@@ -606,15 +630,24 @@ mesh_skirt <- function(
           c(r, g, b)
       } ),
       3
-  ) }
+    )
+    # Winding will be backwards when doing the low faces
+    if(flip) L[2:3,] <- L[3:2,]
+    L
+  }
+  mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo, vcolor, flip=TRUE)
+  mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo, vcolor)
+  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo, vcolor, flip=TRUE)
+  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo, vcolor)
+
   # Need to reorder cols due to y/z confusion from whence the code came
   coli <- if(!is.null(vcolor)) 4:6
   reord <- c(1,3,2,coli)
+  mzx.lo <- mzx.lo[,c(3:1,coli)][,reord]
+  mzx.hi <- mzx.hi[,c(3:1,coli)][,reord]
+  mxz.lo <- mxz.lo[,reord]
+  mxz.hi <- mxz.hi[,reord]
 
-  mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo, vcolor)[,c(3:1,coli)][,reord]
-  mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo, vcolor)[,c(3:1,coli)][,reord]
-  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo, vcolor)[,reord]
-  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo, vcolor)[,reord]
   mesh2 <- mesh[,c(1:3,coli)]
   mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
   mesh3 <- mesh2
@@ -623,7 +656,7 @@ mesh_skirt <- function(
 
 # Adaptation of rayender::segment
 
-cubement <- function (start = c(0, -1, 0), end = c(0, 1, 0), 
+cubement <- function (start = c(0, -1, 0), end = c(0, 1, 0),
   xwidth = 1, zwidth = 1,
     material = diffuse(), velocity = c(0,
         0, 0), flipped = FALSE, scale = c(1, 1, 1))
