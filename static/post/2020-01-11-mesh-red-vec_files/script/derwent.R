@@ -59,7 +59,7 @@ der2 <- der - sea
 depth2 <- readRDS('static/post/2020-01-11-mesh-red-vec_files/data/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
-steps <- 8
+steps <- 360
 stopifnot(!steps %% 4)
 step.half <- steps / 2 + 1
 step.qrt <- (step.half - 1) / 2 + 1
@@ -131,16 +131,16 @@ if(!exists('meshes') || 1) {
   tol.break.w <- match(tol.breaks, tol.breaks)
   tol.break.wu <- unique(tol.break.w)
 
-  for(i in seq_along(tol.break.wu)) {
-    mesh.f <- sprintf("mesh-%04d.obj", i)
+  for(k in seq_along(tol.break.wu)) {
+    mesh.f <- sprintf("mesh-%04d.obj", k)
     cat(sprintf("\rbuilding mesh %s (%s)", mesh.f, as.character(Sys.time())))
-    if(i == 1) {
+    if(k == 1) {
       mesh.dat <- build_der_mesh(
-        der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
+        der2, err, tols[tol.break.wu[k]], file=file.path(mesh.dir, mesh.f)
       )
     } else {
       mesh.dat <- build_der_mesh(
-        der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
+        der2, err, tols[tol.break.wu[k]], file=file.path(mesh.dir, mesh.f)
       )
     }
   }
@@ -237,7 +237,7 @@ angs <- angs.base / max(angs.base) * 360
 
 step.i <- matrix(seq_len(steps), 8, byrow=TRUE)
 
-for(i in c(step.i)) {
+for(i in 137) { # c(step.i)) {
   j <- i
   ti <- i
 
@@ -263,21 +263,25 @@ for(i in c(step.i)) {
     attenuation=att
   )
   water2 <- dielectric(refraction=ref, attenuation = att)
-  water <- water2 <- diffuse(color='#E0F5FF')
+  # water <- water2 <- diffuse(color='#E0F5FF')
+  # water3 <- diffuse(color='#E0F5FF')
 
   water.obj <- group_objects(
     dplyr::bind_rows(
       xz_rect(material=water,  xwidth=xw, y=0, zwidth=zw),
       xz_rect(material=water2, xwidth=xw, y=ymin, flipped=TRUE, zwidth=zw),
       xy_rect(
-        material=water2, xwidth=xw, y=ymin/2, z=-zw/2, ywidth=-ymin, flipped=TRUE
+        material=water2, xwidth=xw, y=ymin/2, z=-zw/2, ywidth=-ymin,
+        flipped=TRUE
       ),
       xy_rect(material=water2, xwidth=xw, y=ymin/2, z=zw/2,  ywidth=-ymin),
       yz_rect(
         material=water2, y=ymin/2, x=xw/2,  ywidth=-ymin, zwidth=zw,
+      ),
+      yz_rect(
+        material=water2, y=ymin/2, x=-xw/2, ywidth=-ymin, zwidth=zw,
         flipped=TRUE
       ),
-      yz_rect(material=water2, y=ymin/2, x=-xw/2, ywidth=-ymin, zwidth=zw),
     ),
     pivot_point=numeric(3),
     group_angle=c(0, ang, 0)
@@ -295,26 +299,29 @@ for(i in c(step.i)) {
     ),
     water.obj,
     # "sky" reflector
-    xz_rect(
-      xwidth=6, zwidth=6, y=6,
-      material=diffuse('deepskyblue'), flipped=TRUE,
-      angle=c(25, 0, 0)
-    ),
+    # xz_rect(
+    #   xwidth=6, zwidth=6, y=6,
+    #   material=diffuse(), flipped=TRUE,
+    #   # material=diffuse('deepskyblue'), flipped=TRUE,
+    #   angle=c(25, 0, 0)
+    # ),
+    cube(angle=c(0, ang, 0), y=.3, scale=.2),
+    generate_studio(material=light(intensity=.97))
   )
-  render_preview(
+  render_scene(
     scene,
     fov=fovs[i],
     # width=800, height=800, samples=100,
     # width=1200, height=1200, samples=400,
-    width=600, height=600, samples=10,
+    width=600, height=600, samples=100,
     # width=400, height=400, samples=25,
     lookat=la[,i],
     lookfrom=lf[,i],
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
-    # filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
-    filename=sprintf('~/Downloads/derwent/vmov-5/img-%03d.png', i)
+    filename=next_file('~/Downloads/derwent/vmov-6/img-001.png')
+    # filename=sprintf('~/Downloads/derwent/vmov-5/img-%03d.png', i)
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
