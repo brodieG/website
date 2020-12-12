@@ -73,14 +73,15 @@ in.out.l <- c(
 library(rtini)
 
 # Force the water boundary to break to smallest tris
-der2[!is.na(depth2)] <- -depth.vals - (tol * 1.1)
+tol.cheat <- 200
+der2[!is.na(depth2)] <- -depth.vals - (tol.cheat * 1.1)
 err <- rtini_error(der2)
 # plot(as.raster((der2 - min(der2))/diff(range(der2)))
 
 # Add back the tolerance, but then a little step so water boundary at sharper
 # angle
 
-der2[!is.na(depth2)] <- der2[!is.na(depth2)] + (tol * 1.1) - 5
+der2[!is.na(depth2)] <- der2[!is.na(depth2)] + (tol.cheat * 1.1) - 5
 
 if(!exists('meshes') || 1) {
   # Pre-extract meshes and store them as we're likely to have many duplicate ones
