@@ -49,9 +49,8 @@ incorrect][10].  Instead I'll have to be content with telling you that I did get
 this to work eventually.  A victory that had it wasted lives like it wasted my
 time would supplant those of Pyrrhus in the history books[^grandiloquence].
 
-> This is as follow up post to [last year's review][1] of ([&commat;mourner][5])
-> fantastic [observable notebook][6] on adapting the Will Evans etal.
-> Right-Triangulated Irregular Networks [(RTIN) algorithm][8].
+> Last year's [Part I][1] of this series introduces the RTIN mesh approximation
+> algorithm.  This post assumes familiarity with the prior post.
 
 While I was generally aware that there is more to the problem than generating
 equal sized triangles, I underestimated the degrees of freedom available and
@@ -800,8 +799,68 @@ initial overhead, but the scaling rate is slower.  This might be because we use
 
 # Too Square
 
-You might have noticed by now that we've been cutting `volcano` off at the
-knees, and even inventing some of it.
+One advantage of directly computing the hypotenuse midpoint coordinates is that
+we are not limited to `$(2^k + 1)$` square elevation maps.  The vectorized R
+implementation supports any rectangular map with an odd number of points in both
+width and height.
+
+If you were looking closely at `volcano` in the [previous post][1] you might
+have noticed we chopped it off at the knees.  The R implementation can handle
+the entire surface:
+
+<div style='background-color: red'>Rayrender of volcano 65x65 vs full volcano at
+some specified tolerance</div>
+
+There is a significant limitation though: because the approximations are done
+within `$(2^k + 1)$` squares parts of the grid that do not fit nicely inside
+larger `$(2^k + 1)$` tiles will remain granular no matter how high we set the
+tolerance.  For example, for `volcano` this is the most approximate grid we
+could produce:
+
+```{r}
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(
+  knitr::opts_chunk$set, 
+  list(fig.height=old.opt[['fig.width']] * ncol(volcano)/nrow(volcano))
+)
+```
+```{r volcano-max, echo=FALSE}
+err <- rtini_error(volcano)
+mesh <- rtini_extract(err, tol=10)
+
+## Convert linearized indices to x/y in [0,1]
+tris <- rbind(do.call(cbind, mesh), NA)
+plot.new()
+plot.window(asp=1)
+polygon(
+  x=((tris - 1) %/% nrow(err)) / (nrow(err) - 1),
+  y=((tris - 1) %% nrow(err)) / (nrow(err) - 1),
+  col='grey90'
+)
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+The best grids for the R implementation will be `$2^k + 1, n * 2^k + 1$`, which
+is actually a pretty good set as it allows for tilings of sub-maps at the most
+approximate level we could want.  For example, if we have a base tile size of 65
+x 65, we can assemble any tiling of them into rectangles and we'll be assured to
+have self consistent extracted meshes, with the trade-off that the most
+approximate mesh may be made of triangles no larger than 65 to the side.
+Depending on dimensions it is possible that some parts of the map may form
+larger triangles.
+
+
+
+
+
+Still better than being stuck with square grids.  In fact, since it is unlikely
+we'll ever want the largest tolerance approximation this beco
+
+<div style='background-color: red'>video</div>
+
+# Trade-offs
+
+Jeez.
 
 # Conclusions
 
@@ -814,6 +873,7 @@ knees, and even inventing some of it.
 ## Acknowledgments
 
 * patchwork
+* ambient
 * rgl
 * rayrender
 * Agafonkin
