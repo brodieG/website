@@ -8,7 +8,7 @@ source('static/script/mesh-viz/viz-lib.R')
 # @param err matrix of errors computed with rtini_error
 # @param tol a tolerance to extract mesh at
 # @param file name of file to write to
-# @return the file name used
+# @return a list with the file name and the xyz data
 
 build_der_mesh <- function(map, err, tol, file=tempfile()) {
   ids <- rtini_extract(err, tol=tol)
@@ -58,7 +58,7 @@ build_der_mesh <- function(map, err, tol, file=tempfile()) {
 
   obj <- mesh_to_obj(mesh)
   writeLines(obj, file)
-  file
+  list(file=file, xyz=xyz)
 }
 
 

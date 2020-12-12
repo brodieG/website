@@ -59,7 +59,7 @@ der2 <- der - sea
 depth2 <- readRDS('static/post/2020-01-11-mesh-red-vec_files/data/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
-steps <- 360
+steps <- 8
 stopifnot(!steps %% 4)
 step.half <- steps / 2 + 1
 step.qrt <- (step.half - 1) / 2 + 1
@@ -134,20 +134,27 @@ if(!exists('meshes') || 1) {
   for(i in seq_along(tol.break.wu)) {
     mesh.f <- sprintf("mesh-%04d.obj", i)
     cat(sprintf("\rbuilding mesh %s (%s)", mesh.f, as.character(Sys.time())))
-    build_der_mesh(
-      der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
-    )
+    if(i == 1) {
+      mesh.dat <- build_der_mesh(
+        der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
+      )
+    } else {
+      mesh.dat <- build_der_mesh(
+        der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
+      )
+    }
   }
   meshes <- list.files(mesh.dir, full.names=TRUE)
   cat("\n")
 }
+xyz <- mesh.dat$xyz
 
 # - Scene & Render -------------------------------------------------------------
 
 xang <- 80
 xw <- diff(range(xyz$x)) * .999
 zw <- .999
-ymin <- min(unlist(mesh[, 'z']))
+ymin <- min(xyz$z)
 cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
 
 # Camera Path, will be decomposed in move-in-out of starting point along with
@@ -307,7 +314,7 @@ for(i in c(step.i)) {
     clamp_value=5,
     # debug_channel='normals',
     # filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
-    filename=sprintf('~/Downloads/derwent/vmov-5/img-%3d.png', i)
+    filename=sprintf('~/Downloads/derwent/vmov-5/img-%03d.png', i)
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
