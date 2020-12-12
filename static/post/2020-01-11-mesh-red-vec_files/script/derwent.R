@@ -63,6 +63,10 @@ steps <- 360
 stopifnot(!steps %% 4)
 step.half <- steps / 2 + 1
 step.qrt <- (step.half - 1) / 2 + 1
+in.out.l <- c(
+  seq(0, 1, length.out=step.half)[-step.half],
+  seq(1, 0, length.out=step.half)[-step.half]
+)
 
 # - Mesh -----------------------------------------------------------------------
 
@@ -78,7 +82,7 @@ err <- rtini_error(der2)
 
 der2[!is.na(depth2)] <- der2[!is.na(depth2)] + (tol * 1.1) - 5
 
-if(!exists('meshes') || 0) {
+if(!exists('meshes') || 1) {
   # Pre-extract meshes and store them as we're likely to have many duplicate ones
   mesh.dir <- tempfile()  # remember to unlink this
   dir.create(mesh.dir)
@@ -92,7 +96,8 @@ if(!exists('meshes') || 0) {
   interesting <- log(
     abs(diff(err.breaks)[-1]/diff(err.breaks)[-length(err.breaks) + 1])
   ) > 5
-  tols.test <- rev(c(0, err.approx[which(interesting)], 600))
+  tol.max <- 600
+  tols.test <- rev(c(0, err.approx[which(interesting)], tol.max))
   polys <- vapply(
     tols.test,
     function(tol) {
@@ -101,26 +106,35 @@ if(!exists('meshes') || 0) {
     },
     0
   )
-  in.out.l.2 <- c(
-    seq(0, 1, length.out=step.qrt)[-step.qrt],
-    seq(1, 0, length.out=step.qrt)[-step.qrt]
+  # Want to spend a little extra time at top
+
+  top <- .1
+  top.steps <- floor(top / 2 * steps)
+  steps.front <- c(
+    seq(1, 0, length.out=steps / 2 - top.steps),
+    rep(0, top.steps * 2 + 1)
   )
-  tol.max <- 600
+  steps.back <- seq(0, 1, length.out=steps / 2 - top.steps)
+  in.out.tol <- c(steps.front, steps.back[-length(steps.back)])
+
   polys.tar <- 2^(
-    (1 - c(in.out.l.2, in.out.l.2)) *
+    (in.out.tol) *
     diff(log2(range(polys))) + min(log2(polys))
   )
+  # Tolerances that correspond to polygon counts
   tols <- tols.test[findInterval(polys.tar + 1, polys, left.open=TRUE)]
 
+  # Find tolerances that lead to different error counts so we don't compute
+  # duplicates.
   tol.breaks <- vapply(tols, function(x) sum(err > x), 0)
-  tol.break.u <- unique(tol.breaks)
-  tol.break.w <- match(tol.breaks, tol.break.u)
+  tol.break.w <- match(tol.breaks, tol.breaks)
+  tol.break.wu <- unique(tol.break.w)
 
-  for(i in seq_along(tol.break.u)) {
+  for(i in seq_along(tol.break.wu)) {
     mesh.f <- sprintf("mesh-%04d.obj", i)
     cat(sprintf("\rbuilding mesh %s (%s)", mesh.f, as.character(Sys.time())))
     build_der_mesh(
-      der2, err, tols[i], file=file.path(mesh.dir, mesh.f)
+      der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
     )
   }
   meshes <- list.files(mesh.dir, full.names=TRUE)
@@ -148,10 +162,6 @@ lf1 <- c(0, 0.5, 0.9) * 4
 in.out.a <- ease_in_smooth_out(step.half, function(x) x ^ 5, c(.75,.75))$y
 in.out <- c(in.out.a[-length(in.out.a)], rev(in.out.a[-1]))
 around <- c(in.out.a[-length(in.out.a)], -rev(in.out.a[-1]) + 2)
-in.out.l <- c(
-  seq(0, 1, length.out=step.half)[-step.half],
-  seq(1, 0, length.out=step.half)[-step.half]
-)
 
 # Camera effective distance, the ratio of distance * fov, is a bit tricky
 # because we have specific effective distances in mind, but also want
@@ -219,6 +229,7 @@ angs <- angs.base / max(angs.base) * 360
 
 for(i in seq_len(steps)) {
   j <- i
+  ti <- i
 
   ang <- angs[i]
   # ang <- 0
@@ -264,7 +275,10 @@ for(i in seq_len(steps)) {
   scene <- dplyr::bind_rows(
     sphere(y=5, z=3, x=2, radius=1, material=light(intensity=30)),
     group_objects(
-      obj_model(meshes[tol.break.w[i]], vertex_colors=TRUE),
+      obj_model(
+        meshes[match(tol.break.w[ti], tol.break.wu)], vertex_colors=TRUE
+      ),
+      # obj_model(meshes[length(meshes)], vertex_colors=TRUE),
       pivot_point=numeric(3), group_angle=c(90, ang, 180),
       group_order_rotation=c(3, 1, 2),
     ),
@@ -275,12 +289,6 @@ for(i in seq_len(steps)) {
       material=diffuse('deepskyblue'), flipped=TRUE,
       angle=c(25, 0, 0)
     ),
-    # generate_studio(
-    #   width=20, height=20,
-    #   distance=-5, curvature=1, depth=-2,
-    #   # material=light(intensity=.975)
-    #   # material=diffuse(checkercolor='gray50', checkerperiod=.25)
-    # )
   )
   render_preview(
     scene,
@@ -294,11 +302,11 @@ for(i in seq_len(steps)) {
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
-    filename=next_file('~/Downloads/derwent/vmov-4/img-001.png')
+    filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
     # filename=next_file('~/Downloads/derwent/v1/img-000.png')
   )
 }
-unlink(mesh.dir)
+# unlink(mesh.dir, recursive=TRUE)
 stop('done render')
 
 # - Perlin Experiments ---------------------------------------------------------
