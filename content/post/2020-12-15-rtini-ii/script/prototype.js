@@ -1,7 +1,15 @@
+/*
+ * Adapted from Vladimir Agafonkin's post:
+ *
+ * https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+ *
+ * To simpify interchange changed format to be a normal array instead of
+ * Float32.  Also makes it a bit more apples to apples.
+ */
 
-function comp_errors(terrain, gridSize, tileSize) {
-  const errors = new Float32Array(gridSize * gridSize);
-
+function comp_errors(terrain, gridSize) {
+  const errors = new Array(gridSize * gridSize).fill(0);
+  const tileSize = gridSize - 1;
   const numSmallestTriangles = tileSize * tileSize;
   const numTriangles = numSmallestTriangles * 2 - 2; // 2 + 4 + 8 + ... 2^k = 2 * 2^k - 2
   const lastLevelIndex = numTriangles - numSmallestTriangles;
@@ -48,14 +56,15 @@ function comp_errors(terrain, gridSize, tileSize) {
   return errors;
 }
 /*
- * We initialize a maximal sizse array.
+ * We initialize a maximal size array (might be too big).
  *
  * Return value is 1 indexed for use in R, but also to make it easy to
  * distinguish the unused part of the array
  */
-function updatedGeometry(errors, gridSize, tileSize, maxError) {
+function updatedGeometry(errors, gridSize, maxError) {
   let i = 0;
-  const indices = new Float32Array(gridSize * gridSize * 4);
+  const tileSize = gridSize - 1;
+  const indices = new Array(tileSize * tileSize * 2 * 3).fill(0);
 
   function processTriangle(ax, ay, bx, by, cx, cy) {
     // middle of the long edge

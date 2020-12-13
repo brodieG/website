@@ -11,7 +11,7 @@ der <- elmat1[-1,]
 sea <- 50                 # sea level
 
 # To actually extract meshes with variable tolerances
-source('static/post/2020-01-11-mesh-red-vec_files/script/mesh-build.R')
+source('content/post/2020-12-15-rtini-ii/script/mesh-build.R')
 
 # - Depth ----------------------------------------------------------------------
 
@@ -56,7 +56,7 @@ source('static/post/2020-01-11-mesh-red-vec_files/script/mesh-build.R')
 # saveRDS(depth, '~/Downloads/derwent/depth2.RDS')
 
 der2 <- der - sea
-depth2 <- readRDS('static/post/2020-01-11-mesh-red-vec_files/data/depth2.RDS')
+depth2 <- readRDS('content/post/2020-12-15-rtini-ii/data/depth2.RDS')
 depth.vals <- sqrt(depth2[!is.na(depth2)]) * (max(der2)) / 2
 
 steps <- 8
@@ -107,6 +107,8 @@ if(!exists('meshes') || 1) {
     },
     0
   )
+  stop()
+
   # Want to spend a little extra time at top
 
   top <- .1

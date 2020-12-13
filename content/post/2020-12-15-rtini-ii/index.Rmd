@@ -1,7 +1,7 @@
 ---
 title: "Rtini Part 2: Let's Vectorize the $#!+ Out of It"
 author: ~
-date: '2020-01-11'
+date: '2020-12-15'
 slug: mesh-red-vec
 categories: []
 tags: []
@@ -18,7 +18,7 @@ output:
     md_extensions: +raw_attribute
 ---
 
-```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```{r echo=FALSE, child='../../../static/chunks/init.Rmd'}
 ```
 ```{r echo=FALSE}
 suppressMessages(library(ggplot2))
@@ -35,7 +35,6 @@ thm.blnk <- list(
 
 # Vectorize The Absolute $#!+ Out Of This
 
-<!-- this needs to become a shortcode -->
 <img
   id='front-img' src='/front-img/default.png'
   class='post-inset-image'
@@ -63,17 +62,22 @@ the group with diagonal hypotenuses "Diagonal", and the one with
 vertical/horizontal ones "Axis":<span id='sqr-vs-dia'></span>
 
 ```{r echo=FALSE}
-source('../../static/script/_lib/plot.R')
-source('../../static/script/_lib/rayrender.R')  # for next_file
-source('../../static/script/mesh-viz/viz-lib.R')
-source('../../static/script/mesh-viz/rtin-vec.R')
-source('../../static/script/mesh-viz/rtin-vec2.R')
-source('../../static/script/mesh-viz/extract-vec.R')
-
-# source('static/script/mesh-viz/viz-lib.R')
-# source('static/script/mesh-viz/rtin-vec.R')
+source('../../../static/script/_lib/plot.R')
+source('../../../static/script/_lib/rayrender.R')  # for next_file
+source('../../../static/script/mesh-viz/viz-lib.R')
+source('../../../static/script/mesh-viz/rtin-vec.R')
+source('../../../static/script/mesh-viz/rtin-vec2.R')
+source('../../../static/script/mesh-viz/extract-vec.R')
+  # source('static/script/_lib/plot.R')
+  # source('static/script/_lib/rayrender.R')  # for next_file
+  # source('static/script/mesh-viz/viz-lib.R')
+  # source('static/script/mesh-viz/rtin-vec.R')
+  # source('static/script/mesh-viz/rtin-vec2.R')
+  # source('static/script/mesh-viz/extract-vec.R')
+  # source('static/script/mesh-viz/viz-lib.R')
+  # source('static/script/mesh-viz/rtin-vec.R')
 err <- matrix(0, 9, 9)
-# note diamond/square is backwards here from what we use in viz-lib
+ # note diamond/square is backwards here from what we use in viz-lib
 tri.di <- extract_mesh2(err, 1, 4)
 tri.sq <- extract_mesh2(err, 1, 3)
 tris <- tris_to_df(list(tri.sq, tri.di), err)
@@ -319,7 +323,7 @@ approximation errors in the right hand panel:
 <video id=mesh-anim-vec style='display: block; margin: 0 auto;' controls loop>
 <source
 static
-  src='/post/2020-01-11-mesh-red-vec_files/images/out-vec.mp4'
+  src='graphics/out-vec.mp4'
   type="video/mp4"
 />
 </video>
@@ -437,7 +441,7 @@ ggplot(dat) +
   geom_text(aes(Language, Time, label=Time), vjust=-.5) +
   ylab('Time (ms)') +
   ggtitle('RTIN Error Computation Benchmarks', subtitle='257x257 Grid Size') +
-  scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
+  scale_y_continuous(expand = expansion(mult = c(0.05, .1)))
 ```
 
 Now we're in business.  We're beating neither C nor JavaScript, but
@@ -475,7 +479,7 @@ Let's look back at our first vectorized implementation.  In particular at the
 child error carry over section at the end:
 
 ```{r eval=FALSE}
-# Carry over child errors
+ # Carry over child errors
 err.val <- do.call(pmax, err.vals)
 err.ord <- order(err.val)
 errors[o.m[err.ord]] <- err.val[err.ord]
@@ -707,7 +711,8 @@ p2 <- ggplot(tris2, aes(x, y)) +
     data=dat.hyp, aes(xend=xend, yend=yend)
   ) +
   geom_point(
-    data=dat, aes(size=I(psize), color=I(pcolor), fill=I(pfill)),
+    data=subset(dat, !is.na(psize)),
+    aes(size=I(psize), color=I(pcolor), fill=I(pfill)),
     shape=21
   ) +
   facet_grid(subtype ~ type) +
@@ -737,18 +742,36 @@ ggplot(dat) +
   geom_text(aes(Language, Time, label=Time), vjust=-.5) +
   ylab('Time (ms)') +
   ggtitle('RTIN Error Computation Benchmarks', subtitle='257x257 Grid Size') +
-  scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
+  scale_y_continuous(expand = expansion(mult = c(0.05, .1)))
 ```
 
 And something remarkable happens as we increase grid sizes:
 
 ```{r vec-timings-3, echo=FALSE, warning=FALSE}
+library(ggplot2)
 library(patchwork)
-times <- readRDS('../../static/data/rtini-data.RDS')
-names(times)[3] <- 'Language'
+times <- readRDS('data/bench.RDS')
+
+times2 <- do.call(
+    rbind,
+    Map(
+      cbind,
+      lapply(
+        times[-length(times)],
+        function(x) data.frame(x[c('r', 'js', 'c')])
+      ),
+      size=(2^(6:12)) + 1
+) )
+times3 <- do.call(
+  cbind,
+  list(
+    data.frame(values=unlist(times2[1:3])),
+    Language=toupper(rep(names(times2)[1:3], each=nrow(times2))),
+    ind=rep(times2[[4]], 3)
+) )
 
 p1 <- ggplot(
-  times,
+  times3,
   aes(
     x=factor(
       ind, levels=as.character(sort(as.integer(as.character(unique(ind)))))
@@ -764,7 +787,7 @@ p1 <- ggplot(
   NULL
 
 p2 <- ggplot(
-  times,
+  times3,
   aes(
     x=factor(
       ind, levels=as.character(sort(as.integer(as.character(unique(ind)))))
@@ -783,19 +806,92 @@ p2 <- ggplot(
 p1 + p2 + plot_layout(guides='collect') +
   plot_annotation(title='RTIN Error Computation Benchmarks vs. Grid Size') &
   theme(legend.position='bottom')
+
+
+
 ```
 
 The R implementation beats both the C and JS implementations by a factor of
 2-3x.  At the lower sizes the overhead of the R calls holds us back, but as the
 overall computations increase by `$N^2$`, the number of R calls only increase by
-`$log(N)$`.
+`$log(N)$`.  As the `$N^2$` term grows the vectorized algorithm
+benefits from requiring fewer steps to compute the midpoints, granted
+at the cost of implementation complexity.
 
-Another observation is that JS is faster than C at the largest
-grid sizes, even though the C implementation is almost identical to the
-JS one.  You can tell from the logged plot that it appears that JS has some more
-initial overhead, but the scaling rate is slower.  This might be because we use
-64-bit doubles in C so we can interface with R, whereas the JS version uses
-32-bit floats[^c-vs-js].
+It is also remarkable that JS does as well as C, perhaps with some
+more timing volatility due to the overhead of invoking [`V8`][12] via R
+and possibly JIT compilation.
+
+# Limits of Vectorization
+
+So far we have completely avoided discussion of the second part of the RTIN
+algorithm: extraction of approximate meshes subject to an error tolerance.  Here
+the R implementation does worse, but still impressively if we consider that the
+JavaScript version is JIT compiled into machine code:
+
+```{r vec-limits, echo=FALSE}
+err.time <- readRDS('data/bench-poly.RDS')
+poly.time <- readRDS('data/bench-poly-2.RDS')
+title <- theme(title=element_text(size=9))
+coord <- coord_cartesian(ylim=c(0, .6))
+p1 <- ggplot(poly.time) +
+  geom_point(aes(x=polys, y=time, color=Language), alpha=.5) +
+  ggtitle('Mesh Extraction') + coord + title +
+  scale_color_manual(values=c(JS='#fc8d62',R='#8da0cb')) +
+  xlab("Polygons (MM)") + ylab("Seconds")
+p2 <- ggplot(err.time) +
+  geom_point(aes(x=Grid, y=time, color=Language), alpha=.5) +
+  ggtitle('Error Calc') +
+  ylab(FALSE) + coord + title +
+  scale_color_manual(values=c(JS='#fc8d62',R='#8da0cb')) +
+  theme(
+    axis.title.y=element_blank(), axis.text.y=element_blank(),
+    axis.ticks.y=element_blank()
+  )
+p1 + p2 + plot_layout(guides='collect') +
+  plot_annotation(title='RTIN Mesh Extraction vs. Poly Count') &
+  theme(legend.position='bottom') &
+  plot_layout(widths=c(3,1))
+```
+
+On the 1025 x 1025 grid we tested JS is about as much faster at extracting the
+meshes (left) as R is at computing the errors (right).  How much this matters is
+a function of how many polygons you extract.  The full mesh as about 2MM
+polygons, but it looks good with few as ~150K polygons:
+
+<div style='background-color: red'>Low poly vs high poly<div>
+
+R is able to beat out JavaScript and even C in the error computation because the 
+RTIN algorithm is quite "inefficient"[^inefficient].  Watch it [in action][14]
+again and notice how many steps it takes to compute the location of the first
+point to compute the error at on a 5 x 5 grid.  Compare to how many steps we
+need with the [vectorized algorithm](#mesh-anim-vec) to compute every error on a
+much larger grid, _including_ child error carry over.  I would expect that if we
+implemented the R version of the algorithm in JavaScript the latter would be
+faster, assuming the JIT compilation can be as effective as it is with the RTIN
+algorithm.
+
+Even when algorithms can be fully internally[^int-vec] vectorized R works
+uphill because it is not possible to modify vectors in place.  For example, with
+three equal size large vectors `x`, `y`, and `z`, the operation:
+
+```{r eval=FALSE}
+x <- x + y + z
+```
+
+Leads to the allocation of two new vectors: one for the result of `y + z`, one
+for the result of `x + (y + z)` which is then bound to `x`.  If `x` is large
+this means quite a bit of memory.  The more operations there are, the more
+temporary vectors we need.  In non-vectorized implementations, even those that
+don't modify the result in place, the temporary values can be scalars that
+perhaps even remain is register values until they are written to the final
+result vector.
+
+Thankfully modern super scalar systems are very good at computing serially on
+large contiguous blocks of memory, so the penalty from vectorized calculations
+due to the temporary vectors is low, and we can approach the performance of
+compiled languages for vectorizable algorithms.
+
 
 # Too Square
 
@@ -817,50 +913,85 @@ larger `$(2^k + 1)$` tiles will remain granular no matter how high we set the
 tolerance.  For example, for `volcano` this is the most approximate grid we
 could produce:
 
-```{r}
+```{r echo=FALSE}
 old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+old.par <- par(mai=numeric(4))
 do.call(
-  knitr::opts_chunk$set, 
+  knitr::opts_chunk$set,
   list(fig.height=old.opt[['fig.width']] * ncol(volcano)/nrow(volcano))
 )
 ```
 ```{r volcano-max, echo=FALSE}
+library(rtini)
 err <- rtini_error(volcano)
-mesh <- rtini_extract(err, tol=10)
+mesh <- rtini_extract(err, tol=1e3)
 
 ## Convert linearized indices to x/y in [0,1]
 tris <- rbind(do.call(cbind, mesh), NA)
 plot.new()
-plot.window(asp=1)
-polygon(
-  x=((tris - 1) %/% nrow(err)) / (nrow(err) - 1),
-  y=((tris - 1) %% nrow(err)) / (nrow(err) - 1),
-  col='grey90'
+dat <- list(
+  y=((tris - 1) %/% nrow(err)) / (nrow(err) - 1),
+  x=((tris - 1) %% nrow(err)) / (nrow(err) - 1)
 )
+plot.window(asp=1, xlim=c(0,1), ylim=range(dat[['y']], na.rm=TRUE))
+polygon(dat, col='grey90')
+par(old.par)
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-The best grids for the R implementation will be `$2^k + 1, n * 2^k + 1$`, which
-is actually a pretty good set as it allows for tilings of sub-maps at the most
-approximate level we could want.  For example, if we have a base tile size of 65
-x 65, we can assemble any tiling of them into rectangles and we'll be assured to
-have self consistent extracted meshes, with the trade-off that the most
-approximate mesh may be made of triangles no larger than 65 to the side.
-Depending on dimensions it is possible that some parts of the map may form
-larger triangles.
+As we get closer to the top and right edges the largest triangle size we can use
+and still conform with the rest of the mesh becomes smaller and smaller.  If
+instead of 87 x 61 volcano was 97 x 65 then we would get a much better
+most-approximated mesh:
 
+```{r echo=FALSE}
+volc2 <- matrix(0, 97, 65)
+volc2[seq_len(nrow(volcano)), seq_len(ncol(volcano))] <- volcano
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+old.par <- par(mai=numeric(4))
+do.call(
+  knitr::opts_chunk$set,
+  list(fig.height=old.opt[['fig.width']] * ncol(volc2)/nrow(volc2))
+)
+```
+```{r volcano-max-2, echo=FALSE}
+library(rtini)
+err <- rtini_error(volc2)
+mesh <- rtini_extract(err, tol=1e3)
 
+## Convert linearized indices to x/y in [0,1]
+tris <- rbind(do.call(cbind, mesh), NA)
+plot.new()
+dat <- list(
+  y=((tris - 1) %/% nrow(err)) / (nrow(err) - 1),
+  x=((tris - 1) %% nrow(err)) / (nrow(err) - 1)
+)
+plot.window(asp=1, xlim=c(0,1), ylim=range(dat[['y']], na.rm=TRUE))
+polygon(dat, col='grey90')
+par(old.par)
+do.call(knitr::opts_chunk$set, old.opt)
+```
 
+The best grids for the R implementation will be `$2^k + 1, n * 2^k + 1$`, and
+those that are `$m * 2^k + 1, n * 2^k + 1$` will be pretty good too.  So long as
+we are satisfied with maximum approximation to be `$2^k + 1$`, we can assemble
+any tiling of tiles that size into rectangles and we'll be assured to have self
+consistent extracted meshes.
 
-
-Still better than being stuck with square grids.  In fact, since it is unlikely
-we'll ever want the largest tolerance approximation this beco
+Either way, that the algorithm _works_ with a broad set of grid sizes, even with
+potentially varying levels of maximum approximation, is useful.  For example, we
+can use it on the 550 x 505 River Derwent DEM by just dropping 1 row:
 
 <div style='background-color: red'>video</div>
 
+The uneven approximation along the edges only becomes obvious at extreme
+tolerance levels we would be unlikely to use in reality.
+
 # Trade-offs
 
-Jeez.
+In exchange for more complex vectorized code, we get faster and more flexible
+RTIN error computation.  But the error computation is only half the story.  We
+must also extract the mesh for any given tolerance.  Here, it is
 
 # Conclusions
 
@@ -886,10 +1017,10 @@ Jeez.
 
 ## Session Info
 
-```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
+```{r child='../../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
 ```
 <script type='text/javascript'>
-const imgDir = '/post/2020-01-11-mesh-red-vec_files/images/flipbook-vec/';
+const imgDir = 'graphics/flipbook-vec/';
 const fps = 4;
 new BgFlipBook({
   targetId: 'flipbook-vec', imgDir: imgDir,
@@ -906,6 +1037,9 @@ new BgFlipBook({
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
 [10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20
 [11]: https://github.com/brodieG/rtini/blob/v0.1.0/R/error.R#L98
+[12]: https://cran.r-project.org/package=V8
+[13]: https://github.com/brodieG/rtini/blob/v0.1.0/R/extract.R#L51
+[14]: 2020/01/27/mesh-reduction-1/#flipbook1
 
 [^step-count]: We're under-counting as the calls used in the vectorized version
   end to be more complex, and we also have `init_offsets` that hides some calls.
@@ -937,6 +1071,8 @@ new BgFlipBook({
   the end is only required for "Axis" tiles, and can be skipped for the first
   layer altogether as in that layer "Axis" tiles have no children (this is also
   the largest layer so there is a big gain from skipping it).
-[^c-vs-js]: Or it could be any other number of things, I'm guessing and can't be
-  bothered testing this with a stand-alone implementation.
+[^inefficent]: I use quotes here because the inefficiency isn't necessarily
+  bad.  The RTIN algorithm handles many corner cases gracefully by virtue of how
+  it computes the triangle hypotenuse midpoints, and it is efficient enough to
+  be useful.
 

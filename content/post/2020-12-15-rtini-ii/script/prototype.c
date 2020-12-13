@@ -1,8 +1,3 @@
-/*
-f <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body="
-
-")
-*/
 compute_errorc <- inline::cfunction(sig=c(terr='numeric', grid='integer'), body="
 //SEXP function comp_errors(SEXP terr, SEXP grid) {
   int gridSize = asInteger(grid);
