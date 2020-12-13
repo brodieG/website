@@ -317,18 +317,3 @@ times.all <- rbind(
   cbind(stack(setNames(r.times, sizes)), type='R-vec-2')
 )
 saveRDS(times.all, 'static/data/rtini-data.RDS')
-
-Chrome:
-
-ter_513:
-Chrome:
-
-
-ter_1025:
-Chrome:
-
-ter_2049:
-
-ter_4096:
-
-
