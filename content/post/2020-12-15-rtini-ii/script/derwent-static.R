@@ -37,12 +37,11 @@ k <- 1025
 k2 <- 4097
 m <- map[seq_len(k), seq_len(k)]
 m2 <- map[seq_len(k2), seq_len(k2)]
+m3 <- map[seq_len((k2 - 1)/2+1), seq_len(k2)]
 
 err <- rtini_error(m)
-ex1 <- rtini_extract(err, 10)
-ex2 <- rtini_extract(err, 1)
-
 err2 <- rtini_error(m2)
+err3 <- rtini_error(m3)
 
 
 mesh.dir <- tempfile()  # remember to unlink this
@@ -55,10 +54,13 @@ mesh.hi <- build_der_mesh(m, err, 1, file=file.path(mesh.dir, "mesh-hi.obj"))
 mesh.kal <- build_der_mesh(
   m2, err2, 100, file=file.path(mesh.dir, "mesh-kal.obj"), height.scale=6
 )
+mesh.kal.w <- build_der_mesh(
+  m3, err3, 100, file=file.path(mesh.dir, "mesh-kal-w.obj"), height.scale=6
+)
 
-xw <- diff(range(mesh.hi$xyz$x)) * .999
-zw <- diff(range(mesh.hi$xyz$y)) * .999
-ymin <- min(mesh.hi$xyz$z)
+xw <- diff(range(mesh.kal.w$xyz$x)) * .999
+zw <- diff(range(mesh.kal.w$xyz$y)) * .999
+ymin <- min(mesh.kal.w$xyz$z)
 cxy <- expand.grid(x=seq_len(nrow(m)),y=seq_len(ncol(m)))
 
 i <- 1
@@ -117,7 +119,7 @@ water.obj <- group_objects(
 scene <- dplyr::bind_rows(
   sphere(y=5, z=1, x=1, radius=.5, material=light(intensity=125)),
   group_objects(
-    obj_model(mesh.kal$file, vertex_colors=TRUE),
+    obj_model(mesh.kal.w$file, vertex_colors=TRUE),
     pivot_point=numeric(3), group_angle=c(90, 0, 180),
     group_order_rotation=c(3, 1, 2),
   ),
@@ -138,20 +140,21 @@ scene <- dplyr::bind_rows(
   #   width=8, height=6, distance=-5
   # )
 )
-obs.off <- -.037 * c(1, 0, 1)
+obs.off <- -.015 * c(0, 0, 1)
 render_scene(
   scene,
   # fov=90,
   fov=18,
   # width=800, height=800, samples=100,
-  # width=1200, height=1200, samples=400,
+  # width=1200, height=1200, samples=800,
   # width=720, height=720, samples=100,
-  width=400, height=400, samples=50,
+  width=600, height=300, samples=10,
   # width=800, height=800, samples=300,
   # width=400, height=400, samples=200,
   # lookat=la[,i],
   lookat=c(0, 0, 0) + obs.off,
-  lookfrom=c(0, 3.8, 0.000001) + obs.off,
+  # lookfrom=c(0, 3.8, 0.000001) + obs.off,
+  lookfrom=c(0, 1.85, 0.000001) + obs.off,
   aperture=0,
   clamp_value=5,
   # debug_channel='normals',
