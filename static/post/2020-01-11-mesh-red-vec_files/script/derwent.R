@@ -131,16 +131,16 @@ if(!exists('meshes') || 1) {
   tol.break.w <- match(tol.breaks, tol.breaks)
   tol.break.wu <- unique(tol.break.w)
 
-  for(i in seq_along(tol.break.wu)) {
-    mesh.f <- sprintf("mesh-%04d.obj", i)
+  for(k in seq_along(tol.break.wu)) {
+    mesh.f <- sprintf("mesh-%04d.obj", k)
     cat(sprintf("\rbuilding mesh %s (%s)", mesh.f, as.character(Sys.time())))
-    if(i == 1) {
+    if(k == 1) {
       mesh.dat <- build_der_mesh(
-        der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
+        der2, err, tols[tol.break.wu[k]], file=file.path(mesh.dir, mesh.f)
       )
     } else {
       mesh.dat <- build_der_mesh(
-        der2, err, tols[tol.break.wu[i]], file=file.path(mesh.dir, mesh.f)
+        der2, err, tols[tol.break.wu[k]], file=file.path(mesh.dir, mesh.f)
       )
     }
   }
@@ -236,12 +236,14 @@ angs.base <- cumsum(c(0, diff(angs.base)^2))
 angs <- angs.base / max(angs.base) * 360
 
 step.i <- matrix(seq_len(steps), 8, byrow=TRUE)
+angsc <- (((step.i - 1) / steps) * 360 + 202) %% 360
 
-for(i in c(step.i)) {
+for(i in step.i[,-1]) { # c(step.i)) {
   j <- i
   ti <- i
 
   ang <- angs[i]
+  angc <- angsc[i]
   # angle to use for wave pattern, offset to an angle were we won't notice the
   # repeat happening (i.e. when looking far from water / behind mountains).
   angc <- (((i - 1) / steps) * 360 + 202) %% 360  # constant speed angle
@@ -264,27 +266,31 @@ for(i in c(step.i)) {
   )
   water2 <- dielectric(refraction=ref, attenuation = att)
   # water <- water2 <- diffuse(color='#E0F5FF')
+  # water3 <- diffuse(color='#E0F5FF')
 
   water.obj <- group_objects(
     dplyr::bind_rows(
       xz_rect(material=water,  xwidth=xw, y=0, zwidth=zw),
       xz_rect(material=water2, xwidth=xw, y=ymin, flipped=TRUE, zwidth=zw),
       xy_rect(
-        material=water2, xwidth=xw, y=ymin/2, z=-zw/2, ywidth=-ymin, flipped=TRUE
+        material=water2, xwidth=xw, y=ymin/2, z=-zw/2, ywidth=-ymin,
+        flipped=TRUE
       ),
       xy_rect(material=water2, xwidth=xw, y=ymin/2, z=zw/2,  ywidth=-ymin),
       yz_rect(
         material=water2, y=ymin/2, x=xw/2,  ywidth=-ymin, zwidth=zw,
+      ),
+      yz_rect(
+        material=water2, y=ymin/2, x=-xw/2, ywidth=-ymin, zwidth=zw,
         flipped=TRUE
       ),
-      yz_rect(material=water2, y=ymin/2, x=-xw/2, ywidth=-ymin, zwidth=zw),
     ),
     pivot_point=numeric(3),
     group_angle=c(0, ang, 0)
   )
   # Assemble scene
   scene <- dplyr::bind_rows(
-    sphere(y=5, z=3, x=2, radius=1, material=light(intensity=30)),
+    sphere(y=5, z=3, x=2, radius=1, material=light(intensity=25)),
     group_objects(
       obj_model(
         meshes[match(tol.break.w[ti], tol.break.wu)], vertex_colors=TRUE
@@ -297,25 +303,34 @@ for(i in c(step.i)) {
     # "sky" reflector
     xz_rect(
       xwidth=6, zwidth=6, y=6,
+      # material=diffuse(), flipped=TRUE,
       material=diffuse('deepskyblue'), flipped=TRUE,
       angle=c(25, 0, 0)
     ),
+    # cube(scale=.2, y=.3),
+    # generate_studio(
+    #   material=light(intensity=1, importance_sample=FALSE),
+    #   width=8, height=6, distance=-5
+    # )
   )
   render_scene(
     scene,
+    # fov=90,
     fov=fovs[i],
     # width=800, height=800, samples=100,
     # width=1200, height=1200, samples=400,
-    # width=600, height=600, samples=10,
+    # width=720, height=720, samples=100,
+    # width=400, height=400, samples=20,
     width=800, height=800, samples=200,
+    # width=400, height=400, samples=25,
     lookat=la[,i],
     lookfrom=lf[,i],
+    # lookfrom=c(-.08, -.02, .47),
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
-    # filename=next_file('~/Downloads/derwent/vmov-5/img-001.png')
-    filename=sprintf('D:Downloads/rtini/img-%03d.png', i)
-    # filename=next_file('~/Downloads/derwent/v1/img-000.png')
+    filename=sprintf('D:Downloads/rtini/v4/img-%03d.png', i)
+    # filename=next_file('D:Downloads/rtini/v4/img-001.png')
   )
 }
 # unlink(mesh.dir, recursive=TRUE)
