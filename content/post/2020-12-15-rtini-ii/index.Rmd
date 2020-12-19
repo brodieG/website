@@ -53,13 +53,17 @@ time would supplant those of Pyrrhus in the history books[^grandiloquence].
 
 While I was generally aware that there is more to the problem than generating
 equal sized triangles, I underestimated the degrees of freedom available and
-wasted quite a bit of time going in circles as a result.  There are eight
-different triangle orientations, split into two groups of four.  The groups
-alternate between approximation levels.  Here we show the orientations for the
-2nd and 3rd most granular levels of a 9 x 9 grid[^nine-nine].  The triangles
-are colored by orientation.  For reasons that will become clearer later we call
-the group with diagonal hypotenuses "Diagonal", and the one with
-vertical/horizontal ones "Axis":<span id='sqr-vs-dia'></span>
+wasted quite a bit of time going in circles as a result.
+
+# Some Triangles Are More Equal Than Others
+
+There are eight different triangle orientations, split into two groups of four.
+The groups alternate between approximation levels.  Here we show the
+orientations for the 2nd and 3rd most granular levels of a 9 x 9
+grid[^nine-nine].  The triangles are colored by orientation.  For reasons that
+will become clearer later we call the group with diagonal hypotenuses
+"Diagonal", and the one with vertical/horizontal ones "Axis":<span
+id='sqr-vs-dia'></span>
 
 ```{r echo=FALSE}
 source('../../../static/script/_lib/plot.R')
@@ -310,6 +314,121 @@ p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
+# Now Just Tile the Rest of the $#!+ing Map
+
+Great, we have a concept for how we might parallelize the computation of
+critical coordinates, but how exactly do we do this in an efficiently vectorized
+manner?  There are likely many ways, but what we'll do is use "linearized"
+indices into the matrix.  These indices treat the matrix as if it were a vector.
+The first step is to generate the base tile, which we will do with
+`init_offsets`, presented here in simplified form[^simplified-offsets]:
+
+```{r eval=FALSE}
+init_offsets <- function(i, j, n, layers) {
+  o <- if(j == 'axis') offset.ax else offset.dg    # raw coords
+  o <- o * 2^(i - 1)                               # scale
+  array(o[,1,] + o[,2,] * (n + 1) + 1, dim(o)[-2]) # x/y -> id
+}
+```
+
+`offset.ax` and `offset.dg` are arrays that contain manually computed x/y
+coordinates for each of the points in the template tile.  `init_offsets` scales
+those to the appropriate size for the layer and collapses them to "linearized"
+coordinates[^linearized]<span id=linearized></span>:
+
+<!-- really shouldn't be doing these inline styles... -->
+<style>
+span.bgw-hmid   { padding: .1em 0; background-color: #8da0cb;}
+span.bgw-hend   { padding: .1em 0; color: #66c2a5;}
+span.bgw-hchild { padding: .1em 0; background-color: #fc8d62;}
+</style>
+
+```{r eval=FALSE}
+init_offsets(i=1, j='diag', n=8, layers=log2(8))
+```
+<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
+[1,] <span class='bgw-hend'>   1   21 </span><span class='bgw-hmid'>  11 </span><span class='bgw-hchild'> 20   10    2   12 </span>
+[2,] <span class='bgw-hend'>   5   21 </span><span class='bgw-hmid'>  13 </span><span class='bgw-hchild'> 22   14   12    4 </span>
+[3,] <span class='bgw-hend'>  21   37 </span><span class='bgw-hmid'>  29 </span><span class='bgw-hchild'> 38   30   28   20 </span>
+[4,] <span class='bgw-hend'>  21   41 </span><span class='bgw-hmid'>  31 </span><span class='bgw-hchild'> 40   30   22   32 </span>
+</code></pre>
+<!--
+```{r eval=FALSE}
+init_offsets(i=2, j='axis', n=8, layers=log2(8))
+```
+<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
+[1,] <span class='bgw-hend'>   1    5 </span><span class='bgw-hmid'>   3 </span><span class='bgw-hchild'>  13   11 </span>
+[2,] <span class='bgw-hend'>   5   41 </span><span class='bgw-hmid'>  23 </span><span class='bgw-hchild'>  31   13 </span>
+[3,] <span class='bgw-hend'>  41   37 </span><span class='bgw-hmid'>  39 </span><span class='bgw-hchild'>  29   31 </span>
+[4,] <span class='bgw-hend'>  37    1 </span><span class='bgw-hmid'>  19 </span><span class='bgw-hchild'>  11   29 </span>
+</code></pre>
+-->
+We annotate the original map with the "linearized" coordinates to better see the
+relationship:
+
+```{r echo=FALSE}
+n <- 8
+o.d <- init_offsets(i=1, j='diag', n=n, layers=log2(8))
+o.a <- init_offsets(i=2, j='axis', n=n, layers=log2(8))
+
+lin.to.xy <- expand.grid(x=0:n, y=0:n)
+lin.to.xy <- transform(lin.to.xy, i=(x + 1) + y * (n + 1))
+lin.to.xy.all <- rbind(
+  transform(lin.to.xy, type='Axis', important=i %in% o.a),
+  transform(lin.to.xy, type='Diagonal', important=i %in% o.d)
+)
+lin.to.xy.all <- transform(
+  lin.to.xy.all, color=ifelse(important, 'grey10', 'grey50'),
+  type=factor(type, levels=c('Diagonal', 'Axis')),
+  size=ifelse(important, 3, 2)
+)
+
+p2a <- ggplot(subset(tris2, type == 'Diagonal')) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
+  geom_point(
+    data=points,
+    aes(x=x, y=y), size=1, shape=3, color='white') +
+  # geom_segment(
+  #   data=subset(p.arr, ptype=='child'),
+  #   arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
+  #   aes(x, y, xend=xend, yend=yend),
+  #   color='grey50'
+  # ) +
+  # geom_segment(
+  #   data=subset(p.arr, ptype=='ends'),
+  #   aes(x, y, xend=xend, yend=yend)
+  # ) +
+  geom_point(
+    data=subset(p.all, ptype=='mid' & type == 'Diagonal'),
+    aes(x, y, colour=I('#8da0cb')),
+    size=6
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='ends' & type == 'Diagonal'),
+    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
+    shape=21, size=4
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='child' & type == 'Diagonal'),
+    aes(x, y, colour=I('#fc8d62')), size=4
+  ) +
+  geom_text(
+    data=subset(lin.to.xy.all, type == 'Diagonal'),
+    aes(x=y/n, y=x/n, label=i, color=I(color), size=I(size))
+  ) +
+  facet_wrap(~type) +
+  # coord_fixed(xlim=c(0, .5), y=c(0, .5)) +
+  # coord_fixed() +
+  thm.blnk
+pdim <- gtable_dim(ggplotGrob(p2a))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r square-vs-diamond-points-2, echo=FALSE}
+p2a
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
 # Action!
 
 Let's look at this in action with the next grid size up for effect.  As we did
@@ -325,6 +444,8 @@ static
 />
 </video>
 
+
+
 For each "layer", we start with a repeatable template sized to the layer.  We
 then fill a column with it, then the rest of the surface, and finally we compute
 errors.  Here is the same thing as a flipbook with code so we can see how it's
@@ -336,106 +457,7 @@ layers:
 
 `o`, as shown in the first frame[^first-frame] contains the offsets that
 represent the template tile.  These offsets are generated by `init_offsets`,
-which in simplified[^simplified-offsets] form is:
-
-```{r eval=FALSE}
-init_offsets <- function(i, j, n, layers) {
-  o <- if(j == 'axis') offset.ax else offset.dg    # raw coords
-  o <- o * 2^(i - 1)                               # scale
-  array(o[,1,] + o[,2,] * (n + 1) + 1, dim(o)[-2]) # x/y -> id
-}
-```
-
-`offset.ax` and `offset.dg` contain x/y coordinates for each of the points in
-the template tile.  `init_offsets` scales those to the appropriate size for the
-layer and collapses them to "linearized" coordinates<span id=linearized></span>:
-
-<!-- really shouldn't be doing these inline styles... -->
-<style>
-span.bgw-hmid   { padding: .1em 0; background-color: #8da0cb;}
-span.bgw-hend   { padding: .1em 0; color: #66c2a5;}
-span.bgw-hchild { padding: .1em 0; background-color: #fc8d62;}
-</style>
-
-```{r eval=FALSE}
-init_offsets(i=2, j='diag', n=16, layers=log2(16))
-```
-<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
-[1,]  <span class='bgw-hend'>  1   73 </span><span class='bgw-hmid'>  37 </span><span class='bgw-hchild'>  71   35    3   39 </span>
-[2,]  <span class='bgw-hend'>  9   73 </span><span class='bgw-hmid'>  41 </span><span class='bgw-hchild'>  75   43   39    7 </span>
-[3,]  <span class='bgw-hend'> 73  137 </span><span class='bgw-hmid'> 105 </span><span class='bgw-hchild'> 139  107  103   71 </span>
-[4,]  <span class='bgw-hend'> 73  145 </span><span class='bgw-hmid'> 109 </span><span class='bgw-hchild'> 143  107   75  111 </span>
-</code></pre>
-```{r eval=FALSE}
-init_offsets(i=2, j='axis', n=16, layers=log2(16))
-```
-<pre><code>     [,1] [,2] [,3] [,4] [,5]
-[1,]  <span class='bgw-hend'>  1    5 </span><span class='bgw-hmid'>   3 </span><span class='bgw-hchild'>  21   19 </span>
-[2,]  <span class='bgw-hend'>  5   73 </span><span class='bgw-hmid'>  39 </span><span class='bgw-hchild'>  55   21 </span>
-[3,]  <span class='bgw-hend'> 73   69 </span><span class='bgw-hmid'>  71 </span><span class='bgw-hchild'>  53   55 </span>
-[4,]  <span class='bgw-hend'> 69    1 </span><span class='bgw-hmid'>  35 </span><span class='bgw-hchild'>  19   53 </span>
-</code></pre>
-
-In "linearized" form for our 17 x 17 example, 1 corresponds to (x,y) coordinate
-(1,1), 2 to (1,2),  18 to (2,1), 289 to (17,17), etc.[^linearized].  So these
-two index matrices match color-wise to:
-
-```{r echo=FALSE}
-err16 <- matrix(0, 17, 17)
- # note diamond/square is backwards here from what we use in viz-lib
-tri.di <- extract_mesh2(err16, 1, 4)
-tri.sq <- extract_mesh2(err16, 1, 3)
-tris.a <- tris_to_df(list(tri.sq, tri.di), err16)
-tris2.a <- transform(
-  tris.a,
-  alpha=ave(
-    seq_along(id), factor(id), FUN=function(i) all(x[i] <= .25 & y[i] <= .25)
-  )
-)
-lin.to.xy <- expand.grid(x=0:16, y=0:16)
-lin.to.xy <- transform(lin.to.xy, i=(x + 1) + y * 16)
-p2a <- ggplot(tris2.a) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=1, shape=3, color='white') +
-  # geom_segment(
-  #   data=subset(p.arr, ptype=='child'),
-  #   arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
-  #   aes(x, y, xend=xend, yend=yend),
-  #   color='grey50'
-  # ) +
-  # geom_segment(
-  #   data=subset(p.arr, ptype=='ends'),
-  #   aes(x, y, xend=xend, yend=yend)
-  # ) +
-  geom_point(
-    data=subset(p.all, ptype=='mid'),
-    aes(x, y, colour=I('#8da0cb')),
-    size=6
-  ) +
-  geom_point(
-    data=subset(p.all, ptype=='ends'),
-    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
-    shape=21, size=4
-  ) +
-  geom_point(
-    data=subset(p.all, ptype=='child'),
-    aes(x, y, colour=I('#fc8d62')), size=2
-  ) +
-  geom_text(
-    data=lin.to.xy, aes(x=y/16, y=x/16, label=i)
-  ) +
-  facet_wrap(~type) +
-  coord_fixed(xlim=c(0, .25), y=c(0, .25)) +
-  # coord_fixed() +
-  thm.blnk
-pdim <- gtable_dim(ggplotGrob(p2a))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r square-vs-diamond-points-2, echo=FALSE}
-p2a
-do.call(knitr::opts_chunk$set, old.opt)
-```
+which in simplified form is:
 
 We can shift "linearized" coordinates, by simple arithmetic.  For example,
 adding one to a coordinate will move it up one row[^shift-with-care].  Adding
@@ -1009,7 +1031,7 @@ plot.new()
 plot.window(asp=1, xlim=c(0,1), ylim=range(dat[['y']], na.rm=TRUE))
 polygon(dat, col='grey90')
 points(
-  (expand.grid(seq_len(nrow(err)), seq_len(ncol(err))) - 1) / 
+  (expand.grid(seq_len(nrow(err)), seq_len(ncol(err))) - 1) /
   (nrow(err) - 1),
   pch=3, col='white', cex=.3
 )
@@ -1046,7 +1068,7 @@ plot.new()
 plot.window(asp=1, xlim=c(0,1), ylim=range(dat[['y']], na.rm=TRUE))
 polygon(dat, col='grey90')
 points(
-  (expand.grid(seq_len(nrow(err)), seq_len(ncol(err))) - 1) / 
+  (expand.grid(seq_len(nrow(err)), seq_len(ncol(err))) - 1) /
   (nrow(err) - 1),
   pch=3, col='white', cex=.3
 )
