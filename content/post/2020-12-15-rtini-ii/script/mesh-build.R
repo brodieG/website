@@ -8,9 +8,11 @@ source('static/script/mesh-viz/viz-lib.R')
 # @param err matrix of errors computed with rtini_error
 # @param tol a tolerance to extract mesh at
 # @param file name of file to write to
+# @param height.scale numeric how much to divide the height relative to the
+#   other extents.
 # @return a list with the file name and the xyz data
 
-build_der_mesh <- function(map, err, tol, file=tempfile()) {
+build_der_mesh <- function(map, err, tol, file=tempfile(), height.scale=3) {
   ids <- rtini_extract(err, tol=tol)
   tris <- rbind(do.call(cbind, ids), NA)
 
@@ -19,7 +21,7 @@ build_der_mesh <- function(map, err, tol, file=tempfile()) {
   max.xy <- max(unlist(xyz[c('x', 'y')]))
   xyz$x <- (xyz$x - mean(range(xyz$x))) / max.xy
   xyz$y <- (xyz$y - mean(range(xyz$y))) / max.xy
-  xyz$z <- xyz$z / max(map) / 3
+  xyz$z <- xyz$z / max(map) / height.scale
 
   # Make sure these are all counterclockwise by checking triangle area sign.
   # Assumes nothing steeper than vertical.

@@ -155,9 +155,9 @@ xyz <- mesh.dat$xyz
 
 xang <- 80
 xw <- diff(range(xyz$x)) * .999
-zw <- .999
+zw <- diff(range(xyz$y)) * .999
 ymin <- min(xyz$z)
-cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
+cxy <- expand.grid(x=seq_len(nrow(m)),y=seq_len(ncol(m)))
 
 # Camera Path, will be decomposed in move-in-out of starting point along with
 # rotation of the object.
@@ -262,7 +262,7 @@ for(i in c(step.i)) { # c(step.i)) {
   ref <- 1.33
   water <- dielectric( # color='#E0F5FF',
     refraction=ref,
-    bump_texture=matrix(amb, nrow(der), ncol(der)),
+    bump_texture=matrix(amb, nrow(m), ncol(m)),
     bump_intensity=3,
     attenuation=att
   )
@@ -338,36 +338,3 @@ for(i in c(step.i)) { # c(step.i)) {
 # unlink(mesh.dir, recursive=TRUE)
 stop('done render')
 
-# - Perlin Experiments ---------------------------------------------------------
-
-steps <- 360
-angs <- seq(0, 360, length.out=steps + 1)
-hzs <- c(.2, .1, .05, .025)
-for(j in seq_len(steps)) {
-  png(next_file('~/Downloads/derwent/perlin3/img-000.png'))
-  par(mai=numeric(4))
-  i <- ang <- angs[j]
-  cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
-  # fbase <- 0.05
-  # fbase <- hzs[j]
-  fbase <- .025
-  amb <- gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase, seed = 1) +
-    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 2, seed = 2)/2 +
-    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 4, seed = 3)/4 +
-    0
-
-  amb <- (amb - min(amb)) / diff(range(amb))
-  plot(as.raster(array(amb, dim=dim(der))))
-  dev.off()
-}
-stop()
-x <- list.files('~/Downloads/derwent/perlin3', pattern='^img', full.names=TRUE)
-file.copy(
-  x[c(-1,-length(x))],
-  file.path(
-    dirname(x[[1]]),
-    sprintf("img-%03d.png", rev(seq_len(length(x) - 2) + length(x)))
-  )
-)
-
-file.copy(a, b)
