@@ -1,7 +1,7 @@
 ---
 title: "Rtini Part 2: Let's Vectorize the $#!+ Out of It"
 author: ~
-date: '2020-01-11'
+date: '2020-12-15'
 slug: mesh-red-vec
 categories: []
 tags: []
@@ -18,24 +18,16 @@ output:
     md_extensions: +raw_attribute
 ---
 
-```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
-```
-```{r echo=FALSE}
-suppressMessages(library(ggplot2))
-thm.blnk <- list(
-  theme(
-    axis.text.x=element_blank(), axis.text.y=element_blank(),
-    axis.ticks.x=element_blank(), axis.ticks.y=element_blank(),
-    panel.grid=element_blank()
-  ),
-  ylab(NULL),
-  xlab(NULL)
-)
-```
+
+
+
+<STYLE type='text/css' scoped>
+PRE.fansi SPAN {padding-top: .25em; padding-bottom: .25em};
+</STYLE>
+
 
 # Vectorize The Absolute $#!+ Out Of This
 
-<!-- this needs to become a shortcode -->
 <img
   id='front-img' src='/front-img/default.png'
   class='post-inset-image'
@@ -49,9 +41,8 @@ incorrect][10].  Instead I'll have to be content with telling you that I did get
 this to work eventually.  A victory that had it wasted lives like it wasted my
 time would supplant those of Pyrrhus in the history books[^grandiloquence].
 
-> This is as follow up post to [last year's review][1] of ([&commat;mourner][5])
-> fantastic [observable notebook][6] on adapting the Will Evans etal.
-> Right-Triangulated Irregular Networks [(RTIN) algorithm][8].
+> Last year's [Part I][1] of this series introduces the RTIN mesh approximation
+> algorithm.  This post assumes familiarity with the prior post.
 
 While I was generally aware that there is more to the problem than generating
 equal sized triangles, I underestimated the degrees of freedom available and
@@ -63,43 +54,8 @@ are colored by orientation.  For reasons that will become clearer later we call
 the group with diagonal hypotenuses "Diagonal", and the one with
 vertical/horizontal ones "Axis":<span id='sqr-vs-dia'></span>
 
-```{r echo=FALSE}
-source('../../static/script/_lib/plot.R')
-source('../../static/script/_lib/rayrender.R')  # for next_file
-source('../../static/script/mesh-viz/viz-lib.R')
-source('../../static/script/mesh-viz/rtin-vec.R')
-source('../../static/script/mesh-viz/rtin-vec2.R')
-source('../../static/script/mesh-viz/extract-vec.R')
 
-# source('static/script/mesh-viz/viz-lib.R')
-# source('static/script/mesh-viz/rtin-vec.R')
-err <- matrix(0, 9, 9)
-# note diamond/square is backwards here from what we use in viz-lib
-tri.di <- extract_mesh2(err, 1, 4)
-tri.sq <- extract_mesh2(err, 1, 3)
-tris <- tris_to_df(list(tri.sq, tri.di), err)
-tris[['type']] <- factor(
-  c(
-    rep('Diagonal', length(unlist(tri.sq))),
-    rep('Axis', length(unlist(tri.di)))
-  ),
-  levels=c('Diagonal', 'Axis')
-)
-points <- tris_to_df(seq_along(err), err)
-p <- ggplot(tris) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color))) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  facet_wrap(~type) +
-  coord_fixed() +
-  thm.blnk
-pdim <- gtable_dim(ggplotGrob(p))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r square-vs-diamond, echo=FALSE}
-p
-do.call(knitr::opts_chunk$set, old.opt)
-```
+<img src="index_files/figure-html/square-vs-diamond-1.png" width="649.92" style="display: block; margin: auto;" />
 
 The "Diagonal" triangulation, the one with vertical and horizontal hypotenuses,
 has just one tiling pattern.  A particular triangle "shape" (a specific color in
@@ -110,41 +66,9 @@ would prevent us from fully tiling the grid without breaking up triangles.
 On the other hand the "Axis" triangulation, the one with the diagonal
 hypotenuses, has multiple possible tilings:
 
-```{r fig.width=9, echo=FALSE}
-# should have used the offsets for this, but we hadn't written that yet.
-raw1 <- c(03,19,01, 03,19,21, 03,23,21, 03,23,05)
-raw2 <- raw1 + rep(c(2,-2), each=length(raw1)/2)
-rawc1 <- rep(raw1, 2) + rep(0:1 * 4, each=length(raw1))
-rawc2 <- rep(raw2, 2) + rep(0:1 * 4, each=length(raw2))
-rawc3 <- rep(raw1[1:6], 4) + rep(0:3 * 2, each=6)
-f1 <- c(rawc1, rawc2 + 18, rawc1 + 36, rawc2 + 54)
-f2 <- rep(rawc1, 4) + rep(0:3 * 18, each=length(rawc1))
-# f3 <- c(matrix(seq_along(err), nrow(err), byrow=TRUE))[f2]
-f3 <- rep(rawc3, 4) + rep(0:3 * 18, each=length(rawc3))
-tris.f1 <- tris_to_df(f1, err)
-nms <- sprintf( "Faux Diagonal %d", 1:3)
-tris.f1[['type']] <- nms[1]
-tris.f2 <- tris_to_df(f2, err)
-tris.f2[['type']] <- nms[2]
-tris.f3 <- tris_to_df(f3, err)
-tris.f3[['type']] <- nms[3]
-tris.f <- rbind(subset(tris, type=='Diagonal'), tris.f1, tris.f2, tris.f3)
-tris.f[['type']] <- factor(tris.f[['type']], levels=unique(tris.f[['type']]))
 
-p <- ggplot(tris.f) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color))) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  facet_wrap(~type, nrow=1) +
-  coord_fixed() +
-  thm.blnk
-pdim <- gtable_dim(ggplotGrob(p))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
 <div class=bgw-wide-window>
-```{r fake-squares, echo=FALSE}
-p
-```
+<img src="index_files/figure-html/fake-squares-1.png" width="864" style="display: block; margin: auto;" />
 </div>
 
 We show just three alternate tilings, although there are `$2^{16}$`.  All of
@@ -154,23 +78,7 @@ into the next level of coarseness, "Axis" [shown previously](#sqr-vs-dia),
 seen here in a green outline:
 
 <div class=bgw-wide-window>
-```{r fake-diamonds-outline, echo=FALSE}
-bad.1 <- ids_to_df(c(11,13,15,17) + rep(0:3 * 18, each=4), err)
-bad.2 <- ids_to_df(c(11,13,15,17) + rep(c(0, 36), each=4), err)
-bad.3 <- ids_to_df(c(11,15,31,35) + rep(c(0, 36), each=4), err)
-bad.1[['type']] <- factor(nms[1], levels=levels(tris.f[['type']]))
-bad.2[['type']] <- factor(nms[2], levels=levels(tris.f[['type']]))
-bad.3[['type']] <- factor(nms[3], levels=levels(tris.f[['type']]))
-
-p + geom_polygon(
-  data=subset(tris, type=='Axis', -type),
-  aes(x, y, group=id), fill=NA, color='green'
-) + geom_point(
-  data=rbind(bad.1, bad.2, bad.3), aes(x, y),
-  fill='blue', color='grey20', shape=21, size=2
-)
-do.call(knitr::opts_chunk$set, old.opt)
-```
+<img src="index_files/figure-html/fake-diamonds-outline-1.png" width="864" style="display: block; margin: auto;" />
 </div>
 
 It is only with "Diagonal" that every edge of the parent approximation level
@@ -190,30 +98,8 @@ smallest tessellating patterns that extend to the correct layout.  These
 patterns can then be repeated as needed in internally vectorized
 manner[^int-vec].  This is what they look like for our 9 x 9 example:
 
-```{r echo=FALSE}
-tris2 <- transform(
-  tris,
-  alpha=ave(
-    seq_along(id), factor(id), FUN=function(i) all(x[i] <= .5 & y[i] <= .5)
-  )
-)
-p <- ggplot(tris2) +
-  geom_polygon(
-    aes(x=x, y=y, group=id, fill=I(color), alpha=alpha)
-  ) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  facet_wrap(~type) +
-  scale_alpha_continuous(guide=FALSE, range=c(0.2,1)) +
-  coord_fixed() +
-  thm.blnk
-pdim <- gtable_dim(ggplotGrob(p))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r square-vs-diamond-tile, echo=FALSE}
-p
-do.call(knitr::opts_chunk$set, old.opt)
-```
+
+<img src="index_files/figure-html/square-vs-diamond-tile-1.png" width="649.92" style="display: block; margin: auto;" />
 
 Unfortunately this is insufficient.  We must also for each triangle hypotenuse
 midpoint track their children so that we may [carry over](#carry-over-viz) their
@@ -226,87 +112,8 @@ style='color: #66c2a5'>green</span> ), and the corresponding child
 hypotenuse midpoints (<span style='background-color: #fc8d62'>orange</span>).
 The parent/child relation is shown with the arrows:
 
-```{r echo=FALSE}
-p.dg <- ids_to_df(c(offset.dg[,1,] * 9 + offset.dg[,2,] + 1), matrix(0,9,9))
-p.ax <- ids_to_df(c(offset.ax[,1,] * 9 + offset.ax[,2,] + 1), matrix(0,9,9))
-p.dg[['type']] <- factor('Diagonal', levels=c('Diagonal', 'Axis'))
-p.dg[['ptype']] <- 'child'
-p.dg[8:12, 'ptype'] <- 'mid'
-p.dg[1:8, 'ptype'] <- 'ends'
-p.ax[['type']] <- factor('Axis', levels=c('Diagonal', 'Axis'))
-p.ax[['ptype']] <- 'child'
-p.ax[9:12, 'ptype'] <- 'mid'
-p.ax[1:8, 'ptype'] <- 'ends'
-p.all <- rbind(p.dg, p.ax)
-p.all[['grp']] <- (seq_len(nrow(p.all)) - 1L) %% 4L
 
-to_arrows <- function(grp) {
-  ends <- grp[1,,drop=FALSE]
-  ends.b <- grp[2,,drop=FALSE]
-  mid <- grp[3L,,drop=FALSE]
-
-  child <- grp[-3L,]
-  child[['xend']] <- mid[, 'x']
-  child[['yend']] <- mid[, 'y']
-  x.diff <- child[['xend']] - child[['x']]
-  y.diff <- child[['yend']] - child[['y']]
-  off.c <- 5
-  child[['xend']] <- child[['xend']] - x.diff / off.c
-  child[['x']] <- child[['x']] + x.diff / off.c
-  child[['yend']] <- child[['yend']] - y.diff / off.c
-  child[['y']] <- child[['y']] + y.diff / off.c
-
-  x.diff <- ends.b[['x']] - ends[['x']]
-  y.diff <- ends.b[['y']] - ends[['y']]
-  off.e <- 30
-  ends[['xend']] <- ends.b[['x']] - x.diff / off.e
-  ends[['x']] <- ends[['x']] + x.diff / off.e
-  ends[['yend']] <- ends.b[['y']] - y.diff / off.e
-  ends[['y']] <- ends[['y']] + y.diff / off.e
-  rbind(ends, child)
-}
-p.arr <-
-  do.call(rbind, lapply(split(p.all, p.all[c('type', 'grp')]), to_arrows))
-
-p2 <- ggplot(tris2) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  geom_segment(
-    data=subset(p.arr, ptype=='child'),
-    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
-    aes(x, y, xend=xend, yend=yend),
-    color='grey50'
-  ) +
-  geom_segment(
-    data=subset(p.arr, ptype=='ends'),
-    aes(x, y, xend=xend, yend=yend)
-  ) +
-  geom_point(
-    data=subset(p.all, ptype=='mid'),
-    aes(x, y, colour=I('#8da0cb')),
-    size=3
-  ) +
-  geom_point(
-    data=subset(p.all, ptype=='ends'),
-    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
-    shape=21, size=2
-  ) +
-  geom_point(
-    data=subset(p.all, ptype=='child'),
-    aes(x, y, colour=I('#fc8d62'))
-  ) +
-  facet_wrap(~type) +
-  coord_fixed() +
-  thm.blnk
-
-pdim <- gtable_dim(ggplotGrob(p2))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r square-vs-diamond-points, echo=FALSE}
-p2
-do.call(knitr::opts_chunk$set, old.opt)
-```
+<img src="index_files/figure-html/square-vs-diamond-points-1.png" width="649.92" style="display: block; margin: auto;" />
 
 # Action!
 
@@ -320,7 +127,7 @@ approximation errors in the right hand panel:
 <video id=mesh-anim-vec style='display: block; margin: 0 auto;' controls loop>
 <source
 static
-  src='/post/2020-01-11-mesh-red-vec_files/images/out-vec.mp4'
+  src='graphics/out-vec.mp4'
   type="video/mp4"
 />
 </video>
@@ -338,7 +145,8 @@ evaluated.  We'll focus on the second set of layers:
 represent the template tile.  These offsets are generated by `init_offsets`,
 which in _simplified_[^simplified-offsets] form is:
 
-```{r eval=FALSE}
+
+```r
 init_offsets <- function(i, j, n, layers) {
   o <- if(j == 'axis') offset.ax else offset.dg    # raw coords
   o <- o * 2^(i - 1)                               # scale
@@ -357,7 +165,8 @@ span.bgw-hend   { padding: .1em 0; color: #66c2a5;}
 span.bgw-hchild { padding: .1em 0; background-color: #fc8d62;}
 </style>
 
-```{r eval=FALSE}
+
+```r
 init_offsets(i=2, j='axis', n=16, layers=log2(16))
 ```
 <pre><code>     [,1] [,2] [,3] [,4] [,5]
@@ -366,7 +175,8 @@ init_offsets(i=2, j='axis', n=16, layers=log2(16))
 [3,]  <span class='bgw-hend'> 73   69 </span><span class='bgw-hmid'>  71 </span><span class='bgw-hchild'>  53   55 </span>
 [4,]  <span class='bgw-hend'> 69    1 </span><span class='bgw-hmid'>  35 </span><span class='bgw-hchild'>  19   53 </span>
 </code></pre>
-```{r eval=FALSE}
+
+```r
 init_offsets(i=2, j='diag', n=16, layers=log2(16))
 ```
 <pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
@@ -383,14 +193,16 @@ by simple arithmetic.  For example, adding one to a coordinate will move it up
 one row[^shift-with-care].  Adding `(n + 1)`, where `n <- nrow(map) - 1`, shifts
 coordinates by one column.  So in:
 
-```{r eval=FALSE}
+
+```r
 seq.r <- (seq_len(tile.n) - 1) * n / tile.n
 o <- rep(o, each=tile.n) + seq.r
 ```
 
 We first repeat the template tile four times, and then shift them by `seq.r`:
 
-```{r eval=FALSE}
+
+```r
 seq.r
 ```
 ```
@@ -400,7 +212,8 @@ seq.r
 Due to how we repeat `o` each value of `seq.r` will be recycled for every value
 of `o`.  The result is to copy the template tile to fill the column.  Similarly:
 
-```{r eval=FALSE}
+
+```r
 o <- rep(o, each=tile.n) + seq.r * (n + 1)
 ```
 
@@ -431,15 +244,7 @@ you can see in the animation the vectorized version "batches" many of them into
 single R-level calls to minimize the R interpreter overhead.  So yes, despite
 the `for` loops our code is very vectorized, and it shows up in the timings:
 
-```{r vec-timings, echo=FALSE}
-dat <- data.frame(Language=c('R-vec', 'JS', 'C'), Time=c(49.15,20.78,6.81))
-ggplot(dat) +
-  geom_col(aes(Language, Time)) +
-  geom_text(aes(Language, Time, label=Time), vjust=-.5) +
-  ylab('Time (ms)') +
-  ggtitle('RTIN Error Computation Benchmarks', subtitle='257x257 Grid Size') +
-  scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
-```
+<img src="index_files/figure-html/vec-timings-1.png" width="649.92" style="display: block; margin: auto;" />
 
 Now we're in business.  We're beating neither C nor JavaScript, but
 we're in the same conversation, and there is room to do better.  This
@@ -475,8 +280,9 @@ rationality be damned.
 Let's look back at our first vectorized implementation.  In particular at the
 child error carry over section at the end:
 
-```{r eval=FALSE}
-# Carry over child errors
+
+```r
+ # Carry over child errors
 err.val <- do.call(pmax, err.vals)
 err.ord <- order(err.val)
 errors[o.m[err.ord]] <- err.val[err.ord]
@@ -486,70 +292,8 @@ You'll notice a seemingly odd `order` call.  This is necessary because for the
 "Axis" tiles there is overlap between tiles.  Compare our earlier example with a
 single tile and then with the tile repeated to fill a column:
 
-```{r echo=FALSE}
-p.ax1 <- transform(p.ax, sgrp=1)
-p.ax2 <- rbind(transform(p.ax1, sgrp=2), transform(p.ax1, y=y + .5, sgrp=3))
-ax.lvl <- c('Axis Single', 'Axis Column')
 
-p.ax1[['type']] <- factor('Axis Single', levels=ax.lvl)
-p.ax2[['type']] <- factor('Axis Column', levels=ax.lvl)
-
-p.all2 <- rbind(p.ax1, p.ax2)
-p.all2[['grp']] <- (seq_len(nrow(p.all2)) - 1L) %% 4L
-
-p.arr <- do.call(
-  rbind, lapply(split(p.all2, p.all2[c('grp', 'sgrp')]), to_arrows)
-)
-
-tris3 <- subset(tris2, type == 'Axis')
-tris3[['type']] <- NULL
-
-p2 <- ggplot(tris3) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  geom_point(
-    data=data.frame(
-      x=.25, y=.5,
-      type=factor('Axis Column', levels=ax.lvl)
-    ), aes(x=x, y=y),
-    color='green', size=10
-  ) +
-  geom_segment(
-    data=subset(p.arr, ptype=='child'),
-    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
-    aes(x, y, xend=xend, yend=yend),
-    color='grey50'
-  ) +
-  geom_segment(
-    data=subset(p.arr, ptype=='ends'),
-    aes(x, y, xend=xend, yend=yend)
-  ) +
-  geom_point(
-    data=subset(p.all2, ptype=='mid'),
-    aes(x, y, colour=I('#8da0cb')),
-    size=3
-  ) +
-  geom_point(
-    data=subset(p.all2, ptype=='ends'),
-    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
-    shape=21, size=2
-  ) +
-  geom_point(
-    data=subset(p.all2, ptype=='child'),
-    aes(x, y, colour=I('#fc8d62'))
-  ) +
-  facet_wrap(~type) +
-  coord_fixed() +
-  thm.blnk
-
-pdim <- gtable_dim(ggplotGrob(p2))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r tile-overlap, echo=FALSE}
-p2
-do.call(knitr::opts_chunk$set, old.opt)
-```
+<img src="index_files/figure-html/tile-overlap-1.png" width="649.92" style="display: block; margin: auto;" />
 
 <span id='vec-inefficiency'></span>
 The midpoint highlighted in green is at the overlap of two tiles.  There are two
@@ -565,31 +309,8 @@ A potential improvement is to directly compute the midpoint locations.  As we
 can see here they are arranged in patterns that we should be able to compute
 without having to resort to tiling:
 
-```{r echo=FALSE}
-axis <- c(3, 7, 19, 23, 27, 39, 43, 55, 59, 63, 75, 79)
-diag <- c(11, 13, 15, 17) + rep(0:3, each=4) * 2 * 9
 
-p.ax3 <- transform(ids_to_df(axis, err), type='Axis', pcolor='#8da0cb')
-p.dg3 <- transform(ids_to_df(diag, err), type='Diagonal', pcolor='#8da0cb')
-
-p.all <- rbind(p.ax3, p.dg3)
-
-p2 <- ggplot(tris2) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  geom_point(data=p.all, aes(x, y), colour='#8da0cb', size=3) +
-  facet_wrap(~type) +
-  coord_fixed() +
-  thm.blnk
-
-pdim <- gtable_dim(ggplotGrob(p2))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r midpoints-2, echo=FALSE}
-p2
-do.call(knitr::opts_chunk$set, old.opt)
-```
+<img src="index_files/figure-html/midpoints-2-1.png" width="649.92" style="display: block; margin: auto;" />
 
 <!--
 Show the midpoints in a 9x9 grid, side by side for each type of point.
@@ -602,127 +323,8 @@ can use fixed offsets within each group.  For "Diagonal" the groups are
 bottom-left to top-right (A) and top-left to bottom-right (B), and for "Axis"
 vertical (A) and horizontal (B):
 
-```{r echo=FALSE}
-p.ax3.a <- cbind(subset(p.ax3, (x * 4) %% 2 == 0), subtype='A')
-p.ax3.b <- cbind(subset(p.ax3, (x * 4) %% 2 != 0), subtype='B')
 
-sw.x <- with(p.dg3, ((x * 8 - 1) / 2) %% 2 > 0)
-sw.y <- with(p.dg3, ((y * 8 - 1) / 2) %% 2 > 0)
-p.dg3.a <- cbind(subset(p.dg3, !xor(sw.x, sw.y)), subtype='A')
-p.dg3.b <- cbind(subset(p.dg3, xor(sw.x, sw.y)), subtype='B')
-
-s <- 1/8
-
-dat <- rbind(
-  transform(p.ax3.a, ptype='mid'),
-  transform(p.ax3.a, y=y+.25, ptype='end'),
-  transform(p.ax3.a, y=y-.25, ptype='end'),
-  transform(p.ax3.a, x=x+s, y=y+s, ptype='child'),
-  transform(p.ax3.a, x=x+s, y=y-s, ptype='child'),
-  transform(p.ax3.a, x=x-s, y=y-s, ptype='child'),
-  transform(p.ax3.a, x=x-s, y=y+s, ptype='child'),
-
-  transform(p.ax3.b, ptype='mid'),
-  transform(p.ax3.b, x=x+.25, ptype='end'),
-  transform(p.ax3.b, x=x-.25, ptype='end'),
-  transform(p.ax3.b, x=x+s, y=y+s, ptype='child'),
-  transform(p.ax3.b, x=x+s, y=y-s, ptype='child'),
-  transform(p.ax3.b, x=x-s, y=y-s, ptype='child'),
-  transform(p.ax3.b, x=x-s, y=y+s, ptype='child'),
-
-  transform(p.dg3.a, ptype='mid'),
-  transform(p.dg3.a, x=x+s, y=y+s, ptype='end'),
-  transform(p.dg3.a, x=x-s, y=y-s, ptype='end'),
-  transform(p.dg3.a, x=x+s, ptype='child'),
-  transform(p.dg3.a, y=y-s, ptype='child'),
-  transform(p.dg3.a, x=x-s, ptype='child'),
-  transform(p.dg3.a, y=y+s, ptype='child'),
-
-  transform(p.dg3.b, ptype='mid'),
-  transform(p.dg3.b, x=x+s, y=y-s, ptype='end'),
-  transform(p.dg3.b, x=x-s, y=y+s, ptype='end'),
-  transform(p.dg3.b, x=x+s, ptype='child'),
-  transform(p.dg3.b, y=y-s, ptype='child'),
-  transform(p.dg3.b, x=x-s, ptype='child'),
-  transform(p.dg3.b, y=y+s, ptype='child')
-)
-dat$pcolor <- as.character(dat$pcolor)
-dat[dat$ptype == 'child', 'pcolor'] <- '#fc8d62'
-dat[dat$ptype == 'end', 'pcolor'] <- '#66c2a5'
-dat <- transform(dat, pfill=pcolor, stringsAsFactors=FALSE)
-dat[dat$ptype == 'end', 'pfill'] <- 'grey90'
-dat[with(dat, x < 0 | x > 1 | y < 0 | y > 1), 'pfill'] <- 'grey90'
-psizes <- c(mid=3, child=2, mid=2)
-dat$psize <- psizes[dat$ptype]
-dat$id <- c(
-  rep(c(1:6, rep(1:6, 2), rep(1:6, 4)), 2),
-  rep(c(1:8, rep(1:8, 2), rep(1:8, 4)), 2)
-)
-dat.arrow <- do.call(
-  rbind,
-  lapply(
-    with(dat, split(dat, list(id, type, subtype))),
-    function(x) {
-      if(nrow(x)) {
-        mid <- x[1,c('x', 'y')]
-        cbind(
-          x[-(1:3), c('x', 'y', 'type', 'subtype', 'id')],
-          setNames(mid, c('xend', 'yend'))
-        )
-      }
-} ) )
-dat.hyp <- do.call(
-  rbind,
-  lapply(
-    with(dat, split(dat, list(id, type, subtype))),
-    function(x) {
-      if(nrow(x)) {
-        mid <- x[1,c('x', 'y')]
-        cbind(
-          x[2:3, c('x', 'y', 'type', 'subtype')],
-          setNames(mid, c('xend', 'yend'))
-        )
-      }
-} ) )
-dat.arrow <-
-  transform(dat.arrow, diag=ifelse(xend - x & yend - y, sqrt(2), 1))
-arrow.mult <- log2(nrow(err) - 1) * 13
-dat.arrow <- transform(
-  dat.arrow,
-  xend=xend - sign(xend - x) * 1 / (arrow.mult * diag),
-  yend=yend - sign(yend - y) * 1 / (arrow.mult * diag)
-)
-dat.arrow[['pltype']] <- with(dat.arrow,
-  ifelse(x < 0 | y < 0 | x > 1 | y > 1, 3, 1))
-
-p2 <- ggplot(tris2, aes(x, y)) +
-  geom_polygon(aes(group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, size=.5, shape=3, color='white') +
-  geom_segment(
-    data=dat.arrow,
-    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
-    aes(xend=xend, yend=yend, linetype=I(pltype)),
-    color='grey50'
-  ) +
-  geom_segment(
-    data=dat.hyp, aes(xend=xend, yend=yend)
-  ) +
-  geom_point(
-    data=dat, aes(size=I(psize), color=I(pcolor), fill=I(pfill)),
-    shape=21
-  ) +
-  facet_grid(subtype ~ type) +
-  coord_fixed() +
-  thm.blnk
-
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-pdim <- gtable_dim(ggplotGrob(p2), din=c(old.opt$fig.width, old.opt$fig.width))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r vec2-points-all, echo=FALSE}
-p2
-do.call(knitr::opts_chunk$set, old.opt)
-```
+<img src="index_files/figure-html/vec2-points-all-1.png" width="649.92" style="display: block; margin: auto;" />
 
 All is not perfect though: "Axis" is again a problem as the peripheral midpoints
 end up generating out-of-bounds children, shown as hollow points / dahsed arrows
@@ -731,77 +333,123 @@ requires separate treatment for the left/top/right/bottom periphery as well as
 the inner midpoints.  We need to handle far more corner cases than with the
 template approach which makes the code much [uglier][11].  It is also faster:
 
-```{r vec-timings-2, echo=FALSE}
-dat <- data.frame(Language=c('R-vec-2', 'JS', 'C'), Time=c(15.11,20.78,6.81))
-ggplot(dat) +
-  geom_col(aes(Language, Time)) +
-  geom_text(aes(Language, Time, label=Time), vjust=-.5) +
-  ylab('Time (ms)') +
-  ggtitle('RTIN Error Computation Benchmarks', subtitle='257x257 Grid Size') +
-  scale_y_continuous(expand = expand_scale(mult = c(0.05, .1)))
-```
+<img src="index_files/figure-html/vec-timings-2-1.png" width="649.92" style="display: block; margin: auto;" />
 
 And something remarkable happens as we increase grid sizes:
 
-```{r vec-timings-3, echo=FALSE, warning=FALSE}
-library(patchwork)
-times <- readRDS('../../static/data/rtini-data.RDS')
-names(times)[3] <- 'Language'
-
-p1 <- ggplot(
-  times,
-  aes(
-    x=factor(
-      ind, levels=as.character(sort(as.integer(as.character(unique(ind)))))
-    ),
-    y=values, color=Language
-  )
-) +
-  geom_point(position=position_dodge(width=.6), alpha=.5) +
-  ggtitle("Normal Scale") +
-  ylab('Seconds') +
-  xlab('Grid Size') +
-  scale_color_manual(values=c('#66c2a5','#fc8d62','#8da0cb')) +
-  NULL
-
-p2 <- ggplot(
-  times,
-  aes(
-    x=factor(
-      ind, levels=as.character(sort(as.integer(as.character(unique(ind)))))
-    ),
-    y=values, color=Language
-  )
-) +
-  geom_point(position=position_dodge(width=.6), alpha=.5) +
-  scale_y_log10() +
-  ggtitle("Log Scale") +
-  ylab('Seconds (log10)') +
-  xlab('Grid Size') +
-  scale_color_manual(values=c('#66c2a5','#fc8d62','#8da0cb')) +
-  NULL
-
-p1 + p2 + plot_layout(guides='collect') +
-  plot_annotation(title='RTIN Error Computation Benchmarks vs. Grid Size') &
-  theme(legend.position='bottom')
-```
+<img src="index_files/figure-html/vec-timings-3-1.png" width="649.92" style="display: block; margin: auto;" />
 
 The R implementation beats both the C and JS implementations by a factor of
 2-3x.  At the lower sizes the overhead of the R calls holds us back, but as the
 overall computations increase by `$N^2$`, the number of R calls only increase by
-`$log(N)$`.
+`$log(N)$`.  As the `$N^2$` term grows the vectorized algorithm
+benefits from requiring fewer steps to compute the midpoints, granted
+at the cost of implementation complexity.
 
-Another observation is that JS is faster than C at the largest
-grid sizes, even though the C implementation is almost identical to the
-JS one.  You can tell from the logged plot that it appears that JS has some more
-initial overhead, but the scaling rate is slower.  This might be because we use
-64-bit doubles in C so we can interface with R, whereas the JS version uses
-32-bit floats[^c-vs-js].
+It is also remarkable that JS does as well as C, perhaps with some
+more timing volatility due to the overhead of invoking [`V8`][12] via R
+and possibly JIT compilation.
+
+# Limits of Vectorization
+
+So far we have completely avoided discussion of the second part of the RTIN
+algorithm: extraction of approximate meshes subject to an error tolerance.  Here
+the R implementation does worse, but still impressively if we consider that the
+JavaScript version is JIT compiled into machine code:
+
+<img src="index_files/figure-html/vec-limits-1.png" width="649.92" style="display: block; margin: auto;" />
+
+On the 1025 x 1025 grid we tested JS is about as much faster at extracting the
+meshes (left) as R is at computing the errors (right).  How much this matters is
+a function of how many polygons you extract.  The full mesh as about 2MM
+polygons, but it looks good with few as ~150K polygons:
+
+<div style='background-color: red'>Low poly vs high poly<div>
+
+R is able to beat out JavaScript and even C in the error computation because the 
+RTIN algorithm is quite "inefficient"[^inefficient].  Watch it [in action][14]
+again and notice how many steps it takes to compute the location of the first
+point to compute the error at on a 5 x 5 grid.  Compare to how many steps we
+need with the [vectorized algorithm](#mesh-anim-vec) to compute every error on a
+much larger grid, _including_ child error carry over.  I would expect that if we
+implemented the R version of the algorithm in JavaScript the latter would be
+faster, assuming the JIT compilation can be as effective as it is with the RTIN
+algorithm.
+
+Even when algorithms can be fully internally[^int-vec] vectorized R works
+uphill because it is not possible to modify vectors in place.  For example, with
+three equal size large vectors `x`, `y`, and `z`, the operation:
+
+
+```r
+x <- x + y + z
+```
+
+Leads to the allocation of two new vectors: one for the result of `y + z`, one
+for the result of `x + (y + z)` which is then bound to `x`.  If `x` is large
+this means quite a bit of memory.  The more operations there are, the more
+temporary vectors we need.  In non-vectorized implementations, even those that
+don't modify the result in place, the temporary values can be scalars that
+perhaps even remain is register values until they are written to the final
+result vector.
+
+Thankfully modern super scalar systems are very good at computing serially on
+large contiguous blocks of memory, so the penalty from vectorized calculations
+due to the temporary vectors is low, and we can approach the performance of
+compiled languages for vectorizable algorithms.
+
 
 # Too Square
 
-You might have noticed by now that we've been cutting `volcano` off at the
-knees, and even inventing some of it.
+One advantage of directly computing the hypotenuse midpoint coordinates is that
+we are not limited to `$(2^k + 1)$` square elevation maps.  The vectorized R
+implementation supports any rectangular map with an odd number of points in both
+width and height.
+
+If you were looking closely at `volcano` in the [previous post][1] you might
+have noticed we chopped it off at the knees.  The R implementation can handle
+the entire surface:
+
+<div style='background-color: red'>Rayrender of volcano 65x65 vs full volcano at
+some specified tolerance</div>
+
+There is a significant limitation though: because the approximations are done
+within `$(2^k + 1)$` squares parts of the grid that do not fit nicely inside
+larger `$(2^k + 1)$` tiles will remain granular no matter how high we set the
+tolerance.  For example, for `volcano` this is the most approximate grid we
+could produce:
+
+
+<img src="index_files/figure-html/volcano-max-1.png" width="649.92" style="display: block; margin: auto;" />
+
+As we get closer to the top and right edges the largest triangle size we can use
+and still conform with the rest of the mesh becomes smaller and smaller.  If
+instead of 87 x 61 volcano was 97 x 65 then we would get a much better
+most-approximated mesh:
+
+
+<img src="index_files/figure-html/volcano-max-2-1.png" width="649.92" style="display: block; margin: auto;" />
+
+The best grids for the R implementation will be `$2^k + 1, n * 2^k + 1$`, and
+those that are `$m * 2^k + 1, n * 2^k + 1$` will be pretty good too.  So long as
+we are satisfied with maximum approximation to be `$2^k + 1$`, we can assemble
+any tiling of tiles that size into rectangles and we'll be assured to have self
+consistent extracted meshes.
+
+Either way, that the algorithm _works_ with a broad set of grid sizes, even with
+potentially varying levels of maximum approximation, is useful.  For example, we
+can use it on the 550 x 505 River Derwent DEM by just dropping 1 row:
+
+<div style='background-color: red'>video</div>
+
+The uneven approximation along the edges only becomes obvious at extreme
+tolerance levels we would be unlikely to use in reality.
+
+# Trade-offs
+
+In exchange for more complex vectorized code, we get faster and more flexible
+RTIN error computation.  But the error computation is only half the story.  We
+must also extract the mesh for any given tolerance.  Here, it is
 
 # Conclusions
 
@@ -814,6 +462,7 @@ knees, and even inventing some of it.
 ## Acknowledgments
 
 * patchwork
+* ambient
 * rgl
 * rayrender
 * Agafonkin
@@ -826,10 +475,87 @@ knees, and even inventing some of it.
 
 ## Session Info
 
-```{r child='../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
-```
+
+
+<!--
+  Flipbook HTML template, intended to be copied for use in actual instantiated
+  flipbooks
+
+  DO NOT INDENT!! Otherwise pandoc will think it is markdown code.
+-->
+<div id='bg-flipbook-template' style='display: none;'>
+<div id='bg-flipbook-images' style='display: none'></div>
+<div
+  id='bg-flipbook-container'
+  style='margin: auto; display: inline-block; max-width: 98%;'
+>
+<canvas
+  id='bg-flipbook-flipbook'
+  style='display: block; max-width: 100%;'
+>
+This is an HTML Canvas flipbook that displays key frames of an animation in a
+more controllable manner than in a video player.  If you are reading this text
+your browser does not support HTML Canvas.
+</canvas>
+<!--
+We have to use a P block here as otherwise pandoc adds a P block for the
+inline elements
+-->
+<p style='margin-top: 5px; margin-bottom: 0px; text-align: initial;'>
+<input
+  id='bg-flipbook-help' type='button' value='?' style='font-size: 18px;'
+  title='Display help overlay'
+/>
+<input
+  id='bg-flipbook-play' type='button' value='&#x25b6;' style='font-size: 18px;'
+  title='Play/Pause'
+/>
+<input
+  id='bg-flipbook-stop' type='button' value='&#x25a0;' style='font-size: 18px;'
+  title='Stop and Reset'
+/>
+&nbsp;
+<input
+  id='bg-flipbook-step-b' type='button' value='&#x21E4;' style='font-size: 18px;'
+  title='Step Backwards'
+/>
+<input
+  id='bg-flipbook-step-f' type='button' value='&#x21E5;' style='font-size: 18px;'
+  title='Step Forwards'
+/>
+&nbsp;
+FPS:
+<input
+  id='bg-flipbook-fps' type='text'
+  style='width: 3ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  title='Set Playback Rate' value=3
+/>
+<span id=bg-flipbook-frame-span>
+&nbsp;
+#:
+<input
+  id='bg-flipbook-frame'
+  type='text'
+  style='width: 2.5ex; font-size: 18px; text-align: right; min-height: 0;
+  line-height: 1; padding: 0;'
+  value=1
+  title='(Jump to) frame #'
+/> / <span id='bg-flipbook-frame-n'></span>
+&nbsp;
+<label title='Loop-play'>
+  <span
+    id='bg-flipbook-loop-ind'
+    style='font-size: 1.3em; font-weight: bold;'>&#x293E;</span>:
+  <input id='bg-flipbook-loop' value=1 type='checkbox' />
+</label>
+</span>
+</p>
+</div>
+</div>
+<script type='text/javascript' src='/script/_lib/flipbook/flipbook.js'></script>
 <script type='text/javascript'>
-const imgDir = '/post/2020-01-11-mesh-red-vec_files/images/flipbook-vec/';
+const imgDir = 'graphics/flipbook-vec/';
 const fps = 4;
 new BgFlipBook({
   targetId: 'flipbook-vec', imgDir: imgDir,
@@ -846,6 +572,9 @@ new BgFlipBook({
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
 [10]: https://twitter.com/BrodieGaslam/status/1166885035489804289?s=20
 [11]: https://github.com/brodieG/rtini/blob/v0.1.0/R/error.R#L98
+[12]: https://cran.r-project.org/package=V8
+[13]: https://github.com/brodieG/rtini/blob/v0.1.0/R/extract.R#L51
+[14]: 2020/01/27/mesh-reduction-1/#flipbook1
 
 [^step-count]: We're under-counting as the calls used in the vectorized version
   end to be more complex, and we also have `init_offsets` that hides some calls.
@@ -877,6 +606,8 @@ new BgFlipBook({
   the end is only required for "Axis" tiles, and can be skipped for the first
   layer altogether as in that layer "Axis" tiles have no children (this is also
   the largest layer so there is a big gain from skipping it).
-[^c-vs-js]: Or it could be any other number of things, I'm guessing and can't be
-  bothered testing this with a stand-alone implementation.
+[^inefficent]: I use quotes here because the inefficiency isn't necessarily
+  bad.  The RTIN algorithm handles many corner cases gracefully by virtue of how
+  it computes the triangle hypotenuse midpoints, and it is efficient enough to
+  be useful.
 
