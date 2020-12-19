@@ -637,8 +637,8 @@ mesh_skirt <- function(
   }
   mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo, vcolor, flip=TRUE)
   mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo, vcolor)
-  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo, vcolor, flip=TRUE)
-  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo, vcolor)
+  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo, vcolor)
+  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo, vcolor, flip=TRUE)
 
   # Need to reorder cols due to y/z confusion from whence the code came
   coli <- if(!is.null(vcolor)) 4:6

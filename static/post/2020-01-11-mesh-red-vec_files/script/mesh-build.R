@@ -34,7 +34,7 @@ build_der_mesh <- function(map, err, tol, file=tempfile()) {
   if(!all(ccw)) stop('bad triangle winding')
 
   # Add color depending on Z value
-  pos.col <- c(col2rgb('lightgreen') / 255)
+  pos.col <- c(col2rgb('lightgreen') / 255) * c(1, 1, .8) * .8
   neg.col <- c(col2rgb('grey95') / 255)
   mesh0 <- xyz_to_mesh(xyz)
   mesh1 <- mesh_skirt(mesh0, vcolor=NULL)
