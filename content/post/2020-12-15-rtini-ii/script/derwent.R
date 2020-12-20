@@ -4,7 +4,7 @@ source('static/script/_lib/plot.R')
 library(rayrender)
 library(ambient)    # for water patterns
 
-eltif <- raster::raster("~/Downloads/dem_01.tif")
+eltif <- raster::raster("D:Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 der <- elmat1[-1,]
@@ -155,9 +155,9 @@ xyz <- mesh.dat$xyz
 
 xang <- 80
 xw <- diff(range(xyz$x)) * .999
-zw <- .999
+zw <- diff(range(xyz$y)) * .999
 ymin <- min(xyz$z)
-cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
+cxy <- expand.grid(x=seq_len(nrow(m)),y=seq_len(ncol(m)))
 
 # Camera Path, will be decomposed in move-in-out of starting point along with
 # rotation of the object.
@@ -262,7 +262,7 @@ for(i in c(step.i)) { # c(step.i)) {
   ref <- 1.33
   water <- dielectric( # color='#E0F5FF',
     refraction=ref,
-    bump_texture=matrix(amb, nrow(der), ncol(der)),
+    bump_texture=matrix(amb, nrow(m), ncol(m)),
     bump_intensity=3,
     attenuation=att
   )
@@ -292,7 +292,7 @@ for(i in c(step.i)) { # c(step.i)) {
   )
   # Assemble scene
   scene <- dplyr::bind_rows(
-    sphere(y=5, z=3, x=2, radius=1, material=light(intensity=30)),
+    sphere(y=5, z=3, x=2, radius=1, material=light(intensity=25)),
     group_objects(
       obj_model(
         meshes[match(tol.break.w[ti], tol.break.wu)], vertex_colors=TRUE
@@ -309,9 +309,10 @@ for(i in c(step.i)) { # c(step.i)) {
       material=diffuse('deepskyblue'), flipped=TRUE,
       angle=c(25, 0, 0)
     ),
+    # cube(scale=.2, y=.3),
     # generate_studio(
     #   material=light(intensity=1, importance_sample=FALSE),
-    #   width=6, height=6, distance=-5
+    #   width=8, height=6, distance=-5
     # )
   )
   render_scene(
@@ -320,7 +321,9 @@ for(i in c(step.i)) { # c(step.i)) {
     fov=fovs[i],
     # width=800, height=800, samples=100,
     # width=1200, height=1200, samples=400,
-    width=600, height=600, samples=20,
+    # width=720, height=720, samples=100,
+    # width=400, height=400, samples=20,
+    width=800, height=800, samples=200,
     # width=400, height=400, samples=25,
     lookat=la[,i],
     lookfrom=lf[,i],
@@ -328,44 +331,10 @@ for(i in c(step.i)) { # c(step.i)) {
     aperture=0,
     clamp_value=5,
     # debug_channel='normals',
-    filename=next_file('~/Downloads/derwent/vmov-6/img-001.png')
-    # filename=sprintf('~/Downloads/derwent/vmov-5/img-%03d.png', i)
-    # filename=next_file('~/Downloads/derwent/v1/img-000.png')
+    filename=sprintf('D:Downloads/rtini/v4/img-%03d.png', i)
+    # filename=next_file('D:Downloads/rtini/v4/img-001.png')
   )
 }
 # unlink(mesh.dir, recursive=TRUE)
 stop('done render')
 
-# - Perlin Experiments ---------------------------------------------------------
-
-steps <- 360
-angs <- seq(0, 360, length.out=steps + 1)
-hzs <- c(.2, .1, .05, .025)
-for(j in seq_len(steps)) {
-  png(next_file('~/Downloads/derwent/perlin3/img-000.png'))
-  par(mai=numeric(4))
-  i <- ang <- angs[j]
-  cxy <- expand.grid(x=seq_len(nrow(der)),y=seq_len(ncol(der)))
-  # fbase <- 0.05
-  # fbase <- hzs[j]
-  fbase <- .025
-  amb <- gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase, seed = 1) +
-    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 2, seed = 2)/2 +
-    gen_simplex(cxy[,1],cxy[,2],z=i, frequency = fbase * 4, seed = 3)/4 +
-    0
-
-  amb <- (amb - min(amb)) / diff(range(amb))
-  plot(as.raster(array(amb, dim=dim(der))))
-  dev.off()
-}
-stop()
-x <- list.files('~/Downloads/derwent/perlin3', pattern='^img', full.names=TRUE)
-file.copy(
-  x[c(-1,-length(x))],
-  file.path(
-    dirname(x[[1]]),
-    sprintf("img-%03d.png", rev(seq_len(length(x) - 2) + length(x)))
-  )
-)
-
-file.copy(a, b)
