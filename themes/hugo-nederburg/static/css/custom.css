@@ -20,6 +20,7 @@ Tracks is distributed under the terms of the GNU GPL
   --bgw-post-width: 675px;
   --bgw-excerpt-width: 800px;
   --bgw-inset-width: 250px;
+  --bgw-excerpt-img-width: 250px;
   --bgw-inset-width-small: 200px;
   --bgw-inset-width-margin: 15px;
 }
@@ -2837,7 +2838,7 @@ code {
     }
     .excerpt-container {
       min-height: 250px;
-      width: 65%;
+      width: calc(var(--bgw-excerpt-width) - var(--bgw-excerpt-img-width));
       padding: 0 3%;
     }
     .excerpt {
@@ -2857,8 +2858,8 @@ code {
       -webkit-transform: translateZ(0);
               transform: translateZ(0);
       /* fixes FF glitch where image focuses & unfocuses */
-      width: 35%;
-      width: calc(35% + 2px);
+      width: var(--bgw-excerpt-img-width);
+      /*width: calc(250px + 2px);*/
       height: 100%;
       padding-bottom: 0;
       position: absolute;
