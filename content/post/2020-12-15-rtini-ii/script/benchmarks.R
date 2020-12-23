@@ -154,13 +154,30 @@ p2 <- ggplot(err.time) +
     axis.title.y=element_blank(), axis.text.y=element_blank(),
     axis.ticks.y=element_blank()
   )
-
-
 library(patchwork)
 p1 + p2 + plot_layout(guides='collect') +
   plot_annotation(title='RTIN Mesh Extraction vs. Poly Count') &
   theme(legend.position='bottom') &
   plot_layout(widths=c(3,1))
+
+stop()
+
+f <- tempfile()
+xx <- build_der_mesh(m, err, tol=10, f)
+
+library(rayrender)
+render_scene(
+  fov=18,
+  width=800, height=800,
+  samples=10,
+  group_objects(
+    obj_model(f, vertex_colors=TRUE),
+    # obj_model(meshes[length(meshes)], vertex_colors=TRUE),
+    pivot_point=numeric(3), group_angle=c(90, 0, 180),
+    group_order_rotation=c(3, 1, 2),
+  ),
+  lookfrom=c(0,3,2)
+)
 
 
 
