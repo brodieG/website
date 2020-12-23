@@ -1,17 +1,18 @@
 ---
-title: "Rtini Part 2: Let's Vectorize the $#!+ Out of It"
+title: "Rtini Part II: Vectorize the Absolute $#!+ Out of This"
 author: ~
 date: '2020-12-15'
 slug: mesh-red-vec
-categories: []
-tags: []
-image: /front-img/default.png
-imagerect: ~
+categories: [R]
+tags: [algorithms,viz]
+image: /2020/12/15/mesh-red-vec/graphics/fov-single-lo.jpg
+imagerect: /2020/12/15/mesh-red-vec/graphics/fov-twin-banner.jpg
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
 contenttype: article
-description: Front page summary
+description: Implementing an internally vectorized version of the RTIN
+  mesh-reduction algorithm for R.
 output:
   blogdown::html_page:
     keep_md: true
@@ -33,37 +34,44 @@ thm.blnk <- list(
 )
 ```
 
+_Last year's [RTINI Part I][1] post introduces the RTIN mesh approximation
+algorithm.  In this post we vectorize the algorithm so that it may be efficient
+in R.  Reading [Part I][1] will help to understand this post._
+
 # Vectorize The Absolute $#!+ Out Of This
 
 <img
-  id='front-img' src='/front-img/default.png'
-  class='post-inset-image'
+  id='front-img'
+  src='graphics/fov-single-lo-small.jpg'
+  data-src-big='graphics/fov-single-lo.jpg'
+  data-caption='Low Polygon Rendition of River Derwent DEM'
+  class='post-inset-image bgw-zoom-img'
 />
 
 I wish I could tell you that I carefully figured out all the intricacies of the
-algorithm before I set off on my initial vectorization attempt, that I didn't
-waste hours going cross-eyed at triangles poorly drawn on scraps of paper, and
-that I didn't produce algorithms which closer inspection showed to be [laughably
-incorrect][10].  Instead I'll have to be content with telling you that I did get
-this to work eventually.  A victory that had it wasted lives like it wasted my
-time would supplant those of Pyrrhus in the history books[^grandiloquence].
+RTIN algorithm before I set off on my initial vectorization attempt, that I
+didn't waste hours going cross-eyed at triangles poorly drawn on scraps of
+paper, and that I didn't produce algorithms which closer inspection showed to be
+[laughably incorrect][10].  Instead I'll have to be content with telling you
+that I did get this to work eventually.
 
-> Last year's [Part I][1] of this series introduces the RTIN mesh approximation
-> algorithm.  This post assumes familiarity with the prior post.
-
-While I was generally aware that there is more to the problem than generating
-equal sized triangles, I underestimated the degrees of freedom available and
-wasted quite a bit of time going in circles as a result.
+It turns out that that truly understanding an algorithm you're trying to
+re-implement is fairly important.  Who woulda thunk?
 
 # Some Triangles Are More Equal Than Others
 
-There are eight different triangle orientations, split into two groups of four.
-The groups alternate between approximation levels.  Here we show the
-orientations for the 2nd and 3rd most granular levels of a 9 x 9
-grid[^nine-nine].  The triangles are colored by orientation.  For reasons that
-will become clearer later we call the group with diagonal hypotenuses
-"Diagonal", and the one with vertical/horizontal ones "Axis":<span
-id='sqr-vs-dia'></span>
+The root cause of my early failures at re-implementing [&commat;mourner's
+`martini`][6] is that there are more different types of triangles than is
+obvious at first glance.  They are all isoceles right angled
+triangles, but there are eight possible orientations **and** each
+orientation is only valid at specific locations in the mesh.
+
+The orientations can be split into two groups of four, with the groups
+alternating between approximation levels.  Here we show the orientations for the
+2nd and 3rd most granular levels of a 9 x 9 grid[^nine-nine].  The triangles are
+colored by orientation.  Because we're very imaginative we'll call the group
+diagonal hypotenuses "Diagonal", and the one with vertical/horizontal ones
+"Axis":<span id='sqr-vs-dia'></span>
 
 ```{r echo=FALSE}
 source('../../../static/script/_lib/plot.R')
@@ -108,14 +116,13 @@ p
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
-The "Diagonal" triangulation, the one with vertical and horizontal hypotenuses,
-has just one tiling pattern.  A particular triangle "shape" (a specific color in
-the plot above) must always be arranged in the same way relative to the other
-shapes that share the vertex opposite their hypotenuses.  Any other arrangement
-would prevent us from fully tiling the grid without breaking up triangles.
+The "Axis" triangulation, the one with vertical and horizontal hypotenuses, has
+just one tiling pattern.  A particular triangle "shape" (a specific color in the
+plot above) must always be arranged in the same way relative to the other shapes
+that share the vertex opposite their hypotenuses.  Any other arrangement would
+prevent us from fully tiling the grid without breaking up triangles.
 
-On the other hand the "Axis" triangulation, the one with the diagonal
-hypotenuses, has multiple possible tilings:
+On the other hand the "Diagonal" triangulation, has multiple possible tilings:
 
 ```{r fig.width=9, echo=FALSE}
   # should have used the offsets for this, but we hadn't written that yet.
@@ -227,10 +234,10 @@ errors.  One nice benefit of the tessellating pattern is that if we define the
 parent-child relationship for the simple tile, we can copy that relationship
 along with the rest of the tile.  In fact, we don't actually care about the
 triangles.  What we actually want are the hypotenuses (black), their midpoints
-(<span style='background-color: #8da0cb'>lavender</span>) and endpoints(hollow
-<span style='color: #66c2a5'>green</span> ), and the corresponding child
-hypotenuse midpoints (<span style='background-color: #fc8d62'>orange</span>).
-The parent/child relation is shown with the arrows:
+(<span id=lavender style='background-color: #8da0cb'>lavender</span>) and
+endpoints(hollow <span style='color: #66c2a5'>green</span> ), and the
+corresponding child hypotenuse midpoints (<span style='background-color:
+#fc8d62'>orange</span>).  The parent/child relation is shown with the arrows:
 
 ```{r echo=FALSE}
 p.dg <- ids_to_df(c(offset.dg[,1,] * 9 + offset.dg[,2,] + 1), matrix(0,9,9))
@@ -320,7 +327,7 @@ Great, we have a concept for how we might parallelize the computation of
 critical coordinates, but how exactly do we do this in an efficiently vectorized
 manner?  There are likely many ways, but what we'll do is use "linearized"
 indices into the matrix.  These indices treat the matrix as if it were a vector.
-The first step is to generate the base tile, which we will do with
+The first step is to generate the template tile, which we will do with
 `init_offsets`, presented here in simplified form[^simplified-offsets]:
 
 ```{r eval=FALSE}
@@ -334,37 +341,9 @@ init_offsets <- function(i, j, n, layers) {
 `offset.ax` and `offset.dg` are arrays that contain manually computed x/y
 coordinates for each of the points in the template tile.  `init_offsets` scales
 those to the appropriate size for the layer and collapses them to "linearized"
-coordinates[^linearized]<span id=linearized></span>:
-
-<!-- really shouldn't be doing these inline styles... -->
-<style>
-span.bgw-hmid   { padding: .1em 0; background-color: #8da0cb;}
-span.bgw-hend   { padding: .1em 0; color: #66c2a5;}
-span.bgw-hchild { padding: .1em 0; background-color: #fc8d62;}
-</style>
-
-```{r eval=FALSE}
-init_offsets(i=1, j='diag', n=8, layers=log2(8))
-```
-<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
-[1,] <span class='bgw-hend'>   1   21 </span><span class='bgw-hmid'>  11 </span><span class='bgw-hchild'> 20   10    2   12 </span>
-[2,] <span class='bgw-hend'>   5   21 </span><span class='bgw-hmid'>  13 </span><span class='bgw-hchild'> 22   14   12    4 </span>
-[3,] <span class='bgw-hend'>  21   37 </span><span class='bgw-hmid'>  29 </span><span class='bgw-hchild'> 38   30   28   20 </span>
-[4,] <span class='bgw-hend'>  21   41 </span><span class='bgw-hmid'>  31 </span><span class='bgw-hchild'> 40   30   22   32 </span>
-</code></pre>
-<!--
-```{r eval=FALSE}
-init_offsets(i=2, j='axis', n=8, layers=log2(8))
-```
-<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
-[1,] <span class='bgw-hend'>   1    5 </span><span class='bgw-hmid'>   3 </span><span class='bgw-hchild'>  13   11 </span>
-[2,] <span class='bgw-hend'>   5   41 </span><span class='bgw-hmid'>  23 </span><span class='bgw-hchild'>  31   13 </span>
-[3,] <span class='bgw-hend'>  41   37 </span><span class='bgw-hmid'>  39 </span><span class='bgw-hchild'>  29   31 </span>
-[4,] <span class='bgw-hend'>  37    1 </span><span class='bgw-hmid'>  19 </span><span class='bgw-hchild'>  11   29 </span>
-</code></pre>
--->
-We annotate the original map with the "linearized" coordinates to better see the
-relationship:
+coordinates[^linearized]<span id=linearized></span>.  Here is the "Diagonals"
+map with the grid points labeled with their "linearized" coordinates and the key
+points of the template tile in the same colors as [previously](#lavender):
 
 ```{r echo=FALSE}
 n <- 8
@@ -388,16 +367,6 @@ p2a <- ggplot(subset(tris2, type == 'Diagonal')) +
   geom_point(
     data=points,
     aes(x=x, y=y), size=1, shape=3, color='white') +
-  # geom_segment(
-  #   data=subset(p.arr, ptype=='child'),
-  #   arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
-  #   aes(x, y, xend=xend, yend=yend),
-  #   color='grey50'
-  # ) +
-  # geom_segment(
-  #   data=subset(p.arr, ptype=='ends'),
-  #   aes(x, y, xend=xend, yend=yend)
-  # ) +
   geom_point(
     data=subset(p.all, ptype=='mid' & type == 'Diagonal'),
     aes(x, y, colour=I('#8da0cb')),
@@ -429,6 +398,96 @@ p2a
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
+`init_offsets` produces the coordinates for the template tile:
+
+<!-- really shouldn't be doing these inline styles... -->
+<style>
+span.bgw-hmid   { padding: .1em 0; background-color: #8da0cb;}
+span.bgw-hend   { padding: .1em 0; color: #66c2a5;}
+span.bgw-hchild { padding: .1em 0; background-color: #fc8d62;}
+</style>
+
+```{r eval=FALSE}
+n <- nrow(map)
+init_offsets(i=1, j='diag', n=(n - 1), layers=log2(n - 1))
+```
+<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
+[1,] <span class='bgw-hend'>   1   21 </span><span class='bgw-hmid'>  11 </span><span class='bgw-hchild'> 20   10    2   12 </span>
+[2,] <span class='bgw-hend'>   5   21 </span><span class='bgw-hmid'>  13 </span><span class='bgw-hchild'> 22   14   12    4 </span>
+[3,] <span class='bgw-hend'>  21   37 </span><span class='bgw-hmid'>  29 </span><span class='bgw-hchild'> 38   30   28   20 </span>
+[4,] <span class='bgw-hend'>  21   41 </span><span class='bgw-hmid'>  31 </span><span class='bgw-hchild'> 40   30   22   32 </span>
+</code></pre>
+<!--
+```{r eval=FALSE}
+init_offsets(i=2, j='axis', n=8, layers=log2(8))
+```
+<pre><code>     [,1] [,2] [,3] [,4] [,5] [,6] [,7]
+[1,] <span class='bgw-hend'>   1    5 </span><span class='bgw-hmid'>   3 </span><span class='bgw-hchild'>  13   11 </span>
+[2,] <span class='bgw-hend'>   5   41 </span><span class='bgw-hmid'>  23 </span><span class='bgw-hchild'>  31   13 </span>
+[3,] <span class='bgw-hend'>  41   37 </span><span class='bgw-hmid'>  39 </span><span class='bgw-hchild'>  29   31 </span>
+[4,] <span class='bgw-hend'>  37    1 </span><span class='bgw-hmid'>  19 </span><span class='bgw-hchild'>  11   29 </span>
+</code></pre>
+-->
+
+We can shift "linearized" coordinates, by simple arithmetic.  For example,
+adding one to a coordinate will move it up one row[^shift-with-care].  Adding
+`nrow(map)` will shift the coordinates by one column.  So for example:
+
+```{r eval=FALSE}
+init_offsets(i=1, j='diag', n=n - 1, layers=log2(8)) + 4 + 4 * n
+```
+
+Would shift the template four rows and four columns to produce:
+
+```{r echo=FALSE}
+o.d.2 <-
+  init_offsets(i=1, j='diag', n=8, layers=log2(8)) + 4 + 4 * 9
+
+lin.to.xy.all <- transform(lin.to.xy, type='Diagonal', important=i %in% o.d.2)
+lin.to.xy.all <- transform(
+  lin.to.xy.all, color=ifelse(important, 'grey10', 'grey50'),
+  type=factor(type, levels=c('Diagonal', 'Axis')),
+  size=ifelse(important, 3, 2)
+)
+off <- .5
+p2b <- ggplot(subset(tris2, type == 'Diagonal')) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
+  geom_point(
+    data=points,
+    aes(x=x, y=y), size=1, shape=3, color='white') +
+  geom_point(
+    data=subset(p.all, ptype=='mid' & type == 'Diagonal'),
+    aes(x + off, y + off, colour=I('#8da0cb')),
+    size=6
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='ends' & type == 'Diagonal'),
+    aes(x + off, y + off, colour=I('#66c2a5'), fill='grey90'),
+    shape=21, size=4
+  ) +
+  geom_point(
+    data=subset(p.all, ptype=='child' & type == 'Diagonal'),
+    aes(x + off, y + off, colour=I('#fc8d62')), size=4
+  ) +
+  geom_text(
+    data=subset(lin.to.xy.all, type == 'Diagonal'),
+    aes(x=y/n, y=x/n, label=i, color=I(color), size=I(size))
+  ) +
+  facet_wrap(~type) +
+  # coord_fixed(xlim=c(0, .5), y=c(0, .5)) +
+  # coord_fixed() +
+  thm.blnk
+pdim <- gtable_dim(ggplotGrob(p2a))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r square-vs-diamond-points-3, echo=FALSE}
+p2b
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+Tiling is then just a matter of copying and shifting the template tile.
+
 # Action!
 
 Let's look at this in action with the next grid size up for effect.  As we did
@@ -444,8 +503,6 @@ static
 />
 </video>
 
-
-
 For each "layer", we start with a repeatable template sized to the layer.  We
 then fill a column with it, then the rest of the surface, and finally we compute
 errors.  Here is the same thing as a flipbook with code so we can see how it's
@@ -457,18 +514,18 @@ layers:
 
 `o`, as shown in the first frame[^first-frame] contains the offsets that
 represent the template tile.  These offsets are generated by `init_offsets`,
-which in simplified form is:
+which we [reviewed earlier](#now-just-tile-the-rest-of-the-ing-map).
 
-We can shift "linearized" coordinates, by simple arithmetic.  For example,
-adding one to a coordinate will move it up one row[^shift-with-care].  Adding
-`(n + 1)`, where `n <- nrow(map) - 1`, shifts coordinates by one column.  So in:
+Since the tile coordinates are linearized we can shift them by repeating the
+template while adding different offsets to each repeat:
 
 ```{r eval=FALSE}
 seq.r <- (seq_len(tile.n) - 1) * n / tile.n
 o <- rep(o, each=tile.n) + seq.r
 ```
 
-We first repeat the template tile four times, and then shift them by `seq.r`:
+We first repeat the template tile four times (`tile.n`), and then shift them by
+`seq.r`:
 
 ```{r eval=FALSE}
 seq.r
@@ -478,13 +535,12 @@ seq.r
 ```
 
 Due to how we repeat `o` each value of `seq.r` will be recycled for every value
-of `o`.  The result is to copy the template tile to fill the column.  Similarly:
+of `o`.  The result is to copy the template tile to fill the column.  Similarly
+we can fill the rest of the surface by repeating and shifting the column::
 
 ```{r eval=FALSE}
 o <- rep(o, each=tile.n) + seq.r * (n + 1)
 ```
-
-Will fill the rest of the surface by repeating and shifting the column.
 
 The points are arranged by type in the original offset list so we can easily
 subset for a particular type of point from the repeated tile set.  This is
@@ -539,10 +595,10 @@ p2 <- p1 + scale_y_log10() + ggtitle("Log Scale") +
 ```
 
 The code as shown ("R-vec") is about twice as slow as JavaScript, but fifty
-times faster than the R transliteration of the RTIN!  With some additional
-optimizations [I won't bore you with](#follies-in-optimization) ("R-vec-2") we
-get to beat out JavaScript.  And something remarkable happens as we increase
-grid sizes:
+times faster than the R transliteration of the RTIN algorithm!  With some
+additional optimizations [I won't bore you with](#follies-in-optimization)
+("R-vec-2") we get to beat out JavaScript.  And something remarkable happens as
+we increase grid sizes:
 
 ```{r vec-timings-3, echo=FALSE, warning=FALSE}
 times <- readRDS('data/bench.RDS')
@@ -604,12 +660,12 @@ p1 + p2 + plot_layout(guides='collect') +
 
 ```
 
-The R implementation ("R-vec-2" from the previous chart) beats both the C and JS
-implementations by a factor of 2-3x.  At the lower sizes the overhead of the R
-calls holds us back, but as the overall computations increase by `$N^2$`, the
-number of R calls only increase by `$log(N)$`.  As the `$N^2$` term grows the
-vectorized algorithm benefits from requiring fewer steps to compute the
-midpoints.
+The optimized R implementation ("R-vec-2" from the previous chart) beats both
+the C and JS implementations by a factor of 2-3x.  At the lower sizes the
+overhead of the R calls holds us back, but as the overall computations increase
+by `$N^2$`, the number of R calls only increase by `$log(N)$`.  As the `$N^2$`
+term grows the vectorized algorithm benefits from requiring fewer steps to
+compute the midpoints.
 
 It is also remarkable that JS does as well as C, perhaps with some
 more timing volatility due to the overhead of invoking [`V8`][12] via R
@@ -627,6 +683,45 @@ To achieve 2. we resorted to carefully structured seed data, and repeated it
 either explicitly or implicitly with vector recycling.  We did this both for the
 actual data, as well as for the indices we used to subset the data for use in
 the vectorized operations.
+
+# Too Square
+
+One advantage of directly computing the hypotenuse midpoint coordinates is that
+we are not limited to `$(2^k + 1)$` square elevation maps.  With a little extra
+work we can make the vectorized R implementation support any rectangular map
+with an odd number of points in both width and height.  The ["R-vec-2"
+implementation][11] does exactly that.  This allows us to render the 550 x 505
+River Derwent DEM by dropping just one row:
+
+<video 
+  id=derwent-vid style='display: block; margin: 0 auto;' controls loop
+  alt='3D rendering of the Derwent with some sea level rise and varying levels
+  of mesh approximation'
+>
+<source
+static
+  src='graphics/derwent-spin.mp4'
+  type="video/mp4"
+/>
+</video>
+
+The closest dimensions available to the original algorithm are 257 x 257 or 513
+x 513, so this is a pretty good feature.  A
+[limitation](#grid-flexibility-limitations) is that the full range of
+approximation is only available for the `$2^k + 1$` grids the original
+algorithm supports, but there are many useful cases where this doesn't matter.
+The best example is stitching together `$2^k + 1$` tiles into a larger map that
+does not conform to `$2^k +1$`.  The most approximate view will be to resolve
+each tile to two triangles, but there should be no need to go more approximate
+than that.  In exchange you get a larger map with more flexible dimensions that
+has no inconsistencies at the boundaries, such as this one:
+
+<div class='bgw-wide-window'>
+<figure>
+<img src='graphics/kalei-wide.jpg' style='max-width: 900px;'/>
+<figcaption>River Derwent DEM, Low Polygon Count, Kaleidoscope Style.</figcaption>
+</figure>
+</div>
 
 # Limits of Vectorization
 
@@ -662,10 +757,31 @@ p1 + p2 + plot_layout(guides='collect') +
 
 On the 1025 x 1025 grid we tested JS is about as much faster at extracting the
 meshes (left) as R is at computing the errors (right).  How much this matters is
-a function of how many polygons you extract.  The full mesh as about 2MM
+a function of how many polygons you extract.  The full mesh contains about 2MM
 polygons, but it looks good with few as ~150K polygons:
 
-<div style='background-color: red'>Low poly vs high poly</div>
+```{=html}
+<div class=bgw-wide-window>
+<span class=bgw-img-wrap-frame><figure><img
+  class='bgw-img-wrap-panel bgw-zoom-img'
+  src=graphics/lo-poly-small.jpg
+  data-src-big=graphics/lo-poly.jpg
+  style='width: 300px;'
+/><figcaption
+>~4K Polygons</figcaption></figure><figure><img
+  class='bgw-img-wrap-panel bgw-zoom-img'
+  src=graphics/mid-poly-small.jpg
+  data-src-big=graphics/mid-poly.jpg
+  style='width: 300px;'
+/><figcaption
+>~225K Polygons</figcaption></figure><figure><img
+  class='bgw-img-wrap-panel bgw-zoom-img'
+  src=graphics/hi-poly-small.jpg
+  data-src-big=graphics/hi-poly.jpg
+  style='width: 300px;'
+/><figcaption
+>~1,100K Polygons</figcaption></figure></span></div>
+```
 
 R is able to beat out JavaScript and even C in the error computation because the
 RTIN algorithm is quite "inefficient"[^inefficient].  Watch it [in action][14]
@@ -683,30 +799,14 @@ generating indices and making copies of the vectors.  Notwithstanding, for such
 algorithms it is often possible to get close enough to statically compiled
 performance that the R implementation is satisfactory.
 
-# Too Square
-
-One advantage of directly computing the hypotenuse midpoint coordinates is that
-we are not limited to `$(2^k + 1)$` square elevation maps.  The vectorized R
-implementation supports any rectangular map with an odd number of points in both
-width and height.  This allows us to render the 550 x 505 River Derwent DEM by
-dropping just one row:
-
-<div style='background-color: red'>video</div>
-
-The closest dimensions available to the original algorithm are 257 x 257 or 513
-x 513, so this is a pretty good feature.  A
-[limitation](#grid-flexibility-limitations) is that the full range of
-approximation is only available for the `$2^k + 1` grids the original
-algorithm supports, but there are many useful cases where this doesn't matter.
-The best example is stitching together `$2^k + 1$` tiles into a larger map that
-does not conform to `$2^k +1$`.  The most approximate view will be to resolve
-each tile to two triangles, but there should be no need to go more approximate
-than that.  In exchange you get a larger map with more flexible dimensions that
-has no inconsistencies at the boundaries.
-
 # Conclusions
 
-
+Despite R being saddled with interpreter overhead, it is often possible to write
+it in such a way that performance is comparable to statically compiled code.
+Sometimes it is easy, sometimes it isn't.  Was it worth it in this case?  Well,
+I learned a bit from the process so in the end it was worth it to me.  And as a
+result of this we now have a base-R-only mesh reduction algorithm that works on
+a much broader set of meshes than the original RTIN.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -714,20 +814,32 @@ has no inconsistencies at the boundaries.
 
 # Appendix
 
-
 ## Acknowledgments
 
-* patchwork
-* ambient
-* rgl
-* rayrender
-* Agafonkin
-* reshape2
-* ggplot2
-* ffmpeg
-* inline
-* Brewer
-* dplyr for bind_rows
+The following  are post-specific acknowledgments.  This website owes many
+additional thanks to [generous people and organizations][260] that have made it
+possible.
+
+* [Vladimir Agafonkin][5] for writing great posts and for introducing me to the
+  RTIN algorithm.
+* [Tyler Morgan Wall][16] for [`rayrender`][17] with which I made many of the
+  illustrations in this post.  Special thanks for the endless stream of new
+  features, including bump-mapping for simulating rippling water, preview mode
+  to make it easy to set-up scenes, and many more.
+* [Thomas Lin Pedersen][300] for [patchwork][301] with which I assembled the
+  combined plots in this post, and for [ambient][302] with which I created the
+  water surface maps (based on a [Tyler Morgan Wall gist][210]).
+* [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with
+  which I made many the plots in this post.
+* Simon Urbanek for the [PNG
+  package](https://cran.r-project.org/web/packages/png/index.html) which I used
+  while post-processing many of the images in this post.
+* The FFmpeg team for [FFmpeg][270] with which I stitched the frames off the
+  videos in this post.
+* [Oleg Sklyar][123], [Dirk Eddelbuettel][122], [Romain François][121], etal. for
+  [`inline`][410] for easy integration of C code into ad-hoc R functions.
+* [Cynthia Brewer][390] for color brewer palettes, [one of which][380] I used in
+  some plots, and [axismaps][400] for the web tool for picking them.
 
 ## Follies in Optimization
 
@@ -1083,6 +1195,41 @@ consistent extracted meshes.
 
 ## Session Info
 
+```
+R version 4.0.3 (2020-10-10)
+Platform: x86_64-apple-darwin17.0 (64-bit)
+Running under: macOS Catalina 10.15.7
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRblas.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] inline_0.3.17    patchwork_1.1.0  ambient_1.0.0    rayrender_0.19.0
+[5] vetr_0.2.12     
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.5       compiler_4.0.3   pillar_1.4.7     later_1.1.0.1   
+ [5] tools_4.0.3      jsonlite_1.7.1   lifecycle_0.2.0  tibble_3.0.4    
+ [9] gtable_0.3.0     pkgconfig_2.0.3  rlang_0.4.9      rstudioapi_0.13 
+[13] yaml_2.2.1       blogdown_0.21    xfun_0.19        dplyr_1.0.2     
+[17] stringr_1.4.0    roxygen2_7.1.1   xml2_1.3.2       knitr_1.30      
+[21] generics_0.1.0   vctrs_0.3.5      tidyselect_1.1.0 grid_4.0.3      
+[25] glue_1.4.2       R6_2.5.0         processx_3.4.5   bookdown_0.21   
+[29] ggplot2_3.3.2    purrr_0.3.4      magrittr_2.0.1   servr_0.20      
+[33] scales_1.1.1     ps_1.4.0         promises_1.1.1   ellipsis_0.3.1  
+[37] colorspace_2.0-0 httpuv_1.5.4     stringi_1.5.3    munsell_0.5.0   
+[41] crayon_1.3.4  
+```
+
+```{r child='../../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis', cache=FALSE}
+```
 ```{r child='../../../static/script/_lib/flipbook/flipbook.Rmd', results='asis'}
 ```
 <script type='text/javascript'>
@@ -1107,6 +1254,24 @@ new BgFlipBook({
 [13]: https://github.com/brodieG/rtini/blob/v0.1.0/R/extract.R#L51
 [14]: 2020/01/27/mesh-reduction-1/#flipbook1
 [15]: https://github.com/r-devel/r-svn/blob/b203a1e4a13407c37aa67ecf85f742b76a333bf7/src/main/arithmetic.h#L65
+[16]: http://www.rayrender.net/
+[17]: https://twitter.com/tylermorganwall
+[202]: https://github.com/hadley
+[203]: https://cran.r-project.org/web/packages/ggplot2/index.html
+[210]: https://gist.github.com/tylermorganwall/7f31a10f22dc5912cc86b8b312f6f335
+[300]: https://twitter.com/thomasp85
+[301]: https://CRAN.R-project.org/package=patchwork
+[121]: https://github.com/romainfrancois
+[122]: https://github.com/eddelbuettel
+[123]: https://github.com/osklyar
+[260]: /about/#acknowledgments
+[270]: http://ffmpeg.org/about.html
+[302]: https://cran.r-project.org/package=ambient
+[380]: http://colorbrewer2.org/#type=qualitative&scheme=Set2&n=3
+[390]: http://www.personal.psu.edu/cab38/
+[400]: https://www.axismaps.com/
+[410]: https://github.com/eddelbuettel/inline
+
 
 [^step-count]: We're under-counting as the calls used in the vectorized version
   end to be more complex, and we also have `init_offsets` that hides some calls.
@@ -1134,10 +1299,6 @@ new BgFlipBook({
   embarrassed by misplaced eructations of grandiloquence.
 [^first-frame]: First frame in the flipbook, but step 65 in the overall
   animation.
-[^double-speed]: As we'll see [later](#vec-inefficiency) the ordering step at
-  the end is only required for "Axis" tiles, and can be skipped for the first
-  layer altogether as in that layer "Axis" tiles have no children (this is also
-  the largest layer so there is a big gain from skipping it).
 [^inefficient]: I use quotes here because the inefficiency isn't necessarily
   bad.  The RTIN algorithm handles many corner cases gracefully by virtue of how
   it computes the triangle hypotenuse midpoints, and it is efficient enough to
