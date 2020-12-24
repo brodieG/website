@@ -4,7 +4,7 @@ author: ~
 date: '2020-12-15'
 slug: mesh-red-vec
 categories: [R]
-tags: [algorithms,viz]
+tags: [algorithms,viz,rtini]
 image: /2020/12/15/mesh-red-vec/graphics/fov-single-lo.jpg
 imagerect: /2020/12/15/mesh-red-vec/graphics/fov-twin-banner.jpg
 imagemrgvt: 0%
@@ -36,7 +36,7 @@ thm.blnk <- list(
 
 _Last year's [RTINI Part I][1] post introduces the RTIN mesh approximation
 algorithm.  In this post we vectorize the algorithm so that it may be efficient
-in R.  Reading [Part I][1] will help to understand this post._
+in R._
 
 # Vectorize The Absolute $#!+ Out Of This
 
@@ -228,16 +228,24 @@ p
 do.call(knitr::opts_chunk$set, old.opt)
 ```
 
+<style>
+/* urgh another inline style.. */
+span.pill           {border-radius:    3px; padding: 1px;}
+span.lavender       {background-color: #8da0cb;}
+span.orange         {background-color: #fc8d62;}
+span.hollow-green   {background-color: #eee; color: #66c2a5;}
+</style>
+
 Unfortunately this is insufficient.  We must also for each triangle hypotenuse
 midpoint track their children so that we may [carry over](#carry-over-viz) their
 errors.  One nice benefit of the tessellating pattern is that if we define the
 parent-child relationship for the simple tile, we can copy that relationship
 along with the rest of the tile.  In fact, we don't actually care about the
-triangles.  What we actually want are the hypotenuses (black), their midpoints
-(<span id=lavender style='background-color: #8da0cb'>lavender</span>) and
-endpoints(hollow <span style='color: #66c2a5'>green</span> ), and the
-corresponding child hypotenuse midpoints (<span style='background-color:
-#fc8d62'>orange</span>).  The parent/child relation is shown with the arrows:
+triangles.  What we actually want are the hypotenuses (black lines), their
+<span class='pill lavender'>midpoints</span>, <span
+class='pill hollow-green'>endpoints</span>, and the corresponding <span
+class='pill orange'>child hypotenuse midpoints</span>.  The parent/child
+relation is shown with the arrows:
 
 ```{r echo=FALSE}
 p.dg <- ids_to_df(c(offset.dg[,1,] * 9 + offset.dg[,2,] + 1), matrix(0,9,9))
@@ -320,6 +328,14 @@ do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
 p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
+
+Recall: we are trying to compute the error in approximating the hypotenuse <span
+class='pill lavender'>midpoints</span> as the mean of the <span
+class='pill hollow-green'>endpoints</span>, while carrying over error of the <span class='pill orange'>child midpoint</span> approximations.
+Notice how the <span class='pill lavender'>midpoints</span>
+of the "Diagonal" layer become the <span class='pill orange'>child midpoints</span> in the "Axis" layer.
+
+> See [RTINI Part I][1] for additional details on the algorithm.
 
 # Now Just Tile the Rest of the $#!+ing Map
 
@@ -429,6 +445,13 @@ init_offsets(i=2, j='axis', n=8, layers=log2(8))
 </code></pre>
 -->
 
+There are repeats as some points are shared across triangles.  For example point
+<span class="pill hollow-green">21</span> is a hypotenuse endpoint to all
+triangles.  We can't just drop the duplicates as the above structure
+tracks the <span class="pill lavender">midpoint</span> by row, and
+we need the <span class="pill orange">child midpoints</span> and
+<span class="pill hollow-green">endpoints</span> associated with each of them.
+
 We can shift "linearized" coordinates, by simple arithmetic.  For example,
 adding one to a coordinate will move it up one row[^shift-with-care].  Adding
 `nrow(map)` will shift the coordinates by one column.  So for example:
@@ -495,7 +518,10 @@ in our [earlier visualization](#mesh-anim) we'll track the coordinates in the
 left panel side (both "Diagonal" and "Axis", alternating), and the computed mesh
 approximation errors in the right hand panel:
 
-<video id=mesh-anim-vec style='display: block; margin: 0 auto;' controls loop>
+<video 
+id=mesh-anim-vec style='display: block; margin: 0 auto;' 
+controls loop muted
+>
 <source
 static
   src='graphics/out-vec.mp4'
@@ -543,10 +569,105 @@ o <- rep(o, each=tile.n) + seq.r * (n + 1)
 ```
 
 The points are arranged by type in the original offset list so we can easily
-subset for a particular type of point from the repeated tile set.  This is
-exactly how the visualization colors the points as the point type is never
-explicitly stated in the code.  Additionally, the relative positions of parents
-and children are also preserved.
+subset for a particular type of point from the repeated tile set:
+
+```{r eval=FALSE}
+o.m <- o[o.i + 2 * o.len]    # midpoint coordinate
+o.b <- o[o.i + o.len]        # 1st hypotenuse endpoint coordinate
+o.a <- o[o.i]                # 2nd hypotenuse endpoint coordinate
+```
+
+This is how the visualization knows to color the points as the point type is
+never explicitly stated in the code.  Additionally, the relative positions of
+parents and children are also preserved.
+
+After calculating the errors we must record the maximum of the error and child
+errors.  This includes the following seemingly funny business:
+
+```{r eval=FALSE}
+err.val <- do.call(pmax, err.vals)
+err.ord <- order(err.val)                  # <<< Order
+errors[o.m[err.ord]] <- err.val[err.ord]
+```
+
+This is necessary because for "Axis" tiling the same midpoints may be updated by
+two different tiles as is the case here when we fill a column:
+
+```{r echo=FALSE}
+p.ax1 <- transform(p.ax, sgrp=1)
+p.ax2 <- rbind(transform(p.ax1, sgrp=2), transform(p.ax1, y=y + .5, sgrp=3))
+ax.lvl <- c('Axis Single', 'Axis Column')
+
+p.ax1[['type']] <- factor('Axis Single', levels=ax.lvl)
+p.ax2[['type']] <- factor('Axis Column', levels=ax.lvl)
+
+p.all2 <- rbind(p.ax1, p.ax2)
+p.all2[['grp']] <- (seq_len(nrow(p.all2)) - 1L) %% 4L
+
+p.arr <- do.call(
+  rbind, lapply(split(p.all2, p.all2[c('grp', 'sgrp')]), to_arrows)
+)
+
+tris3 <- subset(tris2, type == 'Axis')
+tris3[['type']] <- NULL
+
+p2 <- ggplot(tris3) +
+  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
+  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
+  geom_point(
+    data=data.frame(
+      x=.25, y=.5,
+      type=factor('Axis Column', levels=ax.lvl)
+    ), aes(x=x, y=y),
+    color='green', size=10
+  ) +
+  geom_segment(
+    data=subset(p.arr, ptype=='child'),
+    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
+    aes(x, y, xend=xend, yend=yend),
+    color='grey50'
+  ) +
+  geom_segment(
+    data=subset(p.arr, ptype=='ends'),
+    aes(x, y, xend=xend, yend=yend)
+  ) +
+  geom_point(
+    data=subset(p.all2, ptype=='mid'),
+    aes(x, y, colour=I('#8da0cb')),
+    size=3
+  ) +
+  geom_point(
+    data=subset(p.all2, ptype=='ends'),
+    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
+    shape=21, size=2
+  ) +
+  geom_point(
+    data=subset(p.all2, ptype=='child'),
+    aes(x, y, colour=I('#fc8d62'))
+  ) +
+  facet_wrap(~type) +
+  coord_fixed() +
+  thm.blnk
+
+pdim <- gtable_dim(ggplotGrob(p2))
+old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
+do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
+```
+```{r tile-overlap, echo=FALSE}
+p2
+do.call(knitr::opts_chunk$set, old.opt)
+```
+
+The midpoint highlighted in green is at the overlap of two tiles, so 
+we are carrying over errors from children in different tiles.  If we did not
+order `err.val` prior to final insertion into the error matrix we risk a lesser
+error from one tile overwriting a larger error from another.  This issue
+afflicts all the non-peripheral midpoints in the "Axis" tile
+arrangement[^not-diag].
+
+The full code of this implementation is available in the
+[appendix](#code-appendix).
+
 
 # Loopy Vectorization?
 
@@ -657,7 +778,6 @@ p2 <- ggplot(
 p1 + p2 + plot_layout(guides='collect') +
   plot_annotation(title='RTIN Error Computation Benchmarks vs. Grid Size') &
   theme(legend.position='bottom')
-
 ```
 
 The optimized R implementation ("R-vec-2" from the previous chart) beats both
@@ -669,7 +789,7 @@ compute the midpoints.
 
 It is also remarkable that JS does as well as C, perhaps with some
 more timing volatility due to the overhead of invoking [`V8`][12] via R
-and possibly JIT compilation.
+and possibly JIT compilation[^js-notes].
 
 Before we move on, a quick recap of some vectorization concepts we applied here:
 
@@ -693,10 +813,12 @@ with an odd number of points in both width and height.  The ["R-vec-2"
 implementation][11] does exactly that.  This allows us to render the 550 x 505
 River Derwent DEM by dropping just one row:
 
-<video 
-  id=derwent-vid style='display: block; margin: 0 auto;' controls loop
+<video
+  id=derwent-vid style='display: block; margin: 0 auto;'
   alt='3D rendering of the Derwent with some sea level rise and varying levels
   of mesh approximation'
+  loop autoplay muted
+  onclick='this.setAttribute("controls", "");'
 >
 <source
 static
@@ -719,7 +841,8 @@ has no inconsistencies at the boundaries, such as this one:
 <div class='bgw-wide-window'>
 <figure>
 <img src='graphics/kalei-wide.jpg' style='max-width: 900px;'/>
-<figcaption>River Derwent DEM, Low Polygon Count, Kaleidoscope Style.</figcaption>
+<figcaption>River Derwent DEM, 2049 x 1025, Low Polygon Count, Kaleidoscope
+Style.</figcaption>
 </figure>
 </div>
 
@@ -758,7 +881,7 @@ p1 + p2 + plot_layout(guides='collect') +
 On the 1025 x 1025 grid we tested JS is about as much faster at extracting the
 meshes (left) as R is at computing the errors (right).  How much this matters is
 a function of how many polygons you extract.  The full mesh contains about 2MM
-polygons, but it looks good with few as ~150K polygons:
+polygons, but it looks good with few as ~200K polygons:
 
 ```{=html}
 <div class=bgw-wide-window>
@@ -783,6 +906,9 @@ polygons, but it looks good with few as ~150K polygons:
 >~1,100K Polygons</figcaption></figure></span></div>
 ```
 
+These are all the River Derwent DEM repeated kaleidoscope style to fill 1025 x
+1025 maps.
+
 R is able to beat out JavaScript and even C in the error computation because the
 RTIN algorithm is quite "inefficient"[^inefficient].  Watch it [in action][14]
 again and notice how many steps it takes to compute the location of the first
@@ -801,12 +927,19 @@ performance that the R implementation is satisfactory.
 
 # Conclusions
 
+<img
+  src='graphics/fov-single-hi-small.jpg'
+  data-src-big='graphics/fov-single-hi.jpg'
+  data-caption='High Polygon Rendition of River Derwent DEM'
+  class='post-inset-image bgw-zoom-img'
+/>
+
 Despite R being saddled with interpreter overhead, it is often possible to write
 it in such a way that performance is comparable to statically compiled code.
 Sometimes it is easy, sometimes it isn't.  Was it worth it in this case?  Well,
 I learned a bit from the process so in the end it was worth it to me.  And as a
-result of this we now have a base-R-only mesh reduction algorithm that works on
-a much broader set of meshes than the original RTIN.
+result of this we now have a [base-R-only mesh reduction algorithm][19] that
+works on a much broader set of meshes than the original RTIN.
 
 <!-- this needs to become a shortcode -->
 <!-- this is populated by JS in feedback.html partial -->
@@ -826,11 +959,15 @@ possible.
   illustrations in this post.  Special thanks for the endless stream of new
   features, including bump-mapping for simulating rippling water, preview mode
   to make it easy to set-up scenes, and many more.
-* [Thomas Lin Pedersen][300] for [patchwork][301] with which I assembled the
-  combined plots in this post, and for [ambient][302] with which I created the
+* [Michael Sumner][18] for inspiring me to [vectorize the absolute shit out of
+  this][7].
+* [Thomas Lin Pedersen][300] for [`patchwork`][301] with which I assembled the
+  combined plots in this post, and for [`ambient`][302] with which I created the
   water surface maps (based on a [Tyler Morgan Wall gist][210]).
 * [Hadley Wickham][202] and the [`ggplot2` authors][203] for `ggplot2` with
   which I made many the plots in this post.
+* [Jeroen Ooms][220] for [R interface to `V8`][225] which I used to benchmark
+  the JavaScript `martini` implementation.
 * Simon Urbanek for the [PNG
   package](https://cran.r-project.org/web/packages/png/index.html) which I used
   while post-processing many of the images in this post.
@@ -850,101 +987,10 @@ making my R code run fast.  I wouldn't put what's coming next into the
 will justifiable question why anyone would spend as much time as I have trying
 to make something that doesn't need to be any faster, faster.
 
-Well, I have an itch I want to scratch and I will go ahead and scratch it,
-rationality be damned.
-
-Let's look back at our first vectorized implementation.  In particular at the
-child error carry over section at the end:
-
-```{r eval=FALSE}
- # Carry over child errors
-err.val <- do.call(pmax, err.vals)
-err.ord <- order(err.val)
-errors[o.m[err.ord]] <- err.val[err.ord]
-```
-
-You'll notice a seemingly odd `order` call.  This is necessary because for the
-"Axis" tiles there is overlap between tiles.  Compare our earlier example with a
-single tile and then with the tile repeated to fill a column:
-
-```{r echo=FALSE}
-p.ax1 <- transform(p.ax, sgrp=1)
-p.ax2 <- rbind(transform(p.ax1, sgrp=2), transform(p.ax1, y=y + .5, sgrp=3))
-ax.lvl <- c('Axis Single', 'Axis Column')
-
-p.ax1[['type']] <- factor('Axis Single', levels=ax.lvl)
-p.ax2[['type']] <- factor('Axis Column', levels=ax.lvl)
-
-p.all2 <- rbind(p.ax1, p.ax2)
-p.all2[['grp']] <- (seq_len(nrow(p.all2)) - 1L) %% 4L
-
-p.arr <- do.call(
-  rbind, lapply(split(p.all2, p.all2[c('grp', 'sgrp')]), to_arrows)
-)
-
-tris3 <- subset(tris2, type == 'Axis')
-tris3[['type']] <- NULL
-
-p2 <- ggplot(tris3) +
-  geom_polygon(aes(x=x, y=y, group=id, fill=I(color)), alpha=.2) +
-  geom_point(data=points, aes(x=x, y=y), size=.5, shape=3, color='white') +
-  geom_point(
-    data=data.frame(
-      x=.25, y=.5,
-      type=factor('Axis Column', levels=ax.lvl)
-    ), aes(x=x, y=y),
-    color='green', size=10
-  ) +
-  geom_segment(
-    data=subset(p.arr, ptype=='child'),
-    arrow=arrow(length=unit(.05, 'inches'), type='closed', angle=25),
-    aes(x, y, xend=xend, yend=yend),
-    color='grey50'
-  ) +
-  geom_segment(
-    data=subset(p.arr, ptype=='ends'),
-    aes(x, y, xend=xend, yend=yend)
-  ) +
-  geom_point(
-    data=subset(p.all2, ptype=='mid'),
-    aes(x, y, colour=I('#8da0cb')),
-    size=3
-  ) +
-  geom_point(
-    data=subset(p.all2, ptype=='ends'),
-    aes(x, y, colour=I('#66c2a5'), fill='grey90'),
-    shape=21, size=2
-  ) +
-  geom_point(
-    data=subset(p.all2, ptype=='child'),
-    aes(x, y, colour=I('#fc8d62'))
-  ) +
-  facet_wrap(~type) +
-  coord_fixed() +
-  thm.blnk
-
-pdim <- gtable_dim(ggplotGrob(p2))
-old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
-do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
-```
-```{r tile-overlap, echo=FALSE}
-p2
-do.call(knitr::opts_chunk$set, old.opt)
-```
-
-<span id='vec-inefficiency'></span>
-The midpoint highlighted in green is at the overlap of two tiles.  There are two
-not-so-great things about this.  The first is that the midpoint estimate and
-errors get computed twice, once for each tile.  The second is that we are
-carrying over errors from children in different tiles, which is what requires us
-to order `err.val` prior to final insertion into the error matrix.  If we didn't
-we risk a lesser error from one tile overwriting a larger error from another.
-This issue afflicts all the non-peripheral midpoints in the "Axis" tile
-arrangement[^not-diag].
-
-A potential improvement is to directly compute the midpoint locations.  As we
-can see here they are arranged in patterns that we should be able to compute
-without having to resort to tiling:
+A potential improvement over the [initial vectorized implementation](#action) is
+to directly compute the midpoint locations.  As we can see here they are
+arranged in patterns that we should be able to compute without having to resort
+to tiling:
 
 ```{r echo=FALSE}
 axis <- c(3, 7, 19, 23, 27, 39, 43, 55, 59, 63, 75, 79)
@@ -1193,6 +1239,103 @@ we are satisfied with maximum approximation to be `$2^k + 1$`, we can assemble
 any tiling of tiles that size into rectangles and we'll be assured to have self
 consistent extracted meshes.
 
+## Code Appendix
+
+This is the implementation shown in the [flipbook](#flipbook-vec).  We recommend
+you the optimized version from the [RTINI package][19] if you are intending on
+using it.
+
+```{r}
+ # Offsets are: parenta, parentb, h midpoint, children with variable number of
+ # children supported
+
+offset.dg <- aperm(
+  array(
+    c(
+      0L,0L, 2L,2L, 1L,1L, 1L,2L, 0L,1L, 1L,0L, 2L,1L,
+      4L,0L, 2L,2L, 3L,1L, 3L,2L, 4L,1L, 2L,1L, 3L,0L,
+      2L,2L, 0L,4L, 1L,3L, 1L,4L, 2L,3L, 0L,3L, 1L,2L,
+      2L,2L, 4L,4L, 3L,3L, 3L,4L, 2L,3L, 3L,2L, 4L,3L
+    ),
+    dim=c(2L, 7L, 4L)
+  ),
+  c(3L, 1L, 2L)
+)
+ # Smallest size that allows us to define the children with integer
+ # values.
+offset.ax <- aperm(
+  array(
+    c(
+      0L,0L, 4L,0L, 2L,0L, 3L,1L, 1L,1L,
+      4L,0L, 4L,4L, 4L,2L, 3L,3L, 3L,1L,
+      4L,4L, 0L,4L, 2L,4L, 1L,3L, 3L,3L,
+      0L,4L, 0L,0L, 0L,2L, 1L,1L, 1L,3L
+    ),
+    dim=c(2L, 5L, 4L)
+  ),
+  c(3L, 1L, 2L)
+)
+
+init_offsets <- function(i, j, n, layers) {
+  axis <- j == 'axis'
+  o.raw <- if(axis) offset.ax else offset.dg
+  if(!axis && i == layers)
+    o.raw <- o.raw[1L,,,drop=F]
+  if(axis && i == 1L)
+    o.raw <- o.raw[,,1:3,drop=F]
+
+  o.raw <- (o.raw * 2^i) %/% (if(axis) 4L else 2L)
+  array(o.raw[,1L,] + o.raw[,2L,] * (n + 1L) + 1L, dim(o.raw)[-2L])
+}
+
+compute_error3b <- function(map) {
+  n <- nrow(map) - 1
+  layers <- log2(n)
+  errors <- array(NA_real_, dim=dim(map))
+
+  for(i in seq_len(layers)) {
+    for(j in c('axis', 'diag')) {
+      ## Initialize template tile
+      large.tile <- j == 'diag' && i < layers
+      tile.n <- n / 2^(i + large.tile)
+      o <- init_offsets(i, j, n, layers)
+      o.dim <- dim(o)
+
+      ## Tile rest of surface using template
+      seq.r <- (seq_len(tile.n) - 1) * n / tile.n
+      o <- rep(o, each=tile.n) + seq.r
+      o <- rep(o, each=tile.n) + seq.r * (n + 1)
+
+      ## Identify hypotenuse and its midpoint
+      o.i <- seq_len(o.dim[1] * tile.n^2)
+      o.len <- length(o.i)
+      o.m <- o[o.i + 2 * o.len]
+      o.b <- o[o.i + o.len]
+      o.a <- o[o.i]
+
+      ## Compute estimate and error at midpoint
+      m.est <- (map[o.a] + map[o.b]) / 2
+      errors[o.m] <- abs(map[o.m] - m.est)
+
+      ## Retrieve child errors
+      err.n <- o.dim[2] - 2
+      err.i <- err.vals <- vector('list', err.n)
+      for(k in seq_len(err.n)) {
+        err.i[[k]] <- o[o.i + o.len * (k + 1)]
+        err.vals[[k]] <- errors[err.i[[k]]]
+      }
+      ## Carry over child errors
+      err.val <- do.call(pmax, err.vals)
+      err.ord <- order(err.val)
+      errors[o.m[err.ord]] <- err.val[err.ord]
+
+      err.i <- NULL
+      o <- o.m <- o.a <- o.b <- err.val <- NA
+  } }
+  errors
+}
+```
+
 ## Session Info
 
 ```
@@ -1208,24 +1351,24 @@ locale:
 [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
 
 attached base packages:
-[1] stats     graphics  grDevices utils     datasets  methods   base     
+[1] stats     graphics  grDevices utils     datasets  methods   base
 
 other attached packages:
 [1] inline_0.3.17    patchwork_1.1.0  ambient_1.0.0    rayrender_0.19.0
-[5] vetr_0.2.12     
+[5] vetr_0.2.12
 
 loaded via a namespace (and not attached):
- [1] Rcpp_1.0.5       compiler_4.0.3   pillar_1.4.7     later_1.1.0.1   
- [5] tools_4.0.3      jsonlite_1.7.1   lifecycle_0.2.0  tibble_3.0.4    
- [9] gtable_0.3.0     pkgconfig_2.0.3  rlang_0.4.9      rstudioapi_0.13 
-[13] yaml_2.2.1       blogdown_0.21    xfun_0.19        dplyr_1.0.2     
-[17] stringr_1.4.0    roxygen2_7.1.1   xml2_1.3.2       knitr_1.30      
-[21] generics_0.1.0   vctrs_0.3.5      tidyselect_1.1.0 grid_4.0.3      
-[25] glue_1.4.2       R6_2.5.0         processx_3.4.5   bookdown_0.21   
-[29] ggplot2_3.3.2    purrr_0.3.4      magrittr_2.0.1   servr_0.20      
-[33] scales_1.1.1     ps_1.4.0         promises_1.1.1   ellipsis_0.3.1  
-[37] colorspace_2.0-0 httpuv_1.5.4     stringi_1.5.3    munsell_0.5.0   
-[41] crayon_1.3.4  
+ [1] Rcpp_1.0.5       compiler_4.0.3   pillar_1.4.7     later_1.1.0.1
+ [5] tools_4.0.3      jsonlite_1.7.1   lifecycle_0.2.0  tibble_3.0.4
+ [9] gtable_0.3.0     pkgconfig_2.0.3  rlang_0.4.9      rstudioapi_0.13
+[13] yaml_2.2.1       blogdown_0.21    xfun_0.19        dplyr_1.0.2
+[17] stringr_1.4.0    roxygen2_7.1.1   xml2_1.3.2       knitr_1.30
+[21] generics_0.1.0   vctrs_0.3.5      tidyselect_1.1.0 grid_4.0.3
+[25] glue_1.4.2       R6_2.5.0         processx_3.4.5   bookdown_0.21
+[29] ggplot2_3.3.2    purrr_0.3.4      magrittr_2.0.1   servr_0.20
+[33] scales_1.1.1     ps_1.4.0         promises_1.1.1   ellipsis_0.3.1
+[37] colorspace_2.0-0 httpuv_1.5.4     stringi_1.5.3    munsell_0.5.0
+[41] crayon_1.3.4
 ```
 
 ```{r child='../../../static/script/_lib/zoom-img/zoom-img.Rmd', results='asis', cache=FALSE}
@@ -1256,9 +1399,15 @@ new BgFlipBook({
 [15]: https://github.com/r-devel/r-svn/blob/b203a1e4a13407c37aa67ecf85f742b76a333bf7/src/main/arithmetic.h#L65
 [16]: http://www.rayrender.net/
 [17]: https://twitter.com/tylermorganwall
+[18]: https://twitter.com/mdsumner
+[19]: https://github.com/brodieG/rtini/
+[20]: /2020/12/15/mesh-red-vec/script/prototype.js
+[21]: /2020/12/15/mesh-red-vec/script/prototype.c
 [202]: https://github.com/hadley
 [203]: https://cran.r-project.org/web/packages/ggplot2/index.html
 [210]: https://gist.github.com/tylermorganwall/7f31a10f22dc5912cc86b8b312f6f335
+[220]: https://github.com/jeroen
+[225]: https://cran.r-project.org/package=V8
 [300]: https://twitter.com/thomasp85
 [301]: https://CRAN.R-project.org/package=patchwork
 [121]: https://github.com/romainfrancois
@@ -1272,14 +1421,14 @@ new BgFlipBook({
 [400]: https://www.axismaps.com/
 [410]: https://github.com/eddelbuettel/inline
 
-
 [^step-count]: We're under-counting as the calls used in the vectorized version
-  end to be more complex, and we also have `init_offsets` that hides some calls.
-[^simplified-offsets]: The actual implementation needs to handle several special
- cases, such as the largest size "Diagonal" that only contains one hypotenuse
- instead of the typical four, and the smallest size "Axis" that does not have
- any children.  The unused variable `layers` is used to identify the corner
- cases in the full version.
+  tend to be more complex, and we also have `init_offsets` that hides some
+  calls.
+[^simplified-offsets]: The actual implementation needs to handle
+  several special cases, such as the largest size "Diagonal" that only contains
+  one hypotenuse instead of the typical four, and the smallest size "Axis" that
+  does not have any children.  The unused variable `layers` is used to identify
+  the corner cases in the full version.
 [^shift-with-care]: But watch out for row shifts that cause column shifts, or
   column shifts that take you out of bounds.
 [^not-diag]: In the "Diagonal" tiles the midpoints are on the inside of the tile
@@ -1295,12 +1444,17 @@ new BgFlipBook({
 [^int-vec]: Internally vectorized operations loop through elements of a vector
   with statically compiled code instead of explicit R loops such as `for`,
   `lapply`.
-[^grandiloquence]: If nothing else I feel I've earned the right not to be
-  embarrassed by misplaced eructations of grandiloquence.
 [^first-frame]: First frame in the flipbook, but step 65 in the overall
   animation.
 [^inefficient]: I use quotes here because the inefficiency isn't necessarily
   bad.  The RTIN algorithm handles many corner cases gracefully by virtue of how
   it computes the triangle hypotenuse midpoints, and it is efficient enough to
   be useful.
-
+[^js-notes]: I made some small changes to the JavaScript implementation for ease
+  if interchange with R via the V8 package.  Most significant is that we no
+  longer use 32 bit floats.  JavaScript is actually a little faster than C when
+  using 32 bit floats, which makes sense since the [C implementation][21] is
+  using doubles.  Additionally, for mesh extraction we pre-allocate a vector of
+  maximal possible size rather than using a Geometry object as I did not want to
+  have to chase down what that was and how to use it.  You can inspect the [JS
+  versions of the code][20] used in this post yourself if you're curious.
