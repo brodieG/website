@@ -1,9 +1,8 @@
-
 <h1 class="screen-reader-text">Posts</h1>
 
 <div id="loop-container" class="loop-container">
 
-{{ $paginator := .Paginate (where (where .Data.Pages "Type" "post") "IsPage" true) }}
+{{ $paginator := .Paginate (where site.RegularPages "Type" "in" site.Params.mainSections) }}
     {{ range $index, $element := .Paginator.Pages }}
 
         {{ $scratch := newScratch }}

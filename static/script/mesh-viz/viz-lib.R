@@ -13,18 +13,6 @@ rep_each <- function(x, each) {
     res
   } else x[0]
 }
-# given root of file (including dir), create new incremented file.
-#
-# next_file('~/Downloads/rlang/img-')
-
-next_file <- function(x) {
-  dir <- dirname(x)
-  f <- basename(x)
-  fl <- list.files(dir, full.names=TRUE, pattern=f)
-  fnum <- max(as.integer(sub(".*?(\\d+)\\.png", "\\1", fl, perl=TRUE)), 0)
-  if(is.na(fnum) || !is.finite(fnum)) stop("file num error")
-  file.path(dir, paste0(f, sprintf("%03d", fnum + 1), ".png", collapse=""))
-}
 
 # - Plot Helper Tools ----------------------------------------------------------
 
@@ -146,11 +134,21 @@ scale_mesh <- function(mesh, scale=rep(1, 4)) {
 }
 # Convert list-matrix mesh into obj text format, relying on list matrix
 # being in counter-clockwise direction outwards
+#
+# @param mesh a mesh list-matrix, with 3 columns for just coords, or 6 if
+#   including r g b colors.  Cols are x, y, z, [r, g, b], rows are vertices.
+#   Some old matrices used to have one additional element for texture measuring
+#   just brightness.  Those will need to drop that column or replicate it into
+#   the channels.
 
 mesh_to_obj <- function(mesh, center=NULL) {
-  # first step is convert to array, drop texture for now
+  vetr(
+    matrix(list(), 3) && ncol(.) %in% c(3,6), numeric(3) || NULL
+  )
+  # first step is convert to array
 
-  mesh.arr <- array(unlist(mesh[1:3, 1:3]), c(length(mesh[[1]]), 3, 3))
+  arr.dim <- c(length(mesh[[1]]), dim(mesh))
+  mesh.arr <- array(unlist(mesh[1:3, ]), arr.dim)
 
   if(!is.null(center)) {
     # we need to re-order the faces so their normals all point away from the
@@ -169,11 +167,16 @@ mesh_to_obj <- function(mesh, center=NULL) {
 
     mesh.arr[flip,2:3,] <- mesh.arr[flip,3:2,]
   }
-  mesh.v <- matrix(aperm(mesh.arr, c(3, 2, 1)), nrow=3)
-  v.chr <- paste('v', mesh.v[1,], mesh.v[2,], mesh.v[3,], collapse="\n")
+  # we're splitting by rows; not efficient
+  mesh.v <- matrix(aperm(mesh.arr, c(3, 2, 1)), nrow=ncol(mesh))
+  v.dat <- c(
+    list('v'), asplit(mesh.v[1:3,], 1),
+    if(nrow(mesh.v) > 3) asplit(mesh.v[4:6,], 1),
+    list(collapse="\n")
+  )
+  v.chr <- do.call(paste, v.dat)
 
   # faces are easy because we've repeated the vertices so no shared vertices
-
   mesh.f <-matrix(seq_len(length(mesh[[1]]) * 3), nrow=3)
   f.chr <- paste('f', mesh.f[1,], mesh.f[2,], mesh.f[3,], collapse="\n")
 
@@ -191,6 +194,8 @@ mesh_to_obj <- function(mesh, center=NULL) {
 # We need `map` to get row/col counts, but also to have access to the full
 # height map so whe nwe scale we scale relative to the full heightmap, not the
 # portion of it captured by `tris`.
+#
+# Set `scale` to NULL or length zero to not change coordinates
 
 ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   ids <- unlist(tris)
@@ -204,10 +209,12 @@ ids_to_xyz <- function(tris, map, scale, flatten=FALSE) {
   y <- (ids - 1) %% dim(map)[1]
   z <- map[c(ids)]
 
-  x <- x / (dim(map)[2] - 1) * scale[1]
-  y <- y / (dim(map)[1] - 1) * scale[2]
-  z <- if(flatten) numeric(length(z))
-       else (z - min(map)) / (diff(range(map))) * scale[3]
+  if(length(scale)) {
+    x <- x / (dim(map)[2] - 1) * scale[1]
+    y <- y / (dim(map)[1] - 1) * scale[2]
+    z <- (z - min(map)) / (diff(range(map))) * scale[3]
+  }
+  if(flatten) z <- numeric(length(z))
   list(x=x, y=y, z=z)
 }
 mesh_to_xyz <- function(mesh, map, scale) {
@@ -523,7 +530,7 @@ tris_to_cube <- function(
   angle=c(0,0,0), translate=c(0,0,0), flatten=FALSE
 ) {
   xyz_to_cube(
-    ids_to_xyz(tris, map, scale, flatten), 
+    ids_to_xyz(tris, map, scale, flatten),
     material, xwidth, zwidth, angle, translate
   )
 }
@@ -534,9 +541,122 @@ mesh_to_seg <- function(
 ) {
   xyz_to_seg(mesh_to_xyz(mesh, map, scale), material, radius, angle, translate)
 }
+# Draw vertical polygon sides to enclose a mesh surface
+#
+# Given a surface mesh, return an enclosed version of it.  Assumes the surface
+# is in x-y, with depth given in Z.  The logic is messed up because originally
+# it assumed the depth was Y, so there is a bunch of remapping back and forth.
+#
+# Assumes that the mesh is a square aligned exactly with the x-y axis.
+#
+# Note: `vcolor` doesn't seem to work right.
+#
+# @param vcolor NULL or numeric(3) in [0-1], a single color to use for all
+#   vertices.
+
+mesh_skirt <- function(
+  mesh, y.lo=min(unlist(mesh[, 'z'])), vcolor=NULL
+) {
+  vetr(
+    mesh=matrix(list(), 3),
+    vcolor=numeric(3) && all_bw(., 0, 1) && .(ncol(mesh) == 6) || NULL
+  )
+  # Y is taken to be the depth, but the input has it as Z, so need to remap
+  # i.e. code internally assumes surface is in x-z
+  xu <- unlist(mesh[,'x'])
+  zu <- unlist(mesh[,'y'])
+  yu <- unlist(mesh[,'z'])
+
+  x.lo <- min(xu)
+  x.hi <- max(xu)
+  z.lo <- min(zu)
+  z.hi <- max(zu)
+  if(y.lo > min(yu)) stop('need lower y')
+
+  # retrieve all vertices that match one of the boundaries (`base`).  This
+  # returns the values along the coordinate that is not the boundary along
+  # with the corresponding depth values
+  vertex_arrange <-function(a, b, y, base) {
+    which.a <- b == base     # which are on boundary
+    base.a <- a[which.a]     # values of the 'a' coordinate (x or z depending)
+    o <- order(base.a)
+    ao <- base.a[o]
+    d <- duplicated(ao)
+    aou <- ao[!d]            # unique vertices, ordered
+    you <- y[which.a][o][!d] # corresponding depth values
+    list(aou, you)
+  }
+  zx.lo <- vertex_arrange(zu, xu, yu, x.lo)
+  zx.hi <- vertex_arrange(zu, xu, yu, x.hi)
+  xz.lo <- vertex_arrange(xu, zu, yu, z.lo)
+  xz.hi <- vertex_arrange(xu, zu, yu, z.hi)
+
+  to_mesh <- function(v, w, y, y.lo, vcolor, flip=FALSE) {
+    lv <- length(v)
+    y.lo.r <- rep(y.lo, lv - 1)
+
+    # We build a mesh spanning from y to y.lo.r with triangles
+    # A and B, so two triangles per edge along the surface.
+    # w remains constant.
+    #
+    #    v
+    #  y +--+  Surface of mesh
+    #    |\B|
+    #    |A\|
+    #    +--+  Bottom (y.lo.r)
+
+    L <- matrix(
+      c(
+        list(
+          # triang A    triang B
+
+          # v coords  (either x or z, depending on face we're doing)
+          c(v[-lv],     v[-1]),     # vertex 1
+          c(v[-lv],     v[-1]),     # vertex 2
+          c(v[-1],      v[-lv]),    # vertex 3
+          # y coords
+          c(y[-lv],     y.lo.r),    # vertex 1
+          c(y.lo.r,     y[-1]),     # vertex 2
+          c(y[-1],      y.lo.r),    # vertex 3
+          # w coords  (either x or z, depending)
+          rep(w, (lv - 1) * 2),     # vertex 1
+          rep(w, (lv - 1) * 2),     # vertex 2
+          rep(w, (lv - 1) * 2)      # vertex 3
+        ),
+        if(!is.null(vcolor)) {
+          r <- replicate(3, rep(vcolor[1], lv), simplify=FALSE)
+          g <- replicate(3, rep(vcolor[2], lv), simplify=FALSE)
+          b <- replicate(3, rep(vcolor[3], lv), simplify=FALSE)
+          c(r, g, b)
+      } ),
+      3
+    )
+    # Winding will be backwards when doing the low faces
+    if(flip) L[2:3,] <- L[3:2,]
+    L
+  }
+  mzx.lo <- to_mesh(zx.lo[[1]], x.lo, zx.lo[[2]], y.lo, vcolor, flip=TRUE)
+  mzx.hi <- to_mesh(zx.hi[[1]], x.hi, zx.hi[[2]], y.lo, vcolor)
+  mxz.lo <- to_mesh(xz.lo[[1]], z.lo, xz.lo[[2]], y.lo, vcolor)
+  mxz.hi <- to_mesh(xz.hi[[1]], z.hi, xz.hi[[2]], y.lo, vcolor, flip=TRUE)
+
+  # Need to reorder cols due to y/z confusion from whence the code came
+  coli <- if(!is.null(vcolor)) 4:6
+  reord <- c(1,3,2,coli)
+  mzx.lo <- mzx.lo[,c(3:1,coli)][,reord]
+  mzx.hi <- mzx.hi[,c(3:1,coli)][,reord]
+  mxz.lo <- mxz.lo[,reord]
+  mxz.hi <- mxz.hi[,reord]
+
+  mesh2 <- mesh[,c(1:3,coli)]
+  mesh2[] <- Map(c, mesh2, mzx.lo, mzx.hi, mxz.lo, mxz.hi)
+  mesh3 <- mesh2
+}
+
+
 # Adaptation of rayender::segment
 
-cubement <- function (start = c(0, -1, 0), end = c(0, 1, 0), 
+cubement <- function (start = c(0, -1, 0), end = c(0, 1, 0),
   xwidth = 1, zwidth = 1,
     material = diffuse(), velocity = c(0,
         0, 0), flipped = FALSE, scale = c(1, 1, 1))
@@ -625,94 +745,6 @@ tris_to_df <- function(tris, map) {
 
 ids_to_df <- function(ids, map) {
   as.data.frame(ids_to_xyz(ids, map, c(1,1,1)))
-}
-# - PNG stuff ------------------------------------------------------------------
-
-# Read in pngs, and write them back stitched together side by side
-
-cbind_pngs <- function(input, output) {
-  vetr(character(), character(1L))
-  pngs <- lapply(input, png::readPNG)
-  png.dims <- vapply(pngs, dim, numeric(3))
-  if(length(unique(png.dims[1,])) != 1) stop("different row counts on pngs")
-  if(length(unique(png.dims[3,])) != 1) stop("different chanel counts on pngs")
-
-  cols <- sum(png.dims[2,])
-  colc <- cumsum(png.dims[2,])
-  colcs <- 1L + c(0L, head(colc, 2L))
-  d <- array(numeric(), c(png.dims[1,1],sum(png.dims[2,]),png.dims[3,1]))
-
-  for(i in seq_along(colc)) d[,colcs[i]:colc[i],] <- pngs[[i]]
-  png::writePNG(d, output)
-}
-# trim white or near white rows/col (for raster image rows are the x
-# coordinatese of the arrays).  We don't bother with alpha as that will require
-# us cheking if it has the channel and different handling for it.
-#
-# @param pngs a list of png arrays (3D), with or without alpha
-# @param tol numeric(2), tolerance for rows and cols in that order
-# @param pad numeric(2), pixels of padding to add to result will just be full
-#   opacity white
-# @return list of png arrays
-
-trim_png <- function(pngs, tol=c(2,2), pad=c(0,0)) {
-  res <- trim_png_row(pngs, tol[1], pad[1])
-  trim_png_col(res, tol[2], pad[2])
-}
-
-trim_png_internal <- function(pngs, tol=2, pad=0, which) {
-  vetr(
-    list() && length(.) > 0, INT.1 && all_bw(., 0, 255), INT.1.POS,
-    which=isTRUE(. %in% c('row', 'col'))
-  )
-  if(which == 'row') {
-    sumf <- rowSums
-    readf <- function(x, idx) x[idx,,]
-    writef <- function(x, idx, val) {
-      x[idx,,] <- val
-      x
-    }
-    tar.dim <- 1
-    dim.len <- dim(pngs[[1]])[1]
-  } else {
-    sumf <- colSums
-    readf <- function(x, idx) x[,idx,]
-    writef <- function(x, idx, val) {
-      x[,idx,] <- val
-      x
-    }
-    tar.dim <- 2
-    dim.len <- dim(pngs[[1]])[2]
-  }
-  tol <- tol / 255
-  dims <- sapply(pngs, dim)
-  if(!is.matrix(dims)) stop("unequal dims")
-  if(length(unique(dims[1,])) > 1 || length(unique(dims[2,])) > 1)
-    stop("unequal dim2")
-
-  pngsum <- rowSums(sapply(pngs, function(x) sumf(x < 1 - tol))) == 0
-  a <- min(which(!pngsum))
-  b <- min(which(!rev(pngsum)))
-
-  a.not <- seq_len(a - 1L)
-  b.not <- seq_len(b - 1L) + dim.len - b + 1
-
-  tmp <- lapply(pngs, readf, -c(a.not, b.not))
-  dim.tmp <- dim(tmp[[1]])
-  if(pad) {
-    dim.pad <- dim.tmp
-    dim.pad[tar.dim] <- dim.pad[tar.dim] + 2*pad
-    res.tpl <- array(1, dim.pad)
-    lapply(tmp, writef, idx=seq_len(dim.tmp[tar.dim]) + pad, x=res.tpl)
-  } else {
-    tmp
-  }
-}
-trim_png_row <- function(pngs, tol=2, pad=0) {
-  trim_png_internal(pngs, tol, pad, which='row')
-}
-trim_png_col <- function(pngs, tol=2, pad=0) {
-  trim_png_internal(pngs, tol, pad, which='col')
 }
 
 
