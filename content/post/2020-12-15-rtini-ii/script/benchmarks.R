@@ -29,16 +29,6 @@ order_tris <- function(x) {
   x <- matrix(x, nrow=3)
   x[, order(x[1,], x[2,], x[3,])]
 }
-sys.time <- function(exp, reps=11) {
-  res <- matrix(0, reps, 5)
-  time.call <- quote(system.time({NULL}))
-  time.call[[2]][[2]] <- substitute(exp)
-  gc()
-  for(i in seq_len(reps)) {
-    res[i,] <- eval(time.call, parent.frame())
-  }
-  structure(res, class='proc_time2')
-}
 # Now we can subset to desired target sizes
 ks <- 2 ^ (6:13) + 1
 # ks <- 2 ^ 6 + 1

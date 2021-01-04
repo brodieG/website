@@ -1,7 +1,7 @@
 ---
 title: "Rtini Part II: Vectorize the Absolute $#!+ Out of This"
 author: ~
-date: '2020-12-15'
+date: '2021-01-04'
 slug: mesh-red-vec
 categories: [R]
 tags: [algorithms,viz,rtini]
@@ -237,7 +237,7 @@ span.hollow-green   {background-color: #eee; color: #66c2a5;}
 </style>
 
 Unfortunately this is insufficient.  We must also for each triangle hypotenuse
-midpoint track their children so that we may [carry over](#carry-over-viz) their
+midpoint track their children so that we may [carry over][2] their
 errors.  One nice benefit of the tessellating pattern is that if we define the
 parent-child relationship for the simple tile, we can copy that relationship
 along with the rest of the tile.  In fact, we don't actually care about the
@@ -324,10 +324,12 @@ pdim <- gtable_dim(ggplotGrob(p2))
 old.opt <- knitr::opts_chunk$get(c('fig.width', 'fig.height'))
 do.call(knitr::opts_chunk$set, list(fig.width=pdim[1], fig.height=pdim[2]))
 ```
+<div id='sq-vs-diam'>
 ```{r square-vs-diamond-points, echo=FALSE}
 p2
 do.call(knitr::opts_chunk$set, old.opt)
 ```
+</div>
 
 Recall: we are trying to compute the error in approximating the hypotenuse <span
 class='pill lavender'>midpoints</span> as the mean of the <span
@@ -359,7 +361,7 @@ coordinates for each of the points in the template tile.  `init_offsets` scales
 those to the appropriate size for the layer and collapses them to "linearized"
 coordinates[^linearized]<span id=linearized></span>.  Here is the "Diagonals"
 map with the grid points labeled with their "linearized" coordinates and the key
-points of the template tile in the same colors as [previously](#lavender):
+points of the template tile in the same colors as [previously](#sq-vs-diam):
 
 ```{r echo=FALSE}
 n <- 8
@@ -514,9 +516,11 @@ Tiling is then just a matter of copying and shifting the template tile.
 # Action!
 
 Let's look at this in action with the next grid size up for effect.  As we did
-in our [earlier visualization](#mesh-anim) we'll track the coordinates in the
+in the [prior post](#mesh-anim) we'll track the coordinates in the
 left panel side (both "Diagonal" and "Axis", alternating), and the computed mesh
 approximation errors in the right hand panel:
+
+
 
 <video 
 id=mesh-anim-vec style='display: block; margin: 0 auto;' 
@@ -562,7 +566,7 @@ seq.r
 
 Due to how we repeat `o` each value of `seq.r` will be recycled for every value
 of `o`.  The result is to copy the template tile to fill the column.  Similarly
-we can fill the rest of the surface by repeating and shifting the column::
+we can fill the rest of the surface by repeating and shifting the column:
 
 ```{r eval=FALSE}
 o <- rep(o, each=tile.n) + seq.r * (n + 1)
@@ -813,8 +817,27 @@ with an odd number of points in both width and height.  The ["R-vec-2"
 implementation][11] does exactly that.  This allows us to render the 550 x 505
 River Derwent DEM by dropping just one row:
 
+<!--
+This horror show is so that we can force a fixed sizes for the video display
+window as in auto-play mode it appears to cause the whole page to shift
+seemingly at random and having a fixed height with proper aspect ratio seems to
+work
+
+Padding top trick from: https://css-tricks.com/aspect-ratio-boxes/
+-->
+<div class=bgw-wide-window>
+<div style='width: 800px; max-width: 100%; margin: 0 auto;'>
+<div style='
+  width: 800px; max-width: 100%;
+  overflow: hidden; padding-top: 100%; position: relative;
+'>
 <video
-  id=derwent-vid style='display: block; margin: 0 auto;'
+  id=derwent-vid
+  style='
+    display: block; margin: 0 auto;
+    width: 800px; max-width: 100%;
+    position: absolute; top: 0; right: 0;
+  '
   alt='3D rendering of the Derwent with some sea level rise and varying levels
   of mesh approximation'
   loop autoplay muted
@@ -826,6 +849,10 @@ static
   type="video/mp4"
 />
 </video>
+</div>
+</div>
+</div>
+
 
 The closest dimensions available to the original algorithm are 257 x 257 or 513
 x 513, so this is a pretty good feature.  A
@@ -841,7 +868,7 @@ has no inconsistencies at the boundaries, such as this one:
 <div class='bgw-wide-window'>
 <figure>
 <img src='graphics/kalei-wide.jpg' style='max-width: 900px;'/>
-<figcaption>River Derwent DEM, 2049 x 1025, Low Polygon Count, Kaleidoscope
+<figcaption>River Derwent DEM, 2049 x 1025, Low Poly Count, Kaleidoscope
 Style.</figcaption>
 </figure>
 </div>
@@ -1386,6 +1413,8 @@ new BgFlipBook({
 </script>
 
 [1]: /2020/01/27/mesh-reduction-1/
+[2]: /2020/01/27/mesh-reduction-1/#carry-over-viz
+[3]: /2020/01/27/mesh-reduction-1/#mesh-anim
 [5]: https://twitter.com/mourner
 [6]: https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
 [7]: https://twitter.com/mdsumner/status/1161994475184373761?s=20
