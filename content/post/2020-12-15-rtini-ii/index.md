@@ -5,8 +5,8 @@ date: '2021-01-04'
 slug: mesh-red-vec
 categories: [R]
 tags: [algorithms,viz,rtini]
-image: /2020/12/15/mesh-red-vec/graphics/fov-single-lo.jpg
-imagerect: /2020/12/15/mesh-red-vec/graphics/fov-twin-banner.jpg
+image: /2021/01/04/mesh-red-vec/graphics/fov-single-lo.jpg
+imagerect: /2021/01/04/mesh-red-vec/graphics/fov-twin-banner.jpg
 imagemrgvt: 0%
 imagemrghz: 0%
 weight: 1
