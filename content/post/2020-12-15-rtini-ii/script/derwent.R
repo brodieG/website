@@ -4,7 +4,7 @@ source('static/script/_lib/plot.R')
 library(rayrender)
 library(ambient)    # for water patterns
 
-eltif <- raster::raster("D:Downloads/dem_01.tif")
+eltif <- raster::raster("~/Downloads/dem_01.tif")
 eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 der <- elmat1[-1,]
