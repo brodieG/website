@@ -1,0 +1,43 @@
+---
+title: Out of R Depth
+author: ~
+date: '2021-01-23'
+slug: out-of-r-depth
+categories: []
+tags: []
+image: /front-img/default.png
+imagerect: ~
+imagemrgvt: 0%
+imagemrghz: 0%
+weight: 1
+contenttype: article
+description: Front page summary
+output:
+  blogdown::html_page:
+    keep_md: yes
+    md_extensions: +raw_attribute
+---
+```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+```
+
+# Header 1
+
+<!-- this needs to become a shortcode -->
+<img
+  id='front-img' src='/front-img/default.png'
+  class='post-inset-image'
+/>
+
+<div style='background-color: red;'>acknowledge raster in this post and others</div>
+
+# Conclusions
+
+<!-- this needs to become a shortcode -->
+<!-- this is populated by JS in feedback.html partial -->
+<p id='feedback-cont'></p>
+
+# Appendix
+
+## Acknowledgments
+
+## Session Info
