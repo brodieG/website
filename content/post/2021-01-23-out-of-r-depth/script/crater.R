@@ -118,6 +118,7 @@ plot_rast(md, range(md, na.rm=TRUE))
 
 dyn.unload('content/post/2021-01-23-out-of-r-depth/script/depth.so')
 xx <- dyn.load('content/post/2021-01-23-out-of-r-depth/script/depth.so')
+xx <- dyn.load('script/depth.so')
 mc <- sqrt(.Call('BG_calc_depth', map2, shore2.i, water2.i))
 
 system.time(mc0 <- sqrt(.Call('BG_calc_depth', map, shore.i, water.i)))
@@ -288,3 +289,5 @@ depth[t(wc)] <- (depth.dat - min(depth.dat)) / diff(range(depth.dat))
 saveRDS(depth, '~/Downloads/derwent/depth2.RDS')
 
 
+
+system.time(mc0 <- sqrt(.Call('BG_calc_depth', map, shore.i, water.i)))

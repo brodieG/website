@@ -74,8 +74,15 @@ dim(map) ## This is crater lake
 water <- find_water(map)
 water.small <- find_water(downsample(map, factor=10))
 dim(water.small)
+prod(table(water.small))
 ```
-```{r echo=FALSE}
+```{r echo=FALSE, eval=FALSE}
+shore.i <- which(!water.small, arr.ind=TRUE)
+water.i <- which(water.small, arr.ind=TRUE)
+library(microbenchmark)
+gc()
+microbenchmark(.Call('BG_calc_depth', water.small+0, shore.i, water.i), times=25)
+
 ```
 <div class=bgw-wide-window>
 ```{r orig-vs-downsample, echo=FALSE, fig.width=9, fig.height=5}

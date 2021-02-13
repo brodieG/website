@@ -261,7 +261,8 @@ gc(); microbenchmark::microbenchmark(colSums(mx), times=25)
 
 dyn.unload('script/depth.so')
 xx <- dyn.load('script/depth.so')
-mx <- matrix(runif(5e3^2), 5e3)
+y <- 4999
+mx <- matrix(runif(y^2), y)
 gc(); microbenchmark::microbenchmark(res <- .Call("BG_rowsums", mx), times=25)
 gc(); microbenchmark::microbenchmark(res <- .Call("BG_rowsums2", mx), times=25)
 gc(); microbenchmark::microbenchmark(res3 <- .Call("BG_rowsums3", mx), times=25)
@@ -272,9 +273,16 @@ gc(); microbenchmark::microbenchmark(t(mx), times=25)
 
 dyn.unload('script/depth.so')
 xx <- dyn.load('script/depth.so')
-mx2 <- matrix(runif(16), 4, 4)
-res5 <- .Call("BG_rowsums5", mx2)
+mx2 <- t(mx)
+res5a <- colSums(mx2)
 res5 <- .Call("BG_rowsums5", mx)
+
+gc(); microbenchmark::microbenchmark(res5 <- .Call("BG_rowsums5", mx))
+gc(); microbenchmark::microbenchmark(res6 <- .Call("BG_rowsums6", mx))
+gc(); microbenchmark::microbenchmark(res7 <- .Call("BG_rowsums7", mx))
+gc(); microbenchmark::microbenchmark(res5a <- colSums(mx2), times=25)
+
+m
 
 colSums
 
