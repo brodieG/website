@@ -17,7 +17,18 @@ output:
     keep_md: yes
     md_extensions: +raw_attribute
 ---
-```{r echo=FALSE, child='../../static/chunks/init.Rmd'}
+
+```{r echo=FALSE, child='../../../static/chunks/init.Rmd'}
+```
+```{r echo=FALSE}
+library(vetr)
+library(viridisLite)
+
+source('../../../static/script/_lib/plot.R')
+source('../../../static/script/_lib/rayrender.R')  # for next_file
+source('script/dist.R')
+source('script/plot.R')
+map <- readRDS('data/crater.RDS')
 ```
 
 # Header 1
@@ -30,6 +41,76 @@ output:
 
 <div style='background-color: red;'>acknowledge raster in this post and others</div>
 
+# Start
+
+While working on the [RTINI vectorization post][1] I got it in my head that I
+absolutely wanted rippling, coruscating water in the visualizations.  One
+problem was that the [DEM][2] I was using had no depth information for the water
+areas.  The natural solution would have been to find a DEM with the right
+information, but I get attached to my elevation maps.  Instead, I figured I
+would impute depth based on distance from shore.
+
+So how do we do this?  One possible approach is brute force: find all the water
+pixels, compute Euclidian distance from each water pixel to every land pixel,
+and take the min distance for each water pixel.  This is so computationally
+ghastly that self-respecting algorists will not even speak of this possibility.
+As I am not part of that cohort I can happily report that attempting such a
+computation on the Crater Lake DEM we'll be looking at in this post would
+require ~361 billion distance calculations, or ~2 trillion
+calculations[^arith-calcs]. If we assume 2 clock cycles per arithmetic
+calculation, and absolutely no other overhead, that would take over an hour on
+my 1GHz system.
+
+# Okay, but Do It in R
+
+The one hour estimate is only likely to hold if we did the calculation in C or
+other similar low-overhead language.  Unfortunately, if we try to implement this
+in R we very quickly run into the famous R overhead.  Let's test it out with a
+downsampled version of the Crater Lake DEM (1/10th), to see just how bad this
+is:
+
+```{r}
+dim(map) ## This is crater lake
+water <- find_water(map)
+water.small <- find_water(downsample(map, factor=10))
+dim(water.small)
+```
+```{r echo=FALSE}
+```
+<div class=bgw-wide-window>
+```{r orig-vs-downsample, echo=FALSE, fig.width=9, fig.height=5}
+par(mai=numeric(4), mfrow=c(1,2))
+plot(as.raster(!water))
+plot(as.raster(!water.small))
+```
+</div>
+
+```{r eval=FALSE}
+```
+
+
+
+as my system seems to manage, that would
+take about 12 minute
+
+arithmetic calculations per 
+
+
+
+we'll be 
+computation would
+
+Some image of crater lake.
+
+* Total brute force: 361B permutations.  2 cycles per op?
+* Detect shore.
+* C vs R.
+
+# Animation
+
+Snakes flowing down.
+
+
 # Conclusions
 
 <!-- this needs to become a shortcode -->
@@ -41,3 +122,15 @@ output:
 ## Acknowledgments
 
 ## Session Info
+
+[^arith-calcs]: `$(x_{water} - x_{land}) ^ 2 + (y_{water}} - y_{land}) ^ 2`
+  involves two differences, two squares, and a sum.  We also need to compare
+  each distance to previously calculated ones to see if we found a shorter one.
+  We can defer the expensive square root calculation as we can compare squared
+  distances to find shortest distances.  There will also be a write to memory
+  each time we find a shorter distance for any given water point, and we're not
+  counting that.
+
+[1]: /2021/01/04/mesh-red-vec/
+[2]: https://en.wikipedia.org/wiki/Digital_elevation_model
+

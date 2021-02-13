@@ -9,13 +9,15 @@ source('content/post/2021-01-23-out-of-r-depth/script/dist.R')
 source('content/post/2021-01-23-out-of-r-depth/script/plot.R')
 
 # http://oe.oregonexplorer.info/craterlake/dem.html
-eltif <- raster::raster("~/Downloads/dems_10m.dem")
-eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
+# eltif <- raster::raster("~/Downloads/dems_10m.dem")
+# eldat <- raster::extract(eltif,raster::extent(eltif),buffer=10000)
 # not memory efficient but oh well, can't be bothered learning
 # how to do this properly
 elmat1 <- matrix(eldat, nrow=ncol(eltif), ncol=nrow(eltif))
 
 map <- elmat1[1500:2599 + 150, 1500:2599]
+water <- find_water(map)
+table(water)
 
 stop()
 # md2 <- dist2(map, water.i, shore.i)
@@ -34,14 +36,55 @@ shore3 <- find_shore(water3)
 
 w3i <- which(water3, arr.ind=TRUE)
 s3i <- which(shore3, arr.ind=TRUE)
-dist3(mini, w3i, s3i)
+dist4(mini, w3i, s3i)
+
+dist4w <- watcher::watch(dist4, c('s.fin', 'move'))
+res <-  dist4w(mini, w3i, s3i)
+
+watch <- attr(m2, 'watch.data')
+coords <- lapply(watch, '[[', 's.fin')
+s.delt <- mapply(identical, coords[-length(coords)], coords[-1])
+paths <- lapply(
+  which(!s.delt) + 2,
+  function(i)
+    with(
+      watch[[i]],
+      rbind(
+        s.fin - move, s.fin,
+        array(rep(NA, length(s.fin)), dim(s.fin))
+    )[
+      order(rep(seq_len(nrow(s.fin)), 3)),
+  ] )
+)
+p.all <- do.call(rbind, paths)
+p.rng <- apply(p.all, 2, range, na.rm=TRUE) + c(-1, 1)
+
+for(i in seq_along(paths)) {
+  png(
+    width=800, height=800, filename=next_file("~/Downloads/depth/img-000.png")
+  )
+  par(mai=numeric(4))
+  plot.new()
+  plot.window(xlim=p.rng[,1], ylim=p.rng[,2])
+  lines(do.call(rbind, paths[seq_len(i)]))
+  dev.off()
+}
 
 
-map2 <- downsample(map, 50)
+
+lines(p.all)
+
+
+map2 <- downsample(map, 2)
 water2 <- find_water(map2)
 shore2 <- find_shore(water2)
 water2.i <- which(water2, arr.ind=TRUE)
 shore2.i <- which(shore2, arr.ind=TRUE)
+m2 <- dist4w(map2, water2.i, shore2.i[1275,,drop=FALSE])
+dist4(map2, water2.i, shore2.i[1,,drop=FALSE])
+
+
+m4 <- dist4(map, water.i, shore.i)
 
 md0 <- dist_brute(map2, water2.i, shore2.i)
 md2 <- dist2(map2, water2.i, shore2.i)
@@ -65,6 +108,7 @@ shore <- find_shore(water)
 water.i <- which(water, arr.ind=TRUE)
 shore.i <- which(shore, arr.ind=TRUE)
 
+system.time(m4 <- dist4(map, water.i, shore.i))
 system.time(m2 <- dist2(map, water.i, shore.i))
 system.time(m0 <- dist_brute(map, water.i, shore.i))
 system.time(m02 <- dist_brute2(map, water.i, shore.i))
@@ -89,6 +133,22 @@ microbenchmark::microbenchmark(
   .Call('BG_add_scalar', x, a), x + a
 )
 
+
+# Let's make some skinny lakes
+
+mskinny.raw <- downsample(map, c(2, 5))
+mskinny <- rbind(
+  do.call(cbind, replicate(5, mskinny.raw, simplify=FALSE)),
+  do.call(cbind, replicate(5, mskinny.raw, simplify=FALSE))
+)
+msw <- find_water(mskinny)
+mss <- find_shore(msw)
+mswi <- which(msw, arr.ind=TRUE)
+mssi <- which(mss, arr.ind=TRUE)
+
+ms <- dist4(mskinny, mswi, mssi)
+system.time(mcs <- sqrt(.Call('BG_calc_depth', mskinny, mssi, mswi)))
+mcs[mcs == Inf] <- 0
 
 
 
@@ -123,36 +183,6 @@ f <- function(a, b) {
   )
 }
 
-map_to_col <- function(
-  map, water,
-  colors=list(
-    land=terrain.colors(10),
-    water=c('blue4', 'dodgerblue4', 'dodgerblue')
-  )
-) {
-  vetr(
-    matrix(numeric(), 0, 0), LGL && length(.) == length(map),
-    list(land=character(), water=character())
-  )
-  m_to_c_int <- function(map, cols) {
-    cc <- colorRamp(cols, space='Lab')
-    rgb <- cc((map - min(map, na.rm=TRUE))/diff(range(map, na.rm=TRUE)))
-    col <- rep(NA_character_, length(map))
-    col[!is.na(map)] <- rgb(rgb[!is.na(map),], maxColorValue=255)
-    col
-  }
-  height <- map
-  height[water] <- NA
-  height.c <- m_to_c_int(height, colors[['land']])
-
-  depth <- map
-  depth[!water] <- NA
-  depth.c <- m_to_c_int(depth, colors[['water']])
-
-  all.col <- height.c
-  all.col[!is.na(depth.c)] <- depth.c[!is.na(depth.c)]
-  structure(array(all.col, dim(map)), class='raster')
-}
 mbrute <- map
 mbrute[water] <- mm[water]
 
@@ -165,10 +195,6 @@ m2[water] <- mm2.2[water]
 mdd <- map
 mdd[water] <- sqrt(md2[water])
 
-colors <- list(
-  land=c('chartreuse4', 'wheat3', 'whitesmoke'),
-  water=rev(c('blue4', 'dodgerblue4', 'dodgerblue'))
-)
 
 plot(map_to_col(mbrute, water, colors=colors))
 plot(map_to_col(m1, water, colors=colors))

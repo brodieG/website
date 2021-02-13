@@ -1,4 +1,5 @@
-source('content/post/2021-01-23-out-of-r-depth/script/utils.R')
+# source('content/post/2021-01-23-out-of-r-depth/script/utils.R')
+source('script/utils.R')
 
 dist_brute <- function(map, water.i, shore.i) {
   water.j <- t(water.i)
@@ -148,62 +149,63 @@ dist3 <- function(map, water.i, shore.i) {
 }
 
 dist4 <- function(map, water.i, shore.i) {
-  # initialize output with buffer to detect OOB
-  m <- array(0, dim(map) + c(2,2))
-  m[c(1,nrow(m)),] <- -Inf
-  m[,c(1,ncol(m))] <- -Inf
+  ## Initialize output with buffer to detect OOB.
+  m <- array(-Inf, dim(map) + c(2,2))
+  m[-c(1,nrow(m)),-c(1,ncol(m))] <- 0
 
-  w <- water.i + 1.0
+  ## Adjust coords for buffer
+  w <- water.i + 1.0  # calculation faster with num
+  s <- shore.i + 1.0  # instead of int
   m[w] <- Inf
-  s <- shore.i + 1.0
-  dxy <- matrix(0, nrow(s), 2)
+  dxy <- matrix(0, nrow(s), 2)  # Coords from nearest shore
 
+  ## Setup offset moves.
   rot <- matrix(c(cos(pi/4), sin(pi/4), -sin(pi/4), cos(pi/4)), 2)
+  dir <- as.matrix(expand.grid(x=-1:1, y=-1:1))
+  dir.ccw <- round(t(rot %*% t(dir)))
+  dir.cw <- round(t(t(rot)%*% t(dir)))
+  dirs <- cbind(dir, dir.ccw, dir.cw)
 
-  range <- (-1):1
-  dir <- as.matrix(subset(expand.grid(x=range, y=range), x | y))
-  off <- seq_len(nrow(dir))
+  ## For each position, there are 8 directions, but we narrow
+  ## that to 3: original direction (from), and +- 45 degrees.
+  ## Each column in `moves` represents one of the possible
+  ## 9 directions, and the values are the three possible
+  ## subsequent directions.
+  moves <- aperm(array(dirs, c(nrow(dir), 2, 3)), c(3, 1, 2))
+  froms <- moves[,,1] +  moves[,,2] * 3 + 5
 
-  dir.ccw <- round(t(rotr %*% t(dir)))
-  dir.cw <- round(t(t(rotr)%*% t(dir)))
-
-  offt <- aperm(
-    array(cbind(dir, dir.ccw, dir.cw), c(nrow(dir), 2, 3)), c(3, 1, 2)
-  )
-  offti <- matrix(
-    off[match(offt[,,1] + 3 * offt[,,2], dir[,1] + 3 * dir[,2])], 3
-  )
-  # Initial move in all directions
-  i <- rep(seq_len(nrow(s)), each=8)
-  j <- rep(seq_len(8), nrow(s))
-  move <- offt[1,,][j,]
-  off <- offti[1,j]
+  ## Except for first step: initial move in all directions
+  i <- rep(seq_len(nrow(s)), each=nrow(dir))
+  j <- rep(seq_len(nrow(dir)), nrow(s))
+  move <- moves[1,,][j,]
+  from <- froms[1,j]
+  count <- 0
 
   while(nrow(s)) {
-    # writeLines(sprintf("%d rows: %d", i, nrow(s)))
-    s <- s[i,] + move
-    dxy <- dxy[i,] + move
-    d <- dxy[,1]^2 + dxy[,1]^2
+    s <- s[i,] + move           # Current position
+    dxy <- dxy[i,] + move       # Vector from shore
+    d <- dxy[,1]^2 + dxy[,2]^2
 
-    # Nearer points, and dedup
+    ## Identify nearest and order by distance
     near <- which(d < m[s])
     dn <- d[near]
     dno <- order(dn)
     dnoi <- near[dno]
     s <- s[dnoi,,drop=FALSE]
-    k <- dedupi(s)
-    s <- s[k,,drop=FALSE]
-    dnoik <- dnoi[k]
-    dxy <- dxy[dnoik,,drop=FALSE]
-    off <- off[dnoik]
 
-    # record new values
-    m[s] <- d[dnoik]
+    ## Dedup, keeping nearest at each coordinate
+    ui <- which(dedupi(s))
+    dnoui <- dnoi[ui]
+    s.fin <- s <- s[ui,,drop=FALSE]
+    move <- move[dnoui,]
+    dxy <- dxy[dnoui,,drop=FALSE]
+    from <- from[dnoui]
+    m[s] <- d[dnoui]
 
-    # setup next move
-    move <- offt[,off,]
-    dim(move) <- c(length(off) * 3, 2)
-    off <- c(offti[,off])
+    ## Setup next move
+    move <- moves[,from,]
+    dim(move) <- c(length(from) * 3, 2)
+    from <- c(froms[,from])
     i <- rep(seq_len(nrow(s)), each=3)
   }
   sqrt(m[-c(1,nrow(m)), -c(1,ncol(m))])
