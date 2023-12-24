@@ -146,11 +146,18 @@
   {{end}}
 
 
-  {{ with $writer.twitter }}
-  <a class="twitter" target="_blank"
-  href="{{ . }}">
-  <i class="fa fa-twitter-square"
-  title="twitter icon"></i>
+{{ with $writer.mastodon }}
+<a class="mastodon" target="_blank"
+href="{{ . }}">
+<i class="fa fa-mastodon"
+title="mastodon icon"></i>
+</a>
+{{end}}
+{{ with $writer.twitter }}
+<a class="twitter" target="_blank"
+href="{{ . }}">
+<i class="fa fa-twitter-square"
+title="twitter icon"></i>
 </a>
 {{end}}
 {{ with $writer.linkedin }}
@@ -226,6 +233,13 @@ title="googleplus icon"></i>
 href="{{ . }}">
 <i class="fa fa-twitter-square"
 title="twitter icon"></i>
+</a>
+{{end}}
+{{ with .Site.Params.social.mastodon }}
+<a class="mastodon" target="_blank"
+href="{{ . }}">
+<i class="fa fa-mastodon"
+title="mastodon icon"></i>
 </a>
 {{end}}
 {{ with .Site.Params.social.linkedin }}

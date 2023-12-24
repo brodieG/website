@@ -53,7 +53,7 @@ summaryLength = 10     # num words in summary
       "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
     ]
     copyright = [
-      "Copyright &copy; 2014-2019 Brodie Gaslam"
+      "Copyright &copy; Brodie Gaslam"
     ]
     image = "/images/moon-small.png"
 
@@ -101,6 +101,7 @@ summaryLength = 10     # num words in summary
   # googleplus    = "full profile url in googleplus"
   # email         = "email@example.com"
   twitter       = "https://twitter.com/BrodieGaslam"
+  mastodon      = "https://mastodon.social/@brodieg"
   # linkedin      = "full profile url in linkedin"
   stackoverflow = "https://stackoverflow.com/users/2725969/brodieg"
   # instagram     = "full profile url in instagram"
@@ -118,6 +119,7 @@ summaryLength = 10     # num words in summary
     bio = [
        "Brodie Gaslam is a hobbyist programmer based on the US East Coast."
      ]
+    mastodon      = "https://mastodon.social/@brodieg"
      twitter       = "https://twitter.com/BrodieGaslam"
      stackoverflow = "https://stackoverflow.com/users/2725969/brodieg"
      github        = "https://github.com/brodieG/"
