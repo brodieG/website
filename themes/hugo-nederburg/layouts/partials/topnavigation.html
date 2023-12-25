@@ -3,7 +3,7 @@
   <div id="menu-secondary" class="menu-container menu-secondary" role="navigation">
     {{/*
     <button id="toggle-secondary-navigation" class="toggle-secondary-navigation">
-      <i class="fa fa-plus"></i>
+      <i class="fa-solid fa-plus"></i>
     </button>
     */}}
     <div class="menu">
@@ -83,7 +83,7 @@
     {{ with .Site.Params.social.email }}
     <li>
       <a href="mailto:{{ . }}" data-animate-hover="pulse" class="email">
-        <i class="fa fa-envelope" title="email"></i>
+        <i class="fa-solid fa-envelope" title="email"></i>
         <span class="screen-reader-text">email</span>
       </a>
     </li>
@@ -130,7 +130,7 @@
     {{ if .Site.Params.social.rss }}
     <li>
       <a href='{{ with .OutputFormats.Get "RSS" }}{{ .RelPermalink }}{{ end }}' data-animate-hover="pulse" class="rss" target="_blank">
-        <i class="fa fa-rss" title="rss"></i>
+        <i class="fa-solid fa-rss" title="rss"></i>
         <span class="screen-reader-text">rss</span>
       </a>
     </li>
