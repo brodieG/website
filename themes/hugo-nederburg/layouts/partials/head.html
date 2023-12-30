@@ -39,7 +39,9 @@
 {{ partial "head_highlightjs" . }}
 
 <link rel="stylesheet" id="ct-tracks-google-fonts-css" href="//fonts.googleapis.com/css?family=Raleway%3A400%2C700&amp;subset=latin%2Clatin-ext&amp;ver=4.7.2" type="text/css" media="all">
-<link rel="stylesheet" href="{{ "css/font-awesome.min.css" | absURL }}" type='text/css' media='all'>
+<link rel="stylesheet" href="{{ "css/fontawesome.min.css" | absURL }}" type='text/css' media='all'>
+<link rel="stylesheet" href="{{ "css/brands.min.css" | absURL }}" type='text/css' media='all'>
+<link rel="stylesheet" href="{{ "css/solid.min.css" | absURL }}" type='text/css' media='all'>
 <!-- Theme stylesheet, if possible do not edit this stylesheet -->
 <link href="{{ "css/style.css" | absURL }}" rel="stylesheet" id="theme-stylesheet" type='text/css' media='all'>
 <!-- Custom stylesheet - for your changes -->
@@ -48,8 +50,10 @@
 <link rel="shortcut icon" href="{{ "img/favicon.ico" | absURL }}" type="image/x-icon">
 <link rel="icon" href="{{ "img/favicon.ico" | absURL }}" type="image/x-icon">
 
-{{ if .RSSLink }}
-<link href="{{ .RSSLink }}" rel="alternate" type="application/rss+xml" title="{{ .Site.Title | default "" }}" />
-<link href="{{ .RSSLink }}" rel="feed" type="application/rss+xml" title="{{ .Site.Title | default "" }}" />
+{{ with .OutputFormats.Get "RSS" }}
+{{ if .RelPermalink }}
+<link href='{{.RelPermalink}}' rel="alternate" type="application/rss+xml" title="{{ $.Site.Title | default "" }}" />
+<link href='{{.RelPermalink}}' rel="feed" type="application/rss+xml" title="{{ $.Site.Title | default "" }}" />
+{{ end }}
 {{ end }}
 {{ template "_internal/google_analytics_async.html" . }}
